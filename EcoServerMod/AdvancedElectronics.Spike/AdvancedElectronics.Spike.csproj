@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Feasibility spike for the Advanced Electronics survey drone.
+    EcoRefVersion must match the target Eco dedicated server's build.
+    This repo's ModKit DLLs identify as Eco 0.13.0.4, so the pin below
+    tracks the matching reference-assemblies prerelease. See ../README.md.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EcoRefVersion>0.13.0.4-beta-release-1024</EcoRefVersion>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!-- Machine-local overrides (EcoModsDir for auto-deploy). Git-ignored. -->
+  <Import Project="Local.props" Condition="Exists('Local.props')" />
+
+  <ItemGroup>
+    <PackageReference Include="Eco.ReferenceAssemblies" Version="$(EcoRefVersion)" />
+  </ItemGroup>
+
+  <!-- Optional auto-deploy: set EcoModsDir in Local.props to your server's
+       Mods/UserCode directory to copy the DLL after every build. -->
+  <Target Name="CopyModToEco" AfterTargets="Build" Condition="'$(EcoModsDir)' != ''">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(EcoModsDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

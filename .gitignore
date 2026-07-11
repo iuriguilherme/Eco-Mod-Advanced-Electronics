@@ -105,3 +105,12 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Eco server-mod project (EcoServerMod/) — un-ignore project files that the
+# Unity-convention global ignores above (*.csproj, *.sln) would swallow,
+# and ignore dotnet build output + machine-local overrides.
+!EcoServerMod/**/*.csproj
+!EcoServerMod/**/*.sln
+EcoServerMod/**/[Bb]in/
+EcoServerMod/**/[Oo]bj/
+EcoServerMod/**/Local.props
