@@ -128,22 +128,38 @@ assignment fallback works today if the picker mechanism doesn't materialize.
 - [x] Game-version context noted in the origin plan: all evidence is against Eco
       0.13.0.4 (`Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024`).
 
-## Iteration 2 — deployed fixes, re-run protocol
+## Iteration 3 — current build, re-run protocol
 
-Both harness fixes are implemented and build green; redeploy the DLL and re-run:
+**Iteration 2 results (2026-07-12, second run):** Q2 unchanged — one teleport then
+static, so the `TickStartTime`-based `NextTickTime` advance also failed to re-queue
+(the manager appears to consult the schedule only at `AddToTick` time, or uses a
+different time base). Q1 progressed — the animal now *stares at the player* and
+*flees when shot*: the activation levers woke the brain, and pathfinding/locomotion
+demonstrably work **when the brain drives them** — but external `GetPathTo` is
+ignored by its own behavior selection. Puppeteering a live-brained vanilla animal is
+looking infeasible; the realistic Q1 outcome is "custom `AnimalEntity` subclass with
+its own behavior".
 
-1. **Q2:** `/spike move` — movers now re-queue off the tick manager's own clock
-   (`TickStartTime`) each tick instead of a constant `NextTickTime = 0`. Expect
-   continuous circling; record smoothness as per the original protocol. If it again
-   moves only once, the tick surface itself is wrong and iteration 3 moves the probe
-   onto a `WorldObjectComponent` tick.
-2. **Q1:** `/spike path` — now prints an activation diagnostic
-   (`Active=... Behavior='...' NextTick=...`) right after spawn, forces the animal's
-   own tick (`NextTick = 0`), and calls `DoServerUpdateAnimalData("Wander", ...)`
-   before `GetPathTo`. Record every `[Q1 activate]` line: they tell us which lever
-   (if any) wakes the animal. If it stays inert with `Active=False`, mod-spawned
-   animals need the vanilla ecosystem spawn flow — iteration 3 would command a
-   naturally-spawned wild animal instead.
+Iteration 3 (deployed in this build) — re-run and record:
+
+1. **Q2:** `/spike move` now takes a strategy parameter:
+   - `/spike move` (default `requeue`) — explicitly re-registers with the tick
+     manager after every tick (`AddToTick`, guarded by `IsQueuedForTick`).
+   - `/spike move 2 CampfireObject timer` — a 50ms `System.Threading.Timer` drives
+     the same step, bypassing the tick manager entirely. A thread-affinity exception
+     in chat is evidence, not failure.
+   Record which strategy (if either) produces continuous movement. If `timer` moves
+   continuously and smoothly, Q2's rendering answer is effectively PASS (with the
+   caveat that the real mod needs a proper tick surface — likely a custom
+   WorldObject class with a component `Tick()`, which the real dock will have anyway).
+2. **Q1:** `/spike path` adds two final puppeteering levers after the iteration-2
+   ones: writes the `Behavior` field to `"Wander"` and calls
+   `RequestPathAndUpdateState(...)` (updates behavior state, not just a path).
+   Record all `[Q1 activate]` lines and whether the animal finally walks. If it
+   still holds position, record Q1 rung (b) as **fail — external puppeteering is
+   overridden by the brain**, and the implication below becomes the verdict:
+   option (i) custom subclass with its own behavior, informed by the fact that
+   brain-driven pathing (flee) visibly works.
 
 ## Interpretation of the 2026-07-12 run (spike iteration 2 targets)
 

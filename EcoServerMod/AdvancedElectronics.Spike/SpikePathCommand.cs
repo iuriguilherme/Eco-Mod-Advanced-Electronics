@@ -96,6 +96,31 @@ namespace AdvancedElectronics.Spike
                 user.MsgLocStr($"[Q1 activate] DoServerUpdateAnimalData threw {e.GetType().Name}: {e.Message}");
             }
 
+            // Iteration 3: run 2 showed the brain awake (stares at player, flees when
+            // shot) but ignoring external GetPathTo — behavior selection overrides it.
+            // Two last puppeteering levers before the verdict becomes "custom subclass
+            // with its own behavior required": write the Behavior state directly, and
+            // use RequestPathAndUpdateState (which updates behavior state, not just a path).
+            try
+            {
+                animal.Behavior = "Wander";
+                user.MsgLocStr($"[Q1 activate] Behavior field set to 'Wander' (was reported above).");
+            }
+            catch (Exception e)
+            {
+                user.MsgLocStr($"[Q1 activate] Behavior field write threw {e.GetType().Name}: {e.Message}");
+            }
+            try
+            {
+                var species = animal.Species as AnimalSpecies;
+                animal.RequestPathAndUpdateState("Wander", animal.Position, dir, dir, (PathfindFlags)0, distance * 0.8f, distance * 1.2f, species);
+                user.MsgLocStr("[Q1 activate] RequestPathAndUpdateState('Wander') accepted.");
+            }
+            catch (Exception e)
+            {
+                user.MsgLocStr($"[Q1 activate] RequestPathAndUpdateState threw {e.GetType().Name}: {e.Message}");
+            }
+
             // --- Pathing instrumentation ---
             try
             {

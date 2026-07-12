@@ -27,8 +27,9 @@ namespace AdvancedElectronics.Spike
 
         /// <param name="speed">Degrees of the circle advanced per tick (default 2 = slow walk; try 20 for fast).</param>
         /// <param name="objectType">Short type name of the vanilla WorldObject to spawn (default CampfireObject — plain prefab, no movement components).</param>
+        /// <param name="strategy">Tick strategy: "requeue" (re-register with the tick manager after every tick) or "timer" (50ms System.Threading.Timer — thread-affinity risk deliberately accepted as probe evidence).</param>
         [ChatSubCommand("Spike", "Q2: spawn a vanilla object and move it in a circle each tick.", ChatAuthorizationLevel.Admin)]
-        public static void Move(User user, float speed = 2f, string objectType = "CampfireObject")
+        public static void Move(User user, float speed = 2f, string objectType = "CampfireObject", string strategy = "requeue")
         {
             if (active != null && !active.IsAlive)
                 active = null; // mover self-unregistered (object destroyed externally)
@@ -63,9 +64,13 @@ namespace AdvancedElectronics.Spike
                 return;
             }
 
+            var useTimer = string.Equals(strategy, "timer", StringComparison.OrdinalIgnoreCase);
             active = new SpikeMover(obj, center, radius: 4f, degreesPerTick: speed, reporter: user);
-            ServiceHolder<IWorldObjectManager>.Obj.AddToTick(active);
-            user.MsgLocStr($"Q2 probe started: {type.Name} circling at {speed} deg/tick. Watch smoothness; /spike stop to end.");
+            if (useTimer)
+                active.StartTimer(); // iteration 3, strategy B: bypass the tick manager entirely
+            else
+                ServiceHolder<IWorldObjectManager>.Obj.AddToTick(active);
+            user.MsgLocStr($"Q2 probe started ({(useTimer ? "timer" : "requeue")} strategy): {type.Name} circling at {speed} deg/tick. Watch smoothness; /spike stop to end.");
         }
 
         [ChatSubCommand("Spike", "Q2: stop and despawn the moving object.", ChatAuthorizationLevel.Admin)]
@@ -122,22 +127,50 @@ namespace AdvancedElectronics.Spike
             this.endAt = SpikeUtil.NowSeconds() + MaxRunSeconds;
         }
 
-        // Iteration-2 fix: the live run showed a constant 0 gets scheduled exactly once
-        // and never re-queued. Advance the next-tick time off the manager's own clock
-        // (TickStartTime) after every tick so the mover stays in the queue.
+        // Iteration 2 (TickStartTime-based NextTickTime advance) still produced exactly
+        // one tick on the live server, so iteration 3 stops relying on NextTickTime
+        // semantics at all:
+        //   - "requeue" strategy: explicitly AddToTick(this) again after every tick,
+        //     guarded by IsQueuedForTick.
+        //   - "timer" strategy: a 50ms System.Threading.Timer drives the same step,
+        //     bypassing the tick manager. Any thread-affinity exception is itself
+        //     probe evidence — reported verbatim, not hidden.
         private double nextTick; // 0 = run on the first available tick
+
+        private System.Threading.Timer timer;
 
         public double NextTickTime => this.nextTick;
 
         internal bool IsAlive => !this.stopped && !this.obj.IsDestroyed;
 
+        internal void StartTimer()
+        {
+            this.timer = new System.Threading.Timer(_ =>
+            {
+                try
+                {
+                    if (!this.TickOnDemand()) this.timer?.Dispose();
+                }
+                catch (Exception e)
+                {
+                    this.reporter?.MsgLocStr($"[Q2 timer] tick threw {e.GetType().Name}: {e.Message} — thread-affinity evidence.");
+                    this.timer?.Dispose();
+                }
+            }, null, 50, 50);
+        }
+
         public bool TickOnDemand()
         {
             if (this.stopped || this.obj.IsDestroyed) return false; // false = unregister
 
-            // Re-queue for the next manager tick (see nextTick comment above).
-            var mgr = ServiceHolder<IWorldObjectManager>.Obj;
-            this.nextTick = mgr.TickStartTime + Math.Max(mgr.TickDeltaTime, 0.02f);
+            // Requeue strategy: schedule immediately AND re-register explicitly — live
+            // runs showed NextTickTime alone does not keep us in the manager's queue.
+            this.nextTick = 0d;
+            if (this.timer == null)
+            {
+                var mgr = ServiceHolder<IWorldObjectManager>.Obj;
+                if (!mgr.IsQueuedForTick(this)) mgr.AddToTick(this);
+            }
 
             var now = SpikeUtil.NowSeconds();
             if (now > this.endAt)
@@ -167,6 +200,7 @@ namespace AdvancedElectronics.Spike
         public void Stop()
         {
             this.stopped = true;
+            this.timer?.Dispose();
             if (!this.obj.IsDestroyed) WorldObjectManager.DestroyPermanently(this.obj);
         }
     }
