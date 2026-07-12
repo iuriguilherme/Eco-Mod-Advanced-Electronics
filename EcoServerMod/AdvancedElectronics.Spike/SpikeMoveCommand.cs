@@ -122,14 +122,22 @@ namespace AdvancedElectronics.Spike
             this.endAt = SpikeUtil.NowSeconds() + MaxRunSeconds;
         }
 
-        // Tick as often as the manager allows.
-        public double NextTickTime => 0d;
+        // Iteration-2 fix: the live run showed a constant 0 gets scheduled exactly once
+        // and never re-queued. Advance the next-tick time off the manager's own clock
+        // (TickStartTime) after every tick so the mover stays in the queue.
+        private double nextTick; // 0 = run on the first available tick
+
+        public double NextTickTime => this.nextTick;
 
         internal bool IsAlive => !this.stopped && !this.obj.IsDestroyed;
 
         public bool TickOnDemand()
         {
             if (this.stopped || this.obj.IsDestroyed) return false; // false = unregister
+
+            // Re-queue for the next manager tick (see nextTick comment above).
+            var mgr = ServiceHolder<IWorldObjectManager>.Obj;
+            this.nextTick = mgr.TickStartTime + Math.Max(mgr.TickDeltaTime, 0.02f);
 
             var now = SpikeUtil.NowSeconds();
             if (now > this.endAt)

@@ -68,11 +68,37 @@ namespace AdvancedElectronics.Spike
                 return;
             }
 
-            // --- Pathing instrumentation ---
-            var target = user.Position + new Vector3(distance, 0f, 0f);
+            // --- Activation diagnostics + levers (iteration 2) ---
+            // Live run 1 showed the spawned animal fully inert (no autonomous behavior),
+            // so rung (b) never actually exercised pathfinding. Report activation state,
+            // then pull the two levers the API exposes before commanding the path.
+            user.MsgLocStr($"[Q1 spawn] Active={animal.Active} Behavior='{animal.Behavior}' NextTick={animal.NextTick:F1}");
             try
             {
-                var dir = Vector3.Normalize(target - animal.Position);
+                animal.MinimumNextTick = 0;
+                animal.NextTick = 0; // force the animal's own tick loop to run now
+                user.MsgLocStr("[Q1 activate] NextTick forced to 0.");
+            }
+            catch (Exception e)
+            {
+                user.MsgLocStr($"[Q1 activate] NextTick force threw {e.GetType().Name}: {e.Message}");
+            }
+
+            var target = user.Position + new Vector3(distance, 0f, 0f);
+            var dir = Vector3.Normalize(target - animal.Position);
+            try
+            {
+                animal.DoServerUpdateAnimalData("Wander", animal.Position, dir, false, true);
+                user.MsgLocStr("[Q1 activate] DoServerUpdateAnimalData('Wander') accepted.");
+            }
+            catch (Exception e)
+            {
+                user.MsgLocStr($"[Q1 activate] DoServerUpdateAnimalData threw {e.GetType().Name}: {e.Message}");
+            }
+
+            // --- Pathing instrumentation ---
+            try
+            {
                 animal.GetPathTo("Wander", 0, animal.Position, dir, target, (PathfindFlags)0);
                 user.MsgLocStr($"[Q1 path] GetPathTo accepted toward {SpikeUtil.Fmt(target)} — watch the animal; position trace follows for 60s (probe animal is despawned at the end).");
             }
@@ -107,10 +133,17 @@ namespace AdvancedElectronics.Spike
             this.endAt = SpikeUtil.NowSeconds() + 60.0;
         }
 
-        public double NextTickTime => 0d;
+        // Iteration-2 fix: advance the next-tick time off the manager's clock after each
+        // tick (a constant 0 was scheduled once and never re-queued in live run 1). The
+        // watcher only needs ~1 Hz, so re-queue a second ahead.
+        private double nextTick;
+
+        public double NextTickTime => this.nextTick;
 
         public bool TickOnDemand()
         {
+            this.nextTick = ServiceHolder<IWorldObjectManager>.Obj.TickStartTime + 1.0;
+
             var now = SpikeUtil.NowSeconds();
             if (this.stopped || now > this.endAt)
             {

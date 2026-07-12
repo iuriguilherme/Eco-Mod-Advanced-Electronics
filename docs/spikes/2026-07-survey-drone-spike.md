@@ -128,6 +128,23 @@ assignment fallback works today if the picker mechanism doesn't materialize.
 - [x] Game-version context noted in the origin plan: all evidence is against Eco
       0.13.0.4 (`Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024`).
 
+## Iteration 2 — deployed fixes, re-run protocol
+
+Both harness fixes are implemented and build green; redeploy the DLL and re-run:
+
+1. **Q2:** `/spike move` — movers now re-queue off the tick manager's own clock
+   (`TickStartTime`) each tick instead of a constant `NextTickTime = 0`. Expect
+   continuous circling; record smoothness as per the original protocol. If it again
+   moves only once, the tick surface itself is wrong and iteration 3 moves the probe
+   onto a `WorldObjectComponent` tick.
+2. **Q1:** `/spike path` — now prints an activation diagnostic
+   (`Active=... Behavior='...' NextTick=...`) right after spawn, forces the animal's
+   own tick (`NextTick = 0`), and calls `DoServerUpdateAnimalData("Wander", ...)`
+   before `GetPathTo`. Record every `[Q1 activate]` line: they tell us which lever
+   (if any) wakes the animal. If it stays inert with `Active=False`, mod-spawned
+   animals need the vanilla ecosystem spawn flow — iteration 3 would command a
+   naturally-spawned wild animal instead.
+
 ## Interpretation of the 2026-07-12 run (spike iteration 2 targets)
 
 - **Q2 — "teleports once, then stays":** the object DID move and sync once, so
