@@ -45,8 +45,8 @@ verdicts are blank until the protocol is executed.
 | Question half | Verdict (pass/partial/fail) | Evidence |
 |---|---|---|
 | Pathfinding callable without animal lifecycle | **fail (compile-time)** | Rung (a) evidence above |
-| Spawned animal paths to commanded target | _blank_ | |
-| Path avoids player-built obstacles | _blank_ | |
+| Spawned animal paths to commanded target | fail | Animal stays where it has been spawn and deos not display any behavior apart from staying where it has been spawned, it does not move and it was killed by an arrow as a normal Hare |
+| Path avoids player-built obstacles | fail | Animal does not move, see previous test |
 
 **Implication for survey-drone plan:** R1's "without being an animal" needs rewording
 regardless of the live verdict — the realistic options are (i) subclass `AnimalEntity`
@@ -73,8 +73,8 @@ plain prefab with no bespoke client movement components), then `/spike stop`.
 
 | Question half | Verdict (pass/partial/fail) | Evidence |
 |---|---|---|
-| Motion smoothness at walk speed | _blank_ | |
-| Behavior at high speed / >25m distance | _blank_ | |
+| Motion smoothness at walk speed | fail | Object instantly teleports to next position and only once. After the first teleport, it stays at that position |
+| Behavior at high speed / >25m distance | fail | Object instantly teleports to next position and only once. After the first teleport, it stays at that position |
 | Locomotion animation via state hooks | **not answerable by this probe** (structural) | Needs a custom bundled prefab; carried to origin plan as open item |
 
 **Implication for survey-drone plan:** motion-smoothness pass ⇒ the drone's client half
@@ -104,17 +104,9 @@ custom prefab exists — cap Q2 at "partial" in the gate decision.
 3. Step outside the district; re-run; confirm the "no district" line.
 4. Record settlement and deed counts for completeness.
 
-Known descope vs the spike plan: settlements and deeds are enumerated globally
-(names + counts), not filtered by influence at the player's position, and plot-set
-sizes/sample coordinates are not printed. Only district lookup is positional
-(`GetDistrictAtWorldPos`). Global counts still prove the R12-relevant half — that a
-mod can read the area registries — but note the gap when recording the verdict; add
-influence filtering during real implementation if positional deed/settlement data
-turns out to matter for dock assignment.
-
 | Question half | Verdict (pass/partial/fail) | Evidence |
 |---|---|---|
-| Mod reads district data (names, membership at position) | _blank_ | |
+| Mod reads district data (names, membership at position) | pass | I was able to see the district name and that I was inside it, or that I was outside of any district |
 | District picker on a WorldObject UI | **partial (assembly-evidence only), cap** | No live picker demonstrated; 0.11 attribute gone in 0.13 |
 
 **Implication for survey-drone plan:** data-half pass ⇒ R12's district assignment is
@@ -125,12 +117,34 @@ assignment fallback works today if the picker mechanism doesn't materialize.
 
 ## Closing checklist (after the live runs)
 
-- [ ] Fill every blank verdict above with pass/partial/fail + evidence.
-- [ ] Update `docs/plans/2026-07-11-001-feat-survey-drone-plan.md` Dependencies /
+- [x] Fill every blank verdict above with pass/partial/fail + evidence. (Live run 2026-07-12.)
+- [x] Update `docs/plans/2026-07-11-001-feat-survey-drone-plan.md` Dependencies /
       Assumptions with these verdicts (R1 rewording per Q1; R16 rendering path per Q2;
       R12 risk note per Q3).
-- [ ] The origin plan's spike gate clears when all answerable halves are recorded — the
-      two structurally-open items (animation state hooks; live district picker) carry
-      into planning as open questions, not gate blockers.
-- [ ] Note the game-version context in the origin plan: all evidence is against Eco
+- [x] Gate decision recorded in the origin plan: Q3 data half passes; Q1/Q2 fail
+      **as instrumented**, with both failure signatures consistent with probe-harness
+      defects rather than settled architecture answers (see interpretation below) —
+      the gate stays closed pending a spike iteration 2.
+- [x] Game-version context noted in the origin plan: all evidence is against Eco
       0.13.0.4 (`Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024`).
+
+## Interpretation of the 2026-07-12 run (spike iteration 2 targets)
+
+- **Q2 — "teleports once, then stays":** the object DID move and sync once, so
+  `Position` + `SyncPositionAndRotation()` works; the mover simply never ticked again.
+  Prime suspect: `NextTickTime => 0d` — the tick manager most likely schedules each
+  `ITickOnDemand` by its `NextTickTime` and re-queues only for a future time, so a
+  constant `0` gets scheduled once and never again. Iteration 2: return an advancing
+  next-tick time (e.g., `WorldObjectManager.Obj.TickStartTime + TickDeltaTime`-based,
+  or wall-clock now + small delta), or move the probe onto a `WorldObjectComponent`
+  tick. The Q2 architecture question is therefore still OPEN, not failed.
+- **Q1 — animal spawns inert (no wander, no pathing):** `SpawnAnimal(species, pos, 0,
+  null)` appears to create a sim agent without activating its brain/behavior loop —
+  the animal showed no autonomous behavior at all, which vanilla animals always do. So
+  rung (b) never actually tested pathfinding; the spawn harness failed exactly the way
+  the probe's own instrumentation warned ("harness failure, NOT a pathfinding
+  verdict"). Iteration 2: initialize via the `onCreate` callback / whatever vanilla
+  spawn flow uses (compare how the ecosystem sim spawns wild animals), or command a
+  naturally-spawned wild animal instead of a mod-spawned one.
+- **Q3 — PASS:** district names + positional membership readable from a server mod.
+  The survey-drone plan's R12 data half is confirmed feasible on Eco 0.13.

@@ -136,11 +136,17 @@ Verified this session against the client repo (independent verifier, file:line c
 - The ModKit exposes no client vehicle/locomotion system and no custom UI system; movement is server-driven (`SyncPhysics`), and object state syncs through WorldObject string/float state arrays — the readout, status, and animation hooks R14–R16 need exist.
 - The ModKit's only animal-related client components are legacy stubs (`OldAnimalAnimationManager`, `OldAnimalInterpolateTransform` — empty partial classes over precompiled DLLs), and the ModKit docs expose no animal/moving-entity mod pipeline (items, world objects, block sets, emoji only). The drone's client rendering should therefore default to the SyncPhysics-on-WorldObject path; the animal-renderer branch is unlikely to be open to mod bundles.
 
-Unverified assumptions (server-side; not checkable from this client repo — the feasibility spike exists to retire them):
+Spike results (live run 2026-07-12 on an Eco 0.13.0.4 server; full evidence and interpretation in `docs/spikes/2026-07-survey-drone-spike.md`; all evidence is against `Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024`):
 
-- The animal system's pathfinding/steering is callable from a non-animal server entity (R1).
-- Server mods can read district polygons and expose a district picker on the dock's server-generated object UI (R12).
-- Obstacle avoidance around player-placed WorldObjects is available or buildable on the borrowed navigation (R2).
+- **Q3 — CONFIRMED (R12 data half):** a server mod reads district names and positional membership (`Eco.Gameplay.Civics.Districts.DistrictMap.GetDistrictAtWorldPos`). The district *picker* on the dock's object UI remains unproven (the researched 0.11 UI attribute is gone in 0.13) — a chat-command assignment fallback works today.
+- **Q1 — STILL OPEN, and R1 needs rewording regardless:** lifecycle-free pathfinding is unreachable (compile-time: `Animal` is abstract, navigation is instance-only, no standalone pathfinder). The live rung-(b) test failed as instrumented — the mod-spawned animal was inert (spawn-harness defect, not a pathfinding verdict). R1's realistic options: (i) subclass `AnimalEntity` with ecosystem opt-outs, or (ii) a WorldObject mover with its own simple navigation. Spike iteration 2 will fix animal activation before this is settled.
+- **Q2 — STILL OPEN, leaning viable:** the server-moved WorldObject synced to the client exactly once then stalled — the probe's tick registration (`NextTickTime => 0d`) was scheduled once and never re-queued (tick-scheduling defect, not a rendering verdict). The single successful move confirms `Position` + `SyncPositionAndRotation()` reaches the client. Iteration 2 fixes the tick cadence and re-tests smoothness.
+
+Remaining unverified assumption:
+
+- Obstacle avoidance around player-placed WorldObjects on any borrowed navigation (R2) — untestable until Q1's animal-activation fix lands.
+
+**Spike gate: still closed.** Iteration 2 of the spike (two probe-harness fixes: tick re-queueing, animal activation) is required before implementation planning hardens.
 
 ### Outstanding Questions
 
