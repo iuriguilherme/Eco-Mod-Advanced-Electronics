@@ -15,7 +15,7 @@ execution: code
 
 - **Objective:** Ship v1 of the Advanced Electronics mod: a ground survey drone that autonomously roams a player-drawn map district, gathers ore data, and reports it — with enough spatial resolution to direct a dig site — through a readout on its dock.
 - **Product authority:** Brainstorm dialogue (this doc) seeded by `docs/ideation/2026-07-10-advanced-electronics-mod-ideation.html`; user decisions override the ideation seed where they differ (ground rover replaces the flying-drone concept).
-- **Open blockers:** The feasibility spike (Outstanding Questions, Q1–Q3) must pass before implementation planning hardens. If the spike fails, the fallback approaches from the ideation doc (reskinned-animal drone, or dock-centric abstract survey) re-enter consideration.
+- **Open blockers:** None — the feasibility spike answered Q1–Q3 on 2026-07-12 (gate cleared; see Dependencies / Assumptions). Planning opens with the Q0 architecture KTD (Outstanding Questions).
 
 ---
 
@@ -136,27 +136,26 @@ Verified this session against the client repo (independent verifier, file:line c
 - The ModKit exposes no client vehicle/locomotion system and no custom UI system; movement is server-driven (`SyncPhysics`), and object state syncs through WorldObject string/float state arrays — the readout, status, and animation hooks R14–R16 need exist.
 - The ModKit's only animal-related client components are legacy stubs (`OldAnimalAnimationManager`, `OldAnimalInterpolateTransform` — empty partial classes over precompiled DLLs), and the ModKit docs expose no animal/moving-entity mod pipeline (items, world objects, block sets, emoji only). The drone's client rendering should therefore default to the SyncPhysics-on-WorldObject path; the animal-renderer branch is unlikely to be open to mod bundles.
 
-Spike results (live run 2026-07-12 on an Eco 0.13.0.4 server; full evidence and interpretation in `docs/spikes/2026-07-survey-drone-spike.md`; all evidence is against `Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024`):
+Spike results — FINAL (three live runs, 2026-07-12, Eco 0.13.0.4 server; full evidence in `docs/spikes/2026-07-survey-drone-spike.md`; all evidence against `Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024`):
 
-- **Q3 — CONFIRMED (R12 data half):** a server mod reads district names and positional membership (`Eco.Gameplay.Civics.Districts.DistrictMap.GetDistrictAtWorldPos`). The district *picker* on the dock's object UI remains unproven (the researched 0.11 UI attribute is gone in 0.13) — a chat-command assignment fallback works today.
-- **Q1 — STILL OPEN, and R1 needs rewording regardless:** lifecycle-free pathfinding is unreachable (compile-time: `Animal` is abstract, navigation is instance-only, no standalone pathfinder). The live rung-(b) test failed as instrumented — the mod-spawned animal was inert (spawn-harness defect, not a pathfinding verdict). R1's realistic options: (i) subclass `AnimalEntity` with ecosystem opt-outs, or (ii) a WorldObject mover with its own simple navigation. Spike iteration 2 will fix animal activation before this is settled.
-- **Q2 — STILL OPEN, leaning viable:** the server-moved WorldObject synced to the client exactly once then stalled — the probe's tick registration (`NextTickTime => 0d`) was scheduled once and never re-queued (tick-scheduling defect, not a rendering verdict). The single successful move confirms `Position` + `SyncPositionAndRotation()` reaches the client. Iteration 2 fixes the tick cadence and re-tests smoothness.
+- **Q1 — external animal puppeteering FAILS; brain-driven navigation WORKS.** Vanilla animals ignore every external navigation command (five levers tested); their own brain paths fine (flee test). R1 as originally worded ("borrowing animal navigation without being an animal") is not buildable. Two viable drone architectures, decided during planning as a KTD: (i) `AnimalEntity` subclass with a custom behavior and ecosystem opt-outs, or (ii) WorldObject mover with self-written navigation.
+- **Q2 — server-driven WorldObject movement renders on the client: PASS.** Continuous movement confirmed. Note for implementation: the mod-facing `AddToTick`/`NextTickTime` surface never re-fires — the real dock/drone must tick from its own WorldObject component (vanilla `ElevatorComponent` pattern). Locomotion-animation state hooks remain open until a custom prefab exists.
+- **Q3 — district data readable: PASS** (names + positional membership via `DistrictMap.GetDistrictAtWorldPos`). The district *picker* on the dock's object UI is unproven (0.11-era UI attribute gone in 0.13); chat-command district assignment is the working fallback for R12's interaction half.
+- Obstacle avoidance (R2): exists inside the brain machinery (flee navigates terrain); for architecture (ii) it is self-implemented and unverified.
 
-Remaining unverified assumption:
-
-- Obstacle avoidance around player-placed WorldObjects on any borrowed navigation (R2) — untestable until Q1's animal-activation fix lands.
-
-**Spike gate: still closed.** Iteration 2 of the spike (two probe-harness fixes: tick re-queueing, animal activation) is required before implementation planning hardens.
+**Spike gate: CLEARED (2026-07-12).** Implementation planning may harden. Planning must open with the architecture KTD — subclass-with-behavior (i) vs self-navigated WorldObject (ii) — and reword R1 accordingly.
 
 ### Outstanding Questions
 
-Resolve before planning (the feasibility spike):
+Resolved by the feasibility spike (2026-07-12 — see Dependencies / Assumptions above and `docs/spikes/2026-07-survey-drone-spike.md`):
 
-- Q1. Can a custom server entity invoke animal navigation outside the animal lifecycle, and does it avoid player-placed objects?
-- Q2. Does the SyncPhysics-on-WorldObject path render a server-moved drone acceptably (motion smoothness under snap-distance rules, locomotion animation via state hooks)? The animal-renderer path is presumed closed to mods per the client-repo evidence above; disprove only if trivial.
-- Q3. Can a server mod read district polygons and offer district selection on the dock's object UI?
+- Q1. ANSWERED — external puppeteering fails; brain-driven navigation works. Drone architecture fork (subclass-with-behavior vs self-navigated WorldObject) goes to planning as its opening KTD.
+- Q2. ANSWERED — server-driven WorldObject movement renders continuously; real mod ticks from its own component. Animation-state hooks remain a client-side open item until a custom prefab exists.
+- Q3. ANSWERED — district data readable; picker UI unproven, chat-command assignment is the fallback.
 
 Deferred to planning:
+
+- Q0. Architecture KTD from Q1: `AnimalEntity` subclass with custom behavior (navigation for free, ecosystem opt-outs needed) vs WorldObject mover with self-written navigation (rendering proven, pathing on us). Reword R1 to match the chosen arm.
 
 - Q4. Survey data model: sub-area/cell granularity, accuracy/probabilistic shape, and coverage tracking — whatever granularity is chosen must satisfy R8's spatial-cue floor.
 - Q5. Readout format on the dock: which states map to text vs gauges, and how much fits the diegetic-panel constraint comfortably.

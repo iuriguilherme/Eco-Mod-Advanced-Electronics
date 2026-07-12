@@ -45,8 +45,8 @@ verdicts are blank until the protocol is executed.
 | Question half | Verdict (pass/partial/fail) | Evidence |
 |---|---|---|
 | Pathfinding callable without animal lifecycle | **fail (compile-time)** | Rung (a) evidence above |
-| Spawned animal paths to commanded target | fail | Animal stays where it has been spawn and deos not display any behavior apart from staying where it has been spawned, it does not move and it was killed by an arrow as a normal Hare |
-| Path avoids player-built obstacles | fail | Animal does not move, see previous test |
+| Spawned animal paths to commanded target | **fail (final, iteration 3)** | All five levers exhausted (GetPathTo, forced NextTick, DoServerUpdateAnimalData, Behavior field write, RequestPathAndUpdateState): animal never walks to the target. Iterations showed the brain itself works — after activation it stares at the player and flees when shot (brain-driven pathfinding + locomotion function) — but behavior selection overrides every external command. Verdict: vanilla animals cannot be puppeteered; navigation is reachable only from inside a brain/behavior. |
+| Path avoids player-built obstacles | **moot** | Unreachable — no externally-commanded path ever ran. Brain-driven flee visibly navigates, so obstacle handling exists inside the behavior machinery. |
 
 **Implication for survey-drone plan:** R1's "without being an animal" needs rewording
 regardless of the live verdict — the realistic options are (i) subclass `AnimalEntity`
@@ -73,8 +73,8 @@ plain prefab with no bespoke client movement components), then `/spike stop`.
 
 | Question half | Verdict (pass/partial/fail) | Evidence |
 |---|---|---|
-| Motion smoothness at walk speed | fail | Object instantly teleports to next position and only once. After the first teleport, it stays at that position |
-| Behavior at high speed / >25m distance | fail | Object instantly teleports to next position and only once. After the first teleport, it stays at that position |
+| Motion smoothness at walk speed | **pass (iteration 3, timer strategy)** | With `/spike move ... timer` (50ms timer driving Position + SyncPositionAndRotation) the object moves continuously on the client. Earlier single-step behavior was a tick-surface defect: `IWorldObjectManager.AddToTick`/`NextTickTime` never re-fired our callback (requeue strategy also failed) — the real mod will tick from its own WorldObject component, which is the vanilla pattern. No thread-affinity exceptions were reported by the timer run. |
+| Behavior at high speed / >25m distance | not separately recorded | Timer run confirmed continuous movement; snap-distance and >25m kinematic behavior can be characterized during real dock development — no longer gate-relevant. |
 | Locomotion animation via state hooks | **not answerable by this probe** (structural) | Needs a custom bundled prefab; carried to origin plan as open item |
 
 **Implication for survey-drone plan:** motion-smoothness pass ⇒ the drone's client half
@@ -127,6 +127,28 @@ assignment fallback works today if the picker mechanism doesn't materialize.
       the gate stays closed pending a spike iteration 2.
 - [x] Game-version context noted in the origin plan: all evidence is against Eco
       0.13.0.4 (`Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024`).
+
+## FINAL VERDICT (2026-07-12, iteration 3 run) — spike gate CLEARS
+
+All three questions answered; the survey-drone plan can proceed to implementation
+planning with these resolved inputs:
+
+- **Q1 — external animal puppeteering: FAIL; brain-driven navigation: WORKS.** The
+  drone cannot be "a custom entity borrowing animal navigation" as the plan's R1
+  worded it. Two viable architectures, to be decided as a planning KTD:
+  - **(i) `AnimalEntity` subclass with its own custom behavior** — navigation runs
+    inside the brain, which the flee test proved functional; needs ecosystem
+    opt-outs (not huntable, no population counting).
+  - **(ii) WorldObject mover with self-written navigation** — Q2 proves the
+    rendering path; pathing (e.g., simple grid/A*) is on us.
+- **Q2 — server-driven WorldObject movement renders: PASS.** Continuous client-side
+  movement confirmed (timer strategy). The probe's tick-manager surface
+  (`AddToTick`/`NextTickTime`) does not re-fire for mod callbacks — a probe-harness
+  dead end, irrelevant to the real mod, which ticks from its own WorldObject
+  component like vanilla movers (`ElevatorComponent`). Animation-state hooks remain
+  open until a custom prefab exists (client work).
+- **Q3 — district data: PASS** (names + positional membership readable). District
+  *picker* on object UI unproven — chat-command assignment is the working fallback.
 
 ## Iteration 3 — current build, re-run protocol
 
