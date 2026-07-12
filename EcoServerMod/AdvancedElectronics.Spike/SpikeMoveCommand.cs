@@ -7,7 +7,6 @@ using Eco.Gameplay.Systems.Messaging.Chat.Commands;
 using System.Numerics;
 using Eco.Shared.IoC;
 using Quaternion = Eco.Shared.Math.Quaternion;
-using Eco.Shared.Utils;
 
 namespace AdvancedElectronics.Spike
 {
@@ -31,6 +30,8 @@ namespace AdvancedElectronics.Spike
         [ChatSubCommand("Spike", "Q2: spawn a vanilla object and move it in a circle each tick.", ChatAuthorizationLevel.Admin)]
         public static void Move(User user, float speed = 2f, string objectType = "CampfireObject")
         {
+            if (active != null && !active.IsAlive)
+                active = null; // mover self-unregistered (object destroyed externally)
             if (active != null)
             {
                 user.MsgLocStr("Spike mover already running; use /spike stop first.");
@@ -80,7 +81,7 @@ namespace AdvancedElectronics.Spike
             user.MsgLocStr("Q2 probe stopped; object destroyed.");
         }
 
-        internal static Type FindWorldObjectType(string shortName) =>
+        private static Type FindWorldObjectType(string shortName) =>
             AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => { try { return a.GetTypes(); } catch (ReflectionTypeLoadException e) { return e.Types.Where(t => t != null); } })
                 .FirstOrDefault(t => t != null
@@ -96,11 +97,17 @@ namespace AdvancedElectronics.Spike
     /// </summary>
     internal sealed class SpikeMover : ITickOnDemand
     {
+        // Self-termination window so a forgotten probe (or a disconnected admin)
+        // cannot leave the mover ticking indefinitely; /spike stop remains the
+        // primary teardown. Mirrors SpikeAnimalWatcher's expiry pattern.
+        private const double MaxRunSeconds = 600.0;
+
         private readonly WorldObject obj;
         private readonly Vector3 center;
         private readonly float radius;
         private readonly float degreesPerTick;
         private readonly User reporter;
+        private readonly double endAt;
         private float angle;
         private bool stopped;
         private double lastReport;
@@ -112,27 +119,39 @@ namespace AdvancedElectronics.Spike
             this.radius = radius;
             this.degreesPerTick = degreesPerTick;
             this.reporter = reporter;
+            this.endAt = SpikeUtil.NowSeconds() + MaxRunSeconds;
         }
 
         // Tick as often as the manager allows.
         public double NextTickTime => 0d;
 
+        internal bool IsAlive => !this.stopped && !this.obj.IsDestroyed;
+
         public bool TickOnDemand()
         {
             if (this.stopped || this.obj.IsDestroyed) return false; // false = unregister
 
+            var now = SpikeUtil.NowSeconds();
+            if (now > this.endAt)
+            {
+                this.reporter?.MsgLocStr("[Q2] probe timed out after 10 minutes; object destroyed.");
+                this.Stop();
+                return false;
+            }
+
             this.angle += this.degreesPerTick;
             var rad = this.angle * (float)(Math.PI / 180.0);
-            var pos = this.center + new Vector3((float)Math.Cos(rad) * this.radius, 0f, (float)Math.Sin(rad) * this.radius);
+            var sin = (float)Math.Sin(rad);
+            var cos = (float)Math.Cos(rad);
+            var pos = this.center + new Vector3(cos * this.radius, 0f, sin * this.radius);
             this.obj.Position = pos;
-            this.obj.Rotation = Quaternion.LookRotation(new Vector3(-(float)Math.Sin(rad), 0f, (float)Math.Cos(rad)));
+            this.obj.Rotation = Quaternion.LookRotation(new Vector3(-sin, 0f, cos));
             this.obj.SyncPositionAndRotation();
 
-            var now = Environment.TickCount64 / 1000.0;
             if (now - this.lastReport >= 1.0)
             {
                 this.lastReport = now;
-                this.reporter?.MsgLocStr($"[spike] pos={pos.X:F1},{pos.Y:F1},{pos.Z:F1} angle={this.angle % 360f:F0}");
+                this.reporter?.MsgLocStr($"[Q2 trace] pos={SpikeUtil.Fmt(pos)} angle={this.angle % 360f:F0}");
             }
             return true;
         }

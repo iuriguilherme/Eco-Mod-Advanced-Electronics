@@ -34,8 +34,13 @@ verdicts are blank until the protocol is executed.
    pathfinding verdict.
 3. Record the `[Q1 path]` line and 60 seconds of `[Q1 trace]` output: does the animal
    move toward the target (distance shrinking)?
-4. Obstacle sub-check: build a 2-block wall between animal and target, re-run, record
-   whether the trace routes around it.
+4. Obstacle sub-check: the target lies due +X (east) of where you stood when running
+   the command — build a 2-block wall across the line between the printed spawn and
+   target coordinates, re-run, record whether the trace routes around it.
+5. Control run (recommended): spawn the same species without commanding a path
+   (vanilla spawn or a second `/spike path` aimed elsewhere) and compare traces —
+   "distance shrinking" only counts as commanded pathing if it beats the
+   autonomous-wander baseline.
 
 | Question half | Verdict (pass/partial/fail) | Evidence |
 |---|---|---|
@@ -58,7 +63,8 @@ plain prefab with no bespoke client movement components), then `/spike stop`.
 
 **Protocol:**
 
-1. Run `/spike move` — a campfire spawns ~4 blocks away and circles.
+1. Run `/spike move` — a campfire spawns ~4 blocks away and circles. (The probe
+   self-terminates after 10 minutes if you forget `/spike stop`.)
 2. Observe at walk-speed (default): smooth glide vs. visible stepping/teleporting.
 3. Run `/spike stop`, then `/spike move 20` — fast movement; record snap/teleport behavior.
 4. Observe from >25m away (SyncPhysics kinematic-fallback distance from client evidence).
@@ -97,6 +103,14 @@ custom prefab exists — cap Q2 at "partial" in the gate decision.
    by name, and does "you are inside" match reality?
 3. Step outside the district; re-run; confirm the "no district" line.
 4. Record settlement and deed counts for completeness.
+
+Known descope vs the spike plan: settlements and deeds are enumerated globally
+(names + counts), not filtered by influence at the player's position, and plot-set
+sizes/sample coordinates are not printed. Only district lookup is positional
+(`GetDistrictAtWorldPos`). Global counts still prove the R12-relevant half — that a
+mod can read the area registries — but note the gap when recording the verdict; add
+influence filtering during real implementation if positional deed/settlement data
+turns out to matter for dock assignment.
 
 | Question half | Verdict (pass/partial/fail) | Evidence |
 |---|---|---|

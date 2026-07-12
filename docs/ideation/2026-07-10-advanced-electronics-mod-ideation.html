@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation: Advanced Electronics Eco Mod</title>
+<style>
+  :root {
+    --bg: #faf9f6;
+    --fg: #23211c;
+    --muted: #6b675e;
+    --card: #ffffff;
+    --border: #e2ded4;
+    --accent: #8a5a12;
+    --accent-soft: #f5ead6;
+    --accent-text: #7a4e0c;
+    --good: #2e6b3a;
+    --good-soft: #e8f2ea;
+    --warn-text: #8a4a12;
+    --warn-soft: #f8ecdd;
+    --chip-bg: #efece4;
+    --code-bg: #f1efe8;
+    --diagram-bg: #f7f5ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #191813;
+      --fg: #e8e5dc;
+      --muted: #a09a8c;
+      --card: #211f19;
+      --border: #3a372e;
+      --accent: #d9a84e;
+      --accent-soft: #33290f;
+      --accent-text: #e0b567;
+      --good: #7fc48d;
+      --good-soft: #1d2b20;
+      --warn-text: #dfa269;
+      --warn-soft: #2e2317;
+      --chip-bg: #2c2a22;
+      --code-bg: #26241d;
+      --diagram-bg: #201e17;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  .page { max-width: 900px; margin-inline: auto; padding: 2.5rem 1.25rem 4rem; }
+  p, li, dd { max-width: 70ch; }
+  h1, h2, h3, .meta, .chip, .eyebrow, th, .axis-tag, nav, footer, dl.stats {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  h1 { font-size: 1.8rem; line-height: 1.2; margin: 0.3rem 0 0.6rem; }
+  h2 { font-size: 1.3rem; margin: 2.4rem 0 0.8rem; border-bottom: 1px solid var(--border); padding-bottom: 0.35rem; }
+  h3 { font-size: 1.08rem; margin: 0 0 0.5rem; }
+  code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.88em; font-family: Consolas, "Cascadia Mono", monospace; }
+  .eyebrow { text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.72rem; color: var(--accent-text); font-weight: 600; }
+  .meta { color: var(--muted); font-size: 0.86rem; margin-bottom: 1.6rem; }
+  .meta b { color: var(--fg); font-weight: 600; }
+  .stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1.8rem; margin: 0 0 0.5rem; padding: 0.9rem 1.1rem; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+  .stats div { display: flex; flex-direction: column; }
+  .stats dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .stats dd { margin: 0; font-size: 1.15rem; font-weight: 600; }
+  article.idea { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.3rem 1.4rem 1.1rem; margin: 1.1rem 0; }
+  .idea-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+  .rank { font-family: "Segoe UI", system-ui, sans-serif; font-weight: 700; font-size: 1.05rem; color: var(--accent-text); }
+  .chips { display: flex; gap: 0.45rem; flex-wrap: wrap; margin: 0.15rem 0 0.7rem; }
+  .chip { font-size: 0.72rem; font-weight: 600; padding: 0.18em 0.7em; border-radius: 999px; background: var(--chip-bg); color: var(--muted); border: 1px solid var(--border); }
+  .chip.axis { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+  .chip.conf-high { background: var(--good-soft); color: var(--good); border-color: transparent; }
+  .chip.conf-med { background: var(--warn-soft); color: var(--warn-text); border-color: transparent; }
+  .idea dl { margin: 0.6rem 0 0; }
+  .idea dt { font-family: "Segoe UI", system-ui, sans-serif; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin-top: 0.75rem; }
+  .idea dd { margin: 0.15rem 0 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  .table-wrap { overflow-x: auto; }
+  th, td { text-align: left; padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+  nav.jump { font-size: 0.9rem; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 1.1rem; margin: 1rem 0 1.4rem; }
+  nav.jump ol { margin: 0.3rem 0 0; padding-left: 1.3rem; }
+  nav.jump a { color: var(--accent-text); text-decoration: none; }
+  nav.jump a:hover { text-decoration: underline; }
+  .grounding ul { padding-left: 1.2rem; }
+  .axes-list { list-style: none; padding: 0; }
+  .axes-list li { margin: 0.3rem 0; }
+  .axis-tag { display: inline-block; min-width: 11.5rem; font-weight: 600; font-size: 0.88rem; }
+  figure { margin: 1rem 0 0.4rem; background: var(--diagram-bg); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem; overflow-x: auto; }
+  figcaption { font-family: "Segoe UI", system-ui, sans-serif; font-size: 0.78rem; color: var(--muted); margin-top: 0.5rem; }
+  svg text { font-family: "Segoe UI", system-ui, sans-serif; }
+  footer.composition-signal { margin-top: 3rem; padding-top: 0.8rem; border-top: 1px solid var(--border); font-size: 0.78rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<span class="eyebrow">Ideation</span>
+<h1>Advanced Electronics — Eco Mod Ideation</h1>
+<p class="meta">
+  <b>Date:</b> 2026-07-10 &nbsp;·&nbsp;
+  <b>Topic:</b> advanced-electronics-mod &nbsp;·&nbsp;
+  <b>Mode:</b> repo-grounded<br>
+  <b>Focus:</b> New "Advanced Electronics" skill, craftable automated drones with an ore-finding/mining system, new world-generation ores, and the recipe/processing chains to support them.
+</p>
+
+<dl class="stats">
+  <div><dt>Raw ideas</dt><dd>47</dd></div>
+  <div><dt>After merge</dt><dd>33</dd></div>
+  <div><dt>Survivors</dt><dd>7</dd></div>
+  <div><dt>Axes covered</dt><dd>5 / 5</dd></div>
+  <div><dt>Verifier verdicts</dt><dd>30 sound · 3 weak</dd></div>
+</dl>
+
+<section id="grounding-context" class="grounding">
+<h2>Grounding Context</h2>
+<p><strong>Codebase context.</strong> Unity 6000.3.19f1 + HDRP 17.3.0 Eco ModKit <em>client</em> project — a fresh scaffold with zero custom mod content. The client produces visual assets only (prefabs, icons, block meshes); a matching server-side C# mod must be authored separately, and objects match by <em>exact name</em>. Scene structure requires four roots (Objects / Items / Emoji / BlockSets); export happens via the <code>Eco Tools &gt; Mod Kit</code> menu into <code>AssetBundles/</code>.</p>
+<ul>
+  <li><strong>WorldObject client surface</strong> (42 evidence entries): server-synced enabled/operating/using state events; custom bool/string/float state arrays with change events; animator-driven states; network-driven movement only — <em>no client locomotion or vehicle system exists</em>; shader tweens, particle/audio hooks, attachment points, occupancy, pickup predicate.</li>
+  <li><strong>Block sets</strong> (20 sections): BlockSet ScriptableObjects, 26-offset neighbor-rule mesh variation (<code>CustomBuilder</code>/<code>OffsetCondition</code>), mesh alternates via noise, 3-level LOD groups, weighted/rule prefab builders, per-block <code>Effects[]</code> hooks, name-based server mapping.</li>
+  <li><strong>Pipeline</strong> (12 sections): documented item/world-object/emoji/block-set flows, 64×64 icon template, per-scene bundle builds with lowercased names, <code>CleanName(prefab.name) + "Object"</code> name transformation — silent-failure name contract with the server.</li>
+  <li><strong>External research</strong> (value: high): Eco prior art — Auto Mine, Easy Mining, BetterMining (community expects automation gated through the skill-point economy via <code>Configs/</code>), CoFH's small-mods norm, Lara's World Generator precedent, vanilla Mining level-6 partial-automation perks, pragmatic community sentiment. Vanilla chain: ore → Arrastra → Rocker Box → concentrate + wet tailings, with tailings as <em>the</em> pollution gate on heavy extraction. Adjacent patterns: Mekanism yield chains, BuildCraft power-throttled quarry, PneumaticCraft programmable drones, Vintage Story probabilistic prospecting, Factorio bot economics.</li>
+  <li><strong>Past learnings:</strong> none — no <code>docs/solutions/</code> in this repo yet.</li>
+</ul>
+</section>
+
+<section id="topic-axes">
+<h2>Topic Axes</h2>
+<ul class="axes-list">
+  <li><span class="axis-tag">skill-progression</span> Advanced Electronics specialty design, XP sources, tech-tree gating, talents</li>
+  <li><span class="axis-tag">drone-automation</span> prospecting/mining drone system, behavior, control and interaction model</li>
+  <li><span class="axis-tag">worldgen-ores</span> new ore types, distribution, block sets, mining feel</li>
+  <li><span class="axis-tag">recipes-processing</span> crafting tables, intermediate components, power, byproducts</li>
+  <li><span class="axis-tag">client-pipeline</span> prefabs, animation/VFX, icons, bundles, server-name matching, dev workflow</li>
+</ul>
+</section>
+
+<section id="ranked-ideas">
+<h2>Ranked Ideas</h2>
+
+<nav class="jump" aria-label="Ranked ideas">
+  <strong>Jump to:</strong>
+  <ol>
+    <li><a href="#idea-1">Dock-centric drone architecture ("drone-in-a-box")</a></li>
+    <li><a href="#idea-2">Shippable v0.1: AE-Ores first, with a name-contract validator</a></li>
+    <li><a href="#idea-3">Geology that plays: graded, halo-wrapped, luminous ores</a></li>
+    <li><a href="#idea-4">Closed-loop automation economy: drones manufacture labor</a></li>
+    <li><a href="#idea-5">Semiconductor purity ladder as the processing spine</a></li>
+    <li><a href="#idea-6">Autonomy-graded specialty with XP you can't grind by hand</a></li>
+    <li><a href="#idea-7">Diegetic control panels — the object is the UI</a></li>
+  </ol>
+</nav>
+
+<article class="idea" id="idea-1">
+  <div class="idea-head"><span class="rank">1.</span><h3>Dock-centric drone architecture ("drone-in-a-box")</h3></div>
+  <div class="chips">
+    <span class="chip axis">drone-automation</span>
+    <span class="chip conf-high">Confidence 85%</span>
+    <span class="chip">Complexity: Medium</span>
+  </div>
+  <dl>
+    <dt>Description</dt>
+    <dd>Make the stationary <strong>Drone Dock</strong> the gameplay anchor: a craftable WorldObject holding all player interaction (fueling, cargo, orders, repair) through the fully supported state/animator/interactable surface, with hatch-open / launch / land animation states. The flying drone itself is a lightweight, server-pathed <code>SyncPhysics</code> visual the dock dispatches on sorties — the server updates its position each tick, and the client sells agile flight (banking, tilt, hover wobble) through Animator blend trees driven by <code>FloatStates</code> mapped from velocity deltas. First step is a five-minute feasibility prototype: a server mod moves one prefab in a circle.</dd>
+    <dt>Basis</dt>
+    <dd><code>direct:</code> "No documented vehicle/locomotion: … no dedicated vehicle controller or waypoint system visible in modkit. Movement appears server-driven only" (WorldObject evidence dossier); <code>SyncPos</code> verified at <code>SyncPhysics.cs:24</code>, kinematic fallback beyond 25m at <code>SyncPhysics.cs:38</code>. <code>external:</code> the real inspection-drone industry (DJI Dock, Percepto) converged on "drone-in-a-box" because unattended free flight is the hard part.</dd>
+    <dt>Rationale</dt>
+    <dd>This resolves the mod's single hardest technical risk — the ModKit exposes no client locomotion system — by converting the platform limitation into the design. The dock uses only stock, verified client hooks; drone movement becomes a server-mod problem (fully in scope), and the 25m physics-ignore distance acts as free LOD for distant drones. Every prefab, recipe, and server class depends on which way this architectural fork goes, so it should be settled first.</dd>
+    <dt>Downsides</dt>
+    <dd>Server-driven flight fidelity is unproven until the prototype runs; fast drones may look teleport-y under the snap-distance rule. Dock-centric design constrains "follow my drone around" fantasies — the drone is a visual of a job, not a controllable vehicle.</dd>
+  </dl>
+  <figure>
+    <svg viewBox="0 0 640 190" role="img" aria-label="Dock-centric architecture diagram">
+      <rect x="10" y="30" width="200" height="130" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.2"/>
+      <text x="110" y="52" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent-text)">Drone Dock</text>
+      <text x="110" y="70" text-anchor="middle" font-size="10.5" fill="var(--fg)">WorldObject (verified surface)</text>
+      <text x="110" y="92" text-anchor="middle" font-size="10.5" fill="var(--muted)">states · animator · interactables</text>
+      <text x="110" y="108" text-anchor="middle" font-size="10.5" fill="var(--muted)">fuel / cargo / orders / repair</text>
+      <text x="110" y="130" text-anchor="middle" font-size="10.5" fill="var(--muted)">launch + land animations</text>
+      <rect x="430" y="30" width="200" height="60" rx="10" fill="var(--card)" stroke="var(--border)" stroke-width="1.2"/>
+      <text x="530" y="52" text-anchor="middle" font-size="13" font-weight="700" fill="var(--fg)">Flying drone</text>
+      <text x="530" y="70" text-anchor="middle" font-size="10.5" fill="var(--muted)">SyncPhysics visual, server-pathed</text>
+      <rect x="430" y="110" width="200" height="50" rx="10" fill="var(--card)" stroke="var(--border)" stroke-width="1.2"/>
+      <text x="530" y="130" text-anchor="middle" font-size="12" font-weight="700" fill="var(--fg)">Server mod</text>
+      <text x="530" y="147" text-anchor="middle" font-size="10.5" fill="var(--muted)">sortie logic · waypoints · tick</text>
+      <line x1="210" y1="60" x2="426" y2="60" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr)"/>
+      <text x="318" y="50" text-anchor="middle" font-size="10.5" fill="var(--muted)">dispatches sortie</text>
+      <line x1="530" y1="110" x2="530" y2="94" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr)"/>
+      <text x="595" y="104" text-anchor="middle" font-size="10.5" fill="var(--muted)">moves it</text>
+      <line x1="426" y1="135" x2="214" y2="135" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr)"/>
+      <text x="320" y="126" text-anchor="middle" font-size="10.5" fill="var(--muted)">state sync → gauges, cargo, XP</text>
+      <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="var(--muted)"/></marker></defs>
+    </svg>
+    <figcaption>The dock owns gameplay; the drone is a server-driven visual. All client hooks used are verified stock ModKit surface.</figcaption>
+  </figure>
+</article>
+
+<article class="idea" id="idea-2">
+  <div class="idea-head"><span class="rank">2.</span><h3>Shippable v0.1: AE-Ores first, with a name-contract validator</h3></div>
+  <div class="chips">
+    <span class="chip axis">client-pipeline</span>
+    <span class="chip conf-high">Confidence 90%</span>
+    <span class="chip">Complexity: Low</span>
+  </div>
+  <dl>
+    <dt>Description</dt>
+    <dd>Structure the project as three scenes → three bundles with matching server sub-mods: <strong>AE-Ores</strong> (blocks + worldgen), <strong>AE-Electronics</strong> (skill, tables, components), <strong>AE-Drones</strong> (depends on both) — and ship AE-Ores alone first. The v0.1 art plan is deliberately zero-new-mesh: new ores are new <code>Block</code> definitions with new HDRP emissive materials on reused meshes, icons via the documented 64×64 sprite-swap template. Offer retrofit distribution — deterministic, coordinate-seeded enrichment of existing stone — so live servers can install without a world reset. Week one also builds a small editor "design-rule check": export every prefab/Block/item name to a manifest and diff it against server-mod class names before each bundle build, failing loudly.</dd>
+    <dt>Basis</dt>
+    <dd><code>direct:</code> "Build Current Bundle" requires a single open scene and lowercases bundle names (<code>ModKitTools.cs:95-152</code>); <code>Block.Material</code>/<code>Materials[]</code> are per-block data; <code>cleanName = CleanName(prefab.name) + "Object"</code> verified at <code>WorldObjectSetup.cs:78</code>. <code>external:</code> the CoFH/EcoMods norm of small focused mods; Lara's World Generator shows worldgen edits apply only to newly generated worlds.</dd>
+    <dt>Rationale</dt>
+    <dd>This changes what happens next week. The build tooling already enforces scene-per-bundle, so modularity is nearly free now and expensive after assets tangle into one scene. Ores-only validates the worldgen path, the name pipeline, and community reception months before any drone exists; materials-first art gets the loop testable before modeling starts; and the name validator kills the project's most likely bug class (silent name mismatch across two disconnected repos) while the object count is still near zero.</dd>
+    <dt>Downsides</dt>
+    <dd>Three bundles mean three server sub-mods and more release coordination. Retrofit enrichment is server-side work with no client evidence — treat it as a server-design commitment. Recolored vanilla meshes risk a "reskin" first impression.</dd>
+  </dl>
+  <figure>
+    <svg viewBox="0 0 640 120" role="img" aria-label="Staged release diagram">
+      <rect x="10" y="25" width="180" height="70" rx="10" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.2"/>
+      <text x="100" y="50" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--good)">AE-Ores · v0.1</text>
+      <text x="100" y="68" text-anchor="middle" font-size="10" fill="var(--fg)">blocks + worldgen + retrofit</text>
+      <text x="100" y="83" text-anchor="middle" font-size="10" fill="var(--muted)">materials-only art</text>
+      <rect x="235" y="25" width="180" height="70" rx="10" fill="var(--card)" stroke="var(--border)" stroke-width="1.2"/>
+      <text x="325" y="50" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--fg)">AE-Electronics</text>
+      <text x="325" y="68" text-anchor="middle" font-size="10" fill="var(--muted)">skill + tables + components</text>
+      <rect x="460" y="25" width="170" height="70" rx="10" fill="var(--card)" stroke="var(--border)" stroke-width="1.2"/>
+      <text x="545" y="50" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--fg)">AE-Drones</text>
+      <text x="545" y="68" text-anchor="middle" font-size="10" fill="var(--muted)">depends on both</text>
+      <line x1="190" y1="60" x2="231" y2="60" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr2)"/>
+      <line x1="415" y1="60" x2="456" y2="60" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr2)"/>
+      <text x="320" y="112" text-anchor="middle" font-size="10" fill="var(--muted)">one scene = one bundle (existing ModKit constraint) · admins can run any subset</text>
+      <defs><marker id="arr2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="var(--muted)"/></marker></defs>
+    </svg>
+    <figcaption>Staged delivery: each module ships and gathers feedback independently.</figcaption>
+  </figure>
+</article>
+
+<article class="idea" id="idea-3">
+  <div class="idea-head"><span class="rank">3.</span><h3>Geology that plays: graded, halo-wrapped, luminous ores</h3></div>
+  <div class="chips">
+    <span class="chip axis">worldgen-ores</span>
+    <span class="chip conf-high">Confidence 80%</span>
+    <span class="chip">Complexity: Medium</span>
+  </div>
+  <dl>
+    <dt>Description</dt>
+    <dd>One coherent ore identity built from three verified block-system mechanisms. <strong>(a) Alteration halos:</strong> new ores spawn as vertical pegmatite-style veins wrapped in visually distinct "altered stone" halo blocks, with the 26-offset <code>CustomBuilder</code> rules streaking halo meshes toward adjacent ore — terrain itself teaches players to read geology. <strong>(b) Cutoff grades:</strong> each ore exists in low/mid/high-grade block variants (mesh alternates + noise); hand miners rationally skip low grade, drones happily chew it — at 3–5× tailings per ingot, so the pollution check on automation emerges from geology rather than an arbitrary penalty. <strong>(c) Sensory signal:</strong> as tech-tier minerals, the ores carry a faint emissive shimmer and particle hum via per-block <code>Effects[]</code>, so a perceptive caver can find them by eye — drones amplify detection, they never monopolize it.</dd>
+    <dt>Basis</dt>
+    <dd><code>direct:</code> 26-offset <code>OffsetCondition</code>/<code>BlockRule</code> system and <code>meshAlternates</code> "variations via noise" (block-set dossier); <code>Effects[]</code>/<code>EffectNames[]</code> verified at <code>Block.cs:59-60</code>. <code>external:</code> hydrothermal alteration halos are how real prospectors vector to veins; cutoff-grade economics is standard mine planning; Vintage Story shows probabilistic/readable prospecting preserves exploration under automation.</dd>
+    <dt>Rationale</dt>
+    <dd>This answers the design question every automation mod faces — "doesn't this trivialize exploration?" — structurally, with zero special-case balance code: humans read halos and shimmer, drones read anomalies and eat low-grade rock at a tailings premium. It also uses the block-rule engine, the most powerful and least-used client capability found in the evidence, for gameplay signaling rather than cosmetics.</dd>
+    <dt>Downsides</dt>
+    <dd>Grade variants roughly triple the ore-block authoring surface (mitigate with a shared vein-rule/LOD template — see rejection table, carried into planning). Worldgen vein shapes are server-side; the client evidence only proves the rendering half. Emissive ore may read as "magic crystal" without careful art direction.</dd>
+  </dl>
+  <figure>
+    <svg viewBox="0 0 640 170" role="img" aria-label="Ore vein cross-section">
+      <rect x="10" y="10" width="620" height="130" rx="8" fill="var(--diagram-bg)" stroke="var(--border)"/>
+      <polygon points="300,10 340,10 330,140 310,140" fill="var(--accent)" opacity="0.85"/>
+      <polygon points="270,10 300,10 310,140 285,140" fill="var(--accent)" opacity="0.35"/>
+      <polygon points="340,10 370,10 355,140 330,140" fill="var(--accent)" opacity="0.35"/>
+      <polygon points="240,10 270,10 285,140 262,140" fill="var(--accent)" opacity="0.15"/>
+      <polygon points="370,10 400,10 378,140 355,140" fill="var(--accent)" opacity="0.15"/>
+      <circle cx="320" cy="45" r="2.5" fill="var(--accent-text)"><animate attributeName="opacity" values="1;0.2;1" dur="2.4s" repeatCount="indefinite"/></circle>
+      <circle cx="326" cy="85" r="2" fill="var(--accent-text)"><animate attributeName="opacity" values="0.3;1;0.3" dur="2.4s" repeatCount="indefinite"/></circle>
+      <text x="90" y="75" font-size="11" fill="var(--muted)">country rock</text>
+      <text x="510" y="35" font-size="11" fill="var(--fg)" text-anchor="start">← outer halo (subtle tint)</text>
+      <text x="510" y="65" font-size="11" fill="var(--fg)" text-anchor="start">← inner halo (altered stone)</text>
+      <text x="510" y="95" font-size="11" fill="var(--fg)" text-anchor="start">← vein: low/mid/high grade</text>
+      <text x="510" y="120" font-size="11" fill="var(--accent-text)" text-anchor="start">← emissive shimmer + hum</text>
+      <line x1="470" y1="31" x2="392" y2="31" stroke="var(--muted)" stroke-width="1"/>
+      <line x1="470" y1="61" x2="360" y2="61" stroke="var(--muted)" stroke-width="1"/>
+      <line x1="470" y1="91" x2="338" y2="91" stroke="var(--muted)" stroke-width="1"/>
+      <line x1="470" y1="116" x2="330" y2="110" stroke="var(--muted)" stroke-width="1"/>
+      <text x="320" y="160" text-anchor="middle" font-size="10" fill="var(--muted)">humans read the halo gradient; drones detect anomalies and mine low grade at 3–5× tailings</text>
+    </svg>
+    <figcaption>Vein cross-section: the halo gradient is the human-readable prospecting signal.</figcaption>
+  </figure>
+</article>
+
+<article class="idea" id="idea-4">
+  <div class="idea-head"><span class="rank">4.</span><h3>Closed-loop automation economy: drones manufacture labor</h3></div>
+  <div class="chips">
+    <span class="chip axis">recipes-processing</span>
+    <span class="chip conf-med">Confidence 70%</span>
+    <span class="chip">Complexity: High</span>
+  </div>
+  <dl>
+    <dt>Description</dt>
+    <dd>A single design rule with three legs, ensuring automation adds jobs and liabilities to Eco's economy instead of deleting them. <strong>(a) Rubble, never ore:</strong> drones return <em>Unsorted Rubble</em>, a bulk intermediate requiring a new Electrostatic Separator before entering the vanilla Arrastra → Rocker Box → tailings chain — mining clicks are automated away, but sorting, hauling, power, and tailings management jobs are created. <strong>(b) Depreciation and e-waste:</strong> drones consume durability per sortie; worn drones visibly smoke (stock <code>MaintenanceComponent</code> VFX anchor) and fail into <em>E-Waste</em>, whose recycling recovers metals at high grade while concentrating toxic leachate — a second pollution vector and a recurring income stream for the specialty. <strong>(c) Remediation as product:</strong> the same specialty sells automated tailings remediation (processing wet tailings toward inert soil over time, visualized with shader tweens) — cleanup becomes gameplay, not an afterthought.</dd>
+    <dt>Basis</dt>
+    <dd><code>direct:</code> <code>smokePosition</code> ("Position where Smoke and Sparks effects will appear") verified at <code>MaintenanceComponent.cs:8-9</code>; <code>TweenColor()/TweenFloat()</code> shader hooks in the WorldObject dossier. <code>external:</code> vanilla tailings are the game's gate on heavy extraction; e-waste holds ~40–100× the gold grade of mined ore (urban-mining economics); EVE Online's ship-loss economy is the canonical proof that depreciation sustains player-driven demand.</dd>
+    <dt>Rationale</dt>
+    <dd>The number-one social failure mode for an auto-mining mod on a multiplayer server is making miners obsolete and bypassing the pollution loop that defines Eco. This closes both at the design level. <em>Caveat from verification:</em> the mechanics here are almost entirely server-mod territory — the client repo contributes only the VFX hooks — so treat this as the server-design brief that accompanies the client work, not a client deliverable.</dd>
+    <dt>Downsides</dt>
+    <dd>Highest server-side implementation surface of any survivor (new items, tables, durability system, remediation ticks). Extra processing steps risk tedium if tuned wrong — the friction must land on decisions, not clicks.</dd>
+  </dl>
+  <figure>
+    <svg viewBox="0 0 640 210" role="img" aria-label="Closed-loop economy diagram">
+      <rect x="20" y="20" width="130" height="46" rx="9" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="85" y="40" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--accent-text)">Drone sortie</text>
+      <text x="85" y="56" text-anchor="middle" font-size="9.5" fill="var(--muted)">durability −1</text>
+      <rect x="255" y="20" width="130" height="46" rx="9" fill="var(--card)" stroke="var(--border)"/>
+      <text x="320" y="40" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--fg)">Unsorted Rubble</text>
+      <text x="320" y="56" text-anchor="middle" font-size="9.5" fill="var(--muted)">sorting + hauling jobs</text>
+      <rect x="490" y="20" width="130" height="46" rx="9" fill="var(--card)" stroke="var(--border)"/>
+      <text x="555" y="40" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--fg)">Vanilla chain</text>
+      <text x="555" y="56" text-anchor="middle" font-size="9.5" fill="var(--muted)">Arrastra → tailings</text>
+      <rect x="20" y="130" width="130" height="46" rx="9" fill="var(--card)" stroke="var(--border)"/>
+      <text x="85" y="150" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--fg)">E-Waste</text>
+      <text x="85" y="166" text-anchor="middle" font-size="9.5" fill="var(--muted)">recycling + leachate</text>
+      <rect x="490" y="130" width="130" height="46" rx="9" fill="var(--good-soft)" stroke="var(--good)"/>
+      <text x="555" y="150" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--good)">Remediation</text>
+      <text x="555" y="166" text-anchor="middle" font-size="9.5" fill="var(--fg)">tailings → inert soil</text>
+      <line x1="150" y1="43" x2="251" y2="43" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr3)"/>
+      <line x1="385" y1="43" x2="486" y2="43" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr3)"/>
+      <line x1="85" y1="66" x2="85" y2="126" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr3)"/>
+      <text x="95" y="100" font-size="9.5" fill="var(--muted)">wears out</text>
+      <line x1="150" y1="153" x2="200" y2="153" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr3)"/>
+      <text x="212" y="157" font-size="9.5" fill="var(--muted)">recovered metals → new drones</text>
+      <line x1="555" y1="66" x2="555" y2="126" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr3)"/>
+      <text x="565" y="100" font-size="9.5" fill="var(--muted)">tailings</text>
+      <text x="320" y="200" text-anchor="middle" font-size="10" fill="var(--muted)">every automated extraction hour generates downstream work and pollution liability</text>
+      <defs><marker id="arr3" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="var(--muted)"/></marker></defs>
+    </svg>
+    <figcaption>Automation output loops back into labor, waste streams, and remediation demand.</figcaption>
+  </figure>
+</article>
+
+<article class="idea" id="idea-5">
+  <div class="idea-head"><span class="rank">5.</span><h3>Semiconductor purity ladder as the processing spine</h3></div>
+  <div class="chips">
+    <span class="chip axis">recipes-processing</span>
+    <span class="chip conf-med">Confidence 75%</span>
+    <span class="chip">Complexity: High</span>
+  </div>
+  <dl>
+    <dt>Description</dt>
+    <dd>Copy the historical silicon chain as the recipe backbone: metallurgical-grade (cheap, arc-furnace) → polysilicon (energy-hungry, toxic chlorosilane-style byproduct) → monocrystal (slow, low yield). Each drone tier and circuit component demands a higher purity grade of the new ores; each purification stage needs a new table (<em>Reduction Furnace → Purification Column → Crystal Puller</em>), costs disproportionately more power, and emits its own byproduct that plugs into the tailings/pollution system. Advanced Electronics talents reduce yield loss ("clean-room protocols").</dd>
+    <dt>Basis</dt>
+    <dd><code>external:</code> the real Siemens-process / Czochralski purity chain — an existing, coherent three-stage escalation of energy, equipment, and waste; the research digest's core constraint that automated systems should plug into, not bypass, tailings/pollution — which this chain does at every stage.</dd>
+    <dt>Rationale</dt>
+    <dd>It gives "Advanced Electronics" a thematic backbone that isn't just "circuits need copper": purity-as-progression escalates <em>input quality</em> rather than Mekanism-style output multiplication — truer to electronics and a fresher balance lever. It also determines the count and identity of new crafting tables and intermediates: the largest chunk of both server code and client prefab work, which is why it deserves a deliberate decision.</dd>
+    <dt>Downsides</dt>
+    <dd>Three new tables plus intermediates is a lot of content before the loop is provable; risks over-lengthening the path to the first drone (consider gating only higher tiers behind the ladder). Recipe/skill design is entirely server-side.</dd>
+  </dl>
+  <figure>
+    <svg viewBox="0 0 640 130" role="img" aria-label="Purity ladder diagram">
+      <rect x="15" y="55" width="180" height="52" rx="9" fill="var(--card)" stroke="var(--border)"/>
+      <text x="105" y="76" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--fg)">Reduction Furnace</text>
+      <text x="105" y="93" text-anchor="middle" font-size="9.5" fill="var(--muted)">metallurgical grade · cheap</text>
+      <rect x="230" y="35" width="180" height="52" rx="9" fill="var(--card)" stroke="var(--border)"/>
+      <text x="320" y="56" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--fg)">Purification Column</text>
+      <text x="320" y="73" text-anchor="middle" font-size="9.5" fill="var(--muted)">polysilicon · power-hungry · sludge</text>
+      <rect x="445" y="15" width="180" height="52" rx="9" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="535" y="36" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--accent-text)">Crystal Puller</text>
+      <text x="535" y="53" text-anchor="middle" font-size="9.5" fill="var(--fg)">monocrystal · slow · low yield</text>
+      <line x1="195" y1="76" x2="226" y2="66" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr4)"/>
+      <line x1="410" y1="56" x2="441" y2="46" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#arr4)"/>
+      <text x="320" y="120" text-anchor="middle" font-size="10" fill="var(--muted)">each step: more power, new byproduct into the tailings system, higher-tier components unlocked</text>
+      <defs><marker id="arr4" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="var(--muted)"/></marker></defs>
+    </svg>
+    <figcaption>Progression by input purity, not output multiplication.</figcaption>
+  </figure>
+</article>
+
+<article class="idea" id="idea-6">
+  <div class="idea-head"><span class="rank">6.</span><h3>Autonomy-graded specialty with XP you can't grind by hand</h3></div>
+  <div class="chips">
+    <span class="chip axis">skill-progression</span>
+    <span class="chip conf-med">Confidence 70%</span>
+    <span class="chip">Complexity: Medium</span>
+  </div>
+  <dl>
+    <dt>Description</dt>
+    <dd>Structure the specialty's levels as <em>autonomy grades</em>, borrowed from SAE driving-automation levels and FAA drone-pilot certification: level 1 = manual dispatch per sortie, player collects output; mid levels = supervised autonomy within a bounded area; top level = full autonomy with self-refueling from dock storage. Each level is a felt behavior change, not a +% modifier. XP wires to the stock <code>OnEnableOperating</code>/<code>OnDisableOperating</code> events — accruing from automation <em>running</em> (uptime, closed loops, remediation throughput), never from repeating a manual action.</dd>
+    <dt>Basis</dt>
+    <dd><code>direct:</code> operating-state events documented in <code>WorldObject.cs:28-39</code> ("the status for describing if the object is currently in use (Ex: A workbench that is working on a crafting task)"). <code>external:</code> SAE J3016 / FAA Part 107 as a mature framework for "how much unattended operation is permitted, and what must the operator prove first"; BetterMining's precedent that the community expects automation gated through the skill-point economy.</dd>
+    <dt>Rationale</dt>
+    <dd>Eco skill trees are mostly stat ladders; a ladder of autonomy grades makes each level-up a story players tell ("my drones don't need babysitting anymore") and lets early-game drones exist without breaking balance — the tedium reduction is itself the progression reward. Gating XP behind automation-built-and-running forces engagement with the mod's actual content from level 1 instead of manual grinding with drones as a late-game afterthought.</dd>
+    <dt>Downsides</dt>
+    <dd>Uptime-based XP needs anti-idle design (reward closed loops and throughput, not just powered-on time). The XP formula and talent tree are server-side; the client only surfaces state. Interacts with vanilla profession balance — needs playtesting on a real server.</dd>
+  </dl>
+</article>
+
+<article class="idea" id="idea-7">
+  <div class="idea-head"><span class="rank">7.</span><h3>Diegetic control panels — the object is the UI</h3></div>
+  <div class="chips">
+    <span class="chip axis">drone-automation</span>
+    <span class="chip conf-high">Confidence 85%</span>
+    <span class="chip">Complexity: Medium</span>
+  </div>
+  <dl>
+    <dt>Description</dt>
+    <dd>Adopt as a ground rule: the ModKit exposes no custom UI system, so the physical object is the entire interface. Gauges and progress dials are animator parameters driven by <code>FloatStates</code> (with <code>StateMachineCountdown</code> for real-time countdowns); scan readouts and ore names render through <code>StringStates</code>; physical buttons are multiple <code>SpecificInteractable</code> colliders with distinct <code>interactionTargetName</code>s and mesh-swap press feedback; status is readable across a room via <code>MaterialEvents</code> color tweens. The same pattern gives every processing table a translucent shader fill-gauge, so hopper state is readable at a distance without opening anything.</dd>
+    <dt>Basis</dt>
+    <dd><code>direct:</code> <code>StringStates</code>/<code>FloatStates</code> verified at <code>WorldObject.cs:52,55</code>; <code>interactionTargetName</code> "identifies which part of object was interacted with for server-side context" (SpecificInteractable); ButtonStateController mesh-swapping and <code>TweenFloat</code> shader hooks in the WorldObject dossier.</dd>
+    <dt>Rationale</dt>
+    <dd>This is a hard client constraint most plans discover late and painfully — after sketching control screens that cannot be built. Embracing it up front dictates the dock prefab's design now, keeps every interaction on verified stock surface, and yields a diegetic control-room aesthetic that is more atmospheric than a menu and likely the mod's visual signature.</dd>
+    <dt>Downsides</dt>
+    <dd>Complex fleet orders (area selection, filters) are awkward as physical buttons — the design must keep commands coarse (mode dials, not text fields). More animator/prefab work per interactive surface than a hypothetical menu would cost.</dd>
+  </dl>
+</article>
+
+</section>
+
+<section id="rejection-summary">
+<h2>Rejection Summary</h2>
+<p>47 raw ideas merged to 33 candidates; 7 survived. A fresh-context verifier spot-checked every cited quote against the dossiers and repo (all <code>direct:</code> citations matched exactly; three candidates were downgraded). Cuts and their reasons:</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>#</th><th>Idea</th><th>Reason rejected</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Waggle-dance fleet allocation (scouts recruit harvesters)</td><td>Strong, but a control-model variant inside idea 1's dock architecture — better handled as a brainstorm variant, not a separate direction</td></tr>
+    <tr><td>2</td><td>Survey reports as tradeable commodity</td><td>Genuinely novel economy mechanic, but belongs inside the drone-system/progression brainstorm rather than standing alone; carry it there</td></tr>
+    <tr><td>3</td><td>Mining-coupled drone effectiveness (miners command, electronics builds)</td><td>Duplicates the progression design space of idea 6 — carry as a variant answer to "who loses their job"</td></tr>
+    <tr><td>4</td><td>Day-1 drone for everyone; gate yield, not access</td><td>Balance option overlapping ideas 4-6; a brainstorm-stage decision, not a direction</td></tr>
+    <tr><td>5</td><td>Control-bandwidth + room-tier fleet gating</td><td>Strong gating variant (verified RoomTier hook) — fold into the drone-system brainstorm alongside power cost</td></tr>
+    <tr><td>6</td><td>Claim-respecting flight envelope via CustomPositionsRequirement</td><td>Basis partially refuted: verifier found CustomPositionsRequirement is an editor-only placement gizmo, not runtime claim-aware pathing; claim-respect remains a real requirement but needs server-side grounding</td></tr>
+    <tr><td>7</td><td>Drones as virtual players on the interaction surface</td><td>Server-architecture claim ("zero new processing hooks") unverifiable from client evidence — flag to the server-mod author instead</td></tr>
+    <tr><td>8</td><td>Client-side prospecting prefilter</td><td>Internal contradiction: needs ore data resident client-side, which defeats the hidden-ore/fog-of-war design of ideas 2-3</td></tr>
+    <tr><td>9</td><td>Auto-tag+build bundle pipeline on save</td><td>Bundle builds are slow; build-on-save is likely a net productivity loss (verifier caveat) — a manual one-click combined command is the salvageable core</td></tr>
+    <tr><td>10</td><td>Excavation-site-as-block rendering for 1000-drone swarms</td><td>Clever, but premature at realistic scale; revisit only if swarm counts become real</td></tr>
+    <tr><td>11</td><td>Hidden-ore "unidentified mineral" mesh states</td><td>Merged into idea 3's geology pillar (halo + grade + shimmer covers the exploration-preservation goal)</td></tr>
+    <tr><td>12</td><td>Retrofit ore enrichment / zero-new-art v1 / three modular bundles</td><td>Merged into idea 2 (they are its three legs)</td></tr>
+    <tr><td>13</td><td>Rubble-not-ore / depreciation+e-waste / remediation drones</td><td>Merged into idea 4 (the three legs of the closed loop)</td></tr>
+    <tr><td>14</td><td>Config-first balance ledger + named presets</td><td>Important, but a convention to adopt during planning of any survivor, not a direction to choose — carry into the brainstorm</td></tr>
+    <tr><td>15</td><td>Shared drone chassis rig / ore-factory authoring template / generic skill-gate contract / shared pickup guard</td><td>Sound implementation practices below direction altitude — carry into the plan of whichever survivor is built</td></tr>
+    <tr><td>16</td><td>SAE ladder and uptime-XP as separate ideas</td><td>Merged into idea 6</td></tr>
+    <tr><td>17</td><td>DRC name-integrity validator as standalone</td><td>Merged into idea 2 (week-one deliverable of the v0.1 slice)</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+<footer class="composition-signal">Composed 2026-07-10 by ce-ideate (repo-grounded; 5 ideation frames, fresh-context basis verification) from the user focus: Advanced Electronics skill · automated mining drones · world-gen ores · recipes and processing.</footer>
+
+</div>
+</body>
+</html>

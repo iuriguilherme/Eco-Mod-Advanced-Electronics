@@ -29,7 +29,7 @@ namespace AdvancedElectronics.Spike
             user.MsgLocStr($"[Q3] Enumerating area registries at {(int)pos.X},{(int)pos.Z} ...");
 
             // --- District maps (law/map-drawing UI backing store) ---
-            try
+            Probe(user, "districts", () =>
             {
                 var maps = Registrars.Get<DistrictMap>().ToArray();
                 user.MsgLocStr($"[Q3 districts] {maps.Length} district map(s) registered.");
@@ -42,33 +42,28 @@ namespace AdvancedElectronics.Spike
                         ? $"[Q3 districts] you are inside '{here.Name}' on map '{map.Name}'"
                         : $"[Q3 districts] you are in no district on map '{map.Name}'");
                 }
-            }
-            catch (Exception e)
-            {
-                user.MsgLocStr($"[Q3 districts] FAIL: {e.GetType().Name}: {e.Message}");
-            }
+            });
 
             // --- Settlements ---
-            try
+            Probe(user, "settlements", () =>
             {
                 var settlements = Registrars.Get<Settlement>().ToArray();
                 user.MsgLocStr($"[Q3 settlements] {settlements.Length} settlement(s): {string.Join(", ", settlements.Select(s => s.Name))}");
-            }
-            catch (Exception e)
-            {
-                user.MsgLocStr($"[Q3 settlements] FAIL: {e.GetType().Name}: {e.Message}");
-            }
+            });
 
             // --- Deeds (claim areas) ---
-            try
+            Probe(user, "deeds", () =>
             {
                 var deeds = Registrars.Get<Deed>().ToArray();
                 user.MsgLocStr($"[Q3 deeds] {deeds.Length} deed(s) total; first 5: {string.Join(", ", deeds.Take(5).Select(d => d.Name))}");
-            }
-            catch (Exception e)
-            {
-                user.MsgLocStr($"[Q3 deeds] FAIL: {e.GetType().Name}: {e.Message}");
-            }
+            });
+        }
+
+        /// <summary>Each registry probes independently so one failure cannot mask another (spike plan, KTD6).</summary>
+        private static void Probe(User user, string label, Action body)
+        {
+            try { body(); }
+            catch (Exception e) { user.MsgLocStr($"[Q3 {label}] FAIL: {e.GetType().Name}: {e.Message}"); }
         }
     }
 }

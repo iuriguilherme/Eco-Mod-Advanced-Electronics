@@ -1,11 +1,11 @@
 using System;
-using System.Linq;
 using System.Numerics;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
 using Eco.Gameplay.Systems.Messaging.Chat.Commands;
 using Eco.Shared.IoC;
 using Eco.Shared.Items;
+using Eco.Shared.SharedTypes;
 using Eco.Simulation;
 using Eco.Simulation.Agents;
 using Eco.Simulation.Types;
@@ -36,7 +36,7 @@ namespace AdvancedElectronics.Spike
         private static SpikeAnimalWatcher watcher;
 
         /// <param name="speciesName">Species to spawn (default Hare).</param>
-        /// <param name="distance">How far in front of the player to aim the path target (default 15 blocks).</param>
+        /// <param name="distance">How far due +X (east) of the player to aim the path target (default 15 blocks).</param>
         [ChatSubCommand("Spike", "Q1: spawn a vanilla animal and command a path to a target; reports spawn and pathing outcomes separately.", ChatAuthorizationLevel.Admin)]
         public static void Path(User user, string speciesName = "Hare", float distance = 15f)
         {
@@ -60,7 +60,7 @@ namespace AdvancedElectronics.Spike
                     user.MsgLocStr("[Q1 spawn] FAIL: SpawnAnimal returned null (ecosystem preconditions? population cap?). This is a harness failure, NOT a pathfinding verdict.");
                     return;
                 }
-                user.MsgLocStr($"[Q1 spawn] OK: {speciesName} spawned at {Fmt(animal.Position)}.");
+                user.MsgLocStr($"[Q1 spawn] OK: {speciesName} spawned at {SpikeUtil.Fmt(animal.Position)}.");
             }
             catch (Exception e)
             {
@@ -74,7 +74,7 @@ namespace AdvancedElectronics.Spike
             {
                 var dir = Vector3.Normalize(target - animal.Position);
                 animal.GetPathTo("Wander", 0, animal.Position, dir, target, (PathfindFlags)0);
-                user.MsgLocStr($"[Q1 path] GetPathTo accepted toward {Fmt(target)} — watch the animal; position trace follows for 60s.");
+                user.MsgLocStr($"[Q1 path] GetPathTo accepted toward {SpikeUtil.Fmt(target)} — watch the animal; position trace follows for 60s (probe animal is despawned at the end).");
             }
             catch (Exception e)
             {
@@ -85,8 +85,6 @@ namespace AdvancedElectronics.Spike
             watcher = new SpikeAnimalWatcher(animal, target, user);
             ServiceHolder<IWorldObjectManager>.Obj.AddToTick(watcher);
         }
-
-        private static string Fmt(Vector3 v) => $"{v.X:F1},{v.Y:F1},{v.Z:F1}";
     }
 
     /// <summary>Reports the probe animal's position once per second for 60s so the chat
@@ -99,31 +97,55 @@ namespace AdvancedElectronics.Spike
         private readonly double endAt;
         private double lastReport;
         private bool stopped;
+        private bool cleaned;
 
         public SpikeAnimalWatcher(Animal animal, Vector3 target, User reporter)
         {
             this.animal = animal;
             this.target = target;
             this.reporter = reporter;
-            this.endAt = Now() + 60.0;
+            this.endAt = SpikeUtil.NowSeconds() + 60.0;
         }
 
         public double NextTickTime => 0d;
 
-        private static double Now() => Environment.TickCount64 / 1000.0;
-
         public bool TickOnDemand()
         {
-            if (this.stopped || Now() > this.endAt) return false;
-            if (Now() - this.lastReport >= 1.0)
+            var now = SpikeUtil.NowSeconds();
+            if (this.stopped || now > this.endAt)
             {
-                this.lastReport = Now();
+                this.Cleanup();
+                return false;
+            }
+            if (now - this.lastReport >= 1.0)
+            {
+                this.lastReport = now;
                 var d = Vector3.Distance(this.animal.Position, this.target);
-                this.reporter?.MsgLocStr($"[Q1 trace] animal={this.animal.Position.X:F1},{this.animal.Position.Y:F1},{this.animal.Position.Z:F1} dist-to-target={d:F1}");
+                this.reporter?.MsgLocStr($"[Q1 trace] animal={SpikeUtil.Fmt(this.animal.Position)} dist-to-target={d:F1}");
             }
             return true;
         }
 
-        public void Stop() => this.stopped = true;
+        public void Stop()
+        {
+            this.stopped = true;
+            this.Cleanup();
+        }
+
+        /// <summary>Despawn the probe animal so repeated /spike path runs don't leak live agents into the ecosystem.</summary>
+        private void Cleanup()
+        {
+            if (this.cleaned) return;
+            this.cleaned = true;
+            try
+            {
+                this.animal.KillAndDestroy(DamageSourceType.Undefined);
+                this.reporter?.MsgLocStr("[Q1] probe animal despawned.");
+            }
+            catch (Exception e)
+            {
+                this.reporter?.MsgLocStr($"[Q1] animal despawn failed ({e.GetType().Name}: {e.Message}) — remove it manually.");
+            }
+        }
     }
 }
