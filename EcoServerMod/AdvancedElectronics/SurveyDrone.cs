@@ -34,11 +34,15 @@ namespace AdvancedElectronics
 
     /// <summary>
     /// The physical roaming drone WorldObject that a <see cref="DroneDock"/> dispatches
-    /// (U7, R3/R4/R5). Not yet spawned or dispatched anywhere in this codebase --
-    /// wiring dispatch from a paired dock is U8's job per DroneDock.cs's own scope note
-    /// and <see cref="SurveyDroneItem"/>'s doc comment above. This unit introduces the
-    /// class only as the shell the invulnerability/free-roam/attribution requirements
-    /// attach to.
+    /// (U7, R3/R4/R5). Spawned and destroyed by <see cref="DroneDock.OnDockStorageChanged"/>
+    /// when a <see cref="SurveyDroneItem"/> is inserted into / removed from the dock --
+    /// see that method for the pairing-to-spawn wiring (an orchestrator-level integration
+    /// pass connecting U1/U2/U5/U7/U8's independently-built pieces, since no single unit's
+    /// Files list owned the actual spawn call). This unit (U7) contributes the class
+    /// itself as the shell the invulnerability/free-roam/attribution requirements attach
+    /// to, plus the <c>[RequireComponent]</c> declarations that pull in
+    /// <see cref="DroneMoverComponent"/> (U2), <see cref="OreSensorComponent"/> (U5), and
+    /// <see cref="DroneLifecycle"/> (U8) automatically on spawn.
     ///
     /// Per KTD7:
     /// <list type="bullet">
@@ -83,6 +87,8 @@ namespace AdvancedElectronics
     /// </summary>
     [Serialized]
     [RequireComponent(typeof(DroneMoverComponent), null)]
+    [RequireComponent(typeof(OreSensorComponent), null)]
+    [RequireComponent(typeof(DroneLifecycle), null)]
     public class SurveyDrone : WorldObject
     {
         public override LocString DisplayName => Localizer.DoStr("Survey Drone");
