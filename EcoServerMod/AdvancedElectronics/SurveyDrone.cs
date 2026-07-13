@@ -4,6 +4,8 @@ using Eco.Gameplay.Components;
 using Eco.Gameplay.DynamicValues;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Items.Recipes;
+using Eco.Gameplay.Objects;
+using Eco.Gameplay.Players;
 using Eco.Mods.TechTree;
 using Eco.Shared.Localization;
 using Eco.Shared.Serialization;
@@ -14,10 +16,12 @@ namespace AdvancedElectronics
     /// Craftable survey drone item (R11). Deliberately just an <see cref="Item"/> in
     /// this unit, not a placeable WorldObject: it lives in a player's or a
     /// <see cref="DroneDock"/>'s inventory until inserted into a dock's storage slot,
-    /// which pairs it (see DroneDock.OnDockStorageChanged). The physical roaming
-    /// WorldObject a dock would dispatch is a future unit's concern -- see
-    /// docs/solutions/best-practices/eco-013-server-driven-movement.md for the proven
-    /// movement approach it should build on.
+    /// which pairs it (see DroneDock.OnDockStorageChanged). See <see cref="SurveyDrone"/>
+    /// below for the physical roaming WorldObject a dock would dispatch -- actually
+    /// spawning/dispatching one from a paired dock (and wiring SurveyDrone.SetOwner into
+    /// that dispatch/pairing flow) is still a future unit's concern (U8); this unit (U7)
+    /// only makes the drone's invulnerability, free-roam, and owner-stamping surface
+    /// available on the entity.
     /// </summary>
     [Serialized]
     [Weight(500)]
@@ -26,6 +30,87 @@ namespace AdvancedElectronics
     [Ecopedia("Crafted Objects", "Advanced Electronics", true, true, null)]
     public class SurveyDroneItem : Item
     {
+    }
+
+    /// <summary>
+    /// The physical roaming drone WorldObject that a <see cref="DroneDock"/> dispatches
+    /// (U7, R3/R4/R5). Not yet spawned or dispatched anywhere in this codebase --
+    /// wiring dispatch from a paired dock is U8's job per DroneDock.cs's own scope note
+    /// and <see cref="SurveyDroneItem"/>'s doc comment above. This unit introduces the
+    /// class only as the shell the invulnerability/free-roam/attribution requirements
+    /// attach to.
+    ///
+    /// Per KTD7:
+    /// <list type="bullet">
+    /// <item><description>
+    /// R3 (invulnerable to tool/animal damage): this class deliberately implements no
+    /// damage-taking interface and attaches no health/damage component -- invulnerability
+    /// is the absence of a damage surface, not a "take zero damage" handler. Confirmed by
+    /// reflecting over the exact Eco.ReferenceAssemblies build this project compiles
+    /// against (0.13.0.4-beta-release-1024, Eco.Gameplay.dll / Eco.Mods.dll /
+    /// Eco.Simulation.dll): the two damage-taking surfaces that exist in this API surface
+    /// are <c>Eco.Gameplay.Interactions.IDamageable</c> (what tools call to hit
+    /// something) and <c>Eco.Simulation.Agents.ICanTakeDamage</c> (what
+    /// <c>TryDamage</c> is called against); across all three assemblies the only
+    /// implementers are <c>Player</c>, <c>User</c>, and <c>AnimalEntity</c> (and its
+    /// TechTree subclasses, e.g. Wolf, Coyote). <c>WorldObject</c> itself implements
+    /// neither, and no stock WorldObject subclass in those assemblies implements either
+    /// one -- there is no vanilla "structure health" surface for WorldObjects to opt out
+    /// of. <see cref="SurveyDrone"/> follows the same pattern: implement neither, attach
+    /// nothing damage-related, and it is invulnerable by construction.
+    /// </description></item>
+    /// <item><description>
+    /// R4 (free-roam, crosses claims): movement is driven entirely by
+    /// <see cref="DroneMoverComponent"/> (U2), required here via
+    /// <c>[RequireComponent]</c>. That component's Tick() only reads/writes
+    /// Position/Rotation and calls SyncPositionAndRotation() -- audited and confirmed it
+    /// calls no claim/permission/auth API anywhere in its movement path (see this unit's
+    /// report). Nothing added by this class adds one either; free-roam is simply the
+    /// absence of such a check, not a bypass flag.
+    /// </description></item>
+    /// <item><description>
+    /// R5 (owner attribution, law enforcement deferred): <see cref="OwnerName"/> /
+    /// <see cref="OwnerId"/> are plain serialized fields (mirrors
+    /// DroneDock.AssignedDistrictName's own "trivially serializable" reasoning, rather
+    /// than serializing a <see cref="DroneOwnership"/> value type directly, since Eco's
+    /// serializer support for custom structs was not verified), stamped via
+    /// <see cref="SetOwner"/>. Wiring SetOwner into the dock's pairing/dispatch flow is
+    /// left to U8. No citizenship/law-violation API is touched here -- explicitly
+    /// deferred per KTD7, even though a drone crossing a claim boundary is an obvious
+    /// integration point for one.
+    /// </description></item>
+    /// </list>
+    /// </summary>
+    [Serialized]
+    [RequireComponent(typeof(DroneMoverComponent), null)]
+    public class SurveyDrone : WorldObject
+    {
+        public override LocString DisplayName => Localizer.DoStr("Survey Drone");
+
+        /// <summary>Display name of the owner this drone acts on behalf of, or null if never stamped.</summary>
+        [Serialized]
+        public string OwnerName { get; private set; }
+
+        /// <summary>Eco user ID of the owner, or 0 if never stamped.</summary>
+        [Serialized]
+        public int OwnerId { get; private set; }
+
+        /// <summary>True once <see cref="SetOwner"/> has stamped a real user.</summary>
+        public bool HasOwner => this.OwnerId != 0;
+
+        /// <summary>
+        /// Stamps this drone's owner (R5) from the acting user. A plain setter here --
+        /// mirrors DroneDock.SetAssignedDistrict -- so SurveyDrone itself does not need
+        /// to know about the dock/pairing/chat-command layers that decide WHEN to call
+        /// it (that wiring is U8's job). Delegates the actual (name, id) assignment to
+        /// <see cref="DroneOwnership.FromUser"/>.
+        /// </summary>
+        public void SetOwner(User user)
+        {
+            var ownership = DroneOwnership.FromUser(user);
+            this.OwnerName = ownership.OwnerName;
+            this.OwnerId = ownership.OwnerId;
+        }
     }
 
     /// <summary>Recipe unlocking <see cref="SurveyDroneItem"/>.</summary>
