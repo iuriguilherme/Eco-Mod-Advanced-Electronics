@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Plain C# navigation/pathfinding library for the Advanced Electronics
+    survey drone (see docs/plans/2026-07-11-001-feat-survey-drone-plan.md,
+    unit U3). Deliberately has ZERO dependency on Eco.* namespaces or any
+    third-party NuGet package, so its pathfinding logic is testable with
+    plain `dotnet test` despite Eco having no headless mod test harness.
+    Consumers (the real Eco-side mod) implement IWorldSampler against live
+    world data; tests use an in-memory fake.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>
