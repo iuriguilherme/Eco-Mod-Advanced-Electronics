@@ -6,6 +6,11 @@ assemblies and deploy to an Eco dedicated server.
 
 ## Projects
 
+- `AdvancedElectronics/` — the real mod (server half of the survey-drone feature).
+  Registers the craftable `DroneDock` WorldObject and craftable `SurveyDroneItem`;
+  inserting the drone item into the dock pairs them. A clean sibling of the spike
+  (KTD1: the spike is a reference, not a base class), reusing its proven csproj shape,
+  version pin, and registration pattern by imitation, not inheritance.
 - `AdvancedElectronics.Spike/` — feasibility spike for the survey drone
   (`docs/plans/2026-07-11-002-feat-drone-feasibility-spike-plan.md`). Three admin chat
   commands probe the questions blocking the survey-drone plan; results are recorded in

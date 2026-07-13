@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Advanced Electronics survey-drone mod (real project; the feasibility spike at
+    ../AdvancedElectronics.Spike stays a reference-only sibling per KTD1, not a base
+    class of this project).
+    EcoRefVersion must match the target Eco dedicated server's build. Pinned to the
+    same prerelease the spike proved compiles green against. See ../README.md.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EcoRefVersion>0.13.0.4-beta-release-1024</EcoRefVersion>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!-- Machine-local overrides (EcoModsDir for auto-deploy). Git-ignored. -->
+  <Import Project="Local.props" Condition="Exists('Local.props')" />
+
+  <ItemGroup>
+    <PackageReference Include="Eco.ReferenceAssemblies" Version="$(EcoRefVersion)" />
+  </ItemGroup>
+
+  <!-- Optional auto-deploy: set EcoModsDir in Local.props to your server's
+       Mods/UserCode directory to copy the DLL after every build. -->
+  <Target Name="CopyModToEco" AfterTargets="Build" Condition="'$(EcoModsDir)' != ''">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(EcoModsDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>
