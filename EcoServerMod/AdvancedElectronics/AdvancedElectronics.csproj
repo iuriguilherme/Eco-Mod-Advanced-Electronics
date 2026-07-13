@@ -23,6 +23,11 @@
     <PackageReference Include="Eco.ReferenceAssemblies" Version="$(EcoRefVersion)" />
   </ItemGroup>
 
+  <!-- U2: consumes GridPathfinder/PathResult/ArrivalDetector (U3) via EcoWorldSampler. -->
+  <ItemGroup>
+    <ProjectReference Include="..\AdvancedElectronics.Navigation\AdvancedElectronics.Navigation.csproj" />
+  </ItemGroup>
+
   <!-- Optional auto-deploy: set EcoModsDir in Local.props to your server's
        Mods/UserCode directory to copy the DLL after every build. -->
   <Target Name="CopyModToEco" AfterTargets="Build" Condition="'$(EcoModsDir)' != ''">
