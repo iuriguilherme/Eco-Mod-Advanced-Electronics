@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace AdvancedElectronics.Navigation
 {
@@ -118,6 +119,19 @@ namespace AdvancedElectronics.Navigation
 
         /// <summary>Maps a world block (x, z) column to its <see cref="SurveyCell"/>. See class remarks for the boundary convention.</summary>
         public SurveyCell CellAt(int x, int z) => new SurveyCell(FloorDiv(x, _cellSize), FloorDiv(z, _cellSize));
+
+        /// <summary>
+        /// Every distinct ore type with at least one recorded sample anywhere in the
+        /// grid (i.e. every type for which <see cref="DensestCell"/> would return a
+        /// <see cref="DensestCellResult.Found"/> result), in no particular order. Added
+        /// for U6 (dock readout, R14): a per-ore text-line readout needs to know WHICH
+        /// ore types to ask <see cref="DensestCell"/> about without the caller
+        /// hardcoding a fixed ore list -- see that unit's class docs for why. Computed
+        /// on demand (not cached) since it is expected to be called at most a few times
+        /// per readout refresh, not per-tick-per-sample.
+        /// </summary>
+        public IEnumerable<string> SampledOreTypes =>
+            _cells.Values.SelectMany(data => data.OreCounts.Keys).Distinct();
 
         /// <summary>
         /// Records one sampled block at (x, y, z), attributing it to the

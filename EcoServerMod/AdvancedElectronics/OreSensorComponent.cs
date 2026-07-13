@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using AdvancedElectronics.Navigation;
 using Eco.Gameplay.Objects;
 
@@ -77,6 +78,13 @@ namespace AdvancedElectronics
         /// case.
         /// </summary>
         public DensestCellResult DensestCell(string oreType) => this.surveyGrid.DensestCell(oreType);
+
+        /// <summary>
+        /// Every ore type sampled so far (U6, R14 dock readout) -- pass-through to
+        /// <see cref="SurveyGrid.SampledOreTypes"/>. Lets <see cref="DroneDock"/> build
+        /// its per-ore readout lines without hardcoding a fixed ore list.
+        /// </summary>
+        public IEnumerable<string> SampledOreTypes => this.surveyGrid.SampledOreTypes;
 
         public override void Tick()
         {

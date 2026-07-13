@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using AdvancedElectronics.Navigation;
 using Eco.Core.Items;
 using Eco.Gameplay.Components;
 using Eco.Gameplay.Components.Auth;
@@ -11,6 +13,7 @@ using Eco.Gameplay.Items.Recipes;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
 using Eco.Mods.TechTree;
+using Eco.Shared.IoC;
 using Eco.Shared.Localization;
 using Eco.Shared.Serialization;
 using Quaternion = Eco.Shared.Math.Quaternion;
@@ -170,6 +173,111 @@ namespace AdvancedElectronics
                 WorldObjectManager.DestroyPermanently(this.SpawnedDrone);
 
             this.SpawnedDrone = null;
+        }
+
+        // ---------------------------------------------------------------
+        // U6: dock readout (R14/R15/R8) -- text status/densest-cell lines via
+        // WorldObject.SetAnimatedState(string, string), coverage gauge via
+        // WorldObject.SetAnimatedState(string, float). Pure line/number formatting is
+        // DockReadout's job (see that class's docs); this section only gathers the
+        // live inputs (DroneLifecycle.Status, OreSensorComponent's per-ore results)
+        // and pushes DockReadout's output through the real sync API, on a throttled
+        // tick per KTD3's proven WorldObject/WorldObjectComponent Tick() surface
+        // (confirmed virtual on WorldObject itself via reflection against
+        // Eco.Gameplay.dll -- same recurring-callback surface DroneMoverComponent/
+        // DroneLifecycle/OreSensorComponent already rely on, just one level up: a
+        // WorldObject's own Tick() is what drives TickComponents() for all of those).
+        //
+        // ASSUMPTION -- verify against a live server: WorldObject.SetAnimatedState's
+        // exact sync semantics (whether it diffs against the previous value itself, or
+        // sends a network update on every call regardless of change) cannot be
+        // confirmed offline -- Eco.ReferenceAssemblies ships method bodies stripped,
+        // same caveat as this file's other ASSUMPTION-flagged Eco API calls. This is
+        // exactly why the refresh below is throttled to ReadoutRefreshIntervalSeconds
+        // rather than called from every raw tick: even in the worst case (no internal
+        // diffing), a several-times-a-second network write for a slowly-changing text
+        // panel is wasteful, so the throttle is a safe default regardless of which way
+        // the unconfirmed sync semantics actually resolve.
+        // ---------------------------------------------------------------
+
+        // Named state-slot prefixes. The client-side Unity WorldObject component
+        // declares a FIXED array of names in its StringStates/FloatStates inspector
+        // fields (see Assets/EcoModKit/Scripts/WorldObject.cs in the Unity project) --
+        // there is no dynamic/variable-length synced state, so this dock always writes
+        // the same fixed set of slot names (padding unused ore-line slots with an
+        // empty string) rather than a variable number of calls. Wiring the matching
+        // prefab-side StringStates/FloatStates names is a follow-up Unity-side task
+        // (see docs/plans/2026-07-11-001-feat-survey-drone-plan.md's U9), not built by
+        // this backend-only unit.
+        private const string StatusStateName = "ReadoutStatus";
+        private const string OreLineStateNamePrefix = "ReadoutOre";
+        private const string CoverageStateName = "ReadoutCoverage";
+
+        private const float ReadoutRefreshIntervalSeconds = 1f;
+
+        // ASSUMPTION -- verify against a live server: mirrors DroneLifecycle's own
+        // FallbackTickDeltaSeconds constant/reasoning (same file, same justification):
+        // if IWorldObjectManager.TickDeltaTime ever reads as 0, fall back to a
+        // plausible interval instead of freezing the readout refresh pacing forever.
+        private const float FallbackTickDeltaSeconds = 0.05f;
+
+        private float secondsSinceLastReadoutRefresh;
+
+        public override void Tick()
+        {
+            base.Tick();
+
+            var manager = ServiceHolder<IWorldObjectManager>.Obj;
+            var deltaTime = manager != null && manager.TickDeltaTime > 0f
+                ? manager.TickDeltaTime
+                : FallbackTickDeltaSeconds;
+
+            this.secondsSinceLastReadoutRefresh += deltaTime;
+            if (this.secondsSinceLastReadoutRefresh < ReadoutRefreshIntervalSeconds)
+                return;
+
+            this.secondsSinceLastReadoutRefresh = 0f;
+            this.RefreshReadout();
+        }
+
+        /// <summary>
+        /// Gathers the live status/per-ore inputs from <see cref="SpawnedDrone"/>'s
+        /// components (null/no-lifecycle/no-sensor all degrade gracefully to "no data"
+        /// rather than throwing -- a docked-but-not-yet-spawned or still-initializing
+        /// drone is a normal transient state, not an error) and pushes
+        /// <see cref="DockReadout"/>'s formatted output through
+        /// <see cref="WorldObject.SetAnimatedState"/>.
+        /// </summary>
+        private void RefreshReadout()
+        {
+            DroneStatus? status = null;
+            IReadOnlyList<(string OreType, DensestCellResult Result)> oreResults =
+                Array.Empty<(string, DensestCellResult)>();
+
+            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed)
+            {
+                if (this.SpawnedDrone.TryGetComponent<DroneLifecycle>(out var lifecycle))
+                    status = lifecycle.Status;
+
+                if (this.SpawnedDrone.TryGetComponent<OreSensorComponent>(out var sensor))
+                {
+                    oreResults = sensor.SampledOreTypes
+                        .Select(oreType => (oreType, sensor.DensestCell(oreType)))
+                        .ToList();
+                }
+            }
+
+            var lines = DockReadout.BuildStateLines(status, oreResults);
+
+            this.SetAnimatedState(StatusStateName, lines[0]);
+            for (var i = 0; i < DockReadout.MaxOreLines; i++)
+            {
+                // lines[0] is the status line, so ore line i lives at lines[i + 1].
+                var text = i + 1 < lines.Count ? lines[i + 1] : string.Empty;
+                this.SetAnimatedState(OreLineStateNamePrefix + i, text);
+            }
+
+            this.SetAnimatedState(CoverageStateName, DockReadout.ComputeCoveragePercent(oreResults));
         }
     }
 
