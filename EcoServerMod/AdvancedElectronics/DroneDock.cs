@@ -53,6 +53,31 @@ namespace AdvancedElectronics
         /// <summary>True once a <see cref="SurveyDroneItem"/> has been inserted and paired.</summary>
         public bool HasDrone => this.PairedDrone != null;
 
+        /// <summary>
+        /// Name of the survey district assigned via <c>/drone district &lt;name&gt;</c>
+        /// (U4, R12), or null when unassigned. Stored as a name -- not a live
+        /// <c>District</c> reference -- for two reasons: (1) it keeps this field
+        /// trivially serializable, unlike a civics object graph; (2) it self-heals if
+        /// the district is later renamed or deleted, since DistrictAssignment
+        /// re-resolves the name on every membership check instead of trusting a stale
+        /// cached reference. See DistrictAssignment.cs for the resolve/membership-test
+        /// logic that reads this field back into a live District.
+        /// </summary>
+        [Serialized]
+        public string AssignedDistrictName { get; private set; }
+
+        /// <summary>
+        /// Sets the assigned survey district by name, or clears it when
+        /// <paramref name="districtName"/> is null/blank. Kept as a plain setter here
+        /// (name validation against the district registry happens in
+        /// DroneCommands.District before calling this) so DroneDock itself does not
+        /// need to depend on the chat-command layer.
+        /// </summary>
+        public void SetAssignedDistrict(string districtName)
+        {
+            this.AssignedDistrictName = string.IsNullOrWhiteSpace(districtName) ? null : districtName;
+        }
+
         protected override void Initialize()
         {
             base.Initialize();
