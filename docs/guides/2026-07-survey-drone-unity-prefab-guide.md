@@ -54,74 +54,49 @@ this repo is a fresh ModKit setup per `CLAUDE.md` and likely does not yet.
 animation states and a readout surface, exact-name-matched to the server dock
 class.
 
-1. In the Hierarchy, create an empty GameObject at the scene root.
+**Keyboard-only path (recommended).** `DockReadoutDisplay.cs` is now
+self-wiring (no dragging, no Inspector event arrays to fill in by hand — see
+its class doc comment for exactly what it does automatically), and
+`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs` adds
+a menu command that does the mechanical finishing work (tag, save-as-prefab,
+register in the container) in one shot. Unity 6's "Search Anything" command
+palette lets you reach any menu item by typing its name and pressing Enter —
+no mouse needed for that step either (check Edit menu / your keybinding if you
+don't already know the shortcut on your machine; it's usually bound near
+Ctrl+K).
+
+1. In the Hierarchy, create an empty GameObject at the scene root (`Ctrl+Shift+N`
+   creates an empty GameObject under the current selection/root; rename via
+   the Hierarchy's inline rename, `F2` on Windows).
 2. **Rename it to exactly `DroneDock`** (case-sensitive, no suffix).
-3. Set its **Tag** to `ModObject` (Inspector → Tag dropdown → if `ModObject` isn't
-   listed, use "Add Tag..." — it should already be registered by the ModKit, but
-   confirm).
-4. Click **Add Component** → type `WorldObject` → add it (this is the ModKit's
-   `Assets/EcoModKit/Scripts/WorldObject.cs` component, distinct from the C#
-   server-side `Eco.Gameplay.Objects.WorldObject` class of the same name — you
-   want the one that shows Unity `MonoBehaviour` fields like `States`,
-   `StringStates`, `FloatStates` in the Inspector).
-5. Add a visual placeholder: create a child `Cube` (GameObject → 3D Object →
-   Cube), scale it to roughly dock-sized (e.g. 1.5 × 1 × 1.5), and give it any
-   material. Real art is a follow-up, not required for this unit.
-6. **Wire the readout state slots.** On the `WorldObject` component, set:
-   - **String States** (size 7): `ReadoutStatus`, `ReadoutOre0`, `ReadoutOre1`,
-     `ReadoutOre2`, `ReadoutOre3`, `ReadoutOre4`, `ReadoutOre5`
-   - **Float States** (size 1): `ReadoutCoverage`
-
-   These exact names come from `EcoServerMod/AdvancedElectronics/DroneDock.cs`'s
-   `RefreshReadout()` method (`StatusStateName = "ReadoutStatus"`,
-   `OreLineStateNamePrefix = "ReadoutOre"` for indices 0–5 per
-   `DockReadout.MaxOreLines`, `CoverageStateName = "ReadoutCoverage"`) — if that
-   file changes these constants later, update this list to match, not the other
-   way around; the C# source is authoritative.
-7. **Give the readout somewhere to render.** `Assets/TextMesh Pro/` is already
-   imported in this project.
-
-   a. Under the `DroneDock` GameObject, add a `Canvas` (right-click `DroneDock` →
-      UI → Canvas), then a `Text - TextMeshPro` child under that Canvas
-      (right-click the Canvas → UI → Text - TextMeshPro).
-   b. Select the `Canvas` and change **Render Mode** from
-      `Screen Space - Overlay` to **`World Space`** — Overlay mode would cover
-      the whole screen for every dock in the world, not just render a small
-      panel above this one. Scale the Canvas down small (e.g. `0.01, 0.01,
-      0.01`) and position it a bit above the placeholder cube (e.g. local
-      `Y = 1.5`) so it reads as a floating panel over the dock.
-   c. `Assets/Art/AdvancedElectronics/DockReadoutDisplay.cs` (already added to
-      this repo) is a plain client-only `MonoBehaviour` — not related to the
-      server-side `DockReadout.cs` pure-formatting class of a similar name —
-      that renders the wired-up state values into one TMP text block. Select
-      `DroneDock`, **Add Component** → `Dock Readout Display`, then drag the
-      `Text (TMP)` child object into its **Readout Text** field.
-   d. Still on `DroneDock`, find the `WorldObject` component's event arrays and
-      wire each slot to the matching method on `DockReadoutDisplay`, choosing
-      the **Dynamic string** / **Dynamic float** variant in the function
-      dropdown (not "Static Parameters" — dynamic passes the live server value
-      through; static would send a fixed typed-in value, which is wrong here):
-      - **On String State Changed** (size 7, matching String States' size — set
-        it manually, Unity does not auto-size this array to match):
-        element 0 → `SetStatusLine` (pairs with `ReadoutStatus`), element 1 →
-        `SetOreLine0` (`ReadoutOre0`), element 2 → `SetOreLine1`
-        (`ReadoutOre1`), element 3 → `SetOreLine2`, element 4 → `SetOreLine3`,
-        element 5 → `SetOreLine4`, element 6 → `SetOreLine5`.
-      - **On Float State Changed** (size 1): element 0 → `SetCoverage`
-        (`ReadoutCoverage`).
-      For each element: click `+` under that element's event list, drag the
-      `DroneDock` GameObject into the object slot, then pick
-      `DockReadoutDisplay → Dynamic string/float → <method name>` from the
-      function dropdown.
-8. **Save as a prefab:** drag the `DroneDock` GameObject from the Hierarchy into
-   `Assets/Art/AdvancedElectronics/` in the Project window (create that folder
-   first if it doesn't exist). Confirm the resulting file is named
-   `DroneDock.prefab`.
-9. Delete the GameObject instance from the scene (the README's documented
-   pattern — the prefab asset is what matters, not a scene instance).
-10. **Register it:** select the `Objects` root GameObject, expand its
-    `ModkitPrefabContainer` component's `Prefabs` list, click `+`, and drag in
-    the new `DroneDock` prefab.
+3. Add a mesh child however you prefer (a primitive `Cube` is fine — real art
+   is a follow-up, not required here).
+4. Add a `Canvas` child, set its **Render Mode** to `World Space` (Overlay
+   would cover the whole screen for every dock in the world), and add a
+   `Text (TMP)` child under it — this just needs to exist somewhere under
+   `DroneDock`; `DockReadoutDisplay` finds it automatically at runtime via
+   `GetComponentInChildren<TMP_Text>()`, no reference to assign.
+5. Select `DroneDock` and **Add Component** → type `WorldObject` (the ModKit's
+   `Assets/EcoModKit/Scripts/WorldObject.cs`, not the C# server-side class of
+   the same name) → Enter.
+6. **Add Component** → type `Dock Readout Display` → Enter. The moment this
+   component is added, its `Reset()` callback fires automatically and sets
+   `WorldObject`'s `StringStates`/`FloatStates` arrays to the exact 7 + 1 slot
+   names `EcoServerMod/AdvancedElectronics/DroneDock.cs`'s `RefreshReadout()`
+   expects (`ReadoutStatus`, `ReadoutOre0`..`ReadoutOre5`, `ReadoutCoverage`) —
+   nothing left to type into the custom WorldObject Inspector's "Add"/"Handler"
+   UI. (If you'd already added a `ReadoutStatus` entry by hand before this —
+   as seen in an earlier screenshot in this conversation — it gets overwritten
+   with the same full canonical set; no harm.)
+7. Run the finishing command: open the command palette, type
+   `Advanced Electronics/Finish Dock Prefab`, press Enter (or use the
+   `Eco Tools` menu if you'd rather navigate it directly). With `DroneDock`
+   selected, this: sets the `ModObject` tag, saves the GameObject as
+   `Assets/Art/AdvancedElectronics/DroneDock.prefab`, and registers that
+   prefab into the `Objects` root's `ModkitPrefabContainer` — check the
+   Console for its `[AdvancedElectronics]`-prefixed log lines confirming each
+   step (or a warning telling you exactly what's still missing, e.g. no TMP
+   text found, or no `ModkitPrefabContainer` in the open scene).
 
 ---
 
@@ -134,22 +109,23 @@ animation, and a 64×64 item icon, exact-name-matched to the server classes.
 
 1. Create an empty GameObject at the scene root, **rename it to exactly
    `SurveyDrone`**.
-2. Tag `ModObject`, **Add Component** → `WorldObject` (same component as the
-   dock).
-3. Add a visual placeholder: a child `Capsule` scaled roughly drone-sized (e.g.
+2. Add a visual placeholder: a child `Capsule` scaled roughly drone-sized (e.g.
    0.6 × 0.6 × 0.6) is a reasonable ground-rover placeholder.
-4. No `StringStates`/`FloatStates` needed on this prefab — the dock owns the
-   readout (see U9); the drone itself has no synced text/gauge state to wire.
-5. If you want locomotion animation now: add an `Animator` component and drive
+3. **Add Component** → `WorldObject` (same component as the dock). No
+   `DockReadoutDisplay` here — the dock owns the readout (see U9); the drone
+   itself has no synced text/gauge state to wire.
+4. If you want locomotion animation now: add an `Animator` component and drive
    it from movement — this needs the drone's actual server-synced position
    deltas to look right, which you can't fully verify without a live server (see
    `docs/protocols/2026-07-survey-drone-manual-protocol.md`, F2). A static
    placeholder mesh is acceptable for this pass; note the animation as a
    follow-up if you skip it.
-6. Save as a prefab into `Assets/Art/AdvancedElectronics/SurveyDrone.prefab`
-   (same drag-into-Project-window pattern as the dock), delete the scene
-   instance, and register it in the `Objects` root's `ModkitPrefabContainer`
-   `Prefabs` list.
+5. Run the finishing command (same "Search Anything" palette as U9): type
+   `Advanced Electronics/Finish Drone Prefab`, press Enter, with `SurveyDrone`
+   selected. Sets the `ModObject` tag, saves
+   `Assets/Art/AdvancedElectronics/SurveyDrone.prefab`, and registers it in the
+   `Objects` root's `ModkitPrefabContainer` — check the Console for
+   confirmation.
 
 ### 2b. Item icon
 
