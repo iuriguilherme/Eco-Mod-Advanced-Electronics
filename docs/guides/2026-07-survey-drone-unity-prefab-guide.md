@@ -79,18 +79,40 @@ class.
    file changes these constants later, update this list to match, not the other
    way around; the C# source is authoritative.
 7. **Give the readout somewhere to render.** `Assets/TextMesh Pro/` is already
-   imported in this project. Add a child `TextMeshPro - Text` object (or a
-   `Canvas` + `TextMeshPro - Text (UI)` if you want a screen-space panel) as a
-   readout surface, then wire each `OnStringStateChanged`/`OnFloatStateChanged`
-   event on the `WorldObject` component (one array slot per state name above) to
-   update that text — e.g. `OnStringStateChanged[0]` (for `ReadoutStatus`) calls a
-   small method that sets the TMP text's first line, and so on for the ore lines
-   and the coverage float. A single small script (e.g.
-   `Assets/Art/AdvancedElectronics/DockReadoutDisplay.cs`, a plain
-   `MonoBehaviour`, client-only, no relation to the server-side `DockReadout.cs`)
-   that concatenates the wired-up values into the TMP text is the simplest
-   approach — build it however reads cleanly; this is presentation-only glue with
-   no correctness requirement beyond "the text updates when the state does."
+   imported in this project.
+
+   a. Under the `DroneDock` GameObject, add a `Canvas` (right-click `DroneDock` →
+      UI → Canvas), then a `Text - TextMeshPro` child under that Canvas
+      (right-click the Canvas → UI → Text - TextMeshPro).
+   b. Select the `Canvas` and change **Render Mode** from
+      `Screen Space - Overlay` to **`World Space`** — Overlay mode would cover
+      the whole screen for every dock in the world, not just render a small
+      panel above this one. Scale the Canvas down small (e.g. `0.01, 0.01,
+      0.01`) and position it a bit above the placeholder cube (e.g. local
+      `Y = 1.5`) so it reads as a floating panel over the dock.
+   c. `Assets/Art/AdvancedElectronics/DockReadoutDisplay.cs` (already added to
+      this repo) is a plain client-only `MonoBehaviour` — not related to the
+      server-side `DockReadout.cs` pure-formatting class of a similar name —
+      that renders the wired-up state values into one TMP text block. Select
+      `DroneDock`, **Add Component** → `Dock Readout Display`, then drag the
+      `Text (TMP)` child object into its **Readout Text** field.
+   d. Still on `DroneDock`, find the `WorldObject` component's event arrays and
+      wire each slot to the matching method on `DockReadoutDisplay`, choosing
+      the **Dynamic string** / **Dynamic float** variant in the function
+      dropdown (not "Static Parameters" — dynamic passes the live server value
+      through; static would send a fixed typed-in value, which is wrong here):
+      - **On String State Changed** (size 7, matching String States' size — set
+        it manually, Unity does not auto-size this array to match):
+        element 0 → `SetStatusLine` (pairs with `ReadoutStatus`), element 1 →
+        `SetOreLine0` (`ReadoutOre0`), element 2 → `SetOreLine1`
+        (`ReadoutOre1`), element 3 → `SetOreLine2`, element 4 → `SetOreLine3`,
+        element 5 → `SetOreLine4`, element 6 → `SetOreLine5`.
+      - **On Float State Changed** (size 1): element 0 → `SetCoverage`
+        (`ReadoutCoverage`).
+      For each element: click `+` under that element's event list, drag the
+      `DroneDock` GameObject into the object slot, then pick
+      `DockReadoutDisplay → Dynamic string/float → <method name>` from the
+      function dropdown.
 8. **Save as a prefab:** drag the `DroneDock` GameObject from the Hierarchy into
    `Assets/Art/AdvancedElectronics/` in the Project window (create that folder
    first if it doesn't exist). Confirm the resulting file is named
