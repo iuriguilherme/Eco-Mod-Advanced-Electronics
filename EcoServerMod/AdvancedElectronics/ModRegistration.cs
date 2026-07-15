@@ -12,8 +12,15 @@ namespace AdvancedElectronics
     /// reference, not a base class). The spike's `/spike` chat commands are throwaway
     /// diagnostics and are deliberately not carried over here.
     /// </summary>
-    public class AdvancedElectronicsMod : IModKitPlugin
+    public class AdvancedElectronicsMod : IModInit
     {
+        public static ModRegistration Register() => new() 
+        {
+            ModName = "AdvancedElectronics",
+            ModDescription = "Advanced Electronics mod loaded",
+            ModDisplayName = "Advanced Electronics",
+        };
+
         public string GetCategory() => "Mods";
 
         public string GetStatus() => "Advanced Electronics mod loaded";
