@@ -129,22 +129,36 @@ animation, and a 64×64 item icon, exact-name-matched to the server classes.
 
 ### 2b. Item icon
 
-1. In the Project window, browse to `Assets/EcoModKit/Prefabs`.
-2. Drag `ItemTemplate` onto the `Items` root GameObject in the Hierarchy — this
-   creates a child GameObject called `ItemTemplate`.
-3. Right-click that new child → **Prefab → Unpack Completely** (removes the
-   prefab link so you can freely edit/rename it).
-4. **Rename the GameObject to exactly `SurveyDroneItem`** — matching the C#
-   `Item` subclass name in `EcoServerMod/AdvancedElectronics/SurveyDrone.cs`, per
-   this doc's naming table above. (This is an ASSUMPTION about Eco's item
-   name-matching convention, made by analogy with the WorldObject naming rule
-   confirmed in `CLAUDE.md` — verify this is correct once you can deploy to a
-   live server; if the item's icon doesn't show up correctly in-game, this
-   exact-name choice is the first thing to re-check.)
-5. Edit the foreground/background sprites per the `ItemTemplate`'s fields to a
-   64×64 placeholder icon (any simple shape/color is fine for this pass — a
-   distinct silhouette so it's visually distinguishable from other items is the
-   only real constraint).
+**Keyboard-only path (recommended):** this whole step is now one command.
+`ItemTemplate` (`Assets/EcoLibs/Utils/MiscUtils/ItemTemplate.cs`) is the
+script the ModKit's `ItemTemplate` prefab carries at its root; its
+`foreground`/`background` fields are plain `UnityEngine.UI.Image` components
+— "editing the sprite" means assigning a `Sprite` asset to an `Image`'s
+`Source Image` field. `FinishItemIcon()` in
+`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs` does
+all of the following in code, no dragging required:
+
+1. Open the command palette, type `Advanced Electronics/Finish Item Icon`,
+   press Enter.
+2. It instantiates `Assets/EcoModKit/Prefabs/ItemTemplate.prefab` under the
+   scene's `Items` root, unpacks it completely (the same effect as the
+   README's manual drag-and-unpack steps), and renames it to exactly
+   `SurveyDroneItem` — matching the C# `Item` subclass name in
+   `EcoServerMod/AdvancedElectronics/SurveyDrone.cs` per this doc's naming
+   table above. (This exact-name choice is still an ASSUMPTION about Eco's
+   item name-matching convention, made by analogy with the WorldObject naming
+   rule confirmed in `CLAUDE.md` — verify once you can deploy to a live
+   server; if the item's icon doesn't show up correctly in-game, this is the
+   first thing to re-check.)
+3. It generates a solid placeholder 64×64 PNG
+   (`Assets/Art/AdvancedElectronics/SurveyDroneItem_icon.png`, teal-blue) and
+   assigns it to the `foreground` Image's sprite. `background` is left at the
+   template's default (the shared item-plate frame every vanilla item icon
+   sits on) — only `foreground` needs to be distinct per item.
+4. Check the Console for its `[AdvancedElectronics]` confirmation line. It's
+   safe to re-run: it reuses the existing `SurveyDroneItem` GameObject and
+   icon file instead of duplicating them, so running it again after swapping
+   in real art (by re-importing over the same PNG path) won't undo that.
 
 ---
 
