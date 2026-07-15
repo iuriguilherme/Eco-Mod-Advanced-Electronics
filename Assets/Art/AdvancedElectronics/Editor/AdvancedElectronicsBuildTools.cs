@@ -2,6 +2,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>
@@ -51,10 +52,10 @@ public static class AdvancedElectronicsBuildTools
         const string itemName = "SurveyDroneItem";
         const string itemsRootName = "Items";
 
-        var itemsRoot = GameObject.Find(itemsRootName);
+        var itemsRoot = FindInLoadedScenes(itemsRootName);
         if (itemsRoot == null)
         {
-            Debug.LogError($"[AdvancedElectronics] No GameObject named '{itemsRootName}' found in the open scene. Open the scene with the mod's scene roots (Objects/Items/Emoji/BlockSets) first.");
+            Debug.LogError($"[AdvancedElectronics] No GameObject named '{itemsRootName}' found in the open scene (searched inactive objects too). Open the scene with the mod's scene roots (Objects/Items/Emoji/BlockSets) first, or check it wasn't renamed/moved.");
             return;
         }
 
@@ -134,11 +135,11 @@ public static class AdvancedElectronicsBuildTools
     {
         var go = Selection.activeGameObject;
         if (go == null || go.name != expectedName)
-            go = GameObject.Find(expectedName);
+            go = FindInLoadedScenes(expectedName);
 
         if (go == null)
         {
-            Debug.LogError($"[AdvancedElectronics] No GameObject named '{expectedName}' found in the open scene, and nothing matching is selected. Open the scene containing it (or select it in the Hierarchy) first, then re-run this command.");
+            Debug.LogError($"[AdvancedElectronics] No GameObject named '{expectedName}' found in the open scene (searched inactive objects too), and nothing matching is selected. Open the scene containing it (or select it in the Hierarchy) first, then re-run this command.");
             return;
         }
 
@@ -193,9 +194,43 @@ public static class AdvancedElectronicsBuildTools
         AssetDatabase.CreateFolder("Assets/Art", "AdvancedElectronics");
     }
 
+    /// <summary>
+    /// GameObject.Find only searches ACTIVE objects and only in loaded scenes
+    /// -- a root that's temporarily disabled (or a multi-scene setup) makes it
+    /// silently return null even though the object exists. This walks every
+    /// loaded scene's full hierarchy, including inactive GameObjects, so
+    /// "not found" here actually means not found.
+    /// </summary>
+    private static GameObject FindInLoadedScenes(string name)
+    {
+        for (var s = 0; s < SceneManager.sceneCount; s++)
+        {
+            var scene = SceneManager.GetSceneAt(s);
+            if (!scene.isLoaded) continue;
+
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                var found = FindRecursive(root.transform, name);
+                if (found != null) return found.gameObject;
+            }
+        }
+        return null;
+    }
+
+    private static Transform FindRecursive(Transform t, string name)
+    {
+        if (t.name == name) return t;
+        for (var i = 0; i < t.childCount; i++)
+        {
+            var found = FindRecursive(t.GetChild(i), name);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
     private static void RegisterInModkitContainer(GameObject prefab)
     {
-        var container = Object.FindFirstObjectByType<ModkitPrefabContainer>();
+        var container = Object.FindFirstObjectByType<ModkitPrefabContainer>(FindObjectsInactive.Include);
         if (container == null)
         {
             Debug.LogWarning("[AdvancedElectronics] No ModkitPrefabContainer found in the open scene (expected on the 'Objects' root per the ModKit's scene-setup convention) -- add this prefab to its Prefabs list by hand once the right scene is open.");
