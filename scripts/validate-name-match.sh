@@ -2,12 +2,22 @@
 # U11 — name-match validation gate (docs/plans/2026-07-11-001-feat-survey-drone-plan.md).
 #
 # Cross-checks that every server-side WorldObject/Item class in
-# EcoServerMod/AdvancedElectronics/ has a matching-named asset under
-# Assets/Art/AdvancedElectronics/, and flags any asset there that doesn't match
-# a known server class name. This is the automatable half of U11's Verification
-# ("the name cross-check reports zero mismatches") — a scripted grep diff per
-# the plan's Approach note ("editor script or a documented dotnet/grep
-# cross-check"), run headless, no Unity Editor required.
+# EcoServerMod/AdvancedElectronics/ has a matching-named client-side
+# counterpart, and flags any asset under Assets/Art/AdvancedElectronics/ that
+# doesn't match a known server class name. This is the automatable half of
+# U11's Verification ("the name cross-check reports zero mismatches") — a
+# scripted grep diff per the plan's Approach note ("editor script or a
+# documented dotnet/grep cross-check"), run headless, no Unity Editor
+# required.
+#
+# WorldObjects are matched as separate .prefab files under
+# Assets/Art/AdvancedElectronics/ (the ModKit's "Adding World Objects" flow
+# always produces a standalone prefab). Items are matched differently: per
+# the ModKit's "Adding Items" flow (Assets/EcoModKit/Docs/README.md), an item
+# is an unpacked GameObject living directly inside a scene under the "Items"
+# root — never saved as its own prefab file — so Item types are matched by
+# grepping every Assets/**/*.unity scene file for a GameObject with that exact
+# m_Name instead of by filename.
 #
 # Exit code 0 = clean (matches this repo's CI-friendly convention: no
 # mismatches). Exit code 1 = mismatches found — read the report above the
@@ -76,10 +86,18 @@ done
 
 for t in "${ITEM_TYPES[@]:-}"; do
   [ -z "$t" ] && continue
-  if ! printf '%s\n' "${ASSET_NAMES[@]:-}" | grep -qx "$t"; then
-    echo "MISMATCH: Item '$t' has no matching-named icon asset under $ASSET_DIR"
-    missing=1
+  # Item GameObjects live inside a scene, not as a standalone asset file (see
+  # header) — check file basenames first (in case a future workflow saves one
+  # as a prefab too), then fall back to scanning every scene for a matching
+  # m_Name: <Type> GameObject.
+  if printf '%s\n' "${ASSET_NAMES[@]:-}" | grep -qx "$t"; then
+    continue
   fi
+  if find Assets -name '*.unity' -exec grep -l "^  m_Name: $t\$" {} + | grep -q .; then
+    continue
+  fi
+  echo "MISMATCH: Item '$t' has no matching-named icon asset under $ASSET_DIR and no matching GameObject in any Assets/**/*.unity scene"
+  missing=1
 done
 
 # Reverse direction: an asset name that doesn't match any known server type
