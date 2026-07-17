@@ -152,6 +152,29 @@ public static class AdvancedElectronicsBuildTools
             Debug.Log($"[AdvancedElectronics] Added missing WorldObject component to '{go.name}'.");
         }
 
+        // The ModKit's own World Object Setup tool
+        // (Assets/EcoModKit/Scripts/Editor/WorldObjectSetup.cs) always gives a
+        // WorldObject prefab a HighlightableObject and a root BoxCollider that
+        // encapsulates all child renderers -- the collider is what the client's
+        // placement-ghost/interaction raycasts hit. Earlier versions of this command
+        // skipped both, which contributed to the dock being unusable in-game.
+        if (go.GetComponent<HighlightableObject>() == null)
+        {
+            go.AddComponent<HighlightableObject>();
+            Debug.Log($"[AdvancedElectronics] Added missing HighlightableObject to '{go.name}'.");
+        }
+
+        if (go.GetComponent<BoxCollider>() == null)
+        {
+            var boxCollider = go.AddComponent<BoxCollider>();
+            var bounds = new Bounds(go.transform.position, Vector3.zero);
+            foreach (var renderer in go.GetComponentsInChildren<Renderer>())
+                bounds.Encapsulate(renderer.bounds);
+            boxCollider.center = bounds.center - go.transform.position;
+            boxCollider.size = bounds.size;
+            Debug.Log($"[AdvancedElectronics] Added encapsulating BoxCollider to '{go.name}' (size {boxCollider.size}).");
+        }
+
         if (isDock)
         {
             var display = go.GetComponent<DockReadoutDisplay>();

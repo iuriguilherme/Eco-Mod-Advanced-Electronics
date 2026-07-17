@@ -11,12 +11,15 @@ using Eco.Gameplay.DynamicValues;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Items.Recipes;
 using Eco.Gameplay.Objects;
+using Eco.Gameplay.Occupancy;
 using Eco.Gameplay.Players;
 using Eco.Mods.TechTree;
 using Eco.Shared.IoC;
 using Eco.Shared.Localization;
+using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 using Quaternion = Eco.Shared.Math.Quaternion;
+using Vector3 = System.Numerics.Vector3;
 
 namespace AdvancedElectronics
 {
@@ -45,22 +48,25 @@ namespace AdvancedElectronics
     [Serialized]
     [RequireComponent(typeof(PropertyAuthComponent), null)]
     [RequireComponent(typeof(PublicStorageComponent), null)]
+    [RequireComponent(typeof(OccupancyRequirementComponent), null)]
     [Tag("Usable")]
-    public class DroneDock : WorldObject
+    public class DroneDock : WorldObject, IRepresentsItem
     {
-        // ASSUMPTION -- verify against a live server (see U1 verification note):
-        // PublicStorageComponent.Initialize(int, int, InventoryRestriction[]) is read
-        // here as (slot count, per-slot weight capacity, restrictions), by analogy with
-        // the simpler Initialize(int) overload and vanilla single-purpose slots (e.g.
-        // fuel/input slots on machines). The Eco.ReferenceAssemblies package ships
-        // method bodies stripped, so this parameter order could not be confirmed by
-        // reading vanilla source -- only the signature. If the in-game check in this
-        // unit's Verification section shows the dock accepting more than one item or
-        // rejecting the drone item outright, this is the first place to look.
+        // Single storage slot, drone item only (see Initialize). Slot count is a
+        // vanilla-proven Initialize(int) arg; the item-type and stack-limit
+        // restrictions are applied per the vanilla AddInvRestriction pattern
+        // (Mods/__core__/AutoGen/WorldObject/StorageChest.cs on the dedicated server
+        // ships this exact shape in source).
         private const int DockSlotCount = 1;
-        private const int DockSlotWeightCapacity = 1000;
 
         public override LocString DisplayName => Localizer.DoStr("Drone Dock");
+
+        /// <summary>
+        /// Links this WorldObject back to its craftable item (vanilla placement
+        /// contract -- every placeable vanilla object implements IRepresentsItem;
+        /// part of the fix for the dock being unplaceable in-game).
+        /// </summary>
+        public virtual Type RepresentedItemType => typeof(DroneDockItem);
 
         /// <summary>The drone item currently docked here, or null if the dock is empty.</summary>
         public Item PairedDrone { get; private set; }
@@ -106,10 +112,14 @@ namespace AdvancedElectronics
 
             if (this.TryGetComponent<PublicStorageComponent>(out var storage))
             {
-                storage.Initialize(DockSlotCount, DockSlotWeightCapacity, new InventoryRestriction[]
-                {
-                    new SpecificItemTypesRestriction(new[] { typeof(SurveyDroneItem) }),
-                });
+                // Vanilla storage-init shape (verified against the dedicated server's
+                // shipped source, e.g. Mods/__core__/AutoGen/WorldObject/StorageChest.cs):
+                // Initialize(slotCount), then restrictions via AddInvRestriction. The
+                // previously-used 3-arg Initialize overload is never used by any vanilla
+                // object and its parameter semantics were unproven.
+                storage.Initialize(DockSlotCount);
+                storage.Storage.AddInvRestriction(new SpecificItemTypesRestriction(new[] { typeof(SurveyDroneItem) }));
+                storage.Storage.AddInvRestriction(new StackLimitRestriction(1));
                 storage.Storage.OnChanged.Add(this.OnDockStorageChanged);
             }
         }
@@ -281,10 +291,23 @@ namespace AdvancedElectronics
         }
     }
 
-    /// <summary>Craftable item that places a <see cref="DroneDock"/> WorldObject.</summary>
+    /// <summary>
+    /// Craftable item that places a <see cref="DroneDock"/> WorldObject. The
+    /// <see cref="GetOccupancyContext"/> override is the placement contract: without it
+    /// the item silently cannot be placed at all (no ghost, no error) -- every placeable
+    /// vanilla item ships this exact SideAttachedContext(Down) override (see the
+    /// dedicated server's Mods/__core__/AutoGen/WorldObject sources), and its absence
+    /// here is what blocked the first live placement test.
+    /// </summary>
     [Serialized]
+    [LocDisplayName("Drone Dock")]
+    [LocDescription("Home point for a survey drone. Insert a Survey Drone to pair and dispatch it; assign a survey district with /drone district <name>.")]
+    [Ecopedia("Crafted Objects", "Advanced Electronics", true, true, null)]
+    [Weight(1000)]
     public class DroneDockItem : WorldObjectItem<DroneDock>
     {
+        protected override OccupancyContext GetOccupancyContext =>
+            new SideAttachedContext(0 | DirectionAxisFlags.Down, WorldObject.GetOccupancyInfo(this.WorldObjectType));
     }
 
     /// <summary>Recipe unlocking <see cref="DroneDockItem"/>.</summary>
