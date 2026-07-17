@@ -3,6 +3,7 @@
     "rootNamespace": "",
     "references": [
         "Eco.Client",
+        "Eco.Client.Utils",
         "Unity.TextMeshPro",
         "UnityEngine.UI"
     ],

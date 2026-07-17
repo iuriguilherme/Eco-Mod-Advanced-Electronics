@@ -421,6 +421,8 @@ GameObject:
   - component: {fileID: 397473419}
   - component: {fileID: 397473418}
   - component: {fileID: 397473417}
+  - component: {fileID: 397473422}
+  - component: {fileID: 397473421}
   m_Layer: 0
   m_Name: SurveyDrone
   m_TagString: ModObject
@@ -545,6 +547,41 @@ Transform:
   - {fileID: 1674058613}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &397473421
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 397473416}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.6, y: 1.2, z: 0.6}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &397473422
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 397473416}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6ce3cf79c2a8f3e4a862ca5955bba5f9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Eco.Client::HighlightableObject
+  seeThrough: 0
+  forceOpaque: 0
 --- !u!850595691 &445228564
 LightingSettings:
   m_ObjectHideFlags: 0
@@ -625,6 +662,8 @@ GameObject:
   - component: {fileID: 618569319}
   - component: {fileID: 618569318}
   - component: {fileID: 618569317}
+  - component: {fileID: 618569323}
+  - component: {fileID: 618569322}
   m_Layer: 0
   m_Name: DroneDock
   m_TagString: ModObject
@@ -786,6 +825,41 @@ Transform:
   - {fileID: 1122129574}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &618569322
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 618569316}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.5, y: 1.5, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &618569323
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 618569316}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6ce3cf79c2a8f3e4a862ca5955bba5f9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Eco.Client::HighlightableObject
+  seeThrough: 0
+  forceOpaque: 0
 --- !u!1 &879896273
 GameObject:
   m_ObjectHideFlags: 1
@@ -1635,7 +1709,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2384d86e5da465641988ab4713f6f3ee, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Eco.Client::ModkitPrefabContainer
-  Prefabs: []
+  Prefabs:
+  - {fileID: 871685237812033718, guid: 8da7e182c6c9a95489099cf448623608, type: 3}
+  - {fileID: 1559281836105533578, guid: 3adcb668c056dee4ea0aa4cafafec021, type: 3}
 --- !u!1 &1674058612
 GameObject:
   m_ObjectHideFlags: 0
