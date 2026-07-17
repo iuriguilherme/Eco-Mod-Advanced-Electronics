@@ -63,3 +63,4 @@ Version note: Eco 0.13 uses `System.Numerics.Vector3` (Eco ships only extension 
 - `docs/spikes/2026-07-survey-drone-spike.md` — full probe protocol, verdicts, and evidence
 - `docs/plans/2026-07-11-001-feat-survey-drone-plan.md` — the architecture KTD this learning feeds (AnimalEntity subclass vs self-navigated WorldObject)
 - `EcoServerMod/README.md` — version matching and net10.0 setup
+- `docs/solutions/conventions/consistent-grid-column-quantization.md` — a server-driven mover's grid-column math (`GridPathfinder.ToColumn`) must use the same world-position quantization as every other consumer of the same position; a real inconsistency between this movement code and a district-membership check caused boundary-dependent failures

@@ -58,6 +58,8 @@ foreach (var map in Registrars.Get<DistrictMap>())
 }
 ```
 
+Quantization caveat: the `(int)pos.X, (int)pos.Z` cast above truncates toward zero. If another part of your mod computes a grid column from the same kind of position using a *different* rule (e.g. `MathF.Round`, as a pathfinder's grid-column math typically does), the two can disagree at cell boundaries — see `docs/solutions/conventions/consistent-grid-column-quantization.md` for a real defect this caused.
+
 What NOT to assume: there is no live-verified on-object *picker* (choosing a district from a WorldObject's auto-generated UI) — the 0.11-era `ClientCanSelectAndAdd` attribute is gone in 0.13, and no replacement was confirmed. For district *assignment*, a chat command that resolves a `DistrictMap` entry by name is the working fallback; reading is solved, picking is not.
 
 ## Related
@@ -65,3 +67,4 @@ What NOT to assume: there is no live-verified on-object *picker* (choosing a dis
 - `docs/solutions/best-practices/eco-013-server-driven-movement.md` — sibling Eco 0.13 API learning (movement, tick surface, version pin, `Vector3`).
 - `docs/spikes/2026-07-survey-drone-spike.md` — Q3 (district read) verdict and the manual protocol that confirmed point membership in-game.
 - `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs` — the compiling reference implementation.
+- `docs/solutions/conventions/consistent-grid-column-quantization.md` — why the truncating cast above must match whatever quantization the rest of your mod uses for the same position.
