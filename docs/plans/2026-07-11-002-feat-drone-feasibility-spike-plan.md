@@ -59,9 +59,9 @@ The survey-drone plan is gated: implementation planning must not harden until th
 
 ### Dependencies / Assumptions
 
-- Assumes the target server runs Eco 0.11.x and a matching `Eco.ReferenceAssemblies` prerelease version exists on NuGet (research: version strings like `0.11.1.13-beta-release-887`). The pin is a property so the user can align it with their server build.
+- Resolved during implementation: this repo's ModKit DLLs identify as Eco 0.13.0.4, superseding the 0.11.x research assumption below — the actual pin is `Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024` (see `EcoServerMod/README.md`'s Version matching section). The pin is a property so the user can realign it with a different server build.
 - Assumes the user has (or will install) a local Eco dedicated server for the manual protocol; nothing in this repo can run one.
-- Assumes `dotnet` SDK (net8.0+; research suggests newer Eco builds target net10.0 — the TFM is a property next to the version pin).
+- Resolved during implementation: Eco 0.13 reference assemblies target net10.0, not the net8.0+ researched here — a user-local .NET 10 SDK install is documented in `EcoServerMod/README.md`.
 - External research (docs.play.eco, wiki.play.eco) is unverified input: class names (`Eco.Simulation.Agents.Animal`, `Eco.Gameplay.Objects.WorldObject.SyncPositionAndRotation()`, `Eco.Gameplay.Settlements.Settlement`, `SettlementInfluenceUtils`, `Deed.CachedOwningSettlement`) are leads the implementation confirms against the actual reference assemblies.
 
 ---
@@ -144,7 +144,7 @@ Directional guidance, authoritative for structure: three independent probe comma
 
 ### U4. Q3 probe — settlement/plot enumeration (SpikeDistricts)
 
-- **Goal:** `/spike districts` prints every settlement/deed whose influence covers the player's position, plus the plot-set size and sample coordinates — establishing what map-drawn area data a mod can read.
+- **Goal:** `/spike districts` prints every settlement and deed globally (not filtered to the player's position), plus positional district membership at the player's location — establishing what map-drawn area data a mod can read. Resolved during implementation: the probe enumerates settlements/deeds unconditionally rather than filtering by influence-at-position; positional lookup (`GetDistrictAtWorldPos`) applies only to districts, per the actual `SpikeDistrictsCommand.cs` and `docs/spikes/2026-07-survey-drone-spike.md`'s Q3 findings.
 - **Requirements:** R6, R7.
 - **Dependencies:** U1.
 - **Files:** `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs`, `EcoServerMod/README.md` (object-UI picker findings section).

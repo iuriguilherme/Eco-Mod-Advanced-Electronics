@@ -86,8 +86,14 @@ namespace AdvancedElectronics.Spike
             user.MsgLocStr("Q2 probe stopped; object destroyed.");
         }
 
+        // Filtered to Eco.* assemblies (where every WorldObject subclass -- vanilla or
+        // modded -- actually lives) rather than reflecting over the full AppDomain on
+        // every /spike move call, per code review: an unfiltered scan of every loaded
+        // assembly's types is unnecessary work that can momentarily stall the server
+        // thread on an admin-only but still user-triggered command.
         private static Type FindWorldObjectType(string shortName) =>
             AppDomain.CurrentDomain.GetAssemblies()
+                .Where(a => (a.GetName().Name ?? string.Empty).StartsWith("Eco", StringComparison.OrdinalIgnoreCase))
                 .SelectMany(a => { try { return a.GetTypes(); } catch (ReflectionTypeLoadException e) { return e.Types.Where(t => t != null); } })
                 .FirstOrDefault(t => t != null
                     && t.Name.Equals(shortName, StringComparison.OrdinalIgnoreCase)
