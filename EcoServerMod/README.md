@@ -8,21 +8,30 @@ assemblies and deploy to an Eco dedicated server.
 
 - `AdvancedElectronics/` — the real mod (server half of the survey-drone feature).
   Registers the craftable `DroneDock` WorldObject and craftable `SurveyDroneItem`;
-  inserting the drone item into the dock pairs them. A clean sibling of the spike
+  inserting the drone item into the dock spawns a `SurveyDrone` WorldObject that
+  self-navigates to its assigned district (`/drone district <name>`), surveys ore
+  density, and reports back through the dock's readout. A clean sibling of the spike
   (KTD1: the spike is a reference, not a base class), reusing its proven csproj shape,
-  version pin, and registration pattern by imitation, not inheritance.
+  version pin, and registration pattern by imitation, not inheritance. References
+  `AdvancedElectronics.Navigation` — deploying the mod means deploying both DLLs.
+- `AdvancedElectronics.Navigation/` — pure-C# navigation core (grid A* pathfinder,
+  survey-grid accumulation, drone lifecycle state machine). Zero Eco dependency by
+  design (KTD2) so it is unit-testable without a game server.
+- `AdvancedElectronics.Navigation.Tests/` — xUnit suite over the navigation core
+  (`dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests`).
 - `AdvancedElectronics.Spike/` — feasibility spike for the survey drone
   (`docs/plans/2026-07-11-002-feat-drone-feasibility-spike-plan.md`). Three admin chat
   commands probe the questions blocking the survey-drone plan; results are recorded in
-  `docs/spikes/2026-07-survey-drone-spike.md`.
+  `docs/spikes/2026-07-survey-drone-spike.md`. Kept as reference/documentation — not
+  part of the shipped mod, deploy it only to re-run the probes.
 
 ## Version matching
 
 The `Eco.ReferenceAssemblies` NuGet version **must match the target server's game build**.
 
 - This repo's ModKit DLLs identify as Eco **0.13.0.4** (`Eco.Shared.dll` version string),
-  so the spike pins `0.13.0.4-beta-release-1024`. (The planning research assumed 0.11.x;
-  the repo evidence superseded it.)
+  so both the mod and the spike pin `0.13.0.4-beta-release-1024`. (The planning research
+  assumed 0.11.x; the repo evidence superseded it.)
 - To re-pin: find your server's build number (server console banner or
   `EcoServer.dll` version), list versions with
   `https://www.nuget.org/packages/Eco.ReferenceAssemblies`, and set `EcoRefVersion`
@@ -43,18 +52,26 @@ $env:PATH = "$env:USERPROFILE/.dotnet;$env:PATH"
 Then:
 
 ```bash
-dotnet build EcoServerMod/AdvancedElectronics.Spike
+dotnet build EcoServerMod/AdvancedElectronics          # the mod (also builds Navigation)
+dotnet test  EcoServerMod/AdvancedElectronics.Navigation.Tests   # 31-test suite
+dotnet build EcoServerMod/AdvancedElectronics.Spike    # optional -- reference probes only
 ```
 
 Note: Unity regenerates the root `.sln`/`.csproj` files for its own scripts and they are
-git-ignored; this server project is deliberately outside that solution. Build it with
-`dotnet` directly (or open the folder in your IDE), not via Unity's generated solution.
+git-ignored; these server projects are deliberately outside that solution. Build them
+with `dotnet` directly (or open the folder in your IDE), not via Unity's generated
+solution.
 
 ## Deploying
 
-Copy `bin/Debug/net10.0/AdvancedElectronics.Spike.dll` into the server's
-`Mods/UserCode/` directory, or create `AdvancedElectronics.Spike/Local.props`
-(git-ignored) to auto-copy on every build:
+Copy **both** DLLs from `AdvancedElectronics/bin/Debug/net10.0/` into the server's
+`Mods/UserCode/` directory:
+
+- `AdvancedElectronics.dll`
+- `AdvancedElectronics.Navigation.dll` (project dependency — the mod fails to load without it)
+
+Or create `AdvancedElectronics/Local.props` (git-ignored) to auto-copy every DLL in the
+build output on every build:
 
 ```xml
 <Project>
@@ -64,8 +81,14 @@ Copy `bin/Debug/net10.0/AdvancedElectronics.Spike.dll` into the server's
 </Project>
 ```
 
-The spike's chat commands require **admin** authorization on the server
-(`/admin add <you>` or server config).
+The client asset bundle (`AssetBundles/AdvancedElectronics.unity3d`, built from the
+Unity project) deploys separately — see the root `README.md` for the full
+server-testing walkthrough including the bundle and the in-game smoke test.
+
+To re-run the spike probes instead, deploy `AdvancedElectronics.Spike.dll` the same way
+(it is self-contained). Its `/spike` chat commands require **admin** authorization on
+the server (`/admin add <you>` or server config); the real mod's `/drone` command only
+requires normal user auth.
 
 ## Object-UI picker findings (spike Q3, UI half)
 
