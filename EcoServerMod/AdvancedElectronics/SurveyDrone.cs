@@ -88,9 +88,9 @@ namespace Eco.Mods.TechTree
     /// </list>
     /// </summary>
     [Serialized]
-    [RequireComponent(typeof(DroneMoverComponent), null)]
-    [RequireComponent(typeof(OreSensorComponent), null)]
-    [RequireComponent(typeof(DroneLifecycle), null)]
+    [RequireComponent(typeof(DroneMoverComponent))]
+    [RequireComponent(typeof(OreSensorComponent))]
+    [RequireComponent(typeof(DroneLifecycle))]
     public class SurveyDrone : WorldObject
     {
         /// <summary>

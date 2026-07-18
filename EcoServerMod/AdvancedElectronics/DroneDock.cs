@@ -47,9 +47,9 @@ namespace Eco.Mods.TechTree
     /// not confirmed serializable given the reference assemblies' stripped method bodies.
     /// </summary>
     [Serialized]
-    [RequireComponent(typeof(PropertyAuthComponent), null)]
-    [RequireComponent(typeof(PublicStorageComponent), null)]
-    [RequireComponent(typeof(OccupancyRequirementComponent), null)]
+    [RequireComponent(typeof(PropertyAuthComponent))]
+    [RequireComponent(typeof(PublicStorageComponent))]
+    [RequireComponent(typeof(OccupancyRequirementComponent))]
     [Tag("Usable")]
     public class DroneDock : WorldObject, IRepresentsItem
     {
