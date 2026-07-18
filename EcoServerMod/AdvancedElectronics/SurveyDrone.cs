@@ -5,9 +5,11 @@ using Eco.Gameplay.DynamicValues;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Items.Recipes;
 using Eco.Gameplay.Objects;
+using Eco.Gameplay.Occupancy;
 using Eco.Gameplay.Players;
 using Eco.Mods.TechTree;
 using Eco.Shared.Localization;
+using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
 namespace AdvancedElectronics
@@ -91,6 +93,22 @@ namespace AdvancedElectronics
     [RequireComponent(typeof(DroneLifecycle), null)]
     public class SurveyDrone : WorldObject
     {
+        /// <summary>
+        /// Registers the drone's single-block placement footprint. Required even though
+        /// the drone is spawned via WorldObjectManager.ForceAdd (not player-placed) --
+        /// a WorldObject with no registered occupancy has no valid footprint and the
+        /// spawn is silently rejected the same way manual placement is. See DroneDock's
+        /// static constructor for the full explanation (copied from the Advanced
+        /// Mixology reference mod).
+        /// </summary>
+        static SurveyDrone()
+        {
+            AddOccupancy<SurveyDrone>(new List<BlockOccupancy>
+            {
+                new BlockOccupancy(new Vector3i(0, 0, 0)),
+            });
+        }
+
         public override LocString DisplayName => Localizer.DoStr("Survey Drone");
 
         /// <summary>Display name of the owner this drone acts on behalf of, or null if never stamped.</summary>

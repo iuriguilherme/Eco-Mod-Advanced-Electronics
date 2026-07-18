@@ -18,6 +18,7 @@ using Eco.Shared.IoC;
 using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
+using Eco.World.Blocks;
 using Quaternion = Eco.Shared.Math.Quaternion;
 using Vector3 = System.Numerics.Vector3;
 
@@ -62,9 +63,28 @@ namespace AdvancedElectronics
         public override LocString DisplayName => Localizer.DoStr("Drone Dock");
 
         /// <summary>
+        /// Registers this object's placement footprint (a single 1x1x1 block) so the
+        /// client can place it. A custom modded WorldObject MUST declare its occupancy
+        /// in code via AddOccupancy&lt;T&gt; in a static constructor -- vanilla AutoGen
+        /// objects get this baked by the WorldObjectTemplate.tt generator, so it never
+        /// appears in their visible source, but a hand-written mod object has no
+        /// generator and must do it itself. Pattern copied from the Advanced Mixology
+        /// reference mod (AdvancedMixologyTableObject's static constructor). Without
+        /// this, GetOccupancyInfo(typeof(DroneDock)) is empty and the object silently
+        /// cannot be placed (no ghost, no error) -- the actual root cause of the dock
+        /// being unplaceable, distinct from the occupancy attributes on the item.
+        /// </summary>
+        static DroneDock()
+        {
+            AddOccupancy<DroneDock>(new List<BlockOccupancy>
+            {
+                new BlockOccupancy(new Vector3i(0, 0, 0)),
+            });
+        }
+
+        /// <summary>
         /// Links this WorldObject back to its craftable item (vanilla placement
-        /// contract -- every placeable vanilla object implements IRepresentsItem;
-        /// part of the fix for the dock being unplaceable in-game).
+        /// contract -- every placeable vanilla object implements IRepresentsItem).
         /// </summary>
         public virtual Type RepresentedItemType => typeof(DroneDockItem);
 
