@@ -2,8 +2,9 @@ using AdvancedElectronics.Navigation;
 using Eco.Shared.Math;
 using Eco.World;
 using Eco.World.Blocks;
+using EcoWorld = Eco.World.World;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Live-Eco-world-backed implementation of the Navigation library's
@@ -43,7 +44,7 @@ namespace AdvancedElectronics
         {
             oreType = null;
 
-            var block = World.GetBlock(new Vector3i(x, y, z));
+            var block = EcoWorld.GetBlock(new Vector3i(x, y, z));
             if (block == null)
                 return false;
 

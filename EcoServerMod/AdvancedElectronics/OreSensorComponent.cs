@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using AdvancedElectronics.Navigation;
 using Eco.Gameplay.Objects;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Samples ore-bearing blocks under/around the drone as it roams and

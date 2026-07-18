@@ -5,7 +5,7 @@ using Eco.Gameplay.Systems.Messaging.Chat.Commands;
 using Eco.Shared.IoC;
 using Eco.Shared.Items;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Chat commands for the survey drone dock (U4, R12). District assignment ships as

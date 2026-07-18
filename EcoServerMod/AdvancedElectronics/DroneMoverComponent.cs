@@ -4,7 +4,7 @@ using Eco.Gameplay.Objects;
 using Eco.Shared.IoC;
 using Quaternion = Eco.Shared.Math.Quaternion;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Drives a WorldObject's movement along a self-computed path, one step per

@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Linq;
 using AdvancedElectronics.Navigation;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Pure formatting logic (U6, R14/R15/R8) behind the dock's server-synced readout.

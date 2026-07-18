@@ -6,7 +6,7 @@ using Eco.Gameplay.Civics.Districts;
 using Eco.Gameplay.LegislationSystem;
 using Eco.Shared.Math;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// District resolution and membership-test logic backing R12 (survey district

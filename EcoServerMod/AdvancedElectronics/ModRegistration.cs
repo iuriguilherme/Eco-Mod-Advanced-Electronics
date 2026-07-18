@@ -1,6 +1,6 @@
 using Eco.Core.Plugins.Interfaces;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Registers the Advanced Electronics mod with the Eco server so its WorldObjects,

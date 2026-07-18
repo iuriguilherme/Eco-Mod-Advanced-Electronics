@@ -4,8 +4,9 @@ using Eco.Shared.IoC;
 using Eco.Shared.Math;
 using Eco.World;
 using Eco.World.Blocks;
+using EcoWorld = Eco.World.World;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Live-Eco-world-backed implementation of the Navigation library's
@@ -42,8 +43,8 @@ namespace AdvancedElectronics
 
         public bool IsSolidAt(int x, int z)
         {
-            var groundY = World.GetTopSolidBlockY(new Vector2i(x, z));
-            var above = World.GetBlock(new Vector3i(x, groundY + 1, z));
+            var groundY = EcoWorld.GetTopSolidBlockY(new Vector2i(x, z));
+            var above = EcoWorld.GetBlock(new Vector3i(x, groundY + 1, z));
 
             // ASSUMPTION -- verify against a live server: IsSolidAt (R2, "the
             // terrain/block at this column is solid and blocks passage") is
@@ -69,7 +70,7 @@ namespace AdvancedElectronics
             // directly matches "ground height" for a walking entity. Its exact
             // water/cliff/overhang edge-case behavior could not be confirmed
             // (method body stripped in the reference assembly).
-            return World.GetTopSolidBlockY(new Vector2i(x, z));
+            return EcoWorld.GetTopSolidBlockY(new Vector2i(x, z));
         }
 
         public bool IsObstacleAt(int x, int z)

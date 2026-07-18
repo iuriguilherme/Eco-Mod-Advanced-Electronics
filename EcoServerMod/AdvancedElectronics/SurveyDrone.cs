@@ -12,7 +12,7 @@ using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Craftable survey drone item (R11). Deliberately just an <see cref="Item"/> in

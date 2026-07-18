@@ -1,6 +1,6 @@
 using Eco.Gameplay.Players;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Owner-attribution helper for the survey drone (U7, R5). Computes the

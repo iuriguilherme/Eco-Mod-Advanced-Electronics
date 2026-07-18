@@ -5,7 +5,7 @@ using Eco.Gameplay.LegislationSystem;
 using Eco.Gameplay.Objects;
 using Eco.Shared.IoC;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Eco-side glue (U8) driving the pure <see cref="AdvancedElectronics.Navigation.DroneStateMachine"/>

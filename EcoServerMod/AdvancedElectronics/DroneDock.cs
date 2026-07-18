@@ -22,7 +22,7 @@ using Eco.World.Blocks;
 using Quaternion = Eco.Shared.Math.Quaternion;
 using Vector3 = System.Numerics.Vector3;
 
-namespace AdvancedElectronics
+namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// The survey drone's home point (R10): a craftable WorldObject with a single
@@ -128,8 +128,10 @@ namespace AdvancedElectronics
 
         protected override void Initialize()
         {
-            base.Initialize();
-
+            // No base.Initialize() call -- matches every vanilla object and the Advanced
+            // Mixology reference mod, none of which call base from their Initialize
+            // override. Component setup below reads components directly (they are already
+            // attached by the [RequireComponent] declarations by the time Initialize runs).
             if (this.TryGetComponent<PublicStorageComponent>(out var storage))
             {
                 // Vanilla storage-init shape (verified against the dedicated server's
