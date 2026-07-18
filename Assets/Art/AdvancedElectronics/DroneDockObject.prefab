@@ -16,7 +16,7 @@ GameObject:
   - component: {fileID: 4627587438344615435}
   - component: {fileID: 7196826573595122387}
   m_Layer: 0
-  m_Name: DroneDock
+  m_Name: DroneDockObject
   m_TagString: ModObject
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

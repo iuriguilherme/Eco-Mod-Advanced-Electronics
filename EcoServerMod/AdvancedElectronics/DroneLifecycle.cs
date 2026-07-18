@@ -9,7 +9,7 @@ namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Eco-side glue (U8) driving the pure <see cref="AdvancedElectronics.Navigation.DroneStateMachine"/>
-    /// from real tick events, <see cref="DroneDock"/>'s district assignment (U4), and
+    /// from real tick events, <see cref="DroneDockObject"/>'s district assignment (U4), and
     /// <see cref="DroneMoverComponent"/>'s pathing results (U2/U3). Implements the
     /// dispatch / return / re-path / unreachable-status behavior for R6, R13, and R15.
     ///
@@ -23,12 +23,12 @@ namespace Eco.Mods.TechTree
     /// this component is designed to live on the same physical drone WorldObject as
     /// <see cref="DroneMoverComponent"/> (it reaches the mover via
     /// <c>this.Parent.TryGetComponent&lt;DroneMoverComponent&gt;()</c>), with
-    /// <see cref="HomeDock"/> set to the pairing <see cref="DroneDock"/> by whichever
+    /// <see cref="HomeDock"/> set to the pairing <see cref="DroneDockObject"/> by whichever
     /// future unit actually spawns that drone WorldObject and pairs it to its dock.
     /// No such WorldObject class exists yet in this codebase -- SurveyDroneItem (U1) is
     /// deliberately just an inventory Item today (see its own doc comment), and
     /// DroneMoverComponent.cs's doc comment already flags itself as "not yet wired into
-    /// DroneDock's dispatch logic" pending this unit. U8's Files list covers the
+    /// DroneDockObject's dispatch logic" pending this unit. U8's Files list covers the
     /// lifecycle/state-machine logic only, not that spawn/pairing wiring or a new
     /// WorldObject prefab class, so this component is written and left equally
     /// unattached (same pattern U2 already established), ready to be required/attached
@@ -79,7 +79,7 @@ namespace Eco.Mods.TechTree
         /// an unpaired/unwired drone WorldObject is inert instead of crashing the
         /// server tick loop.
         /// </summary>
-        public DroneDock HomeDock { get; set; }
+        public DroneDockObject HomeDock { get; set; }
 
         public override void Tick()
         {

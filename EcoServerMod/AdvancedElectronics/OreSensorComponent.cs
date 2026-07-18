@@ -81,7 +81,7 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// Every ore type sampled so far (U6, R14 dock readout) -- pass-through to
-        /// <see cref="SurveyGrid.SampledOreTypes"/>. Lets <see cref="DroneDock"/> build
+        /// <see cref="SurveyGrid.SampledOreTypes"/>. Lets <see cref="DroneDockObject"/> build
         /// its per-ore readout lines without hardcoding a fixed ore list.
         /// </summary>
         public IEnumerable<string> SampledOreTypes => this.surveyGrid.SampledOreTypes;

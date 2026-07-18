@@ -68,13 +68,13 @@ namespace Eco.Mods.TechTree
         /// <summary>
         /// Convenience for the common case: is <paramref name="worldPos"/> inside the
         /// district currently assigned to <paramref name="dock"/>? Re-resolves
-        /// <see cref="DroneDock.AssignedDistrictName"/> by name on every call (rather
+        /// <see cref="DroneDockObject.AssignedDistrictName"/> by name on every call (rather
         /// than the dock caching a live <see cref="District"/> reference) -- see that
         /// property's doc comment for why the dock stores a name, not the object.
         /// Returns false when the dock has no district assigned, or when its assigned
         /// name no longer resolves to a real district (e.g. it was deleted).
         /// </summary>
-        public static bool IsPositionInAssignedDistrict(this DroneDock dock, Vector3 worldPos)
+        public static bool IsPositionInAssignedDistrict(this DroneDockObject dock, Vector3 worldPos)
         {
             if (dock == null) return false;
             var district = FindDistrictByName(dock.AssignedDistrictName);

@@ -28,7 +28,7 @@ namespace Eco.Mods.TechTree
         /// DESIGN CALL (the one genuinely open call in this unit -- see class doc for
         /// why a chat command exists at all): a chat command has no client raycast or
         /// "targeted WorldObject" to read, so this unit must pick which dock the
-        /// command applies to. The target is the *nearest DroneDock the invoking player
+        /// command applies to. The target is the *nearest DroneDockObject the invoking player
         /// has full access to*
         /// (<c>WorldObject.IsAuthorized(user, AccessType.FullAccess)</c>), not simply
         /// the nearest dock in the world. Reasoning: (1) it mirrors "owner/admin" auth
@@ -72,14 +72,14 @@ namespace Eco.Mods.TechTree
         /// reachable from a server-side chat command, so proximity plus per-object
         /// authorization is the most defensible stand-in available.
         /// </summary>
-        private static DroneDock FindNearestAuthorizedDock(User user)
+        private static DroneDockObject FindNearestAuthorizedDock(User user)
         {
-            DroneDock nearest = null;
+            DroneDockObject nearest = null;
             var nearestDistSq = float.MaxValue;
 
             foreach (var obj in ServiceHolder<IWorldObjectManager>.Obj.All)
             {
-                if (!(obj is DroneDock dock)) continue;
+                if (!(obj is DroneDockObject dock)) continue;
                 if (!dock.IsAuthorized(user, AccessType.FullAccess)) continue;
 
                 var distSq = Vector3.DistanceSquared(user.Position, dock.Position);

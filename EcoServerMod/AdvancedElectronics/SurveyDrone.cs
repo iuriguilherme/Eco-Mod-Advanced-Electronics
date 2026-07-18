@@ -17,10 +17,10 @@ namespace Eco.Mods.TechTree
     /// <summary>
     /// Craftable survey drone item (R11). Deliberately just an <see cref="Item"/> in
     /// this unit, not a placeable WorldObject: it lives in a player's or a
-    /// <see cref="DroneDock"/>'s inventory until inserted into a dock's storage slot,
-    /// which pairs it (see DroneDock.OnDockStorageChanged). See <see cref="SurveyDrone"/>
+    /// <see cref="DroneDockObject"/>'s inventory until inserted into a dock's storage slot,
+    /// which pairs it (see DroneDockObject.OnDockStorageChanged). See <see cref="SurveyDrone"/>
     /// below for the physical roaming WorldObject a dock would dispatch -- actually
-    /// spawning/dispatching one from a paired dock (and wiring SurveyDrone.SetOwner into
+    /// spawning/dispatching one from a paired dock (and wiring SurveyDroneObject.SetOwner into
     /// that dispatch/pairing flow) is still a future unit's concern (U8); this unit (U7)
     /// only makes the drone's invulnerability, free-roam, and owner-stamping surface
     /// available on the entity.
@@ -35,8 +35,8 @@ namespace Eco.Mods.TechTree
     }
 
     /// <summary>
-    /// The physical roaming drone WorldObject that a <see cref="DroneDock"/> dispatches
-    /// (U7, R3/R4/R5). Spawned and destroyed by <see cref="DroneDock.OnDockStorageChanged"/>
+    /// The physical roaming drone WorldObject that a <see cref="DroneDockObject"/> dispatches
+    /// (U7, R3/R4/R5). Spawned and destroyed by <see cref="DroneDockObject.OnDockStorageChanged"/>
     /// when a <see cref="SurveyDroneItem"/> is inserted into / removed from the dock --
     /// see that method for the pairing-to-spawn wiring (an orchestrator-level integration
     /// pass connecting U1/U2/U5/U7/U8's independently-built pieces, since no single unit's
@@ -77,7 +77,7 @@ namespace Eco.Mods.TechTree
     /// <item><description>
     /// R5 (owner attribution, law enforcement deferred): <see cref="OwnerName"/> /
     /// <see cref="OwnerId"/> are plain serialized fields (mirrors
-    /// DroneDock.AssignedDistrictName's own "trivially serializable" reasoning, rather
+    /// DroneDockObject.AssignedDistrictName's own "trivially serializable" reasoning, rather
     /// than serializing a <see cref="DroneOwnership"/> value type directly, since Eco's
     /// serializer support for custom structs was not verified), stamped via
     /// <see cref="SetOwner"/>. Wiring SetOwner into the dock's pairing/dispatch flow is
@@ -91,19 +91,19 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(DroneMoverComponent))]
     [RequireComponent(typeof(OreSensorComponent))]
     [RequireComponent(typeof(DroneLifecycle))]
-    public class SurveyDrone : WorldObject
+    public class SurveyDroneObject : WorldObject
     {
         /// <summary>
         /// Registers the drone's single-block placement footprint. Required even though
         /// the drone is spawned via WorldObjectManager.ForceAdd (not player-placed) --
         /// a WorldObject with no registered occupancy has no valid footprint and the
-        /// spawn is silently rejected the same way manual placement is. See DroneDock's
+        /// spawn is silently rejected the same way manual placement is. See DroneDockObject's
         /// static constructor for the full explanation (copied from the Advanced
         /// Mixology reference mod).
         /// </summary>
-        static SurveyDrone()
+        static SurveyDroneObject()
         {
-            AddOccupancy<SurveyDrone>(new List<BlockOccupancy>
+            AddOccupancy<SurveyDroneObject>(new List<BlockOccupancy>
             {
                 new BlockOccupancy(new Vector3i(0, 0, 0)),
             });
@@ -124,7 +124,7 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// Stamps this drone's owner (R5) from the acting user. A plain setter here --
-        /// mirrors DroneDock.SetAssignedDistrict -- so SurveyDrone itself does not need
+        /// mirrors DroneDockObject.SetAssignedDistrict -- so SurveyDroneObject itself does not need
         /// to know about the dock/pairing/chat-command layers that decide WHEN to call
         /// it (that wiring is U8's job). Delegates the actual (name, id) assignment to
         /// <see cref="DroneOwnership.FromUser"/>.
@@ -165,7 +165,7 @@ namespace Eco.Mods.TechTree
             this.CraftMinutes = new ConstantValue(10);
             this.Initialize(Localizer.DoStr("Survey Drone"), typeof(SurveyDroneRecipe));
 
-            // ASSUMPTION: see DroneDockRecipe in DroneDock.cs -- same crafting-table
+            // ASSUMPTION: see DroneDockRecipe in DroneDockObject.cs -- same crafting-table
             // pick (ElectricMachinistTableObject), same caveat about no dedicated mod
             // bench existing yet.
             CraftingComponent.AddRecipe(typeof(ElectricMachinistTableObject), this);

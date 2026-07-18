@@ -17,7 +17,7 @@ namespace Eco.Mods.TechTree
     /// list), it never uses an Eco type, so nothing here actually requires a running
     /// Eco server or the reference assemblies to exercise or reason about.
     ///
-    /// <see cref="DroneDock"/> (the Eco-side caller) is responsible ONLY for gathering
+    /// <see cref="DroneDockObject"/> (the Eco-side caller) is responsible ONLY for gathering
     /// the live status/ore-result inputs and pushing this class's output through the
     /// real <c>WorldObject.SetAnimatedState</c> sync API -- see that class's
     /// <c>RefreshReadout</c> method.
@@ -26,7 +26,7 @@ namespace Eco.Mods.TechTree
     {
         /// <summary>
         /// Upper bound on how many per-ore lines the readout will ever produce.
-        /// <see cref="DroneDock"/> maps each line to a FIXED, ahead-of-time-named
+        /// <see cref="DroneDockObject"/> maps each line to a FIXED, ahead-of-time-named
         /// server-synced state slot (the client-side Unity WorldObject's
         /// <c>StringStates</c> array declares a fixed set of names, not a dynamic
         /// list -- see WorldObject.cs in the Unity project) -- an unbounded number of

@@ -27,7 +27,7 @@ namespace Eco.Mods.TechTree
     /// <summary>
     /// The survey drone's home point (R10): a craftable WorldObject with a single
     /// storage slot restricted to <see cref="SurveyDroneItem"/>. Inserting a drone item
-    /// there pairs it to this dock and spawns its physical <see cref="SurveyDrone"/>
+    /// there pairs it to this dock and spawns its physical <see cref="SurveyDroneObject"/>
     /// WorldObject (R11) -- see <see cref="OnDockStorageChanged"/>. Removing it despawns
     /// that WorldObject.
     ///
@@ -51,7 +51,7 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(PublicStorageComponent))]
     [RequireComponent(typeof(OccupancyRequirementComponent))]
     [Tag("Usable")]
-    public class DroneDock : WorldObject, IRepresentsItem
+    public class DroneDockObject : WorldObject, IRepresentsItem
     {
         // Single storage slot, drone item only (see Initialize). Slot count is a
         // vanilla-proven Initialize(int) arg; the item-type and stack-limit
@@ -70,13 +70,13 @@ namespace Eco.Mods.TechTree
         /// appears in their visible source, but a hand-written mod object has no
         /// generator and must do it itself. Pattern copied from the Advanced Mixology
         /// reference mod (AdvancedMixologyTableObject's static constructor). Without
-        /// this, GetOccupancyInfo(typeof(DroneDock)) is empty and the object silently
+        /// this, GetOccupancyInfo(typeof(DroneDockObject)) is empty and the object silently
         /// cannot be placed (no ghost, no error) -- the actual root cause of the dock
         /// being unplaceable, distinct from the occupancy attributes on the item.
         /// </summary>
-        static DroneDock()
+        static DroneDockObject()
         {
-            AddOccupancy<DroneDock>(new List<BlockOccupancy>
+            AddOccupancy<DroneDockObject>(new List<BlockOccupancy>
             {
                 new BlockOccupancy(new Vector3i(0, 0, 0)),
             });
@@ -95,11 +95,11 @@ namespace Eco.Mods.TechTree
         public bool HasDrone => this.PairedDrone != null;
 
         /// <summary>
-        /// The physical <see cref="SurveyDrone"/> WorldObject spawned for the currently
+        /// The physical <see cref="SurveyDroneObject"/> WorldObject spawned for the currently
         /// paired drone item, or null when no drone is paired. See the KNOWN LIMITATION
         /// on this class's doc comment -- not serialized.
         /// </summary>
-        public SurveyDrone SpawnedDrone { get; private set; }
+        public SurveyDroneObject SpawnedDrone { get; private set; }
 
         /// <summary>
         /// Name of the survey district assigned via <c>/drone district &lt;name&gt;</c>
@@ -118,7 +118,7 @@ namespace Eco.Mods.TechTree
         /// Sets the assigned survey district by name, or clears it when
         /// <paramref name="districtName"/> is null/blank. Kept as a plain setter here
         /// (name validation against the district registry happens in
-        /// DroneCommands.District before calling this) so DroneDock itself does not
+        /// DroneCommands.District before calling this) so DroneDockObject itself does not
         /// need to depend on the chat-command layer.
         /// </summary>
         public void SetAssignedDistrict(string districtName)
@@ -149,7 +149,7 @@ namespace Eco.Mods.TechTree
         /// <summary>
         /// Fires on any change to the dock's storage slot. Single-slot dock, so the
         /// first non-empty stack (if any) is the paired drone. Spawns the physical
-        /// <see cref="SurveyDrone"/> WorldObject on a null-to-paired transition and
+        /// <see cref="SurveyDroneObject"/> WorldObject on a null-to-paired transition and
         /// despawns it on a paired-to-null transition (R10/R11).
         /// </summary>
         private void OnDockStorageChanged(User user)
@@ -173,11 +173,11 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Spawns and wires a <see cref="SurveyDrone"/> WorldObject for a freshly-paired
+        /// Spawns and wires a <see cref="SurveyDroneObject"/> WorldObject for a freshly-paired
         /// drone item. Mirrors the spike's proven
         /// <c>WorldObjectManager.ForceAdd(type, user, position, rotation, bool)</c> spawn
         /// call (see docs/solutions/best-practices/eco-013-server-driven-movement.md).
-        /// A null/non-<see cref="SurveyDrone"/> spawn result (placement rejected, or the
+        /// A null/non-<see cref="SurveyDroneObject"/> spawn result (placement rejected, or the
         /// type failed to resolve) leaves <see cref="SpawnedDrone"/> null rather than
         /// throwing -- the dock stays paired-but-not-dispatched, a degraded but safe
         /// state, since ForceAdd's exact rejection conditions are unconfirmed offline
@@ -187,7 +187,7 @@ namespace Eco.Mods.TechTree
         private void SpawnDrone(User user)
         {
             var spawnPos = this.Position + new Vector3(1.5f, 0f, 0f);
-            var obj = WorldObjectManager.ForceAdd(typeof(SurveyDrone), user, spawnPos, Quaternion.Identity, false) as SurveyDrone;
+            var obj = WorldObjectManager.ForceAdd(typeof(SurveyDroneObject), user, spawnPos, Quaternion.Identity, false) as SurveyDroneObject;
             if (obj == null)
                 return;
 
@@ -326,7 +326,7 @@ namespace Eco.Mods.TechTree
     [LocDescription("Home point for a survey drone. Insert a Survey Drone to pair and dispatch it; assign a survey district with /drone district <name>.")]
     [Ecopedia("Crafted Objects", "Advanced Electronics", true, true, null)]
     [Weight(1000)]
-    public class DroneDockItem : WorldObjectItem<DroneDock>
+    public class DroneDockItem : WorldObjectItem<DroneDockObject>
     {
         protected override OccupancyContext GetOccupancyContext =>
             new SideAttachedContext(0 | DirectionAxisFlags.Down, WorldObject.GetOccupancyInfo(this.WorldObjectType));

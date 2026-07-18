@@ -28,8 +28,8 @@ namespace Eco.Mods.TechTree
     /// does not reimplement any pathing logic, and that logic is not
     /// re-tested here (see this unit's "Test scenarios" note).
     ///
-    /// Not yet wired into DroneDock's dispatch logic -- that is U8 (drone
-    /// lifecycle) per DroneDock.cs's own scope note. SetDestination() is this
+    /// Not yet wired into DroneDockObject's dispatch logic -- that is U8 (drone
+    /// lifecycle) per DroneDockObject.cs's own scope note. SetDestination() is this
     /// unit's entry point for exercising the mover independently (e.g. from a
     /// future debug command or U8's dispatch code); no chat command surface is
     /// added here.

@@ -24,7 +24,7 @@ namespace Eco.Mods.TechTree
     /// below (not just their signatures) could not be executed/confirmed
     /// offline. Every place that rests on such an unverified semantic is
     /// flagged ASSUMPTION, matching the pattern already established in
-    /// DroneDock.cs -- these are expected to need live-server confirmation,
+    /// DroneDockObject.cs -- these are expected to need live-server confirmation,
     /// not blockers to shipping this unit.
     /// </summary>
     public sealed class EcoWorldSampler : IWorldSampler

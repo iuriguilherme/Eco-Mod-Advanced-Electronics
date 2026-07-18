@@ -4,7 +4,7 @@ namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Registers the Advanced Electronics mod with the Eco server so its WorldObjects,
-    /// items, and recipes (<see cref="DroneDock"/>, <see cref="SurveyDroneItem"/>) load.
+    /// items, and recipes (<see cref="DroneDockObject"/>, <see cref="SurveyDroneItem"/>) load.
     ///
     /// Mirrors the feasibility spike's registration pattern
     /// (EcoServerMod/AdvancedElectronics.Spike/ModRegistration.cs) but this is a clean

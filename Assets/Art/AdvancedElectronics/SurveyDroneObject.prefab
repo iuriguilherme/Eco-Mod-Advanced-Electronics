@@ -129,7 +129,7 @@ GameObject:
   - component: {fileID: 244476273122908960}
   - component: {fileID: 4288958467351861925}
   m_Layer: 0
-  m_Name: SurveyDrone
+  m_Name: SurveyDroneObject
   m_TagString: ModObject
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

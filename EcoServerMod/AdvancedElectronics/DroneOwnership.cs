@@ -4,7 +4,7 @@ namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// Owner-attribution helper for the survey drone (U7, R5). Computes the
-    /// (OwnerName, OwnerId) pair that <see cref="SurveyDrone.SetOwner"/> stamps onto the
+    /// (OwnerName, OwnerId) pair that <see cref="SurveyDroneObject.SetOwner"/> stamps onto the
     /// entity -- see that method for where/when it gets called.
     ///
     /// Deliberately not a live <see cref="User"/> reference stored anywhere: users
@@ -20,7 +20,7 @@ namespace Eco.Mods.TechTree
     /// </summary>
     public readonly struct DroneOwnership
     {
-        /// <summary>No owner assigned (e.g. before <see cref="SurveyDrone.SetOwner"/> is ever called).</summary>
+        /// <summary>No owner assigned (e.g. before <see cref="SurveyDroneObject.SetOwner"/> is ever called).</summary>
         public static readonly DroneOwnership Unowned = new DroneOwnership(null, 0);
 
         /// <summary>Display name of the owner at the moment of stamping.</summary>
