@@ -67,7 +67,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 73c176f402d2c2f4d929aa5da7585d17, type: 2}
+  - {fileID: 2100000, guid: efa702c792d646f0afca256e6a46cfba, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -240,8 +240,11 @@ MonoBehaviour:
   OnStateChangedEvents: []
   StringStates: []
   OnStringStateChanged: []
-  FloatStates: []
-  OnFloatStateChanged: []
+  FloatStates:
+  - MoveSpeed
+  OnFloatStateChanged:
+  - m_PersistentCalls:
+      m_Calls: []
   Events: []
   EventHandlers: []
   defaultRedColor: {r: 0, g: 0, b: 0, a: 0}
@@ -249,7 +252,7 @@ MonoBehaviour:
   defaultBlueColor: {r: 0, g: 0, b: 0, a: 0}
   hasOccupancy: 1
   overrideOccupancy: 0
-  size: {x: 0, y: 0, z: 0}
+  size: {x: 1, y: 1, z: 1}
   occupancyOffset: {x: 0, y: 0, z: 0}
   interactable: 1
 --- !u!114 &244476273122908960
