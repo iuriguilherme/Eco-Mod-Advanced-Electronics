@@ -13,8 +13,10 @@ using Eco.Gameplay.Items.Recipes;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Occupancy;
 using Eco.Gameplay.Players;
+using Eco.Gameplay.Systems.NewTooltip;
 using Eco.Mods.TechTree;
 using Eco.Shared.IoC;
+using Eco.Shared.Items;
 using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
@@ -255,9 +257,21 @@ namespace Eco.Mods.TechTree
 
         private float secondsSinceLastReadoutRefresh;
 
+        /// <summary>
+        /// Animation-state contract name (v1 closure plan KTD1): true while the paired
+        /// drone is EnRoute or Surveying. The client prefab declares this name in its
+        /// bool States array; future art binds an animator parameter to it. Frozen —
+        /// renaming touches server, prefab, and bundle at once.
+        /// </summary>
+        private const string WorkingStateName = "Working";
+
+        private bool? lastPushedWorking;
+
         public override void Tick()
         {
             base.Tick();
+
+            this.PushWorkingState();
 
             var manager = ServiceHolder<IWorldObjectManager>.Obj;
             var deltaTime = manager != null && manager.TickDeltaTime > 0f
@@ -270,6 +284,28 @@ namespace Eco.Mods.TechTree
 
             this.secondsSinceLastReadoutRefresh = 0f;
             this.RefreshReadout();
+        }
+
+        /// <summary>
+        /// Pushes the dock's <see cref="WorkingStateName"/> animation state, change-gated
+        /// so the synced AnimatedStates dictionary is only written on transitions rather
+        /// than every tick (SetAnimatedState is a synced write; same-value churn has no
+        /// consumer).
+        /// </summary>
+        private void PushWorkingState()
+        {
+            var working = false;
+            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed
+                && this.SpawnedDrone.TryGetComponent<DroneLifecycle>(out var lifecycle))
+            {
+                working = lifecycle.Status == DroneStatus.EnRoute || lifecycle.Status == DroneStatus.Surveying;
+            }
+
+            if (this.lastPushedWorking == working)
+                return;
+
+            this.lastPushedWorking = working;
+            this.SetAnimatedState(WorkingStateName, working);
         }
 
         /// <summary>
@@ -310,6 +346,47 @@ namespace Eco.Mods.TechTree
             }
 
             this.SetAnimatedState(CoverageStateName, DockReadout.ComputeCoveragePercent(oreResults));
+        }
+
+        /// <summary>
+        /// Renders the detailed survey readout (per-ore densest-cell lines + coverage
+        /// gauge, R8/R14) into this dock's in-game info window via Eco's NewTooltip
+        /// system. This is the "popup panel" surface: the world-space text above the
+        /// dock (<see cref="DockReadoutDisplay"/>) is deliberately reserved for the short
+        /// drone status line only, so the volumetric per-ore detail lives here where it
+        /// has room. <see cref="CacheAs.Disabled"/> recomputes on every view -- the same
+        /// choice vanilla PumpJackItem.OilTooltip makes for live, position/state-derived
+        /// data -- because the paired drone's sampled ore data changes continuously while
+        /// it roams. Reads the same <see cref="SpawnedDrone"/> sensor inputs as
+        /// <see cref="RefreshReadout"/> and formats them through <see cref="DockReadout"/>.
+        /// </summary>
+        [NewTooltip(CacheAs.Disabled, 100)]
+        public LocString SurveyReadoutTooltip()
+        {
+            IReadOnlyList<(string OreType, DensestCellResult Result)> oreResults =
+                Array.Empty<(string, DensestCellResult)>();
+
+            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed
+                && this.SpawnedDrone.TryGetComponent<OreSensorComponent>(out var sensor))
+            {
+                oreResults = sensor.SampledOreTypes
+                    .Select(oreType => (oreType, sensor.DensestCell(oreType)))
+                    .ToList();
+            }
+
+            var oreLines = oreResults
+                .Where(e => e.Result.Found)
+                .OrderBy(e => e.OreType, StringComparer.Ordinal)
+                .Take(DockReadout.MaxOreLines)
+                .Select(e => DockReadout.FormatOreLine(e.OreType, e.Result))
+                .ToList();
+
+            var coverage = DockReadout.ComputeCoveragePercent(oreResults);
+            var body = oreLines.Count > 0
+                ? string.Join("\n", oreLines)
+                : "No survey data yet.";
+
+            return Localizer.DoStr($"Survey Readout\n{body}\nCoverage: {coverage:F0}%");
         }
     }
 

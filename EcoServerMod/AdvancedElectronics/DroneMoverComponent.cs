@@ -1,7 +1,9 @@
 using System.Numerics;
 using AdvancedElectronics.Navigation;
+using Eco.Core.Controller;
 using Eco.Gameplay.Objects;
 using Eco.Shared.IoC;
+using Eco.Shared.Serialization;
 using Quaternion = Eco.Shared.Math.Quaternion;
 
 namespace Eco.Mods.TechTree
@@ -34,6 +36,8 @@ namespace Eco.Mods.TechTree
     /// future debug command or U8's dispatch code); no chat command surface is
     /// added here.
     /// </summary>
+    [Serialized]
+    [NoIcon]
     public class DroneMoverComponent : WorldObjectComponent
     {
         // Design constants (not unverified live APIs -- these are tunable
@@ -47,9 +51,20 @@ namespace Eco.Mods.TechTree
         // 50ms mirrors the spike's timer-strategy interval (SpikeMoveCommand.cs).
         private const float FallbackTickDeltaSeconds = 0.05f;
 
+        /// <summary>
+        /// Animation-state contract name (v1 closure plan KTD1): the drone's current
+        /// movement speed in world units/second — the mover's constant while moving,
+        /// 0 when stationary. The client prefab declares this name in its FloatStates
+        /// array; future art binds an animator Speed parameter to it. Frozen — renaming
+        /// touches server, prefab, and bundle at once.
+        /// </summary>
+        private const string MoveSpeedStateName = "MoveSpeed";
+
         private GridPathfinder pathfinder;
         private PathResult currentPath = PathResult.NotFound;
         private int waypointIndex;
+        private bool lastPushedMoving;
+        private bool hasPushedMoveSpeed;
 
         /// <summary>True while a path is active and the drone has not yet reached its final waypoint.</summary>
         public bool IsMoving => this.currentPath.Found && this.waypointIndex < this.currentPath.Waypoints.Count;
@@ -86,6 +101,17 @@ namespace Eco.Mods.TechTree
         public override void Tick()
         {
             base.Tick();
+
+            // Push MoveSpeed on movement transitions (and once initially so the key
+            // always exists after the first tick) — before the early return below, or
+            // the moving->stationary transition would never be pushed.
+            var moving = this.IsMoving;
+            if (!this.hasPushedMoveSpeed || moving != this.lastPushedMoving)
+            {
+                this.hasPushedMoveSpeed = true;
+                this.lastPushedMoving = moving;
+                this.Parent.SetAnimatedState(MoveSpeedStateName, moving ? MoveSpeedMetersPerSecond : 0f);
+            }
 
             if (!this.IsMoving)
                 return;

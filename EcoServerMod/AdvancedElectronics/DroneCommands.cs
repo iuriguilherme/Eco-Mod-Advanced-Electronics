@@ -67,6 +67,72 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
+        /// Dumps the complete server-side state of the nearest accessible dock and its
+        /// drone. Diagnostic surface so ONE live session yields full information about
+        /// the pairing/dispatch/survey pipeline without depending on any client UI
+        /// rendering (world text, tooltip, window) and without repeated
+        /// restart-observe cycles — every layer reports its own truth in chat.
+        /// </summary>
+        [ChatSubCommand("Drone", "Dump full drone/dock state for your nearest accessible dock (diagnostic).", ChatAuthorizationLevel.User)]
+        public static void Status(User user)
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null)
+            {
+                user.MsgLocStr("No drone dock you have access to was found nearby.");
+                return;
+            }
+
+            user.MsgLocStr($"Dock '{dock.Name}' at {dock.Position3i}:");
+            user.MsgLocStr($"  District: {(string.IsNullOrEmpty(dock.AssignedDistrictName) ? "(none)" : dock.AssignedDistrictName)}");
+            user.MsgLocStr($"  Paired drone item: {(dock.HasDrone ? "yes" : "no")}");
+            user.MsgLocStr($"  Anim state Working: {FormatAnimState(dock, "Working")}");
+
+            var drone = dock.SpawnedDrone;
+            if (drone == null || drone.IsDestroyed)
+            {
+                user.MsgLocStr("  Spawned drone: none (insert a Survey Drone to spawn one).");
+                return;
+            }
+
+            user.MsgLocStr($"  Spawned drone at {drone.Position3i} (owner: {(drone.HasOwner ? drone.OwnerName : "unstamped")})");
+            user.MsgLocStr($"  Anim state MoveSpeed: {FormatAnimState(drone, "MoveSpeed")}");
+
+            if (drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
+                user.MsgLocStr($"  Lifecycle: {lifecycle.Status}, sampling={(lifecycle.ShouldSample ? "yes" : "no")}, homeDock={(lifecycle.HomeDock != null ? "set" : "NOT SET (dispatch wiring gap)")}");
+            else
+                user.MsgLocStr("  Lifecycle: component MISSING");
+
+            if (drone.TryGetComponent<DroneMoverComponent>(out var mover))
+                user.MsgLocStr($"  Mover: {(mover.IsMoving ? "moving" : "stationary")}");
+            else
+                user.MsgLocStr("  Mover: component MISSING");
+
+            if (drone.TryGetComponent<OreSensorComponent>(out var sensor))
+            {
+                var any = false;
+                foreach (var oreType in sensor.SampledOreTypes)
+                {
+                    any = true;
+                    var cell = sensor.DensestCell(oreType);
+                    user.MsgLocStr($"  Ore '{oreType}': densest {(cell.Found ? $"cell {cell.Cell}, {cell.OreCount}/{cell.SampledCount}" : "no data")}");
+                }
+                if (!any) user.MsgLocStr("  Ore data: none sampled yet.");
+            }
+            else
+                user.MsgLocStr("  Sensor: component MISSING");
+        }
+
+        /// <summary>
+        /// Reads a pushed animation-state value for the diagnostic readback (v1 closure
+        /// plan R3). States are pushed on change, so a just-placed object may not carry
+        /// the key yet — TryGetValue instead of the throwing indexer, reporting
+        /// "not yet pushed" for that normal transient case.
+        /// </summary>
+        private static string FormatAnimState(WorldObject obj, string name) =>
+            obj.AnimatedStates.TryGetValue(name, out var value) ? (value?.ToString() ?? "null") : "not yet pushed";
+
+        /// <summary>
         /// Nearest-owned-or-authorized-dock lookup backing the design call documented
         /// on <see cref="District"/>. Eco exposes no "targeted WorldObject" helper
         /// reachable from a server-side chat command, so proximity plus per-object
