@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using AdvancedElectronics.Navigation;
+using Eco.Core.Controller;
 using Eco.Gameplay.Objects;
+using Eco.Shared.Serialization;
 
 namespace Eco.Mods.TechTree
 {
@@ -30,6 +32,8 @@ namespace Eco.Mods.TechTree
     /// blocks to sample each tick and feeds the results in; it does not
     /// reimplement any density/cell-mapping logic itself.
     /// </summary>
+    [Serialized]
+    [NoIcon]
     public class OreSensorComponent : WorldObjectComponent
     {
         // Design constant (not an unverified live API -- a tunable choice,
@@ -55,6 +59,19 @@ namespace Eco.Mods.TechTree
             (0, 1),
             (0, -1),
         };
+
+        // How far below the surface one prospecting sample reaches. Ore in Eco sits
+        // underground, so a sensor that only read the surface block found nothing no
+        // matter how far the drone roamed -- the readout stayed "none sampled yet"
+        // forever. This is the depth a v1 sensor can "see"; a deeper-scanning sensor is
+        // a natural later upgrade alongside better-climbing drones.
+        private const int SurveyDepthBlocks = 24;
+
+        // One column is scanned per tick, cycling through SampleOffsets, so the
+        // per-tick cost stays near the old single-block read (SurveyDepthBlocks lookups)
+        // rather than multiplying by the whole footprint. The drone roams continuously,
+        // so coverage accumulates as it moves.
+        private int nextSampleOffset;
 
         private SurveyGrid surveyGrid;
         private IOreReader oreReader;
@@ -104,11 +121,23 @@ namespace Eco.Mods.TechTree
             int centerX = (int)System.MathF.Round(position.X);
             int centerZ = (int)System.MathF.Round(position.Z);
 
-            foreach (var offset in SampleOffsets)
+            // Prospect ONE column per tick, cycling through the footprint.
+            var offset = SampleOffsets[this.nextSampleOffset];
+            this.nextSampleOffset = (this.nextSampleOffset + 1) % SampleOffsets.Length;
+
+            int x = centerX + offset.Dx;
+            int z = centerZ + offset.Dz;
+            int surfaceY = (int)this.worldSampler.GroundHeightAt(x, z);
+
+            // Scan DOWN from the surface: ore is underground, so reading only the
+            // surface block reported "no ore" everywhere regardless of what the drone
+            // was standing on. Every block in the column counts toward the cell's
+            // sampled total, so density stays "ore found / blocks looked at".
+            for (int depth = 0; depth < SurveyDepthBlocks; depth++)
             {
-                int x = centerX + offset.Dx;
-                int z = centerZ + offset.Dz;
-                int y = (int)this.worldSampler.GroundHeightAt(x, z);
+                int y = surfaceY - depth;
+                if (y < 0)
+                    break;
 
                 // TryGetOreType leaves oreType null for a non-ore block --
                 // RecordSample treats that as "sampled, no ore" (still counts

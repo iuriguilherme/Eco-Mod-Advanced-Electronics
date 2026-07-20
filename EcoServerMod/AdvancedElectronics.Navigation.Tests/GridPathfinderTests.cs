@@ -22,8 +22,12 @@ namespace AdvancedElectronics.Navigation.Tests
 
             Assert.True(result.Found);
             Assert.NotEmpty(result.Waypoints);
-            Assert.Equal(new Vector3(0, 0, 0), result.Waypoints[0]);
-            Assert.Equal(new Vector3(5, 0, 0), result.Waypoints[result.Waypoints.Count - 1]);
+
+            // Waypoints sit one above the ground surface -- the cell the drone stands
+            // IN, not the ground block itself. Asserting ground height here is what let
+            // the drone render sunk one block into the floor.
+            Assert.Equal(new Vector3(0, 1, 0), result.Waypoints[0]);
+            Assert.Equal(new Vector3(5, 1, 0), result.Waypoints[result.Waypoints.Count - 1]);
 
             // "Direct line": z never deviates, x strictly increases toward the goal.
             for (int i = 1; i < result.Waypoints.Count; i++)

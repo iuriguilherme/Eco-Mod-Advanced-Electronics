@@ -184,8 +184,22 @@ namespace AdvancedElectronics.Navigation
         private static GridColumn ToColumn(Vector3 position) =>
             new GridColumn((int)MathF.Round(position.X), (int)MathF.Round(position.Z));
 
+        /// <summary>
+        /// A waypoint sits in the cell the entity STANDS IN -- one above the ground
+        /// surface -- not in the ground block itself. <see cref="IWorldSampler.GroundHeightAt"/>
+        /// reports the top solid block's height, so a waypoint placed at exactly that
+        /// height puts the body inside the floor (it rendered sunk by one block).
+        /// This matches the engine's own convention that a walkable node is the first
+        /// empty block above a solid one.
+        ///
+        /// Step-height comparisons deliberately keep using the raw ground height: both
+        /// columns shift by the same +1, so the difference is unchanged.
+        /// </summary>
         private Vector3 ToWaypoint(GridColumn column) =>
-            new Vector3(column.X, _sampler.GroundHeightAt(column.X, column.Z), column.Z);
+            new Vector3(column.X, _sampler.GroundHeightAt(column.X, column.Z) + StandingHeightOffset, column.Z);
+
+        /// <summary>Vertical offset from the ground surface to the cell an entity occupies.</summary>
+        private const float StandingHeightOffset = 1f;
 
         private List<Vector3> BuildWaypoints(Dictionary<GridColumn, GridColumn> cameFrom, GridColumn end)
         {
