@@ -1,0 +1,155 @@
+---
+title: "Hand-written walkability made a modded entity's own occupancy block impassable, so pathfinding never returned a path"
+date: 2026-07-20
+category: runtime-errors
+module: EcoServerMod
+problem_type: runtime_error
+component: tooling
+severity: critical
+symptoms:
+  - "A modded WorldObject with self-written pathfinding never moves; every dispatch immediately reports the no-path/unreachable state"
+  - "Failure is independent of distance, biome and terrain -- 20 metres and 2000 metres fail identically, grass and bare desert fail identically"
+  - "No exceptions in the server log; the mod loads and ticks cleanly"
+root_cause: wrong_api
+resolution_type: code_fix
+tags: [eco-modding, pathfinding, walkability, block-attributes, occupancy, world-api, server-mod]
+related_components: [EcoServerMod/AdvancedElectronics, EcoServerMod/AdvancedElectronics.Navigation]
+---
+
+# Hand-written walkability made a modded entity's own occupancy block impassable, so pathfinding never returned a path
+
+## Problem
+
+A survey drone with self-written A* pathfinding never moved. Every dispatch ended in the
+`Unreachable` state. The world-sampling predicate behind the pathfinder decided
+"is this column blocked?" with a hand-invented rule instead of the engine's own definition
+of walkability, and that rule classified the drone's own position as solid terrain.
+
+## Symptoms
+
+- The lifecycle status reports `Unreachable` immediately after every dispatch; the mover
+  stays `stationary`.
+- Every other layer looks healthy: the object places, the drone spawns, ownership is
+  stamped, the district assignment resolves, components tick.
+- **The failure is invariant.** Distance does not matter (20m fails exactly like 2000m),
+  and terrain does not matter (thick grass fails exactly like bare desert). That
+  invariance is the signature: a *routing* problem varies with geometry, a *predicate*
+  problem does not.
+- Nothing in the server log — no exception, because nothing throws.
+
+## What Didn't Work
+
+Three wrong root causes were pursued before the real one, each costing a live test:
+
+- **"Implement the drone as an animal."** A misread of the instruction to study how animals
+  pathfind. A spike proved vanilla animals cannot be externally puppeteered — true, and
+  irrelevant. The instruction meant *read the animal pathfinding code as the reference
+  implementation*, which is exactly where the answer was.
+- **"The destination search radius is too small."** The destination finder did have a
+  hard 96-unit cap, and removing it was a real improvement — but the user disproved it
+  directly by placing the dock 20 metres from the district and still getting
+  `Unreachable`.
+- **"Vegetation reads as solid."** Correct as far as it went (grass is a non-empty block,
+  and the predicate called every non-empty block solid), but the user disproved it as the
+  whole story by testing in open desert where nothing grows.
+
+Each hypothesis was plausible and none was reached by tracing the failing call. The
+invariance of the symptom was visible from the first report and pointed at the predicate
+the entire time.
+
+## Solution
+
+Replace the invented predicate with the engine's own definition, and separate terrain
+blocking from object occupancy.
+
+The engine states its rule in `Eco.Simulation`'s pathfinding (`PackedPathNode.IsPathable`),
+including the comment *"Walkable blocks are the first empty block above a solid block,
+where there are two empty blocks above it (or plants)"*. It tests `Is<Solid>()` and
+`Is<Occupied>()` — never "is not empty":
+
+```csharp
+var block = World.GetBlock(pos);
+if (block.Is<Solid>() || block.Is<Occupied>()) return false;   // room to stand
+var underblock = World.GetBlock(pos.AddY(-1));
+if (!underblock.Is<Solid>() && !underblock.Is<UnderWater>()) return false;  // ground beneath
+var overBlock = World.GetBlock(pos.AddY(1));
+if (overBlock.Is<Solid>() || overBlock.Is<Occupied>()) return false;        // headroom
+```
+
+Before — a guess, in the mod's own sampler:
+
+```csharp
+var above = World.GetBlock(new Vector3i(x, groundY + 1, z));
+return above == null || !above.Is<Empty>();   // ANY non-empty block counts as solid
+```
+
+After — mirroring the engine, with occupancy split out:
+
+```csharp
+// IsSolidAt: terrain geometry only. Plants are walkable, exactly as the engine treats them.
+var block = World.GetBlock(stand);
+if (block != null && block.Is<Solid>()) return true;                 // no room to stand
+var under = World.GetBlock(stand + Vector3i.Down);
+if (under == null || (!under.Is<Solid>() && !under.Is<UnderWater>())) return true;
+var over = World.GetBlock(stand + Vector3i.Up);
+if (over != null && over.Is<Solid>()) return true;                   // no headroom
+return false;
+
+// IsObstacleAt: placed objects, read from the Occupied attribute their blocks carry.
+```
+
+Splitting them is load-bearing: the pathfinder exempts its start and goal columns from the
+*obstacle* predicate (an entity always occupies its own column, and a dock leg must path
+into the dock), but never from the *solidity* predicate. Occupancy folded into solidity is
+therefore unwaivable.
+
+## Why This Works
+
+Placing a WorldObject writes blocks into its occupancy footprint
+(`World.SetBlock(typeof(WorldObjectBlock), worldPos, obj)`), and `WorldObjectBlock` is
+declared `[Serialized, Transient, Occupied]` — **not** `Empty`. The drone stands inside its
+own occupancy block.
+
+So `!above.Is<Empty>()` returned true for the drone's own column, and the pathfinder's
+first guard bailed before expanding a single node:
+
+```csharp
+if (_sampler.IsSolidAt(startColumn...) || _sampler.IsSolidAt(goalColumn...))
+    return PathResult.NotFound;
+```
+
+Every dispatch failed at that line, in any biome, at any distance — which is precisely why
+the symptom was invariant. Vegetation was a second instance of the same defective rule
+(grass is also non-empty), which is why a grass-only explanation looked convincing and
+still failed the desert test.
+
+Testing `Is<Solid>()` fixes both instances at once: neither a plant nor a `WorldObjectBlock`
+is `Solid`, so the start column is walkable, while genuine terrain still blocks.
+
+## Prevention
+
+- **When the host engine already implements a predicate, mirror it rather than inventing
+  one.** Walkability, reachability, and placement validity are engine semantics, not
+  intuitions. Find the engine's own implementation and copy its tests; a plausible-sounding
+  reimplementation ("solid means not empty") will diverge on exactly the cases that matter.
+- **An entity occupies its own position.** Any self-authored spatial query — pathfinding,
+  obstacle checks, line of sight — must decide what happens when the query lands on the
+  asking entity. Start/goal exemption is one answer; an ignore-set is another; silently
+  treating yourself as an obstacle is the bug.
+- **Treat symptom invariance as evidence about the layer.** If a failure does not vary with
+  distance, terrain, or scale, it is not in the logic that consumes those variables. That
+  observation alone excluded routing and pointed at the predicate.
+- **State the semantic contract at the interface, not just the implementation.** The
+  sampler interface now spells out that vegetation is walkable and that "blocks passage"
+  means geometry, so a future implementation cannot quietly reintroduce the old rule. A
+  regression test pins it.
+
+## Related
+
+- `docs/solutions/best-practices/eco-013-server-driven-movement.md` — the movement/tick
+  surface this pathfinder drives.
+- `docs/solutions/workflow-issues/tracing-beats-theorising-on-invariant-failures.md` — the
+  diagnosis-process learning from the same three wrong hypotheses.
+- `docs/solutions/conventions/eco-custom-worldobject-placement-requirements.md` — the
+  occupancy/placement contract; `WorldObjectBlock` and the `Occupied` attribute come from
+  the same mechanism.

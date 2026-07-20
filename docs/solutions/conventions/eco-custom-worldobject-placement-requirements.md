@@ -61,8 +61,31 @@ registration requirements. The triad is the one that silently blocks placement:
    `GetOccupancyContext => new SideAttachedContext(DirectionAxisFlags.Down, WorldObject.GetOccupancyInfo(this.WorldObjectType))`,
    and `XObject` carries `[RequireComponent(typeof(OccupancyRequirementComponent))]` and
    implements `IRepresentsItem` (`RepresentedItemType => typeof(XItem)`). Use the single-arg
-   `[RequireComponent(typeof(T))]` form — every working mod does; the two-arg
-   `[RequireComponent(typeof(T), null)]` form is not used anywhere.
+   `[RequireComponent(typeof(T))]` form for the ordinary case.
+
+   **Correction (2026-07-20):** an earlier version of this doc claimed the two-arg form "is not
+   used anywhere". That is wrong. The second argument is a *component name*, used to attach two
+   components of the same type to one object and tell them apart — see
+   `Server/Mods/__core__/Objects/CivicsObjects.cs:81`:
+   `[RequireComponent(typeof(CivicObjectComponent), "Laws"), RequireComponent(typeof(CivicObjectComponent), "Injunctions")]`.
+   It pairs with `WorldObjectComponent.Name` ("An optional identifier for specifying between
+   components of the same type"). Passing `null` is pointless, which is what the original
+   observation was really about; passing a name is a supported pattern.
+
+5. **Every custom `WorldObjectComponent` subclass must carry `[Serialized]` and
+   `[NoIcon]` (or `[HasIcon]`).** The base class is marked `[DerivedMustDefineIcon]`,
+   and the view encoder only encodes types registered via `[Serialized]`. A component
+   missing these loads fine and even runs its `Tick()`, but the moment a player opens
+   the owning object's window the server logs
+   `Component X has to explicitly define [HasIcon] or [NoIcon]` and
+   `Can't encode instance of type 'X'` — and the **entire window renders empty**
+   (including sibling parts like the storage grid). `NoIcon` lives in
+   `Eco.Core.Controller`. Every vanilla component ships both attributes.
+
+   The general lesson: when conforming a mod class to the working pattern, audit **all**
+   custom classes deriving Eco base types in one pass (objects, items, recipes,
+   components, commands) — fixing only the class the last live test complained about
+   costs one full server restart per omission.
 
 ## Why This Matters
 
@@ -143,12 +166,44 @@ The client prefab and its root GameObject were renamed to `DroneDockObject` to m
 
 The **naming triad is proven** from the game client source above and is the confirmed reason
 placement produced no ghost. The full requirement set was derived by diffing against complete
-working mods. As of this writing the end-to-end placement retest on a live server is still
-pending — the client asset bundle was rebuilt with the renamed prefabs and both server DLLs
-redeployed, but a single in-game placement confirmation had not yet been captured.
+working mods.
+
+After the naming fix, a **second, distinct blocker** surfaced: the placement ghost now
+appeared but the object could not be placed — the "Place" action never showed and the place
+button did nothing, with no server-side error (the server log for the test window recorded no
+placement attempt at all). Root cause, proven from the client source: the client prefab's
+`WorldObject.size` was `(0,0,0)`. The client builds its placement-preview occupancy cells by
+iterating that field — `WorldObjectPlacementPreviewer.cs` does
+`worldObj.size.ConvertI().XYZIter()` — so a zero size produces **zero** cells. The
+`SideAttachedContext(Down)` requirement then runs `CheckRequiredAttachedSideRequirements`,
+whose `GetFurthestPositions` calls `positions.Min(p => p.y)` on that empty cell list, which
+**throws** ("Sequence contains no elements"). The exception aborts placement-preview
+evaluation, so the interaction is never produced and nothing is sent to the server — exactly
+the "ghost shows, Place never completes, no error" symptom.
+
+`WorldObject.size` is a plain serialized prefab field; nothing sets it at bundle-build or
+runtime (neither the ModKit `WorldObjectSetup` tool nor `ModKitTools` does), so a prefab built
+by scripted tooling that omits it stays at Unity's default of zero. Fix: set `size` to the
+object's block footprint (`(1,1,1)` for a single-block object) in the prefab, and have the
+prefab-finishing tool derive it from the encapsulating renderer bounds (ceil to whole blocks,
+min 1) so it cannot regress. Add `size` to the review checklist for any custom placeable whose
+prefab is produced without the ModKit's own setup tool.
+
+**Placement specifically was confirmed on a live server (2026-07-18):** after setting `size`
+to `(1,1,1)` on both prefabs and redeploying the rebuilt bundle, the Drone Dock's "Place"
+action appeared, the object placed on the ground, and the placed dock and its spawned Survey
+Drone were both interactable (`Take Survey Drone` / `Use`, object UI opens). The two
+placement blockers this doc covers — the naming triad and the zero `size` — are the parts
+that are proven.
+
+**Scope of that claim:** it covers *placement and interaction only*. The feature these
+objects belong to is not complete, and later sessions found further blockers beyond
+placement (pathfinding, survey delivery). Do not read this section as evidence that the
+surrounding feature works.
 
 ## Related
 
+- `docs/solutions/runtime-errors/worldobject-zero-size-blocks-placement.md` — the second, distinct blocker documented on its own: a prefab `WorldObject.size` of `(0,0,0)` throws in the client placement preview so the "Place" action never completes (the "ghost shows but won't place" signature, versus this doc's "no ghost at all").
 - `docs/solutions/best-practices/eco-013-server-driven-movement.md` — movement/tick surface for a modded WorldObject (a sibling "the stripped assemblies hide the truth" learning).
 - `docs/solutions/best-practices/eco-013-reading-district-civics-data.md` — district/civics reads from a modded object.
 - `docs/solutions/conventions/consistent-grid-column-quantization.md` — another convention captured for this mod.
