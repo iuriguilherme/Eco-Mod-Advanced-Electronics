@@ -13,6 +13,13 @@ namespace AdvancedElectronics.Navigation
         /// True if the terrain/block at this (x, z) column is solid and
         /// blocks passage. Independent of player-placed obstacles - see
         /// <see cref="IsObstacleAt"/>.
+        ///
+        /// CONTRACT: "blocks passage" means geometry a ground entity cannot occupy --
+        /// no room to stand, nothing to stand on, or no headroom. Vegetation does NOT
+        /// block passage: grass and plants are walkable, matching the game engine's own
+        /// pathfinding, which asks whether a block is Solid/Occupied rather than whether
+        /// it is empty. An implementation that treats any non-empty block as solid makes
+        /// every vegetated column impassable and no path is ever found.
         /// </summary>
         bool IsSolidAt(int x, int z);
 

@@ -41,24 +41,53 @@ namespace Eco.Mods.TechTree
         // reference; qualify it with a type name instead", which is what
         // revealed this.)
 
+        /// <summary>
+        /// The cell a ground entity would stand in for this column: the block directly
+        /// above the top solid block. Mirrors the engine's own convention (its walkable
+        /// node is "the first empty block above a solid block").
+        /// </summary>
+        private static Vector3i StandCell(int x, int z) =>
+            new Vector3i(x, EcoWorld.GetTopSolidBlockY(new Vector2i(x, z)) + 1, z);
+
+        /// <summary>
+        /// True when terrain geometry blocks this column. Mirrors the engine's own
+        /// walkability predicate (Eco.Simulation's pathfinding: "walkable blocks are the
+        /// first empty block above a solid block, where there are two empty blocks above
+        /// it (or plants)"), which tests <c>Is&lt;Solid&gt;()</c>/<c>Is&lt;Occupied&gt;()</c>
+        /// rather than "is not Empty".
+        ///
+        /// That distinction was the bug behind the drone never moving: an earlier version
+        /// asked <c>!above.Is&lt;Empty&gt;()</c>, so any grass or plant block above the
+        /// ground read as solid. Eco worlds are carpeted in vegetation, so effectively
+        /// every column was unwalkable and pathfinding failed at any distance, leaving
+        /// the drone permanently Unreachable. Plants are walkable to the engine, and now
+        /// to us.
+        ///
+        /// Object occupancy is deliberately NOT considered here -- it belongs to
+        /// <see cref="IsObstacleAt"/> so the pathfinder's endpoint exemption can let the
+        /// drone leave its own column and enter the dock's.
+        /// </summary>
         public bool IsSolidAt(int x, int z)
         {
-            var groundY = EcoWorld.GetTopSolidBlockY(new Vector2i(x, z));
-            var above = EcoWorld.GetBlock(new Vector3i(x, groundY + 1, z));
+            var stand = StandCell(x, z);
 
-            // ASSUMPTION -- verify against a live server: IsSolidAt (R2, "the
-            // terrain/block at this column is solid and blocks passage") is
-            // interpreted here as "the space immediately above the ground
-            // surface is not open air". The ground-surface block itself is
-            // expected to be solid by definition (that's what a ground drone
-            // stands on); it is the space *above* the surface that must be
-            // clear for the drone to occupy that column. Block.Is<T>() checks
-            // for a BlockAttribute-derived marker (Eco.World.Blocks.Empty here)
-            // on the block's declared type -- confirmed to exist by signature
-            // (Block.Is<T>(), the Empty/Solid/Impenetrable BlockAttribute
-            // hierarchy), but its body is stripped in the reference assembly so
-            // the exact pass/fail boundary could not be executed offline.
-            return above == null || !above.Is<Empty>();
+            var block = EcoWorld.GetBlock(stand);
+            if (block != null && block.Is<Solid>())
+                return true;                                   // no room to stand
+
+            var under = EcoWorld.GetBlock(stand + Vector3i.Down);
+            if (under == null || (!under.Is<Solid>() && !under.Is<UnderWater>()))
+                return true;                                   // nothing to stand on
+
+            var over = EcoWorld.GetBlock(stand + Vector3i.Up);
+            if (over != null && over.Is<Solid>())
+                return true;                                   // no headroom
+
+            // Deliberate divergence from the animal predicate, which also rejects
+            // Constructed blocks (animals stay off player-built floors). A drone is a
+            // machine and should be able to cross roads and floors -- and a dock placed
+            // on one must not strand it.
+            return false;
         }
 
         public float GroundHeightAt(int x, int z)
@@ -73,30 +102,29 @@ namespace Eco.Mods.TechTree
             return EcoWorld.GetTopSolidBlockY(new Vector2i(x, z));
         }
 
+        /// <summary>
+        /// True when a placed WorldObject occupies this column (R2, "distinct from
+        /// natural terrain solidity").
+        ///
+        /// Read from the world's own block data rather than a spatial query: placing a
+        /// WorldObject writes <c>WorldObjectBlock</c>s into its occupancy footprint, and
+        /// those blocks carry the <c>Occupied</c> attribute -- the same attribute the
+        /// engine's pathfinding rejects. That makes this exact and cheap (two block
+        /// lookups), replacing an earlier <c>GetObjectsWithin</c> probe whose radius was
+        /// an admitted guess and which ran a spatial query per column visited by A*.
+        /// </summary>
         public bool IsObstacleAt(int x, int z)
         {
-            // ASSUMPTION -- verify against a live server: player-placed
-            // obstacles (R2, "distinct from natural terrain solidity") are
-            // detected via WorldObjectManager.GetObjectsWithin, the same
-            // ServiceHolder<IWorldObjectManager> access pattern already proven
-            // live in SpikeMoveCommand.cs (ForceAdd/DestroyPermanently). The
-            // query radius (roughly "one grid column") is a guess needing live
-            // tuning -- too small and a WorldObject straddling the column
-            // center is missed, too large and neighboring columns falsely
-            // report obstructed.
-            const float ColumnObstacleRadius = 0.75f;
-            var center = new Vector2(x, z);
-            // Null-guard to match every sibling tick-path caller (DroneMoverComponent,
-            // DroneLifecycle, DroneDock all guard this same accessor). This runs inside
-            // those ticks via the pathfinder, so an unavailable manager must mean "no
-            // known obstacle" rather than an NRE escaping Tick().
-            var manager = ServiceHolder<IWorldObjectManager>.Obj;
-            if (manager == null)
-                return false;
+            var stand = StandCell(x, z);
 
-            foreach (var _ in manager.GetObjectsWithin(center, ColumnObstacleRadius))
+            var block = EcoWorld.GetBlock(stand);
+            if (block != null && block.Is<Occupied>())
                 return true;
-            return false;
+
+            // A multi-block object (or one whose footprint starts a block higher) still
+            // blocks passage through the column.
+            var over = EcoWorld.GetBlock(stand + Vector3i.Up);
+            return over != null && over.Is<Occupied>();
         }
     }
 }

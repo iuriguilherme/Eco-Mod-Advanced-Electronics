@@ -161,6 +161,24 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.False(pathfinder2.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0)).Found);
         }
 
+        // Regression: vegetated terrain must stay walkable. The live drone never moved
+        // because the world sampler reported every grass-covered column as solid, so no
+        // path existed anywhere. The engine's own pathfinding treats plants as walkable;
+        // the IWorldSampler contract now says so explicitly. A sampler that regresses to
+        // "any non-empty block is solid" makes this fail.
+        [Fact]
+        public void FullyVegetatedTerrain_AllColumnsWalkable_PathIsFound()
+        {
+            // A sampler where nothing is solid or obstructed models open, grassy ground.
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(20, 0, 0));
+
+            Assert.True(result.Found);
+            Assert.Equal(20f, result.Waypoints[^1].X);
+        }
+
         // --- R2: step-height rules ---
 
         [Fact]
