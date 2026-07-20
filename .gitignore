@@ -114,3 +114,15 @@ InitTestScene*.unity*
 EcoServerMod/**/[Bb]in/
 EcoServerMod/**/[Oo]bj/
 EcoServerMod/**/Local.props
+
+.*
+!.gitignore
+!.gitattributes
+*.local.md
+Assets/TextMesh*
+Assets/Eco*
+Assets/Art/ThirdParty*
+Assets/Settings*
+AssetBundles
+Packages
+ProjectSettings
