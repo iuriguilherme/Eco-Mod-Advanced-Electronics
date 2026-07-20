@@ -60,12 +60,19 @@ namespace Eco.Mods.TechTree
             (0, -1),
         };
 
-        // How far below the surface one prospecting sample reaches. Ore in Eco sits
-        // underground, so a sensor that only read the surface block found nothing no
-        // matter how far the drone roamed -- the readout stayed "none sampled yet"
-        // forever. This is the depth a v1 sensor can "see"; a deeper-scanning sensor is
-        // a natural later upgrade alongside better-climbing drones.
-        private const int SurveyDepthBlocks = 24;
+        /// <summary>
+        /// How far below the surface this sensor can see, in blocks. Ore sits
+        /// underground, so a sensor reading only the surface found nothing no matter how
+        /// far the drone roamed.
+        ///
+        /// This is the sensor's TIER, deliberately mirroring how vanilla prospecting
+        /// tools differ: the iron rock drill reaches 15 blocks, the modern rock drill 30.
+        /// v1 ships at the iron-drill tier; a deeper sensor is a natural higher-tier
+        /// drone (harder to craft, sees more), the same progression axis as the
+        /// climb-height limit on the mover. Virtual so a future subclass sets its own
+        /// reach without touching sampling logic.
+        /// </summary>
+        protected virtual int SurveyDepthBlocks => 15;
 
         // One column is scanned per tick, cycling through SampleOffsets, so the
         // per-tick cost stays near the old single-block read (SurveyDepthBlocks lookups)
@@ -133,7 +140,7 @@ namespace Eco.Mods.TechTree
             // surface block reported "no ore" everywhere regardless of what the drone
             // was standing on. Every block in the column counts toward the cell's
             // sampled total, so density stays "ore found / blocks looked at".
-            for (int depth = 0; depth < SurveyDepthBlocks; depth++)
+            for (int depth = 0; depth < this.SurveyDepthBlocks; depth++)
             {
                 int y = surfaceY - depth;
                 if (y < 0)
@@ -143,7 +150,7 @@ namespace Eco.Mods.TechTree
                 // RecordSample treats that as "sampled, no ore" (still counts
                 // toward the cell's coverage), exactly as intended.
                 this.oreReader.TryGetOreType(x, y, z, out var oreType);
-                this.surveyGrid.RecordSample(x, y, z, oreType);
+                this.surveyGrid.RecordSample(x, y, z, oreType, depth);
             }
         }
     }

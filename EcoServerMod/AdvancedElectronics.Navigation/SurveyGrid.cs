@@ -51,19 +51,29 @@ namespace AdvancedElectronics.Navigation
         /// <summary>Ore-count / sampled-count for <see cref="Cell"/>. 0 when <see cref="Found"/> is false.</summary>
         public float Ratio { get; }
 
-        private DensestCellResult(bool found, SurveyCell cell, int oreCount, int sampledCount, float ratio)
+        /// <summary>
+        /// Blocks below the surface of the SHALLOWEST occurrence of this ore in
+        /// <see cref="Cell"/>. This is the dig-effort signal: the same deposit is far
+        /// more valuable 4 blocks down than 40, and a player choosing between sites
+        /// needs it as much as density. Mirrors what a rock drill communicates by
+        /// listing the column position of each block. 0 when <see cref="Found"/> is false.
+        /// </summary>
+        public int ShallowestDepth { get; }
+
+        private DensestCellResult(bool found, SurveyCell cell, int oreCount, int sampledCount, float ratio, int shallowestDepth)
         {
             Found = found;
             Cell = cell;
             OreCount = oreCount;
             SampledCount = sampledCount;
             Ratio = ratio;
+            ShallowestDepth = shallowestDepth;
         }
 
-        public static DensestCellResult NotFound { get; } = new DensestCellResult(false, default, 0, 0, 0f);
+        public static DensestCellResult NotFound { get; } = new DensestCellResult(false, default, 0, 0, 0f, 0);
 
-        public static DensestCellResult Success(SurveyCell cell, int oreCount, int sampledCount) =>
-            new DensestCellResult(true, cell, oreCount, sampledCount, sampledCount == 0 ? 0f : (float)oreCount / sampledCount);
+        public static DensestCellResult Success(SurveyCell cell, int oreCount, int sampledCount, int shallowestDepth = 0) =>
+            new DensestCellResult(true, cell, oreCount, sampledCount, sampledCount == 0 ? 0f : (float)oreCount / sampledCount, shallowestDepth);
     }
 
     /// <summary>
@@ -142,7 +152,12 @@ namespace AdvancedElectronics.Navigation
         /// idempotency rule governing repeated calls with the same (x, y,
         /// z).
         /// </summary>
-        public void RecordSample(int x, int y, int z, string oreType)
+        /// <param name="depthBelowSurface">
+        /// How many blocks below the surface this sample sits (0 = surface). Recorded so
+        /// the readout can report how deep a deposit is, not just where -- the dig-effort
+        /// half of "is this worth mining".
+        /// </param>
+        public void RecordSample(int x, int y, int z, string oreType, int depthBelowSurface = 0)
         {
             if (!_sampledBlocks.Add((x, y, z)))
                 return;
@@ -159,6 +174,10 @@ namespace AdvancedElectronics.Navigation
             {
                 data.OreCounts.TryGetValue(oreType, out var existing);
                 data.OreCounts[oreType] = existing + 1;
+
+                // Keep the shallowest sighting: that is the one a miner would dig for.
+                if (!data.OreShallowestDepth.TryGetValue(oreType, out var shallowest) || depthBelowSurface < shallowest)
+                    data.OreShallowestDepth[oreType] = depthBelowSurface;
             }
         }
 
@@ -179,6 +198,7 @@ namespace AdvancedElectronics.Navigation
             int bestOreCount = 0;
             int bestSampledCount = 0;
             float bestRatio = 0f;
+            int bestShallowest = 0;
 
             foreach (var pair in _cells)
             {
@@ -194,10 +214,11 @@ namespace AdvancedElectronics.Navigation
                     bestOreCount = oreCount;
                     bestSampledCount = data.SampledCount;
                     bestRatio = ratio;
+                    data.OreShallowestDepth.TryGetValue(oreType, out bestShallowest);
                 }
             }
 
-            return found ? DensestCellResult.Success(bestCell, bestOreCount, bestSampledCount) : DensestCellResult.NotFound;
+            return found ? DensestCellResult.Success(bestCell, bestOreCount, bestSampledCount, bestShallowest) : DensestCellResult.NotFound;
         }
 
         private static int FloorDiv(int value, float size) => (int)Math.Floor(value / size);
@@ -206,6 +227,9 @@ namespace AdvancedElectronics.Navigation
         {
             public int SampledCount;
             public readonly Dictionary<string, int> OreCounts = new Dictionary<string, int>();
+
+            /// <summary>Shallowest depth-below-surface seen for each ore in this cell.</summary>
+            public readonly Dictionary<string, int> OreShallowestDepth = new Dictionary<string, int>();
         }
     }
 }

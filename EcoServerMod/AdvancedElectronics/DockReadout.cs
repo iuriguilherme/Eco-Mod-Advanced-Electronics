@@ -57,7 +57,11 @@ namespace Eco.Mods.TechTree
                 return $"{oreType}: no data yet";
 
             var pct = (result.Ratio * 100f).ToString("0", CultureInfo.InvariantCulture);
-            return $"{oreType}: densest at {result.Cell}, ~{pct}%";
+            // Depth is half the answer to "is this worth mining": the same density is a
+            // very different job 4 blocks down versus 40. A rock drill conveys this by
+            // listing each block's position in the column; a district-wide survey states
+            // it directly.
+            return $"{oreType}: densest at {result.Cell}, ~{pct}%, shallowest {result.ShallowestDepth} blocks deep";
         }
 
         /// <summary>

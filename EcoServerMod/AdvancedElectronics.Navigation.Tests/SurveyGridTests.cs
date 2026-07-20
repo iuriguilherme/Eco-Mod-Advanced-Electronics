@@ -219,5 +219,45 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Throws<System.ArgumentOutOfRangeException>(() => new SurveyGrid(0f));
             Assert.Throws<System.ArgumentOutOfRangeException>(() => new SurveyGrid(-5f));
         }
+
+        // Depth is the dig-effort half of the readout: the same deposit is a very
+        // different job 4 blocks down versus 40.
+
+        [Fact]
+        public void DensestCell_ReportsShallowestDepthSeenForThatOre()
+        {
+            var grid = new SurveyGrid(10f);
+
+            // Same ore found three times in one cell, at different depths.
+            grid.RecordSample(1, 60, 1, "IronOre", depthBelowSurface: 12);
+            grid.RecordSample(1, 55, 1, "IronOre", depthBelowSurface: 17);
+            grid.RecordSample(2, 64, 1, "IronOre", depthBelowSurface: 4);
+
+            var result = grid.DensestCell("IronOre");
+
+            Assert.True(result.Found);
+            Assert.Equal(4, result.ShallowestDepth);
+        }
+
+        [Fact]
+        public void DensestCell_DepthIsPerOre_NotSharedAcrossOreTypes()
+        {
+            var grid = new SurveyGrid(10f);
+            grid.RecordSample(1, 64, 1, "CopperOre", depthBelowSurface: 3);
+            grid.RecordSample(1, 50, 1, "IronOre", depthBelowSurface: 20);
+
+            Assert.Equal(3, grid.DensestCell("CopperOre").ShallowestDepth);
+            Assert.Equal(20, grid.DensestCell("IronOre").ShallowestDepth);
+        }
+
+        [Fact]
+        public void DensestCell_NoData_ReportsZeroDepthAndNotFound()
+        {
+            var grid = new SurveyGrid(10f);
+            var result = grid.DensestCell("IronOre");
+
+            Assert.False(result.Found);
+            Assert.Equal(0, result.ShallowestDepth);
+        }
     }
 }

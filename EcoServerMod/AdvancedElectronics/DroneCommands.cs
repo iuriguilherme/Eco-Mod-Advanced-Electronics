@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Numerics;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
@@ -67,6 +68,53 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
+        /// The survey readout itself (R14): what the drone has actually found, in the
+        /// terms a player acts on -- which ore, where, how concentrated, and how deep.
+        ///
+        /// Exists because a survey the player cannot read is a survey that did not
+        /// happen. The dock's tooltip carries the same content, but this is a channel
+        /// that is certain to render and does not require standing at the dock, so the
+        /// data is never stranded server-side again.
+        /// </summary>
+        [ChatSubCommand("Drone", "Read the survey results from your nearest accessible drone dock.", ChatAuthorizationLevel.User)]
+        public static void Survey(User user)
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null)
+            {
+                user.MsgLocStr("No drone dock you have access to was found nearby.");
+                return;
+            }
+
+            var drone = dock.SpawnedDrone;
+            if (drone == null || drone.IsDestroyed || !drone.TryGetComponent<OreSensorComponent>(out var sensor))
+            {
+                user.MsgLocStr($"{dock.Name}: no drone is out surveying. Insert a Survey Drone and assign a district.");
+                return;
+            }
+
+            user.MsgLocStr($"Survey results for {dock.Name}"
+                + (string.IsNullOrEmpty(dock.AssignedDistrictName) ? " (no district assigned)" : $" -- district '{dock.AssignedDistrictName}'"));
+
+            var results = sensor.SampledOreTypes
+                .Select(oreType => (OreType: oreType, Result: sensor.DensestCell(oreType)))
+                .Where(entry => entry.Result.Found)
+                .OrderByDescending(entry => entry.Result.Ratio)
+                .ToList();
+
+            if (results.Count == 0)
+            {
+                user.MsgLocStr("  Nothing found yet. The drone reports as it roams -- give it time to cover ground.");
+                return;
+            }
+
+            foreach (var entry in results)
+                user.MsgLocStr($"  {DockReadout.FormatOreLine(entry.OreType, entry.Result)}");
+
+            user.MsgLocStr($"  Coverage: {DockReadout.ComputeCoveragePercent(results.Select(e => (e.OreType, e.Result)).ToList()):F0}%");
+        }
+
+        /// <summary>
         /// Dumps the complete server-side state of the nearest accessible dock and its
         /// drone. Diagnostic surface so ONE live session yields full information about
         /// the pairing/dispatch/survey pipeline without depending on any client UI
@@ -118,7 +166,9 @@ namespace Eco.Mods.TechTree
                 {
                     any = true;
                     var cell = sensor.DensestCell(oreType);
-                    user.MsgLocStr($"  Ore '{oreType}': densest {(cell.Found ? $"cell {cell.Cell}, {cell.OreCount}/{cell.SampledCount}" : "no data")}");
+                    user.MsgLocStr(cell.Found
+                        ? $"  {DockReadout.FormatOreLine(oreType, cell)} ({cell.OreCount}/{cell.SampledCount} blocks)"
+                        : $"  {oreType}: no data");
                 }
                 if (!any) user.MsgLocStr("  Ore data: none sampled yet.");
             }

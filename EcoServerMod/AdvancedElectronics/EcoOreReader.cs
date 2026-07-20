@@ -91,17 +91,14 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Raw, in-ground deposits worth reporting (R7). Excludes plain rock, and
-        /// excludes the "Crushed*" rubble variants that mining leaves behind -- those
-        /// are the product of digging, not a reason to dig.
+        /// Deposits worth reporting (R7): anything ending in "Ore", plus Coal.
+        ///
+        /// Crushed variants are INCLUDED deliberately. They read as processing leftovers
+        /// but are a more valuable prospecting find than the raw ore block, so a survey
+        /// that hid them would steer players away from the better site.
         /// </summary>
-        private static bool IsProspectableDeposit(string name)
-        {
-            if (name.StartsWith("Crushed", System.StringComparison.Ordinal))
-                return false;
-
-            return name.EndsWith("Ore", System.StringComparison.Ordinal)
-                || name.Equals("Coal", System.StringComparison.Ordinal);
-        }
+        private static bool IsProspectableDeposit(string name) =>
+            name.EndsWith("Ore", System.StringComparison.Ordinal)
+            || name.Equals("Coal", System.StringComparison.Ordinal);
     }
 }
