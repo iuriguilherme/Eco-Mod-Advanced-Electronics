@@ -70,11 +70,38 @@ namespace Eco.Mods.TechTree
             // string.
             var typeName = block.GetType().Name;
             const string blockSuffix = "Block";
-            oreType = typeName.EndsWith(blockSuffix, System.StringComparison.Ordinal)
+            var name = typeName.EndsWith(blockSuffix, System.StringComparison.Ordinal)
                 ? typeName.Substring(0, typeName.Length - blockSuffix.Length)
                 : typeName;
 
+            // [Minable] alone is too broad: vanilla tags plain rock with it too
+            // (BasaltBlock is [Solid, Wall, Minable(5)], structurally identical to
+            // CopperOreBlock's [Solid, Wall, Minable(3)]). Reporting every minable block
+            // buries the actual find under stone, since rock is far more common than ore
+            // and would dominate every cell's density.
+            //
+            // No attribute distinguishes them, so v1 discriminates by name: the deposits
+            // a player prospects for. Deliberately narrow and easy to extend -- adding a
+            // resource is one entry here.
+            if (!IsProspectableDeposit(name))
+                return false;
+
+            oreType = name;
             return true;
+        }
+
+        /// <summary>
+        /// Raw, in-ground deposits worth reporting (R7). Excludes plain rock, and
+        /// excludes the "Crushed*" rubble variants that mining leaves behind -- those
+        /// are the product of digging, not a reason to dig.
+        /// </summary>
+        private static bool IsProspectableDeposit(string name)
+        {
+            if (name.StartsWith("Crushed", System.StringComparison.Ordinal))
+                return false;
+
+            return name.EndsWith("Ore", System.StringComparison.Ordinal)
+                || name.Equals("Coal", System.StringComparison.Ordinal);
         }
     }
 }

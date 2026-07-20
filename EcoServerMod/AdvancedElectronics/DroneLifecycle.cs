@@ -174,7 +174,7 @@ namespace Eco.Mods.TechTree
                 case DroneStatus.EnRoute when this.stateMachine.TravelTarget == DroneTravelTarget.Dock:
                     if (!mover.IsMoving)
                     {
-                        if (ArrivalDetector.HasArrived(this.Parent.Position, new[] { this.HomeDock.Position }))
+                        if (this.IsAtHomeDock())
                             this.stateMachine.OnReturnedToDock();
                         else
                             this.HandleNoPath(mover);
@@ -318,7 +318,7 @@ namespace Eco.Mods.TechTree
         {
             if (mover.IsMoving)
             {
-                if (ArrivalDetector.HasArrived(this.Parent.Position, new[] { this.HomeDock.Position }))
+                if (this.IsAtHomeDock())
                     this.stateMachine.OnReturnedToDock();
                 return;
             }
@@ -335,6 +335,34 @@ namespace Eco.Mods.TechTree
             this.secondsSinceLastReturnRetry = 0f;
             this.AttemptReturnLegOnly(mover);
         }
+
+        /// <summary>
+        /// Has the drone made it home? Compares HORIZONTAL distance to the dock, not the
+        /// exact 3D point.
+        ///
+        /// The drone can never occupy the dock's own position: it stands one cell above
+        /// the ground surface, while the dock's Position is its placement point, and the
+        /// dock's block occupies the column the drone is walking into. An exact 3D
+        /// distance check against a 0.1 tolerance therefore never succeeds -- the drone
+        /// would walk home, stop, fail the check, and get routed to HandleNoPath into
+        /// Unreachable instead of docking (R6/R15). Horizontal proximity is the honest
+        /// test for "arrived at the dock".
+        /// </summary>
+        private bool IsAtHomeDock()
+        {
+            var drone = this.Parent.Position;
+            var dock = this.HomeDock.Position;
+            var dx = drone.X - dock.X;
+            var dz = drone.Z - dock.Z;
+            return ((dx * dx) + (dz * dz)) <= DockArrivalRadius * DockArrivalRadius;
+        }
+
+        /// <summary>
+        /// Horizontal distance within which the drone counts as docked. Sized so the
+        /// drone standing in an adjacent column (the dock occupies its own) still
+        /// registers as home.
+        /// </summary>
+        private const float DockArrivalRadius = 2f;
 
         /// <summary>
         /// Keeps the drone roaming while Surveying (F2/R6). When the current hop has
