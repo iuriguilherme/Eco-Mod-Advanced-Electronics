@@ -99,7 +99,10 @@ namespace Eco.Mods.TechTree
             user.MsgLocStr($"  Anim state MoveSpeed: {FormatAnimState(drone, DroneMoverComponent.MoveSpeedStateName)}");
 
             if (drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
+            {
                 user.MsgLocStr($"  Lifecycle: {lifecycle.Status}, sampling={(lifecycle.ShouldSample ? "yes" : "no")}, homeDock={(lifecycle.HomeDock != null ? "set" : "NOT SET (dispatch wiring gap)")}");
+                user.MsgLocStr($"  Last dispatch: {lifecycle.LastDispatchNote}");
+            }
             else
                 user.MsgLocStr("  Lifecycle: component MISSING");
 

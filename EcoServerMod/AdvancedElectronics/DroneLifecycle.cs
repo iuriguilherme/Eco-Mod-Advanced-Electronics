@@ -6,6 +6,7 @@ using Eco.Gameplay.LegislationSystem;
 using Eco.Gameplay.Objects;
 using Eco.Shared.IoC;
 using Eco.Shared.Serialization;
+using Eco.Shared.Voxel;
 
 namespace Eco.Mods.TechTree
 {
@@ -107,6 +108,15 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public DroneDockObject HomeDock { get; set; }
 
+        /// <summary>
+        /// Human-readable record of the last dispatch/roam decision, surfaced by
+        /// <c>/drone status</c>. Exists so a single live session distinguishes the
+        /// failure modes that all collapse into the same Unreachable status —
+        /// destination-not-resolved (district not found or empty) versus
+        /// destination-resolved-but-no-path — instead of costing a restart per guess.
+        /// </summary>
+        public string LastDispatchNote { get; private set; } = "no dispatch yet";
+
         public override void Tick()
         {
             base.Tick();
@@ -207,6 +217,7 @@ namespace Eco.Mods.TechTree
             {
                 // Name no longer resolves (renamed/deleted between assignment and this
                 // tick) -- nothing to path to.
+                this.LastDispatchNote = $"district '{districtName}' did not resolve";
                 this.HandleNoPath(mover);
                 return;
             }
@@ -221,10 +232,22 @@ namespace Eco.Mods.TechTree
             // SEARCH here as well keeps the chosen in-district point close to the
             // drone rather than close to the dock.)
             var destination = ResolveDestinationInDistrict(district, this.Parent.Position);
-            if (destination == null || !mover.SetDestination(destination.Value))
+            if (destination == null)
             {
+                this.LastDispatchNote = $"district '{districtName}' resolved but has no reachable plot to target (empty district map?)";
                 this.HandleNoPath(mover);
+                return;
             }
+
+            var target = destination.Value;
+            if (!mover.SetDestination(target))
+            {
+                this.LastDispatchNote = $"no path from {this.Parent.Position.X:F0},{this.Parent.Position.Z:F0} to district point {target.X:F0},{target.Z:F0}";
+                this.HandleNoPath(mover);
+                return;
+            }
+
+            this.LastDispatchNote = $"dispatched to district point {target.X:F0},{target.Z:F0}";
         }
 
         /// <summary>
@@ -395,50 +418,57 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Finds a point believed to be inside <paramref name="district"/>, anchored at
-        /// <paramref name="anchor"/>. ASSUMPTION / placeholder heuristic: no district
-        /// bounds/geometry accessor is confirmed available (see
-        /// docs/solutions/best-practices/eco-013-reading-district-civics-data.md --
-        /// only point-membership testing (<see cref="DistrictAssignment.IsPositionInDistrict"/>)
-        /// is proven), and U8's Dependencies (U2/U3/U4) don't include U5's survey-grid
-        /// work, which is the unit actually expected to walk a district's cells. This
-        /// does a bounded expanding-ring search using ONLY the proven point-membership
-        /// test -- correct but not necessarily efficient or exact, and a reasonable
-        /// future replacement is U5's own grid-cell enumeration once it exists. Returns
-        /// null if nothing within <see cref="DestinationSearchMaxRadius"/> world units
-        /// of the anchor tests as inside the district.
+        /// Finds a point inside <paramref name="district"/> nearest to
+        /// <paramref name="anchor"/>, by enumerating the district's OWN plots.
+        ///
+        /// This replaces an earlier expanding-ring search that probed outward from the
+        /// drone using only point-membership tests and gave up after a fixed radius.
+        /// That heuristic silently made any district drawn farther than its cap
+        /// undiscoverable: dispatch resolved no destination, and the drone sat at the
+        /// dock reporting Unreachable forever — the exact symptom seen on the live
+        /// server (assignment succeeded, drone never moved).
+        ///
+        /// A district map is a plot-granular <c>Array2D&lt;int&gt;</c> of district IDs
+        /// (<c>DistrictMap.Map</c>, the same array <c>GetDistrictAtWorldPos</c> reads
+        /// through <c>PlotPos</c>), so the district's true extent is directly
+        /// enumerable and <c>PlotPos.CenterWorldPos</c> converts a plot back to world
+        /// coordinates. Scanning it is exact and has no distance cap. This runs on
+        /// dispatch and on backed-off roam fallbacks, not per tick.
+        ///
+        /// The returned point keeps the anchor's Y: the pathfinder is ground-following
+        /// and resolves real terrain height per column, so only X/Z matter here.
         /// </summary>
         private static Vector3? ResolveDestinationInDistrict(District district, Vector3 anchor)
         {
             if (DistrictAssignment.IsPositionInDistrict(anchor, district))
                 return anchor;
 
-            for (var radius = DestinationSearchRingStep; radius <= DestinationSearchMaxRadius; radius += DestinationSearchRingStep)
+            var map = district.ContainingMap?.Map;
+            if (map?.Array == null || map.Size.x <= 0)
+                return null;
+
+            var width = map.Size.x;
+            var districtId = district.Id;
+            var bestDistanceSq = float.MaxValue;
+            Vector3? best = null;
+
+            for (var i = 0; i < map.Array.Length; i++)
             {
-                for (var dx = -radius; dx <= radius; dx += DestinationSearchRingStep)
-                {
-                    var north = new Vector3(anchor.X + dx, anchor.Y, anchor.Z - radius);
-                    if (DistrictAssignment.IsPositionInDistrict(north, district))
-                        return north;
+                if (map.Array[i] != districtId)
+                    continue;
 
-                    var south = new Vector3(anchor.X + dx, anchor.Y, anchor.Z + radius);
-                    if (DistrictAssignment.IsPositionInDistrict(south, district))
-                        return south;
-                }
+                var center = new PlotPos(i % width, i / width).CenterWorldPos;
+                var dx = center.x - anchor.X;
+                var dz = center.y - anchor.Z;
+                var distanceSq = (dx * dx) + (dz * dz);
+                if (distanceSq >= bestDistanceSq)
+                    continue;
 
-                for (var dz = -radius + DestinationSearchRingStep; dz <= radius - DestinationSearchRingStep; dz += DestinationSearchRingStep)
-                {
-                    var west = new Vector3(anchor.X - radius, anchor.Y, anchor.Z + dz);
-                    if (DistrictAssignment.IsPositionInDistrict(west, district))
-                        return west;
-
-                    var east = new Vector3(anchor.X + radius, anchor.Y, anchor.Z + dz);
-                    if (DistrictAssignment.IsPositionInDistrict(east, district))
-                        return east;
-                }
+                bestDistanceSq = distanceSq;
+                best = new Vector3(center.x, anchor.Y, center.y);
             }
 
-            return null;
+            return best;
         }
     }
 }
