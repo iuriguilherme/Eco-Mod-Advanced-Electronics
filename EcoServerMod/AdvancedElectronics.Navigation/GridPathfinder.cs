@@ -82,12 +82,27 @@ namespace AdvancedElectronics.Navigation
         /// are used to locate grid columns; returned waypoints carry the
         /// sampler's actual ground height for each column.
         /// </summary>
-        public PathResult FindPath(Vector3 start, Vector3 goal)
+        public PathResult FindPath(Vector3 start, Vector3 goal, bool exemptGoalObstacle = false)
         {
             GridColumn startColumn = ToColumn(start);
             GridColumn goalColumn = ToColumn(goal);
 
-            if (!IsWalkable(startColumn) || !IsWalkable(goalColumn))
+            // The START column is always exempt from the OBSTACLE predicate: the mover
+            // itself is a world object standing there, so an obstacle query at its own
+            // column always reports true — without the exemption every dispatch fails
+            // immediately with no-path.
+            //
+            // The GOAL column is exempt only when the caller declares it
+            // (exemptGoalObstacle), because the caller is the only party that knows the
+            // destination is a legitimately-occupied one. The return-to-dock leg targets
+            // the dock's own column and must path into it (that is what "docking" is);
+            // a roam hop must NOT, or the drone parks inside another player's object and
+            // then cannot pick a way back out. Solidity remains a hard failure for both
+            // endpoints regardless.
+            if (_sampler.IsSolidAt(startColumn.X, startColumn.Z) || _sampler.IsSolidAt(goalColumn.X, goalColumn.Z))
+                return PathResult.NotFound;
+
+            if (!exemptGoalObstacle && !startColumn.Equals(goalColumn) && _sampler.IsObstacleAt(goalColumn.X, goalColumn.Z))
                 return PathResult.NotFound;
 
             if (startColumn.Equals(goalColumn))
@@ -120,7 +135,14 @@ namespace AdvancedElectronics.Navigation
                         continue;
                     if (closed.Contains(neighbor))
                         continue;
-                    if (!IsWalkable(neighbor))
+                    // Goal column: obstacle-exempt only when the caller declared it (see
+                    // the endpoint exemption above). Solidity is always enforced.
+                    if (exemptGoalObstacle && neighbor.Equals(goalColumn))
+                    {
+                        if (_sampler.IsSolidAt(neighbor.X, neighbor.Z))
+                            continue;
+                    }
+                    else if (!IsWalkable(neighbor))
                         continue;
                     if (!IsStepAllowed(current, neighbor))
                         continue;

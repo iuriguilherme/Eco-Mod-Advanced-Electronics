@@ -73,6 +73,94 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.All(result.Waypoints, wp => Assert.False(sampler.IsObstacleAt((int)wp.X, (int)wp.Z)));
         }
 
+        // --- Endpoint obstacle exemption: the mover itself occupies the start column,
+        // and the return-to-dock leg targets the column the dock WorldObject occupies.
+        // Live-world queries report both as obstructed; the pathfinder must still path
+        // out of the start and into the goal (solidity remains a hard failure). Without
+        // this, every dispatch and every return-to-dock fails immediately with no-path.
+
+        [Fact]
+        public void ObstacleAtStartColumn_SelfDetection_StillFindsPath()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            sampler.SetObstacle(0, 0); // the drone itself, seen by the world query
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0));
+
+            Assert.True(result.Found);
+        }
+
+        [Fact]
+        public void ObstacleAtGoalColumn_DockOccupiesTarget_StillFindsPath_WhenCallerDeclaresIt()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            sampler.SetObstacle(4, 0); // the home dock occupying the return target
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0), exemptGoalObstacle: true);
+
+            Assert.True(result.Found);
+            Assert.Equal(4f, result.Waypoints[^1].X);
+        }
+
+        // The goal exemption is opt-in precisely so a roam hop cannot end inside another
+        // player's object: the drone would park on top of it and, with its own column
+        // then reporting obstructed, have no way to pick a route back out.
+        [Fact]
+        public void ObstacleAtGoalColumn_UndeclaredByCaller_ReturnsNoPath()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            sampler.SetObstacle(4, 0); // some other player's object at the roam target
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0));
+
+            Assert.False(result.Found);
+        }
+
+        [Fact]
+        public void ObstacleAtBothEndpoints_DeclaredGoal_StillFindsPath()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            sampler.SetObstacle(0, 0); // the drone itself
+            sampler.SetObstacle(4, 0); // the dock it is returning to
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0), exemptGoalObstacle: true);
+
+            Assert.True(result.Found);
+        }
+
+        [Fact]
+        public void StartEqualsGoal_ObstacleOnThatColumn_StillArrives()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            sampler.SetObstacle(2, 0); // drone already standing on the dock column
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(2, 0, 0), new Vector3(2, 0, 0));
+
+            Assert.True(result.Found);
+            Assert.Single(result.Waypoints);
+        }
+
+        [Fact]
+        public void SolidAtStartOrGoalColumn_StillReturnsNoPath()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            sampler.SetSolid(0, 0);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            Assert.False(pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0)).Found);
+
+            var sampler2 = new FakeWorldSampler(defaultHeight: 0f);
+            sampler2.SetSolid(4, 0);
+
+            var pathfinder2 = new GridPathfinder(sampler2, maxStepHeight: 1f);
+            Assert.False(pathfinder2.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0)).Found);
+        }
+
         // --- R2: step-height rules ---
 
         [Fact]

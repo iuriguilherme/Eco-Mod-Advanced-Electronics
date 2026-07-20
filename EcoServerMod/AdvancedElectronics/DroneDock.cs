@@ -263,7 +263,7 @@ namespace Eco.Mods.TechTree
         /// bool States array; future art binds an animator parameter to it. Frozen —
         /// renaming touches server, prefab, and bundle at once.
         /// </summary>
-        private const string WorkingStateName = "Working";
+        internal const string WorkingStateName = "Working";
 
         private bool? lastPushedWorking;
 

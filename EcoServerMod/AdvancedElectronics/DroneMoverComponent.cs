@@ -58,7 +58,7 @@ namespace Eco.Mods.TechTree
         /// array; future art binds an animator Speed parameter to it. Frozen — renaming
         /// touches server, prefab, and bundle at once.
         /// </summary>
-        private const string MoveSpeedStateName = "MoveSpeed";
+        internal const string MoveSpeedStateName = "MoveSpeed";
 
         private GridPathfinder pathfinder;
         private PathResult currentPath = PathResult.NotFound;
@@ -83,9 +83,15 @@ namespace Eco.Mods.TechTree
         /// this rather than assume dispatch always succeeds (mirrors
         /// GridPathfinder.FindPath's own Found-checking contract).
         /// </summary>
-        public bool SetDestination(Vector3 destination)
+        /// <param name="destinationIsOccupiedObject">
+        /// True when the caller knows the destination column is legitimately occupied by
+        /// a WorldObject it intends to path into — i.e. the return-to-dock leg targeting
+        /// the dock itself. Roam and district-dispatch destinations pass false so the
+        /// drone never parks inside another player's object (it could not roam back out).
+        /// </param>
+        public bool SetDestination(Vector3 destination, bool destinationIsOccupiedObject = false)
         {
-            var result = this.pathfinder.FindPath(this.Parent.Position, destination);
+            var result = this.pathfinder.FindPath(this.Parent.Position, destination, destinationIsOccupiedObject);
             this.currentPath = result;
             this.waypointIndex = 0;
             return result.Found;

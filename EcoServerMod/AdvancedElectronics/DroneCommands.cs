@@ -86,7 +86,7 @@ namespace Eco.Mods.TechTree
             user.MsgLocStr($"Dock '{dock.Name}' at {dock.Position3i}:");
             user.MsgLocStr($"  District: {(string.IsNullOrEmpty(dock.AssignedDistrictName) ? "(none)" : dock.AssignedDistrictName)}");
             user.MsgLocStr($"  Paired drone item: {(dock.HasDrone ? "yes" : "no")}");
-            user.MsgLocStr($"  Anim state Working: {FormatAnimState(dock, "Working")}");
+            user.MsgLocStr($"  Anim state Working: {FormatAnimState(dock, DroneDockObject.WorkingStateName)}");
 
             var drone = dock.SpawnedDrone;
             if (drone == null || drone.IsDestroyed)
@@ -96,7 +96,7 @@ namespace Eco.Mods.TechTree
             }
 
             user.MsgLocStr($"  Spawned drone at {drone.Position3i} (owner: {(drone.HasOwner ? drone.OwnerName : "unstamped")})");
-            user.MsgLocStr($"  Anim state MoveSpeed: {FormatAnimState(drone, "MoveSpeed")}");
+            user.MsgLocStr($"  Anim state MoveSpeed: {FormatAnimState(drone, DroneMoverComponent.MoveSpeedStateName)}");
 
             if (drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
                 user.MsgLocStr($"  Lifecycle: {lifecycle.Status}, sampling={(lifecycle.ShouldSample ? "yes" : "no")}, homeDock={(lifecycle.HomeDock != null ? "set" : "NOT SET (dispatch wiring gap)")}");

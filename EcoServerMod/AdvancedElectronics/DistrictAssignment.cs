@@ -60,7 +60,14 @@ namespace Eco.Mods.TechTree
         {
             if (district?.ContainingMap == null) return false;
 
-            var pos2i = new WorldPosition2i((int)worldPos.X, (int)worldPos.Z);
+            // Round, don't truncate: GridPathfinder.ToColumn rounds when mapping a world
+            // position to a grid column, so truncating here put a position within half a
+            // block of a boundary in a different cell than the pathfinder used -- the
+            // inconsistency documented in
+            // docs/solutions/conventions/consistent-grid-column-quantization.md.
+            // DroneLifecycle.TickSurveyRoam made this load-bearing by membership-testing
+            // raw roam-hop positions against the same map.
+            var pos2i = new WorldPosition2i((int)MathF.Round(worldPos.X), (int)MathF.Round(worldPos.Z));
             var here = district.ContainingMap.GetDistrictAtWorldPos(pos2i);
             return here != null && here.Id == district.Id;
         }

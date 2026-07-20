@@ -1,9 +1,11 @@
 using System;
 using System.Numerics;
 using AdvancedElectronics.Navigation;
+using Eco.Core.Controller;
 using Eco.Gameplay.LegislationSystem;
 using Eco.Gameplay.Objects;
 using Eco.Shared.IoC;
+using Eco.Shared.Serialization;
 
 namespace Eco.Mods.TechTree
 {
@@ -36,6 +38,8 @@ namespace Eco.Mods.TechTree
     /// no-ops whenever <see cref="HomeDock"/> is unset or no <see cref="DroneMoverComponent"/>
     /// is found on the same parent -- it never assumes either exists.
     /// </summary>
+    [Serialized]
+    [NoIcon]
     public class DroneLifecycle : WorldObjectComponent
     {
         // How long to wait between automatic return-to-dock retries while Unreachable,
@@ -57,10 +61,32 @@ namespace Eco.Mods.TechTree
         private const int DestinationSearchMaxRadius = 96;
         private const int DestinationSearchRingStep = 4;
 
+        // Roam hop sizing (see TickSurveyRoam). Min exceeds OreSensorComponent's
+        // SurveyCellSize (8) so consecutive roam points tend to land in different
+        // survey cells and coverage actually spreads; max keeps each hop's A* cheap.
+        private const float RoamStepMin = 8f;
+        private const float RoamStepMax = 24f;
+        private const int RoamPickAttempts = 8;
+        // Pacing for retry after a failed pick round only -- a successful hop picks
+        // its next destination immediately on arrival, no idle gap.
+        private const float RoamRetryIntervalSeconds = 2f;
+
+        // Backoff ceiling for consecutive failed roam rounds. A drone that cannot reach
+        // any in-district hop (walled in, district shrank away from it) would otherwise
+        // re-run RoamPickAttempts full A* searches every RoamRetryIntervalSeconds
+        // forever; each search sweeps world-object queries per visited column, so a few
+        // stuck drones become a standing server tax. The interval doubles per failed
+        // round up to this cap and resets on any success.
+        private const float RoamRetryMaxIntervalSeconds = 60f;
+
         private readonly DroneStateMachine stateMachine = new DroneStateMachine();
+        private readonly Random roamRandom = new Random();
+        private readonly EcoWorldSampler worldSampler = new EcoWorldSampler();
 
         private string lastKnownAssignedDistrictName;
         private float secondsSinceLastReturnRetry;
+        private float secondsSinceLastRoamAttempt;
+        private float roamRetryIntervalSeconds = RoamRetryIntervalSeconds;
 
         /// <summary>Current lifecycle status (R15) -- Idle/EnRoute/Surveying/Unreachable.</summary>
         public DroneStatus Status => this.stateMachine.Status;
@@ -85,7 +111,10 @@ namespace Eco.Mods.TechTree
         {
             base.Tick();
 
-            if (this.HomeDock == null)
+            // IsDestroyed as well as null: a dock demolished while its drone is out
+            // leaves the reference dangling, and every leg below paths to a dead dock's
+            // coordinates. An orphaned drone goes inert instead of pathing forever.
+            if (this.HomeDock == null || this.HomeDock.IsDestroyed)
                 return;
             if (!this.Parent.TryGetComponent<DroneMoverComponent>(out var mover))
                 return;
@@ -146,10 +175,18 @@ namespace Eco.Mods.TechTree
                     this.TickUnreachableRetry(mover);
                     break;
 
+                case DroneStatus.Surveying:
+                    // F2/R6: the drone ROAMS its district -- without this the drone
+                    // arrives at one point and samples the same few columns forever,
+                    // so coverage never grows and the survey never localizes anything.
+                    // Per-tick sampling itself stays U5's concern (gated on
+                    // ShouldSample); this only keeps the drone moving between
+                    // in-district waypoints.
+                    this.TickSurveyRoam(mover);
+                    break;
+
                 default:
                     // Idle: nothing to drive (R6 -- no district, no work).
-                    // Surveying: per-tick sampling is U5's concern (gated on
-                    // ShouldSample above), not this class's job.
                     break;
             }
         }
@@ -203,7 +240,8 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void BeginReturnToDock(DroneMoverComponent mover, bool viaDistrictCleared)
         {
-            var found = mover.SetDestination(this.HomeDock.Position);
+            // destinationIsOccupiedObject: the dock occupies its own column by design.
+            var found = mover.SetDestination(this.HomeDock.Position, destinationIsOccupiedObject: true);
             if (found)
             {
                 if (viaDistrictCleared)
@@ -239,7 +277,7 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void AttemptReturnLegOnly(DroneMoverComponent mover)
         {
-            if (!mover.SetDestination(this.HomeDock.Position))
+            if (!mover.SetDestination(this.HomeDock.Position, destinationIsOccupiedObject: true))
             {
                 // The return leg itself has no path either. OnNoPathFound() is
                 // idempotent while already Unreachable (see its doc) -- safe to call
@@ -273,6 +311,87 @@ namespace Eco.Mods.TechTree
 
             this.secondsSinceLastReturnRetry = 0f;
             this.AttemptReturnLegOnly(mover);
+        }
+
+        /// <summary>
+        /// Keeps the drone roaming while Surveying (F2/R6). When the current hop has
+        /// finished (<see cref="DroneMoverComponent.IsMoving"/> false), picks the next
+        /// in-district waypoint: up to <see cref="RoamPickAttempts"/> random hops of
+        /// <see cref="RoamStepMin"/>-<see cref="RoamStepMax"/> world units from the
+        /// current position, each membership-tested via
+        /// <see cref="DroneDockObject.IsPositionInAssignedDistrict"/> (the only proven
+        /// district-geometry query -- see ResolveDestinationInDistrict's doc) and then
+        /// path-tested via <see cref="DroneMoverComponent.SetDestination"/>. A fully
+        /// failed round (e.g. the drone sits in a pocket, or the district shrank) falls
+        /// back to ResolveDestinationInDistrict to pull the drone back inside, and
+        /// retries are paced by <see cref="RoamRetryIntervalSeconds"/> so a stuck drone
+        /// does not run pathfinding every tick. A drone that cannot roam merely stays
+        /// put and keeps sampling its current columns -- never a state-machine error.
+        /// </summary>
+        private void TickSurveyRoam(DroneMoverComponent mover)
+        {
+            if (mover.IsMoving)
+                return;
+
+            var manager = ServiceHolder<IWorldObjectManager>.Obj;
+            var deltaTime = manager != null && manager.TickDeltaTime > 0f
+                ? manager.TickDeltaTime
+                : FallbackTickDeltaSeconds;
+            this.secondsSinceLastRoamAttempt += deltaTime;
+            if (this.secondsSinceLastRoamAttempt < this.roamRetryIntervalSeconds)
+                return;
+            this.secondsSinceLastRoamAttempt = 0f;
+
+            var current = this.Parent.Position;
+            for (var attempt = 0; attempt < RoamPickAttempts; attempt++)
+            {
+                var angle = this.roamRandom.NextDouble() * Math.PI * 2.0;
+                var distance = RoamStepMin + (float)this.roamRandom.NextDouble() * (RoamStepMax - RoamStepMin);
+                var candidate = new Vector3(
+                    current.X + (float)Math.Cos(angle) * distance,
+                    current.Y,
+                    current.Z + (float)Math.Sin(angle) * distance);
+
+                // Cheap rejections BEFORE the expensive pathfind: district membership is
+                // a point test, and a candidate whose own column is solid/obstructed can
+                // never be a valid destination now that the goal column is no longer
+                // obstacle-exempt for roam hops. Both spare a full A* search per reject.
+                if (!this.HomeDock.IsPositionInAssignedDistrict(candidate))
+                    continue;
+                var candidateX = (int)MathF.Round(candidate.X);
+                var candidateZ = (int)MathF.Round(candidate.Z);
+                if (this.worldSampler.IsSolidAt(candidateX, candidateZ) || this.worldSampler.IsObstacleAt(candidateX, candidateZ))
+                    continue;
+
+                if (mover.SetDestination(candidate))
+                {
+                    // Success: drop back to the fast cadence so the next arrival re-picks
+                    // promptly, and let that arrival re-pick without waiting out an
+                    // interval it did not need.
+                    this.roamRetryIntervalSeconds = RoamRetryIntervalSeconds;
+                    this.secondsSinceLastRoamAttempt = this.roamRetryIntervalSeconds;
+                    return;
+                }
+            }
+
+            // No random hop landed in-district with a path -- pull back toward the
+            // district body (also covers "district was reassigned smaller under us").
+            var districtName = this.HomeDock.AssignedDistrictName;
+            var district = string.IsNullOrWhiteSpace(districtName) ? null : DistrictAssignment.FindDistrictByName(districtName);
+            if (district != null)
+            {
+                var fallback = ResolveDestinationInDistrict(district, current);
+                if (fallback != null && mover.SetDestination(fallback.Value))
+                {
+                    this.roamRetryIntervalSeconds = RoamRetryIntervalSeconds;
+                    return;
+                }
+            }
+
+            // Nothing reachable this round. Back off so a permanently-stuck drone costs
+            // the server a bounded, decaying amount of pathfinding instead of a fixed
+            // per-2s tax forever.
+            this.roamRetryIntervalSeconds = MathF.Min(this.roamRetryIntervalSeconds * 2f, RoamRetryMaxIntervalSeconds);
         }
 
         /// <summary>

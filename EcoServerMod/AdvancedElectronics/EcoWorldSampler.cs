@@ -86,7 +86,13 @@ namespace Eco.Mods.TechTree
             // report obstructed.
             const float ColumnObstacleRadius = 0.75f;
             var center = new Vector2(x, z);
+            // Null-guard to match every sibling tick-path caller (DroneMoverComponent,
+            // DroneLifecycle, DroneDock all guard this same accessor). This runs inside
+            // those ticks via the pathfinder, so an unavailable manager must mean "no
+            // known obstacle" rather than an NRE escaping Tick().
             var manager = ServiceHolder<IWorldObjectManager>.Obj;
+            if (manager == null)
+                return false;
 
             foreach (var _ in manager.GetObjectsWithin(center, ColumnObstacleRadius))
                 return true;
