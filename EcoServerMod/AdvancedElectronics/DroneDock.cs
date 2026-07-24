@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Items;
+using Eco.Core.Utils;
 using Eco.Gameplay.Components;
 using Eco.Gameplay.Components.Auth;
 using Eco.Gameplay.Components.Storage;
@@ -126,6 +127,81 @@ namespace Eco.Mods.TechTree
         public void SetAssignedDistrict(string districtName)
         {
             this.AssignedDistrictName = string.IsNullOrWhiteSpace(districtName) ? null : districtName;
+        }
+
+        // ---------------------------------------------------------------
+        // U4: dock-owned survey areas (R1a/R2a/R3, KTD9). Areas are the dock's
+        // own serialized data -- no mod-wide registry -- so they persist because
+        // the dock does and are discarded with it. The dock's PropertyAuthComponent
+        // is the only access gate (RPC callers enforce ConsumerAccess; these methods
+        // are the plain state operations behind them, deliberately auth-free so the
+        // survey-areas tab component owns the [RPC] surface). Coexists with
+        // AssignedDistrictName above until the end-of-plan cleanup retires the
+        // district scaffold.
+        // ---------------------------------------------------------------
+
+        /// <summary>Every survey area this dock owns. Serialized; survives a restart with the dock.</summary>
+        [Serialized] public ThreadSafeList<SurveyAreaEntry> SurveyAreas { get; private set; } = new();
+
+        /// <summary>Id of the area the drone is assigned to survey, or 0 when unassigned.</summary>
+        [Serialized] public int AssignedSurveyAreaId { get; private set; }
+
+        // Monotonic id source. Never reused, so a deleted area's id cannot collide with a
+        // later one and a stale assignment to a deleted area resolves to "no area".
+        [Serialized] private int nextAreaId = 1;
+
+        /// <summary>The dock's assigned area entry, or null when unassigned or the assigned id no longer resolves.</summary>
+        public SurveyAreaEntry AssignedSurveyArea =>
+            this.AssignedSurveyAreaId == 0 ? null : this.SurveyAreas.FirstOrDefault(a => a.Id == this.AssignedSurveyAreaId);
+
+        /// <summary>
+        /// Creates and stores a new survey area from already-validated plots (the picker
+        /// enforces the tier cap before calling this). Returns the new entry.
+        /// </summary>
+        public SurveyAreaEntry CreateSurveyArea(string name, IEnumerable<PlotCoord> plots)
+        {
+            var entry = new SurveyAreaEntry(this.nextAreaId++, string.IsNullOrWhiteSpace(name) ? "Survey Area" : name, plots);
+            this.SurveyAreas.Add(entry);
+            return entry;
+        }
+
+        /// <summary>Renames the area with <paramref name="id"/>, if present. No-op otherwise.</summary>
+        public void RenameSurveyArea(int id, string name)
+        {
+            var entry = this.SurveyAreas.FirstOrDefault(a => a.Id == id);
+            if (entry != null && !string.IsNullOrWhiteSpace(name))
+                entry.Name = name;
+        }
+
+        /// <summary>
+        /// Deletes the area with <paramref name="id"/>. If it was the assigned area, the dock
+        /// becomes unassigned (R1a: deleting the assigned area unassigns rather than breaks).
+        /// </summary>
+        public void DeleteSurveyArea(int id)
+        {
+            var entry = this.SurveyAreas.FirstOrDefault(a => a.Id == id);
+            if (entry == null) return;
+
+            this.SurveyAreas.Remove(entry);
+            if (this.AssignedSurveyAreaId == id)
+                this.AssignedSurveyAreaId = 0;
+        }
+
+        /// <summary>
+        /// Assigns the area with <paramref name="id"/> as the drone's standing target, or clears
+        /// the assignment when <paramref name="id"/> is 0. Ignores an id that does not resolve to
+        /// one of this dock's areas.
+        /// </summary>
+        public void AssignSurveyArea(int id)
+        {
+            if (id == 0)
+            {
+                this.AssignedSurveyAreaId = 0;
+                return;
+            }
+
+            if (this.SurveyAreas.Any(a => a.Id == id))
+                this.AssignedSurveyAreaId = id;
         }
 
         protected override void Initialize()
