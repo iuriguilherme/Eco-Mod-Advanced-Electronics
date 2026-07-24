@@ -53,6 +53,7 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(PropertyAuthComponent))]
     [RequireComponent(typeof(PublicStorageComponent))]
     [RequireComponent(typeof(OccupancyRequirementComponent))]
+    [RequireComponent(typeof(SurveyAreasComponent))]
     [Tag("Usable")]
     public class DroneDockObject : WorldObject, IRepresentsItem
     {
