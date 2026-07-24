@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.ComponentModel;
 using Eco.Core.Controller;
 using Eco.Gameplay.Objects;
@@ -13,28 +12,34 @@ namespace Eco.Mods.TechTree
     // =====================================================================
     // U1 SPIKE PROBE — TEMPORARY, DELETE AFTER LIVE BATCH L1.
     //
-    // This component exists ONLY to answer one question a live restart can
-    // settle and offline source-reading cannot: does a MOD-defined
-    // WorldObjectComponent's tab render its content on the stock client?
-    // The whole dock-survey interface (Survey Areas tab, Survey Results tab)
-    // lives or dies on this.
+    // REVISION after L1 attempt #1: the first probe included a
+    // [SyncToView] IEnumerable<string> member. That crashed the CLIENT
+    // ("Cannot convert value: Q4 row A ... String to type ... View" ->
+    // "Failed to receive views" -> disconnect): a synced collection's
+    // elements must be View types, so a list of plain strings (or of any
+    // mod type with no generated view) is impossible. That member is
+    // removed. FINDING RECORDED: no list-shaped readout of plain/mod values.
     //
-    // It attaches to DroneDockObject via a TEMPORARY [RequireComponent] line
-    // in DroneDock.cs (also marked "U1 SPIKE"). There is no other openable
-    // object to test on — a fresh spike object would need a Unity client
-    // prefab this repo cannot build offline, so the shipping dock is the only
-    // surface. Both this file and that one line are removed once L1 answers
-    // the question. It ships no gameplay behaviour.
+    // This revision isolates the remaining question with ONLY type-valid,
+    // stock-proven member shapes copied verbatim from the vanilla
+    // AreaBonusComponent tab (LocString via StringTitle, a plain int, a
+    // BigButton RPC): does a MOD-defined component's tab render AT ALL?
     //
-    // What to observe in-game (open the placed Drone Dock, look for a
-    // "Survey Probe" tab):
-    //   Q1  Does a "Survey Probe" tab appear at all?                 (tab declaration)
-    //   Q2  Does the StringTitle text render inside it?              (mod tab TEXT)
-    //   Q3  Does the "Run Probe" button render, and does clicking it
-    //       change the text + print the [SPIKE] chat line?           (mod tab BUTTON + action)
-    //   Q4  Does the string list render as rows?                     (stock-typed collection)
-    // A "yes" to Q2 means the interface can be built as text; a "yes" to Q3
-    // means create/assign/delete can be in-tab buttons rather than chat.
+    // The attempt #1 log also showed "Can't convert named type to system
+    // type: LocStringView" — the client failing to resolve the view type
+    // for content nested inside this mod component's (ungenerated) view.
+    // If this clean probe still fails to render, mod component tabs are not
+    // viable and the readout/management interface must move to a surface
+    // the client can render (world-space text via the prefab's own bundle
+    // script, a stock component tab, or chat) — a design pivot for the user.
+    //
+    // Observe (open the placed Drone Dock, look for a "Survey Probe" tab):
+    //   Q1  Does the "Survey Probe" tab appear?
+    //   Q2  Does the StringTitle line render its text?
+    //   Q3  Does "Run Probe" render, and does clicking it update the text +
+    //       the click count + print the [SPIKE] chat line?
+    // No collection member this time, so a failure here is the component
+    // tab itself, not a poisoned field.
     // =====================================================================
     [Serialized, CreateComponentTabLoc("Survey Probe", true), HasIcon]
     public class SpikeTabProbeComponent : WorldObjectComponent, INotifyPropertyChanged
@@ -42,24 +47,16 @@ namespace Eco.Mods.TechTree
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
 
+        // Exact shape of AreaBonusComponent.Title (stock, known to render).
         [SyncToView, Autogen, UITypeName("StringTitle")]
         public LocString ProbeText { get; set; } =
-            Localizer.DoStr("Q2: if you can read this line in a tab, mod-defined tab TEXT renders.");
+            Localizer.DoStr("Q2: if you can read this in the Survey Probe tab, a mod component tab renders text.");
 
+        // Exact shape of AreaBonusComponent.InvestedStars (stock plain int).
         [SyncToView] public int ClickCount { get; private set; }
 
-        // Q4: a collection of a STOCK element type (string). If these render as
-        // rows, a text-row readout is viable without any generated per-type view.
-        [SyncToView, Autogen, UITypeName("GeneralHeader")]
-        public IEnumerable<string> ProbeRows { get; private set; } = new List<string>
-        {
-            "Q4 row A",
-            "Q4 row B",
-            "Q4 row C",
-        };
-
         [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"),
-         Description("Run Probe — tests whether a mod tab BUTTON renders and fires an action.")]
+         Description("Run Probe — tests whether a mod tab BUTTON renders and fires.")]
         public void RunProbe(Player player)
         {
             this.ClickCount++;
