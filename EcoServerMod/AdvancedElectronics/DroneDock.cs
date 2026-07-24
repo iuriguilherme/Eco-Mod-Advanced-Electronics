@@ -52,9 +52,6 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(PropertyAuthComponent))]
     [RequireComponent(typeof(PublicStorageComponent))]
     [RequireComponent(typeof(OccupancyRequirementComponent))]
-    // U1 SPIKE — TEMPORARY, remove with SpikeTabProbeComponent.cs after live batch L1.
-    // Attaches the mod-tab render probe to the only openable object with a client prefab.
-    [RequireComponent(typeof(SpikeTabProbeComponent))]
     [Tag("Usable")]
     public class DroneDockObject : WorldObject, IRepresentsItem
     {
