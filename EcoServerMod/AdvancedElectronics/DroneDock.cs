@@ -21,6 +21,7 @@ using Eco.Shared.Items;
 using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
+using Eco.Shared.Voxel;
 using Eco.World.Blocks;
 using Quaternion = Eco.Shared.Math.Quaternion;
 using Vector3 = System.Numerics.Vector3;
@@ -203,6 +204,24 @@ namespace Eco.Mods.TechTree
 
             if (this.SurveyAreas.Any(a => a.Id == id))
                 this.AssignedSurveyAreaId = id;
+        }
+
+        /// <summary>
+        /// True when <paramref name="worldPos"/> falls inside one of the dock's assigned survey
+        /// area's plots; false when no area is assigned. The survey-area analogue of
+        /// <c>DistrictAssignment.IsPositionInAssignedDistrict</c>, re-resolving the area from its
+        /// serialized entry on every call (no cached geometry). Rounds the world column the same
+        /// way the pathfinder does, then maps to a plot via the Eco-free <see cref="SurveyArea"/>.
+        /// </summary>
+        public bool IsPositionInAssignedArea(Vector3 worldPos)
+        {
+            var entry = this.AssignedSurveyArea;
+            if (entry == null) return false;
+
+            return entry.ToSurveyArea().ContainsWorldColumn(
+                (int)System.MathF.Round(worldPos.X),
+                (int)System.MathF.Round(worldPos.Z),
+                PlotUtil.PropertyPlotLength);
         }
 
         protected override void Initialize()

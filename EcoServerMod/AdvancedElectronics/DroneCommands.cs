@@ -68,6 +68,47 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
+        /// Lists the dock's survey areas with their ids (diagnostic). Bridges the gap until the
+        /// Survey Areas tab grows a per-area assign control (U7); pairs with <see cref="AssignArea"/>.
+        /// </summary>
+        [ChatSubCommand("Drone", "List the survey areas on your nearest accessible drone dock (diagnostic).", ChatAuthorizationLevel.User)]
+        public static void Areas(User user)
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
+
+            if (dock.SurveyAreas.Count == 0)
+            {
+                user.MsgLocStr($"{dock.Name}: no survey areas yet. Open the dock's Survey Areas tab and Create Area.");
+                return;
+            }
+
+            user.MsgLocStr($"Survey areas on {dock.Name} (assigned id: {dock.AssignedSurveyAreaId}):");
+            foreach (var a in dock.SurveyAreas)
+                user.MsgLocStr($"  {a.Id}. {a.Name} -- {a.PlotCount} plots{(a.Id == dock.AssignedSurveyAreaId ? " [assigned]" : string.Empty)}");
+        }
+
+        /// <summary>
+        /// Assigns a survey area by id (0 clears) so the drone surveys it (U8). Temporary
+        /// diagnostic: the real assign control is the Survey Areas tab once it has a safe
+        /// targeting widget; this lets the area repoint be exercised live before then.
+        /// </summary>
+        [ChatSubCommand("Drone", "Assign a survey area by id to your nearest accessible dock. 0 clears. Usage: /drone assignarea <id>", ChatAuthorizationLevel.User)]
+        public static void AssignArea(User user, int id)
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
+
+            dock.AssignSurveyArea(id);
+            if (id == 0)
+                user.MsgLocStr($"Cleared the survey area assignment on {dock.Name}.");
+            else if (dock.AssignedSurveyAreaId == id)
+                user.MsgLocStr($"Assigned survey area {id} to {dock.Name}. The drone will head there.");
+            else
+                user.MsgLocStr($"No survey area with id {id} on {dock.Name}. Use /drone areas to list them.");
+        }
+
+        /// <summary>
         /// The survey readout itself (R14): what the drone has actually found, in the
         /// terms a player acts on -- which ore, where, how concentrated, and how deep.
         ///
@@ -132,7 +173,8 @@ namespace Eco.Mods.TechTree
             }
 
             user.MsgLocStr($"Dock '{dock.Name}' at {dock.Position3i}:");
-            user.MsgLocStr($"  District: {(string.IsNullOrEmpty(dock.AssignedDistrictName) ? "(none)" : dock.AssignedDistrictName)}");
+            user.MsgLocStr($"  Survey areas: {dock.SurveyAreas.Count}, assigned area: {(dock.AssignedSurveyArea?.Name ?? "(none)")} (id {dock.AssignedSurveyAreaId})");
+            user.MsgLocStr($"  District (legacy): {(string.IsNullOrEmpty(dock.AssignedDistrictName) ? "(none)" : dock.AssignedDistrictName)}");
             user.MsgLocStr($"  Paired drone item: {(dock.HasDrone ? "yes" : "no")}");
             user.MsgLocStr($"  Anim state Working: {FormatAnimState(dock, DroneDockObject.WorkingStateName)}");
 
