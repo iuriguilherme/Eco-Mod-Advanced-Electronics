@@ -55,7 +55,6 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(PublicStorageComponent))]
     [RequireComponent(typeof(OccupancyRequirementComponent))]
     [RequireComponent(typeof(SurveyAreasComponent))]
-    [RequireComponent(typeof(SurveyResultsComponent))]
     [Tag("Usable")]
     public class DroneDockObject : WorldObject, IRepresentsItem
     {
@@ -431,6 +430,12 @@ namespace Eco.Mods.TechTree
                         .ToList();
                 }
             }
+
+            // Drive the Survey tab's results text from this (proven) dock tick: a
+            // WorldObjectComponent's own Tick does not reliably fire on the dock, so the tab
+            // cannot self-refresh its live readout (U9).
+            if (this.TryGetComponent<SurveyAreasComponent>(out var surveyTab))
+                surveyTab.RefreshResults();
 
             var lines = DockReadout.BuildStateLines(status, oreResults);
 

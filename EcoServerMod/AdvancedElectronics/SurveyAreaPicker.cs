@@ -5,49 +5,73 @@ using Eco.Gameplay.Players;
 using Eco.Shared.Gameplay;
 using Eco.Shared.Items;
 using Eco.Shared.Localization;
+using Eco.Shared.Math;
 using Eco.Shared.Utils;
 using Eco.Shared.Voxel;
 
 namespace Eco.Mods.TechTree
 {
     /// <summary>
-    /// Opens the game's map-editing interface for a player to draw a new survey area's
-    /// plots, then stores the drawn plots on the dock (U6, R1/R1b/R9). Uses the deed
-    /// pattern proven live by <c>AdvancedElectronics.Spike/SpikeEditMapCommand.cs</c>:
-    /// <c>AllowNewEntries = false</c>, one fixed editable entry, <c>EntryStatus.MaxArea</c>
-    /// for the tier plot cap, <c>RelatedRegistrar</c> left unset, and the returned
-    /// world-sized overlay diffed server-side rather than trusted (KTD8).
-    ///
-    /// Cancellation safety (R9): the dock is mutated ONLY after a valid, non-empty return,
-    /// so a null return (no client, cancelled, or disconnected mid-edit) leaves the dock's
-    /// areas and assignment exactly as they were — there is no pending state to unwind.
+    /// Opens the game's map-editing interface for a survey area (U6/U7): create a new area,
+    /// edit an existing one's plots, or view one read-only. Uses the deed pattern proven live
+    /// (AllowNewEntries=false, one fixed editable entry, EntryStatus.MaxArea cap,
+    /// RelatedRegistrar unset; KTD8). The dock is mutated only after a valid confirm, so a
+    /// cancel/disconnect (null return) leaves everything untouched (R9).
     /// </summary>
     public static class SurveyAreaPicker
     {
-        // Single editable entry id; the client paints it onto every drawn plot and the
-        // returned Map carries it at those positions. Fixed (not client-chosen).
         private const int EditableEntryId = 1;
 
-        /// <summary>
-        /// Shows <paramref name="player"/> the map editor, and on a confirmed non-empty
-        /// selection within <paramref name="maxPlots"/> creates a survey area on
-        /// <paramref name="dock"/> and returns it. Returns null on cancel/disconnect, an
-        /// empty selection, or a selection the server-side re-validation rejects as over cap.
-        /// </summary>
+        /// <summary>Create: draw a new area from an empty map and store it on the dock. Returns the new entry, or null on cancel/empty/over-cap.</summary>
         public static async Task<SurveyAreaEntry> PickAndCreate(Player player, DroneDockObject dock, int maxPlots, string name)
         {
-            if (player == null || dock == null)
-                return null;
+            if (player == null || dock == null) return null;
 
-            var request = new MapEditRequest
+            var plots = await RunPicker(player, BuildRequest(name, maxPlots, null, readOnly: false));
+            if (plots == null || plots.Count == 0) return null;
+            if (plots.Count > maxPlots) { player.User?.MsgLocStr($"Survey area too large: {plots.Count} plots, limit {maxPlots}. Nothing was created."); return null; }
+
+            return dock.CreateSurveyArea(name, plots);
+        }
+
+        /// <summary>Edit: open the editor pre-painted with the area's current plots, and on confirm replace them. No-op on cancel or empty draw (an area is never edited down to nothing).</summary>
+        public static async Task PickAndEdit(Player player, DroneDockObject dock, SurveyAreaEntry entry, int maxPlots)
+        {
+            if (player == null || dock == null || entry == null) return;
+
+            var plots = await RunPicker(player, BuildRequest(entry.Name, maxPlots, entry.Plots(), readOnly: false));
+            if (plots == null || plots.Count == 0) return;
+            if (plots.Count > maxPlots) { player.User?.MsgLocStr($"Survey area too large: {plots.Count} plots, limit {maxPlots}. No change made."); return; }
+
+            entry.SetPlots(plots);
+        }
+
+        /// <summary>View: open the editor read-only, pre-painted with the area's plots, so the player can see it on the map without changing it.</summary>
+        public static async Task PickView(Player player, DroneDockObject dock, SurveyAreaEntry entry, int maxPlots)
+        {
+            if (player == null || dock == null || entry == null) return;
+            await RunPicker(player, BuildRequest(entry.Name, maxPlots, entry.Plots(), readOnly: true));
+        }
+
+        private static MapEditRequest BuildRequest(string name, int maxPlots, IEnumerable<PlotCoord> existing, bool readOnly)
+        {
+            var map = new Array2D<int>(PlotUtil.WorldPlotDims);
+            if (existing != null)
+                foreach (var plot in existing)
+                    map[new Vector2i(plot.X, plot.Z)] = EditableEntryId;
+
+            return new MapEditRequest
             {
-                MapHintTitle    = "Survey Area",
-                MapHint         = Localizer.DoStr("Draw the area for the drone to survey, then confirm."),
+                MapHintTitle    = readOnly ? "Survey Area (view)" : "Survey Area",
+                MapHint         = Localizer.DoStr(readOnly
+                    ? "Viewing the survey area. Close when done."
+                    : "Draw the area for the drone to survey, then confirm."),
                 AllowNewEntries = false,
+                Readonly        = readOnly,
                 Overlay = new EditableOverlay
                 {
                     Name       = string.IsNullOrWhiteSpace(name) ? "Survey Area" : name,
-                    Map        = new Array2D<int>(PlotUtil.WorldPlotDims),
+                    Map        = map,
                     MapEntries = new()
                     {
                         { EditableEntryId, new MapEntry { MapEntryId = EditableEntryId, Color = Color.Green, EntryDescription = Localizer.DoStr("Survey area") } },
@@ -55,37 +79,24 @@ namespace Eco.Mods.TechTree
                 },
                 EntryStatus = new()
                 {
-                    { EditableEntryId, new EditableEntryStatus { AllowNameChange = false, AllowDelete = false, MaxArea = maxPlots } },
+                    { EditableEntryId, new EditableEntryStatus { AllowNameChange = false, AllowDelete = false, Readonly = readOnly, MaxArea = maxPlots } },
                 },
-                // RelatedRegistrar deliberately unset — the deed pattern, confirmed working for a mod caller in U1.
             };
+        }
 
+        private static async Task<List<PlotCoord>> RunPicker(Player player, MapEditRequest request)
+        {
             var edited = await player.EditMap(request);
             if (edited?.Map == null)
-                return null; // cancelled, no client, or disconnected — dock untouched.
+                return null; // cancelled, no client, or disconnected.
 
-            // Diff the returned world-sized map for plots painted with our entry id.
-            // The editor works in plot-index space, which matches SurveyArea's plot
-            // coordinates (world floor-div by plot length); v1 ignores world-wrap at the
-            // map edges, acceptable for homestead-scale areas.
             var plots = new List<PlotCoord>();
             edited.Map.ForEach((pos, index) =>
             {
                 if (edited.Map[pos] == EditableEntryId)
                     plots.Add(new PlotCoord(pos.X, pos.Y));
             });
-
-            if (plots.Count == 0)
-                return null; // nothing drawn — create nothing.
-
-            // Server-side re-validation of the cap; the client is untrusted.
-            if (plots.Count > maxPlots)
-            {
-                player.User?.MsgLocStr($"Survey area too large: {plots.Count} plots, limit {maxPlots}. Nothing was created.");
-                return null;
-            }
-
-            return dock.CreateSurveyArea(name, plots);
+            return plots;
         }
     }
 }
