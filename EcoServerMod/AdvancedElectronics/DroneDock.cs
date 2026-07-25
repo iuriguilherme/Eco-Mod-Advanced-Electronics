@@ -282,6 +282,14 @@ namespace Eco.Mods.TechTree
         /// (reference assemblies' stripped method bodies -- same caveat as this file's
         /// other ASSUMPTION-flagged Eco API calls).
         /// </summary>
+        // KTD10: the ObjectID of the spawned drone, serialized so the dock can re-link to its
+        // (persisted) drone WorldObject after a restart -- SpawnedDrone itself is a live reference
+        // that does not survive serialization.
+        [Serialized] private Guid spawnedDroneObjectId;
+
+        // One-shot guard so the restart re-link runs once, on the first tick after load.
+        private bool restartRelinkDone;
+
         private void SpawnDrone(User user)
         {
             var spawnPos = this.Position + new Vector3(1.5f, 0f, 0f);
@@ -289,11 +297,50 @@ namespace Eco.Mods.TechTree
             if (obj == null)
                 return;
 
-            obj.SetOwner(user);
+            if (user != null)
+                obj.SetOwner(user);
             if (obj.TryGetComponent<DroneLifecycle>(out var lifecycle))
                 lifecycle.HomeDock = this;
 
             this.SpawnedDrone = obj;
+            this.spawnedDroneObjectId = obj.ObjectID;
+        }
+
+        /// <summary>
+        /// After a server restart the dock's <see cref="SpawnedDrone"/> reference is null even
+        /// though the drone WorldObject persists, so the dock reports "no drone" until the drone
+        /// is removed and re-inserted (B3). Runs once on first tick after load: re-links the
+        /// persisted drone by its serialized id, or -- if that drone is gone but a drone item is
+        /// still docked -- respawns one.
+        /// </summary>
+        private void RestoreDroneLinkOnce()
+        {
+            if (this.restartRelinkDone) return;
+            this.restartRelinkDone = true;
+
+            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed)
+                return; // already linked this session.
+
+            if (this.spawnedDroneObjectId != Guid.Empty
+                && ServiceHolder<IWorldObjectManager>.Obj.GetFromID(this.spawnedDroneObjectId) is SurveyDroneObject existing
+                && !existing.IsDestroyed)
+            {
+                this.SpawnedDrone = existing;
+                if (existing.TryGetComponent<DroneLifecycle>(out var lifecycle))
+                    lifecycle.HomeDock = this;
+                return;
+            }
+
+            // Drone WorldObject is gone but the item is still docked: respawn and re-pair.
+            if (this.TryGetComponent<PublicStorageComponent>(out var storage))
+            {
+                var stack = storage.Storage.NonEmptyStacks.FirstOrDefault();
+                if (stack?.Item != null)
+                {
+                    this.PairedDrone = stack.Item;
+                    this.SpawnDrone(null);
+                }
+            }
         }
 
         /// <summary>Destroys the spawned drone WorldObject when the item is removed from the dock.</summary>
@@ -303,6 +350,7 @@ namespace Eco.Mods.TechTree
                 WorldObjectManager.DestroyPermanently(this.SpawnedDrone);
 
             this.SpawnedDrone = null;
+            this.spawnedDroneObjectId = Guid.Empty;
         }
 
         // ---------------------------------------------------------------
@@ -367,6 +415,7 @@ namespace Eco.Mods.TechTree
         {
             base.Tick();
 
+            this.RestoreDroneLinkOnce();
             this.PushWorkingState();
 
             var manager = ServiceHolder<IWorldObjectManager>.Obj;

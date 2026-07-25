@@ -96,6 +96,18 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
+        /// Discards all accumulated findings and starts a fresh survey. Called when the dock's
+        /// assigned area changes (U8 reassign) so the readout reflects the NEW area rather than
+        /// keeping the previous area's densest cell — findings are not yet per-area (that is U3),
+        /// so a reassign resets the survey. Safe to call before <see cref="Initialize"/> has run.
+        /// </summary>
+        public void ResetSurvey()
+        {
+            this.surveyGrid = new SurveyGrid(SurveyCellSize);
+            this.nextSampleOffset = 0;
+        }
+
+        /// <summary>
         /// The densest observed cell for <paramref name="oreType"/> so far
         /// (argmax of ore-count / sampled-count, per KTD5 - not raw count).
         /// See <see cref="DensestCellResult.Found"/> for the "no data yet"

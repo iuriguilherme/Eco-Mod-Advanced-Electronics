@@ -40,12 +40,12 @@ namespace Eco.Mods.TechTree
         public string ResultsDisplay { get; private set; } = string.Empty;
 
         /// <summary>
-        /// The area id the action buttons operate on (R7 select-by-id). Editable by the player
-        /// (the user's chosen selection method); also set by the Prev/Next cycle buttons in case
-        /// the editable field does not render for a mod component.
+        /// The area id the action buttons operate on. Set by the Prev/Next cycle buttons. (The
+        /// tried [Eco] numeric-stepper field rendered but did not apply the typed value for a mod
+        /// component -- it is a quantity input, not a selector -- so selection is cycle-driven; a
+        /// proper dropdown of a viewable area type is the next UI iteration.)
         /// </summary>
-        [Eco(RequiredAccess = AccessType.ConsumerAccess, Serialized = false)]
-        public int TargetAreaId { get; set; }
+        private int TargetAreaId;
 
         public override void Initialize()
         {
@@ -70,7 +70,6 @@ namespace Eco.Mods.TechTree
             var idx = ids.IndexOf(this.TargetAreaId);
             idx = idx < 0 ? 0 : (idx + direction + ids.Count) % ids.Count;
             this.TargetAreaId = ids[idx];
-            this.Changed(nameof(this.TargetAreaId));
             this.RefreshAreas();
         }
 
@@ -91,6 +90,14 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
             dock.AssignSurveyArea(this.TargetAreaId);
+            this.RefreshAll();
+        }
+
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Unassign — recall the drone; it stops surveying")]
+        public void UnassignArea(Player player)
+        {
+            if (this.Parent is not DroneDockObject dock) return;
+            dock.AssignSurveyArea(0);
             this.RefreshAll();
         }
 
@@ -145,7 +152,7 @@ namespace Eco.Mods.TechTree
             if (this.Parent is not DroneDockObject dock || dock.SurveyAreas.Count == 0)
                 return "No survey areas yet. Use Create to draw one on the map.";
 
-            var sb = new StringBuilder("Areas (set the id, then Assign/Edit/View/Delete):\n");
+            var sb = new StringBuilder("Areas (Prev/Next to select '>', then Assign/Edit/View/Delete):\n");
             foreach (var area in dock.SurveyAreas)
             {
                 var selected = area.Id == this.TargetAreaId ? "> " : "  ";
