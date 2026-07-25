@@ -152,12 +152,17 @@ namespace Eco.Mods.TechTree
             if (this.Parent is not DroneDockObject dock || dock.SurveyAreas.Count == 0)
                 return "No survey areas yet. Use Create to draw one on the map.";
 
-            var sb = new StringBuilder("Areas (Prev/Next to select '>', then Assign/Edit/View/Delete):\n");
+            var selectedEntry = dock.SurveyAreas.FirstOrDefault(a => a.Id == this.TargetAreaId);
+            var sb = new StringBuilder();
+            sb.Append("Selected: ")
+              .Append(selectedEntry != null ? $"{selectedEntry.Name} ({selectedEntry.PlotCount} plots)" : "(none -- use Prev/Next)")
+              .Append("   <- Assign/Edit/View/Delete act on this\n\n");
+
             foreach (var area in dock.SurveyAreas)
             {
-                var selected = area.Id == this.TargetAreaId ? "> " : "  ";
-                var assigned = area.Id == dock.AssignedSurveyAreaId ? "   [assigned]" : string.Empty;
-                sb.Append(selected).Append(area.Id).Append(". ").Append(area.Name)
+                var selected = area.Id == this.TargetAreaId ? "> " : "   ";
+                var assigned = area.Id == dock.AssignedSurveyAreaId ? "   [assigned to drone]" : string.Empty;
+                sb.Append(selected).Append(area.Name)
                   .Append(" -- ").Append(area.PlotCount).Append(" plots").Append(assigned).Append('\n');
             }
             return sb.ToString();
