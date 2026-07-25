@@ -1,6 +1,6 @@
 using System.Collections.Generic;
-using System.Linq;
 using AdvancedElectronics.Navigation;
+using Eco.Core.Utils;
 using Eco.Shared.Serialization;
 
 namespace Eco.Mods.TechTree
@@ -28,8 +28,13 @@ namespace Eco.Mods.TechTree
         /// <summary>Player-facing name. Not unique — two areas may share a name and stay distinct by <see cref="Id"/>.</summary>
         [Serialized] public string Name { get; set; }
 
-        /// <summary>Drawn plots, flattened as consecutive (x, z) pairs. Even length by construction.</summary>
-        [Serialized] public List<int> PlotCoords { get; set; } = new List<int>();
+        /// <summary>
+        /// Drawn plots, flattened as consecutive (x, z) pairs. Even length by construction.
+        /// A <see cref="ThreadSafeList{T}"/>, not a plain <c>List</c>: Eco's serializer rejects a
+        /// non-immutable <c>[Serialized]</c> member ("Attempting to serialize non-immutable
+        /// member ... Either make immutable or add [ThreadSafe]") and fails server init.
+        /// </summary>
+        [Serialized] public ThreadSafeList<int> PlotCoords { get; set; } = new();
 
         /// <summary>Parameterless constructor required by the Eco serializer.</summary>
         public SurveyAreaEntry() { }
@@ -47,7 +52,7 @@ namespace Eco.Mods.TechTree
         /// <summary>Replaces the stored plots with <paramref name="plots"/>, flattening to (x, z) pairs.</summary>
         public void SetPlots(IEnumerable<PlotCoord> plots)
         {
-            this.PlotCoords = new List<int>();
+            this.PlotCoords = new ThreadSafeList<int>();
             foreach (var p in plots)
             {
                 this.PlotCoords.Add(p.X);
