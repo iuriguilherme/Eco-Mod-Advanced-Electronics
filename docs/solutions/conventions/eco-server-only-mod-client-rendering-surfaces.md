@@ -1,6 +1,7 @@
 ---
 title: "What a server-only Eco mod can and cannot render on the stock client"
 date: 2026-07-24
+last_updated: 2026-07-25
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -50,11 +51,17 @@ window (verified live on the Drone Dock). Inside it:
   elements must be `View` types. `DeedManagementComponent`'s `[SyncToView] IEnumerable<Deed>`
   works only because `Deed` has a *generated client view*; a mod's own type does not. **Compose
   any list/readout as one formatted `LocString` text block, not a synced collection.**
-- **Read-only text is not guaranteed by `StringTitle`.** A
-  `[SyncToView, UITypeName("StringTitle")] LocString` rendered no visible text in the live probe
-  (the tab drew its button but not the title text). If you need a read-only text block, probe the
-  available `UITypeName` templates live to find one that renders, and keep world-space prefab
-  text as the fallback (see #4). Do not assume any given text member displays.
+- **Read-only text renders — but only from a SETTABLE property that is explicitly assigned.**
+  A settable string (or `LocString`) property with `[SyncToView, Autogen, UITypeName("StringDisplay")]`
+  (or `"StringTitle"`) renders its text when you **assign it and call `this.Changed(nameof(prop))`**
+  — set it in `Initialize` and after every mutation. Both `StringDisplay` (normal text) and
+  `StringTitle` (larger/caps) were confirmed live. The earlier failure was a **never-assigned
+  computed getter** (`public LocString X => Build();`): with no backing value ever set and no
+  `Changed`, nothing syncs to the client, so the member draws blank even though the button beside
+  it renders. Mirror the stock `ForSaleComponent.Note` / `ConstitutionComponent.DisplayText`
+  shape (settable, assigned), not the `PartsComponent.Description` computed-getter shape — the
+  computed getter works for a stock component with a generated view but not for a mod component.
+  A plain `[SyncToView] string` with no `UITypeName` did not render; give it a `UITypeName`.
 
 **2. The map *editor* is reachable and returns drawn plots — use it for area selection.**
 `player.EditMap(MapEditRequest)` opens the same plot editor district/deed editing uses (it runs
@@ -135,12 +142,20 @@ public class SurveyAreasComponent : WorldObjectComponent
     public override WorldObjectComponentClientAvailability Availability =>
         WorldObjectComponentClientAvailability.UI;
 
+    // Read-only text: a SETTABLE property, assigned + Changed-notified. Renders.
+    // (A never-assigned computed getter `=> Build();` draws blank — the earlier trap.)
+    [SyncToView, Autogen, UITypeName("StringDisplay")]
+    public string AreasDisplay { get; private set; } = string.Empty;
+
+    public override void Initialize() { base.Initialize(); this.Refresh(); }
+    private void Refresh() { this.AreasDisplay = ComposeText(); this.Changed(nameof(this.AreasDisplay)); }
+
     // Actions render and fire; AccessType is engine-enforced.
     [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Create area")]
-    public void CreateArea(Player player) { /* opens player.EditMap(...) */ }
+    public void CreateArea(Player player) { /* opens player.EditMap(...), then Refresh() */ }
 
-    // A synced collection of a mod/plain type here would CRASH the client.
-    // Render the list as a composed LocString text block instead.
+    // A synced *collection* of a mod/plain type here would still CRASH the client.
+    // Compose the list as the single AreasDisplay text block above.
 }
 ```
 
