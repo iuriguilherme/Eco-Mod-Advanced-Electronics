@@ -192,18 +192,12 @@ namespace Eco.Mods.TechTree
 
             var sb = new StringBuilder("Survey results\n");
             var entry = this.Selected(dock);
-            sb.Append("Selected area: ").Append(entry?.Name ?? "(none -- use Prev/Next)").Append('\n');
-
-            // Drone status is about what the drone is DOING (its assigned area), reported alongside
-            // but distinct from the selected area being viewed -- viewing does not require the drone.
-            var drone = dock.SpawnedDrone;
-            if (drone != null && !drone.IsDestroyed && drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
-                sb.Append("Drone: ").Append(lifecycle.Status)
-                  .Append(" (").Append(dock.AssignedSurveyArea?.Name ?? "no area assigned").Append(")\n");
+            sb.Append("Selected area: ").Append(entry?.Name ?? "(none -- use Prev/Next)").Append("\n\n");
 
             if (entry == null)
             {
                 sb.Append("No area selected. Use Create to draw one, or Prev/Next to pick one.");
+                AppendDroneStatusFooter(sb, dock);
                 return sb.ToString();
             }
 
@@ -216,15 +210,43 @@ namespace Eco.Mods.TechTree
 
             if (findings.Count == 0)
             {
-                sb.Append("Nothing found yet. The drone reports as it roams -- give it time to cover ground.");
-                return sb.ToString();
+                sb.Append(EmptyFindingsMessage(entry)).Append('\n');
+            }
+            else
+            {
+                foreach (var f in findings)
+                    sb.Append(DockReadout.FormatOreLine(f)).Append('\n');
+                sb.Append("Coverage: ").Append(entry.CoveragePercent.ToString("F0")).Append("%\n");
             }
 
-            foreach (var f in findings)
-                sb.Append(DockReadout.FormatOreLine(f)).Append('\n');
-
-            sb.Append("Coverage: ").Append(entry.CoveragePercent.ToString("F0")).Append('%');
+            AppendDroneStatusFooter(sb, dock);
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Coverage-aware message when the selected area has no findings. Distinguishes "not started"
+        /// from "in progress" from "fully covered, nothing here" -- so a finished-but-empty survey no
+        /// longer tells the player to keep waiting, which never reveals anything new.
+        /// </summary>
+        private static string EmptyFindingsMessage(SurveyAreaEntry entry)
+        {
+            if (entry.CoveragePercent <= 0f)
+                return "Not surveyed yet. Assign the drone to this area to survey it.";
+            if (entry.CoveragePercent >= 99.5f)
+                return "Survey complete -- nothing found in this area.";
+            return $"Surveyed {entry.CoveragePercent:F0}% so far -- nothing found yet.";
+        }
+
+        /// <summary>
+        /// Appends the drone's live status as a separated FOOTER -- what the drone is DOING (its
+        /// assigned area), kept out of the selected area's survey data above it.
+        /// </summary>
+        private static void AppendDroneStatusFooter(StringBuilder sb, DroneDockObject dock)
+        {
+            var drone = dock.SpawnedDrone;
+            if (drone != null && !drone.IsDestroyed && drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
+                sb.Append("\nDrone: ").Append(lifecycle.Status)
+                  .Append(" (").Append(dock.AssignedSurveyArea?.Name ?? "no area assigned").Append(')');
         }
     }
 }
