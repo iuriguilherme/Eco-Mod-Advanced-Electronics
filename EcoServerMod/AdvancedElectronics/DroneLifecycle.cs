@@ -463,9 +463,10 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
-            // Parked in the target plot: sweep one row of its columns this tick.
+            // Parked in the target plot: sweep one row of its columns this tick. A plot is
+            // PropertyPlotLength on a side (5) -> PropertyPlotArea (25) columns in its 2D grid.
             this.sweepArrivalAttempts = 0;
-            var total = plotSide * plotSide;
+            var total = PlotUtil.PropertyPlotArea;
             var baseX = plot.X * plotSide;
             var baseZ = plot.Z * plotSide;
             var record = this.HomeDock.SurveyRecord;
