@@ -46,6 +46,11 @@ namespace AdvancedElectronics.Navigation
         private readonly Dictionary<int, Dictionary<PlotCoord, PlotData>> _byArea =
             new Dictionary<int, Dictionary<PlotCoord, PlotData>>();
 
+        // areaId -> column (x, z) -> surface height, so the area's median surface level can be
+        // reported. Keyed by column (deduped) because every column has one surface, sampled once.
+        private readonly Dictionary<int, Dictionary<(int X, int Z), int>> _surfaceByArea =
+            new Dictionary<int, Dictionary<(int X, int Z), int>>();
+
         public SurveyRecord(int plotSize)
         {
             if (plotSize <= 0)
@@ -85,6 +90,38 @@ namespace AdvancedElectronics.Navigation
             data.SampledCount++;
             if (!string.IsNullOrEmpty(oreType))
                 data.RecordOre(oreType, new BlockPos(x, y, z), depthBelowSurface);
+        }
+
+        /// <summary>
+        /// Records the surface height of column (<paramref name="x"/>, <paramref name="z"/>) in
+        /// <paramref name="areaId"/>, so <see cref="MedianSurfaceLevel"/> can report the area's median
+        /// terrain elevation. Idempotent per column (one surface per column).
+        /// </summary>
+        public void RecordSurface(int areaId, int x, int z, int surfaceY)
+        {
+            if (!_surfaceByArea.TryGetValue(areaId, out var columns))
+            {
+                columns = new Dictionary<(int X, int Z), int>();
+                _surfaceByArea[areaId] = columns;
+            }
+            columns[(x, z)] = surfaceY;
+        }
+
+        /// <summary>
+        /// The median surface height across the columns sampled in <paramref name="areaId"/>, or null
+        /// when none have been recorded. Median (not mean) so a cliff or pit column doesn't skew the
+        /// reported terrain level.
+        /// </summary>
+        public int? MedianSurfaceLevel(int areaId)
+        {
+            if (!_surfaceByArea.TryGetValue(areaId, out var columns) || columns.Count == 0)
+                return null;
+
+            var sorted = columns.Values.OrderBy(v => v).ToList();
+            var mid = sorted.Count / 2;
+            return (sorted.Count % 2 == 1)
+                ? sorted[mid]
+                : (int)System.Math.Round((sorted[mid - 1] + sorted[mid]) / 2.0);
         }
 
         /// <summary>
@@ -175,6 +212,7 @@ namespace AdvancedElectronics.Navigation
         /// <summary>Discards every finding for <paramref name="areaId"/>. Used when an area is deleted or reassigned away.</summary>
         public void ClearArea(int areaId)
         {
+            _surfaceByArea.Remove(areaId);
             if (_byArea.Remove(areaId))
             {
                 // Drop this area's sampled blocks so re-surveying it later records

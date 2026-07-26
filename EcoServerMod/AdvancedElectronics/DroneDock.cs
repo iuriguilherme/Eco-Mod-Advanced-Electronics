@@ -264,7 +264,15 @@ namespace Eco.Mods.TechTree
             var coverage = this.surveyRecord.Coverage(area);
             if (coverage <= 0f) return; // no samples for this area yet — keep any persisted snapshot.
 
-            entry.SetFindings(this.surveyRecord.Findings(entry.Id), coverage * 100f);
+            // How deep the survey looked (the drone sensor's reach) and the area's median surface
+            // level, persisted with the findings so they show without a drone present.
+            var depth = 0;
+            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed
+                && this.SpawnedDrone.TryGetComponent<OreSensorComponent>(out var sensor))
+                depth = sensor.SurveyReach;
+            var median = this.surveyRecord.MedianSurfaceLevel(entry.Id) ?? 0;
+
+            entry.SetFindings(this.surveyRecord.Findings(entry.Id), coverage * 100f, depth, median);
         }
 
         protected override void Initialize()

@@ -219,6 +219,11 @@ namespace Eco.Mods.TechTree
                 sb.Append("Coverage: ").Append(entry.CoveragePercent.ToString("F0")).Append("%\n");
             }
 
+            // How far down the survey looked, and the area's terrain baseline.
+            if (entry.SurveyDepth > 0)
+                sb.Append("Scanned to ").Append(entry.SurveyDepth)
+                  .Append(" blocks below surface; median surface level ").Append(entry.MedianSurface).Append(".\n");
+
             AppendDroneStatusFooter(sb, dock);
             return sb.ToString();
         }

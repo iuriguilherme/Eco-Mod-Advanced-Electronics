@@ -215,6 +215,54 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal(0, finding.DepthBelowSurface);
         }
 
+        // --- Median surface level ---
+
+        [Fact]
+        public void MedianSurfaceLevel_OfOddColumnSet_IsTheMiddleValue()
+        {
+            var record = new SurveyRecord(PlotSize);
+            record.RecordSurface(AreaA, 0, 0, 60);
+            record.RecordSurface(AreaA, 1, 0, 70);
+            record.RecordSurface(AreaA, 2, 0, 64);
+
+            Assert.Equal(64, record.MedianSurfaceLevel(AreaA));
+        }
+
+        [Fact]
+        public void MedianSurfaceLevel_OfEvenColumnSet_AveragesTheTwoMiddles_AndIsRobustToOutliers()
+        {
+            var record = new SurveyRecord(PlotSize);
+            record.RecordSurface(AreaA, 0, 0, 60);
+            record.RecordSurface(AreaA, 1, 0, 62);
+            record.RecordSurface(AreaA, 2, 0, 64);
+            record.RecordSurface(AreaA, 3, 0, 200); // a cliff column does not skew the median
+
+            Assert.Equal(63, record.MedianSurfaceLevel(AreaA)); // (62+64)/2, not dragged up by 200
+        }
+
+        [Fact]
+        public void MedianSurfaceLevel_IsPerColumnDeduped_AndPerArea()
+        {
+            var record = new SurveyRecord(PlotSize);
+            record.RecordSurface(AreaA, 5, 5, 61);
+            record.RecordSurface(AreaA, 5, 5, 61); // same column again — no double-count
+            record.RecordSurface(AreaB, 5, 5, 99);
+
+            Assert.Equal(61, record.MedianSurfaceLevel(AreaA));
+            Assert.Equal(99, record.MedianSurfaceLevel(AreaB));
+        }
+
+        [Fact]
+        public void MedianSurfaceLevel_NoData_IsNull_AndClearAreaDropsIt()
+        {
+            var record = new SurveyRecord(PlotSize);
+            Assert.Null(record.MedianSurfaceLevel(AreaA));
+
+            record.RecordSurface(AreaA, 0, 0, 60);
+            record.ClearArea(AreaA);
+            Assert.Null(record.MedianSurfaceLevel(AreaA));
+        }
+
         [Fact]
         public void Constructor_RejectsNonPositivePlotSize()
         {

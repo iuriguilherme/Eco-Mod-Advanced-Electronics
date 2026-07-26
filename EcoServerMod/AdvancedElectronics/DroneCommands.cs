@@ -108,6 +108,8 @@ namespace Eco.Mods.TechTree
                 user.MsgLocStr($"  {DockReadout.FormatOreLine(f)}");
 
             user.MsgLocStr($"  Coverage: {area.CoveragePercent:F0}%");
+            if (area.SurveyDepth > 0)
+                user.MsgLocStr($"  Scanned to {area.SurveyDepth} blocks below surface; median surface level {area.MedianSurface}.");
         }
 
         /// <summary>
@@ -155,7 +157,7 @@ namespace Eco.Mods.TechTree
             else
                 user.MsgLocStr("  Mover: component MISSING");
 
-            user.MsgLocStr($"  Sensor: {(drone.TryGetComponent<OreSensorComponent>(out _) ? "present" : "component MISSING")}");
+            user.MsgLocStr($"  Sensor: {(drone.TryGetComponent<OreSensorComponent>(out var sensor) ? $"present, survey depth {sensor.SurveyReach} blocks" : "component MISSING")}");
 
             // Findings live on the assigned area now (KTD11), not the sensor -- report that area's
             // persisted snapshot.
@@ -173,6 +175,8 @@ namespace Eco.Mods.TechTree
                     foreach (var f in findings)
                         user.MsgLocStr($"    {DockReadout.FormatOreLine(f)}");
                 }
+                if (area.SurveyDepth > 0)
+                    user.MsgLocStr($"    Scanned to {area.SurveyDepth} blocks below surface; median surface level {area.MedianSurface}.");
             }
         }
 

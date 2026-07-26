@@ -37,6 +37,10 @@ namespace Eco.Mods.TechTree
         /// </summary>
         protected virtual int SurveyDepthBlocks => 15;
 
+        /// <summary>How deep below the surface this sensor scans, in blocks (its tier). Surfaced in the
+        /// drone info and the survey readout so a player knows how far down the survey looked.</summary>
+        public int SurveyReach => this.SurveyDepthBlocks;
+
         private IOreReader oreReader;
         private EcoWorldSampler worldSampler;
 
@@ -61,6 +65,7 @@ namespace Eco.Mods.TechTree
                 return;
 
             int surfaceY = (int)this.worldSampler.GroundHeightAt(x, z);
+            record.RecordSurface(areaId, x, z, surfaceY); // for the area's median surface level
 
             // Scan DOWN from the surface: ore is underground, so reading only the surface block
             // reported "no ore" everywhere. Every block in the column counts toward the plot's

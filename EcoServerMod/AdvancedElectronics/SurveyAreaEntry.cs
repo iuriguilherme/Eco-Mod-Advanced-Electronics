@@ -87,6 +87,13 @@ namespace Eco.Mods.TechTree
         /// <summary>Fraction of this area surveyed, 0-100 (R7a). Persisted with the findings.</summary>
         [Serialized] public float CoveragePercent { get; set; }
 
+        /// <summary>How deep below the surface the survey scanned, in blocks (the drone sensor's reach).
+        /// 0 until surveyed. Tells the player how far down was actually looked into.</summary>
+        [Serialized] public int SurveyDepth { get; set; }
+
+        /// <summary>Median surface height across the surveyed columns; meaningful when <see cref="SurveyDepth"/> > 0.</summary>
+        [Serialized] public int MedianSurface { get; set; }
+
         /// <summary>Parameterless constructor required by the Eco serializer.</summary>
         public SurveyAreaEntry() { }
 
@@ -117,13 +124,15 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>Replaces this area's persisted findings from a fresh survey pass.</summary>
-        public void SetFindings(IEnumerable<SurveyFinding> findings, float coveragePercent)
+        public void SetFindings(IEnumerable<SurveyFinding> findings, float coveragePercent, int surveyDepth, int medianSurface)
         {
             var snapshot = new ThreadSafeList<OreFindingSnapshot>();
             foreach (var f in findings.Where(f => f.Found))
                 snapshot.Add(OreFindingSnapshot.From(f));
             this.Findings = snapshot;
             this.CoveragePercent = coveragePercent;
+            this.SurveyDepth = surveyDepth;
+            this.MedianSurface = medianSurface;
         }
 
         /// <summary>Discards this area's findings (delete, or an edit that redraws the geometry).</summary>
@@ -131,6 +140,8 @@ namespace Eco.Mods.TechTree
         {
             this.Findings = new ThreadSafeList<OreFindingSnapshot>();
             this.CoveragePercent = 0f;
+            this.SurveyDepth = 0;
+            this.MedianSurface = 0;
         }
 
         /// <summary>The persisted findings back in the Eco-free shape the readout formatter consumes.</summary>
