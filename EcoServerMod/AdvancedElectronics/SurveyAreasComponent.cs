@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.ComponentModel;
@@ -11,6 +12,7 @@ using Eco.Gameplay.Players;
 using Eco.Shared.Items;
 using Eco.Shared.Localization;
 using Eco.Shared.Networking;
+using Eco.Shared.SharedTypes;
 using Eco.Shared.Serialization;
 
 namespace Eco.Mods.TechTree
@@ -43,20 +45,29 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string ResultsDisplay { get; private set; } = string.Empty;
 
-        /// <summary>
-        /// Material targets: pick which materials the survey results show, the same way items and tags
-        /// are picked in a recipe or a law. Empty shows everything found.
-        ///
-        /// Scoped to <see cref="BlockItem"/>, not <c>Item</c>: BlockItem is the base for items that
-        /// represent placeable/mineable blocks (it carries the "Block" tag), so the picker offers
-        /// terrain materials with their Rock/Ore/Fuel tag filters — the same candidate set the court's
-        /// "Dig Or Mine / With Item Used" picker shows — instead of the entire store-like item catalog.
-        ///
-        /// Confirmed live: GamePickerList renders and filters from a WorldObjectComponent tab, even
-        /// though every vanilla usage is inside a civics GameValue.
-        /// </summary>
-        [Eco, AllowEmpty, LocDescription("Materials to show in the survey results. Leave empty to show everything found.")]
-        public GamePickerList<BlockItem> MaterialTargets { get; set; } = new();
+        // Material targets: pick which materials the survey results show, the same way items and tags
+        // are picked in a recipe or a law. Both empty = show everything found.
+        //
+        // TWO pickers because the candidate set is scoped by a single RequiredTag (the attribute takes
+        // one string, not a set), while the drone's detection scope spans two tags. This mirrors the
+        // game's own "is this a natural terrain material" test,
+        // `HasAnyTag(Excavatable, Diggable, Minable)` (VehicleToolComponent), split across the two
+        // pickers. Scoping matters: plain BlockItem also offers crafted/buildable blocks (ashlar,
+        // brick, lumber, hewn log) and placeables (gasoline, logs) that the drone can never detect, so
+        // selecting them would do nothing.
+        //
+        // Confirmed live: GamePickerList renders and filters from a WorldObjectComponent tab, even
+        // though every vanilla usage is inside a civics GameValue.
+
+        /// <summary>Rock, ore, coal and sulfur — the mined materials (BlockTags.Minable).</summary>
+        [Eco, AllowEmpty, RequiredTag(BlockTags.Minable)]
+        [LocDescription("Mined materials (rock, ore, coal, sulfur) to show in the survey results. Leave empty for all.")]
+        public GamePickerList<BlockItem> MinedTargets { get; set; } = new();
+
+        /// <summary>Sand, clay, peat and crushed material — the dug materials (BlockTags.Diggable).</summary>
+        [Eco, AllowEmpty, RequiredTag(BlockTags.Diggable)]
+        [LocDescription("Dug materials (sand, clay, peat, crushed) to show in the survey results. Leave empty for all.")]
+        public GamePickerList<BlockItem> DugTargets { get; set; } = new();
 
         /// <summary>
         /// The area id the action buttons operate on. Set by the Prev/Next cycle buttons. (The
@@ -163,11 +174,11 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void ApplyPickerSelection(DroneDockObject dock)
         {
-            var picked = this.MaterialTargets?.GetTypes()
-                .Select(t => MaterialNameFromItemType(t.Name))
+            // Union of both scoped pickers: mined + dug. Both empty = no filter = show everything.
+            var picked = PickedNames(this.MinedTargets)
+                .Concat(PickedNames(this.DugTargets))
+                .Distinct()
                 .ToList();
-
-            if (picked == null) return;
 
             // Only rewrite when the selection actually differs, so the 1s refresh tick does not fight
             // a filter set from chat.
@@ -178,6 +189,10 @@ namespace Eco.Mods.TechTree
             foreach (var name in picked)
                 dock.ToggleMaterialFilter(name);
         }
+
+        /// <summary>The material names currently selected in one picker (empty when it is null or unset).</summary>
+        private static IEnumerable<string> PickedNames(GamePickerList<BlockItem> picker) =>
+            picker?.GetTypes().Select(t => MaterialNameFromItemType(t.Name)) ?? Enumerable.Empty<string>();
 
         /// <summary>Item type name -> the material name the sensor records. See <see cref="ApplyPickerSelection"/>.</summary>
         private static string MaterialNameFromItemType(string typeName)
