@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
@@ -55,32 +57,26 @@ namespace Eco.Mods.TechTree
         // interval instead of freezing the retry pacing forever.
         private const float FallbackTickDeltaSeconds = 0.05f;
 
-        // Roam hop sizing (see TickSurveyRoam). Min exceeds OreSensorComponent's
-        // SurveyCellSize (8) so consecutive roam points tend to land in different
-        // survey cells and coverage actually spreads; max keeps each hop's A* cheap.
-        private const float RoamStepMin = 8f;
-        private const float RoamStepMax = 24f;
-        private const int RoamPickAttempts = 8;
-        // Pacing for retry after a failed pick round only -- a successful hop picks
-        // its next destination immediately on arrival, no idle gap.
-        private const float RoamRetryIntervalSeconds = 2f;
-
-        // Backoff ceiling for consecutive failed roam rounds. A drone that cannot reach
-        // any in-district hop (walled in, district shrank away from it) would otherwise
-        // re-run RoamPickAttempts full A* searches every RoamRetryIntervalSeconds
-        // forever; each search sweeps world-object queries per visited column, so a few
-        // stuck drones become a standing server tax. The interval doubles per failed
-        // round up to this cap and resets on any success.
-        private const float RoamRetryMaxIntervalSeconds = 60f;
+        // Park-and-sweep tuning (see TickSurveyParkAndSweep). While parked in a plot the drone
+        // sweeps one plot-row of columns per tick, so a plot is fully surveyed over ~plotSide ticks
+        // -- bounded per-tick cost, matching the old sampler's conservative one-column pacing while
+        // actually covering the whole plot. If a plot center cannot be reached after this many
+        // arrival attempts the plot is skipped, so a walled-off or non-contiguous plot never stalls
+        // the sweep of the rest of the area.
+        private const int MaxPlotArrivalAttempts = 5;
 
         private readonly DroneStateMachine stateMachine = new DroneStateMachine();
-        private readonly Random roamRandom = new Random();
-        private readonly EcoWorldSampler worldSampler = new EcoWorldSampler();
 
         private string lastKnownAssignedArea;
         private float secondsSinceLastReturnRetry;
-        private float secondsSinceLastRoamAttempt;
-        private float roamRetryIntervalSeconds = RoamRetryIntervalSeconds;
+
+        // Park-and-sweep progress across the assigned area's plots. Rebuilt whenever the drone is
+        // (re)dispatched to an area (sweepInitialized reset in DispatchToArea).
+        private List<PlotCoord> sweepPlots;
+        private int sweepPlotIndex;
+        private int sweepColumnCursor;
+        private int sweepArrivalAttempts;
+        private bool sweepInitialized;
 
         /// <summary>Current lifecycle status (R15) -- Idle/EnRoute/Surveying/Unreachable.</summary>
         public DroneStatus Status => this.stateMachine.Status;
@@ -186,13 +182,11 @@ namespace Eco.Mods.TechTree
                     break;
 
                 case DroneStatus.Surveying:
-                    // F2/R6: the drone ROAMS its district -- without this the drone
-                    // arrives at one point and samples the same few columns forever,
-                    // so coverage never grows and the survey never localizes anything.
-                    // Per-tick sampling itself stays U5's concern (gated on
-                    // ShouldSample); this only keeps the drone moving between
-                    // in-district waypoints.
-                    this.TickSurveyRoam(mover);
+                    // F2/R6: the drone visits each plot of its area in turn, parking at the plot
+                    // centre and surveying the whole plot's grid (park-and-sweep) before moving on,
+                    // then returns to the dock when every plot is covered.
+                    if (this.Parent.TryGetComponent<OreSensorComponent>(out var sensor))
+                        this.TickSurveyParkAndSweep(mover, sensor);
                     break;
 
                 default:
@@ -213,6 +207,9 @@ namespace Eco.Mods.TechTree
         private void DispatchToArea(DroneMoverComponent mover)
         {
             this.stateMachine.OnDistrictAssigned("area:" + this.HomeDock.AssignedSurveyAreaId);
+
+            // A (re)dispatch starts a fresh sweep of the newly-targeted area's plots.
+            this.sweepInitialized = false;
 
             // No survey reset on reassign (KTD11): findings are per-area and persist with the
             // area, so switching the drone between areas keeps each area's own data. The sensor
@@ -399,82 +396,101 @@ namespace Eco.Mods.TechTree
         private const float DockArrivalRadius = 2f;
 
         /// <summary>
-        /// Keeps the drone roaming while Surveying (F2/R6). When the current hop has
-        /// finished (<see cref="DroneMoverComponent.IsMoving"/> false), picks the next
-        /// in-area waypoint: up to <see cref="RoamPickAttempts"/> random hops of
-        /// <see cref="RoamStepMin"/>-<see cref="RoamStepMax"/> world units from the
-        /// current position, each membership-tested via
-        /// <see cref="DroneDockObject.IsPositionInAssignedArea"/> and then
-        /// path-tested via <see cref="DroneMoverComponent.SetDestination"/>. A fully
-        /// failed round (e.g. the drone sits in a pocket, or the area shrank) falls
-        /// back to <see cref="ResolveDestinationInArea"/> to pull the drone back inside, and
-        /// retries are paced by <see cref="RoamRetryIntervalSeconds"/> so a stuck drone
-        /// does not run pathfinding every tick. A drone that cannot roam merely stays
-        /// put and keeps sampling its current columns -- never a state-machine error.
+        /// Park-and-sweep survey pass (F2/R6). Instead of roaming random points and sampling only
+        /// the columns the path happened to cross, the drone visits each plot of its assigned area
+        /// in raster order: it paths to the plot's centre, and once standing in the plot it sweeps
+        /// EVERY column of that plot (<paramref name="sensor"/>.SampleColumn), one plot-row per tick,
+        /// then advances to the next plot. When every plot is covered it returns to the dock.
+        ///
+        /// Parking at the centre and scanning the whole plot means the drone's physical footprint is
+        /// irrelevant (the roaming WorldObject is a placeholder size), and visiting plots discretely
+        /// -- rather than continuously pathing between waypoints -- keeps a non-contiguous area's
+        /// disjoint plots independent: an unreachable plot is skipped, not a stall.
         /// </summary>
-        private void TickSurveyRoam(DroneMoverComponent mover)
+        private void TickSurveyParkAndSweep(DroneMoverComponent mover, OreSensorComponent sensor)
         {
-            if (mover.IsMoving)
-                return;
-
-            var manager = ServiceHolder<IWorldObjectManager>.Obj;
-            var deltaTime = manager != null && manager.TickDeltaTime > 0f
-                ? manager.TickDeltaTime
-                : FallbackTickDeltaSeconds;
-            this.secondsSinceLastRoamAttempt += deltaTime;
-            if (this.secondsSinceLastRoamAttempt < this.roamRetryIntervalSeconds)
-                return;
-            this.secondsSinceLastRoamAttempt = 0f;
-
-            var current = this.Parent.Position;
-            for (var attempt = 0; attempt < RoamPickAttempts; attempt++)
+            if (!this.sweepInitialized)
             {
-                var angle = this.roamRandom.NextDouble() * Math.PI * 2.0;
-                var distance = RoamStepMin + (float)this.roamRandom.NextDouble() * (RoamStepMax - RoamStepMin);
-                var candidate = new Vector3(
-                    current.X + (float)Math.Cos(angle) * distance,
-                    current.Y,
-                    current.Z + (float)Math.Sin(angle) * distance);
-
-                // Cheap rejections BEFORE the expensive pathfind: area membership is
-                // a point test, and a candidate whose own column is solid/obstructed can
-                // never be a valid destination now that the goal column is no longer
-                // obstacle-exempt for roam hops. Both spare a full A* search per reject.
-                if (!this.IsPositionInAssignedRegion(candidate))
-                    continue;
-                var candidateX = (int)MathF.Round(candidate.X);
-                var candidateZ = (int)MathF.Round(candidate.Z);
-                if (this.worldSampler.IsSolidAt(candidateX, candidateZ) || this.worldSampler.IsObstacleAt(candidateX, candidateZ))
-                    continue;
-
-                if (mover.SetDestination(candidate))
-                {
-                    // Success: drop back to the fast cadence so the next arrival re-picks
-                    // promptly, and let that arrival re-pick without waiting out an
-                    // interval it did not need.
-                    this.roamRetryIntervalSeconds = RoamRetryIntervalSeconds;
-                    this.secondsSinceLastRoamAttempt = this.roamRetryIntervalSeconds;
+                var entry = this.HomeDock.AssignedSurveyArea;
+                if (entry == null)
                     return;
-                }
+
+                // Raster order (by Z then X) gives a stable, roughly lawn-mower visitation.
+                this.sweepPlots = entry.ToSurveyArea().EnumeratePlots()
+                    .OrderBy(p => p.Z).ThenBy(p => p.X)
+                    .ToList();
+                this.sweepPlotIndex = 0;
+                this.sweepColumnCursor = 0;
+                this.sweepArrivalAttempts = 0;
+                this.sweepInitialized = true;
             }
 
-            // No random hop landed in-area with a path -- pull back toward the area body
-            // (also covers "area was reassigned smaller under us").
-            var entry = this.HomeDock.AssignedSurveyArea;
-            if (entry != null)
+            if (this.sweepPlots == null || this.sweepPlots.Count == 0)
+                return;
+
+            // Every plot covered -> the survey pass is done; head home (Surveying -> EnRoute(dock)).
+            if (this.sweepPlotIndex >= this.sweepPlots.Count)
             {
-                var areaFallback = ResolveDestinationInArea(entry.ToSurveyArea(), current);
-                if (areaFallback != null && mover.SetDestination(areaFallback.Value))
-                {
-                    this.roamRetryIntervalSeconds = RoamRetryIntervalSeconds;
-                    return;
-                }
+                this.LastDispatchNote = "survey complete -- returning to dock";
+                this.BeginReturnToDock(mover, viaDistrictCleared: true);
+                return;
             }
 
-            // Nothing reachable this round. Back off so a permanently-stuck drone costs
-            // the server a bounded, decaying amount of pathfinding instead of a fixed
-            // per-2s tax forever.
-            this.roamRetryIntervalSeconds = MathF.Min(this.roamRetryIntervalSeconds * 2f, RoamRetryMaxIntervalSeconds);
+            var plotSide = PlotUtil.PropertyPlotLength;
+            var plot = this.sweepPlots[this.sweepPlotIndex];
+            var pos = this.Parent.Position;
+
+            var dronePlot = PlotCoord.FromWorldColumn(
+                (int)MathF.Round(pos.X), (int)MathF.Round(pos.Z), plotSide);
+
+            if (!dronePlot.Equals(plot))
+            {
+                // Travelling to this plot's centre. Keep going while already moving.
+                if (mover.IsMoving)
+                    return;
+
+                var center = new PlotPos(plot.X, plot.Z).CenterWorldPos;
+                var reachable = mover.SetDestination(new Vector3(center.x, pos.Y, center.y));
+                this.sweepArrivalAttempts++;
+
+                if (!reachable || this.sweepArrivalAttempts > MaxPlotArrivalAttempts)
+                {
+                    // Unreachable / can't settle inside it -> skip so the rest of the area still gets
+                    // surveyed (covers non-contiguous islands and walled-off plots).
+                    this.LastDispatchNote = $"skipped unreachable plot {plot.X},{plot.Z}";
+                    this.AdvancePlot();
+                }
+                return;
+            }
+
+            // Parked in the target plot: sweep one row of its columns this tick.
+            this.sweepArrivalAttempts = 0;
+            var total = plotSide * plotSide;
+            var baseX = plot.X * plotSide;
+            var baseZ = plot.Z * plotSide;
+            var record = this.HomeDock.SurveyRecord;
+            var areaId = this.HomeDock.AssignedSurveyAreaId;
+
+            for (var k = 0; k < plotSide && this.sweepColumnCursor < total; k++, this.sweepColumnCursor++)
+            {
+                var dx = this.sweepColumnCursor % plotSide;
+                var dz = this.sweepColumnCursor / plotSide;
+                sensor.SampleColumn(baseX + dx, baseZ + dz, record, areaId);
+            }
+
+            if (this.sweepColumnCursor >= total)
+            {
+                this.LastDispatchNote = $"swept plot {this.sweepPlotIndex + 1}/{this.sweepPlots.Count}";
+                this.AdvancePlot();
+            }
+        }
+
+        /// <summary>Advances the park-and-sweep cursor to the next plot.</summary>
+        private void AdvancePlot()
+        {
+            this.sweepPlotIndex++;
+            this.sweepColumnCursor = 0;
+            this.sweepArrivalAttempts = 0;
         }
     }
 }

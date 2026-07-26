@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
 using Eco.Gameplay.Objects;
@@ -7,44 +6,23 @@ using Eco.Shared.Serialization;
 namespace Eco.Mods.TechTree
 {
     /// <summary>
-    /// Samples ore-bearing blocks under/around the drone as it roams and feeds each sample
-    /// into the OWNING DOCK's per-area <see cref="SurveyRecord"/> (KTD11), attributed to the
-    /// dock's currently-assigned survey area. The record — not this component — owns the
-    /// findings, so they persist with the area across a drone swap and are not tied to this
-    /// sensor instance. This component only decides WHICH blocks to sample each tick and where
-    /// to attribute them; all aggregation/concentration math lives in the Eco-free
-    /// <see cref="SurveyRecord"/> (U2, covered by its own tests).
+    /// The drone's ore/material sensor: a sampling PRIMITIVE, not a self-ticking scanner.
+    /// <see cref="SampleColumn"/> scans one world column top-down and feeds every block into a
+    /// per-area <see cref="SurveyRecord"/> (KTD11), which owns the aggregation/concentration math
+    /// (U2). The record — not this component — owns the findings, so they persist with the area
+    /// across a drone swap.
     ///
-    /// Per KTD3 / DroneMoverComponent.cs's own class doc (and
-    /// docs/solutions/best-practices/eco-013-server-driven-movement.md),
-    /// this component's own <see cref="Tick"/> override is how it gets
-    /// recurring server-side work done - the mod-facing
-    /// IWorldObjectManager.AddToTick / ITickOnDemand surface fires exactly
-    /// once and is not usable for anything recurring.
-    ///
-    /// Deliberately a DISCRETE sibling component to DroneMoverComponent, not
-    /// folded into it (R9: no module/plugin abstraction in v1 - this unit's
-    /// entire behavior is intentionally hardcoded). A WorldObject carrying
-    /// both components moves and surveys independently each tick; neither
-    /// knows about the other.
+    /// <see cref="DroneLifecycle"/> drives sampling: on its park-and-sweep pass it parks the drone
+    /// at each plot's center and calls <see cref="SampleColumn"/> for every column of that plot, so
+    /// the whole plot's grid is surveyed rather than the handful of columns a roam path happened to
+    /// cross. Centralizing the WHICH-columns sequencing in the lifecycle (the reliably-ticking
+    /// component, KTD3) keeps this sensor stateless and independent of the drone's physical size —
+    /// it scans whatever column it is handed.
     /// </summary>
     [Serialized]
     [NoIcon]
     public class OreSensorComponent : WorldObjectComponent
     {
-        // The drone's own ground column plus its four orthogonal neighbors,
-        // mirroring GridPathfinder's 4-connected Neighbors() shape - a
-        // modest, cheap-per-tick sampling footprint rather than a full-area
-        // scan, matching R9's "intentionally hardcoded v1 behavior" framing.
-        private static readonly (int Dx, int Dz)[] SampleOffsets =
-        {
-            (0, 0),
-            (1, 0),
-            (-1, 0),
-            (0, 1),
-            (0, -1),
-        };
-
         /// <summary>
         /// How far below the surface this sensor can see, in blocks. Ore sits
         /// underground, so a sensor reading only the surface found nothing no matter how
@@ -59,12 +37,6 @@ namespace Eco.Mods.TechTree
         /// </summary>
         protected virtual int SurveyDepthBlocks => 15;
 
-        // One column is scanned per tick, cycling through SampleOffsets, so the
-        // per-tick cost stays near the old single-block read (SurveyDepthBlocks lookups)
-        // rather than multiplying by the whole footprint. The drone roams continuously,
-        // so coverage accumulates as it moves.
-        private int nextSampleOffset;
-
         private IOreReader oreReader;
         private EcoWorldSampler worldSampler;
 
@@ -72,53 +44,35 @@ namespace Eco.Mods.TechTree
         {
             base.Initialize();
             this.oreReader = new EcoOreReader();
-            // Reused only for GroundHeightAt (U3's already-established, already-
-            // ASSUMPTION-documented ground-column lookup) -- this component adds
-            // no new terrain-height API surface of its own.
+            // Reused only for GroundHeightAt (already-established, already-ASSUMPTION-documented
+            // ground-column lookup) -- this component adds no new terrain-height API surface.
             this.worldSampler = new EcoWorldSampler();
         }
 
-        public override void Tick()
+        /// <summary>
+        /// Scans world column (<paramref name="x"/>, <paramref name="z"/>) from the surface down to
+        /// the sensor's depth, recording every block into <paramref name="record"/> attributed to
+        /// <paramref name="areaId"/>. Idempotent per exact block position (the record dedupes), so
+        /// re-scanning a column the drone already covered does not inflate coverage or concentration.
+        /// </summary>
+        public void SampleColumn(int x, int z, SurveyRecord record, int areaId)
         {
-            base.Tick();
-
-            // R6/KTD5: gate sampling on DroneLifecycle's Surveying status. No lifecycle,
-            // no home dock, or no assigned area means there is no survey area to attribute
-            // samples to -- nothing to do this tick (findings are per-area now, KTD11).
-            if (!this.Parent.TryGetComponent<DroneLifecycle>(out var lifecycle) || !lifecycle.ShouldSample)
-                return;
-            if (lifecycle.HomeDock is not DroneDockObject dock)
-                return;
-            var areaId = dock.AssignedSurveyAreaId;
-            if (areaId == 0)
+            if (record == null)
                 return;
 
-            var position = this.Parent.Position;
-            int centerX = (int)System.MathF.Round(position.X);
-            int centerZ = (int)System.MathF.Round(position.Z);
-
-            // Prospect ONE column per tick, cycling through the footprint.
-            var offset = SampleOffsets[this.nextSampleOffset];
-            this.nextSampleOffset = (this.nextSampleOffset + 1) % SampleOffsets.Length;
-
-            int x = centerX + offset.Dx;
-            int z = centerZ + offset.Dz;
             int surfaceY = (int)this.worldSampler.GroundHeightAt(x, z);
 
-            // Scan DOWN from the surface: ore is underground, so reading only the
-            // surface block reported "no ore" everywhere regardless of what the drone
-            // was standing on. Every block in the column counts toward the plot's
+            // Scan DOWN from the surface: ore is underground, so reading only the surface block
+            // reported "no ore" everywhere. Every block in the column counts toward the plot's
             // sampled total, so concentration stays "ore found / blocks looked at".
-            var record = dock.SurveyRecord;
             for (int depth = 0; depth < this.SurveyDepthBlocks; depth++)
             {
                 int y = surfaceY - depth;
                 if (y < 0)
                     break;
 
-                // TryGetOreType leaves oreType null for a non-ore block --
-                // RecordSample treats that as "sampled, no ore" (still counts
-                // toward the plot's coverage), exactly as intended.
+                // TryGetOreType leaves oreType null for a non-ore block -- RecordSample treats that
+                // as "sampled, no ore" (still counts toward the plot's coverage), exactly as intended.
                 this.oreReader.TryGetOreType(x, y, z, out var oreType);
                 record.RecordSample(x, y, z, oreType, depth, areaId);
             }
