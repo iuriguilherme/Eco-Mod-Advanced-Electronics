@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Numerics;
 using Eco.Gameplay.Objects;
@@ -94,13 +95,15 @@ namespace Eco.Mods.TechTree
             // whether or not a drone is currently out. A missing drone only means the data will
             // not grow, not that it disappears.
             var findings = area.ReadFindings()
-                .Where(f => f.Found)
+                .Where(f => f.Found && dock.IsMaterialShown(f.OreType))
                 .OrderByDescending(f => f.Count)
                 .ToList();
 
             if (findings.Count == 0)
             {
-                user.MsgLocStr("  Nothing found yet. The drone reports as it roams -- give it time to cover ground.");
+                user.MsgLocStr(dock.MaterialFilter.Count > 0
+                    ? "  Nothing matches the current material filter. Use /drone filter to clear it."
+                    : "  Nothing found yet. The drone reports as it roams -- give it time to cover ground.");
                 return;
             }
 
@@ -110,6 +113,51 @@ namespace Eco.Mods.TechTree
             user.MsgLocStr($"  Coverage: {area.CoveragePercent:F0}%");
             if (area.SurveyDepth > 0)
                 user.MsgLocStr($"  Scanned to {area.SurveyDepth} blocks below surface; median surface level {area.MedianSurface}.");
+        }
+
+        /// <summary>
+        /// Lists the discovered materials with their filter state, or toggles one by name. With no
+        /// argument and a filter set, clears it. The display-time filter narrows what the survey
+        /// readout shows; nothing is ever un-recorded.
+        /// </summary>
+        [ChatSubCommand("Drone", "List or toggle survey material filters. No name clears the filter. Usage: /drone filter [material]", ChatAuthorizationLevel.User)]
+        public static void Filter(User user, string material = "")
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
+
+            var known = dock.KnownMaterials;
+
+            if (!string.IsNullOrWhiteSpace(material))
+            {
+                // Case-insensitive match against what has actually been found.
+                var match = known.FirstOrDefault(m => m.Equals(material, StringComparison.OrdinalIgnoreCase));
+                if (match == null)
+                {
+                    user.MsgLocStr($"No surveyed material named '{material}'. Known: {(known.Count == 0 ? "(none yet)" : string.Join(", ", known))}");
+                    return;
+                }
+
+                dock.ToggleMaterialFilter(match);
+                user.MsgLocStr($"{match} is now {(dock.IsMaterialShown(match) ? "shown" : "hidden")} in the survey readout.");
+            }
+            else if (dock.MaterialFilter.Count > 0)
+            {
+                dock.ClearMaterialFilter();
+                user.MsgLocStr($"Material filter cleared on {dock.Name}; showing all materials.");
+            }
+
+            if (known.Count == 0)
+            {
+                user.MsgLocStr("No materials found yet -- they appear here as the drone finds them.");
+                return;
+            }
+
+            user.MsgLocStr(dock.MaterialFilter.Count == 0
+                ? $"Showing all {known.Count} materials:"
+                : $"Showing {dock.MaterialFilter.Count} of {known.Count} materials:");
+            foreach (var m in known)
+                user.MsgLocStr($"  {(dock.IsMaterialShown(m) ? "[x]" : "[ ]")} {m}");
         }
 
         /// <summary>

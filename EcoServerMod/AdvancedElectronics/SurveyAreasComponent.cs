@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Text;
 using System.ComponentModel;
@@ -38,6 +39,13 @@ namespace Eco.Mods.TechTree
         /// <summary>The drone's survey findings as read-only text (R7). Refreshed from the dock's tick.</summary>
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string ResultsDisplay { get; private set; } = string.Empty;
+
+        /// <summary>The material target filter: which materials the results above are limited to.</summary>
+        [SyncToView, Autogen, UITypeName("StringDisplay")]
+        public string FilterDisplay { get; private set; } = string.Empty;
+
+        /// <summary>Cursor into the dock's discovered-material catalog, driven by the Material Prev/Next buttons.</summary>
+        private int filterCursor;
 
         /// <summary>
         /// The area id the action buttons operate on. Set by the Prev/Next cycle buttons. (The
@@ -124,6 +132,44 @@ namespace Eco.Mods.TechTree
             this.RefreshAll();
         }
 
+        // --- Material target filter (display-time: narrows what the results show) ---
+
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Material Prev — highlight the previous material")]
+        public void MaterialPrev(Player player) => this.CycleMaterial(-1);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Material Next — highlight the next material")]
+        public void MaterialNext(Player player) => this.CycleMaterial(+1);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Toggle Material — show/hide the highlighted material in the results")]
+        public void ToggleMaterial(Player player)
+        {
+            if (this.Parent is not DroneDockObject dock) return;
+            var known = dock.KnownMaterials;
+            if (known.Count == 0) return;
+
+            this.filterCursor = Math.Clamp(this.filterCursor, 0, known.Count - 1);
+            dock.ToggleMaterialFilter(known[this.filterCursor]);
+            this.RefreshAll();
+        }
+
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Show All Materials — clear the material filter")]
+        public void ShowAllMaterials(Player player)
+        {
+            if (this.Parent is not DroneDockObject dock) return;
+            dock.ClearMaterialFilter();
+            this.RefreshAll();
+        }
+
+        private void CycleMaterial(int direction)
+        {
+            if (this.Parent is not DroneDockObject dock) return;
+            var known = dock.KnownMaterials;
+            if (known.Count == 0) { this.filterCursor = 0; this.RefreshFilter(); return; }
+
+            this.filterCursor = ((this.filterCursor + direction) % known.Count + known.Count) % known.Count;
+            this.RefreshFilter();
+        }
+
         private SurveyAreaEntry Selected(DroneDockObject dock) =>
             dock.SurveyAreas.FirstOrDefault(a => a.Id == this.TargetAreaId);
 
@@ -133,6 +179,43 @@ namespace Eco.Mods.TechTree
         {
             this.RefreshAreas();
             this.RefreshResults();
+            this.RefreshFilter();
+        }
+
+        public void RefreshFilter()
+        {
+            this.FilterDisplay = this.BuildFilterText();
+            this.Changed(nameof(this.FilterDisplay));
+        }
+
+        private string BuildFilterText()
+        {
+            if (this.Parent is not DroneDockObject dock)
+                return string.Empty;
+
+            var known = dock.KnownMaterials;
+            var sb = new StringBuilder("Material filter\n");
+
+            if (known.Count == 0)
+            {
+                sb.Append("Nothing found yet -- materials appear here as the drone finds them.");
+                return sb.ToString();
+            }
+
+            sb.Append(dock.MaterialFilter.Count == 0
+                ? "Showing all materials. Toggle one to narrow the results.\n"
+                : $"Showing {dock.MaterialFilter.Count} of {known.Count} materials.\n");
+
+            var cursor = Math.Clamp(this.filterCursor, 0, known.Count - 1);
+            for (var i = 0; i < known.Count; i++)
+            {
+                var shown = dock.MaterialFilter.Count == 0 || dock.MaterialFilter.Contains(known[i]);
+                sb.Append(i == cursor ? "> " : "   ")
+                  .Append(shown ? "[x] " : "[ ] ")
+                  .Append(known[i])
+                  .Append('\n');
+            }
+            return sb.ToString();
         }
 
         public void RefreshAreas()
@@ -164,24 +247,27 @@ namespace Eco.Mods.TechTree
                 var assigned = area.Id == dock.AssignedSurveyAreaId ? "   [assigned to drone]" : string.Empty;
                 sb.Append(selected).Append(area.Name)
                   .Append(" -- ").Append(area.PlotCount).Append(" plots, ")
-                  .Append(FormatAreaSummary(area))
+                  .Append(FormatAreaSummary(area, dock))
                   .Append(assigned).Append('\n');
             }
             return sb.ToString();
         }
 
-        /// <summary>Compact "coverage%, top find" summary for an area's list line, from its snapshot.</summary>
-        private static string FormatAreaSummary(SurveyAreaEntry area)
+        /// <summary>
+        /// Compact "coverage%, top find" summary for an area's list line, from its snapshot. Honours the
+        /// dock's material filter so the highlighted find is the one the player is targeting.
+        /// </summary>
+        private static string FormatAreaSummary(SurveyAreaEntry area, DroneDockObject dock)
         {
             var top = area.ReadFindings()
-                .Where(f => f.Found)
+                .Where(f => f.Found && dock.IsMaterialShown(f.OreType))
                 .OrderByDescending(f => f.Count)
                 .FirstOrDefault();
 
             if (top.Found)
                 return $"{area.CoveragePercent:F0}% surveyed, most {top.OreType} (~{top.Count} blocks)";
             if (area.CoveragePercent > 0f)
-                return $"{area.CoveragePercent:F0}% surveyed, nothing found";
+                return $"{area.CoveragePercent:F0}% surveyed, nothing matching";
             return "not surveyed yet";
         }
 
@@ -202,13 +288,19 @@ namespace Eco.Mods.TechTree
             }
 
             // Findings persist with the area (KTD11): these are entry's own, kept until it is
-            // edited or deleted -- shown even while the drone is between areas or docked.
-            var findings = entry.ReadFindings()
-                .Where(f => f.Found)
+            // edited or deleted -- shown even while the drone is between areas or docked. The
+            // material filter narrows what is DISPLAYED; everything stays recorded.
+            var all = entry.ReadFindings().Where(f => f.Found).ToList();
+            var findings = all
+                .Where(f => dock.IsMaterialShown(f.OreType))
                 .OrderByDescending(f => f.Count)
                 .ToList();
 
-            if (findings.Count == 0)
+            if (findings.Count == 0 && all.Count > 0)
+            {
+                sb.Append("No material in this area matches the current filter -- use Show All Materials.\n");
+            }
+            else if (findings.Count == 0)
             {
                 sb.Append(EmptyFindingsMessage(entry)).Append('\n');
             }

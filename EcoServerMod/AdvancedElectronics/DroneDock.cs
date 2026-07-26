@@ -122,6 +122,45 @@ namespace Eco.Mods.TechTree
         /// <summary>Id of the area the drone is assigned to survey, or 0 when unassigned.</summary>
         [Serialized] public int AssignedSurveyAreaId { get; private set; }
 
+        // ---------------------------------------------------------------
+        // Material target selection. A DISPLAY-time filter: the drone records every material it
+        // detects, and this narrows what the readout shows. Switching targets is therefore instant
+        // and never requires re-surveying. Empty list = show everything found. Dock-level state, like
+        // the area assignment -- it belongs to the dock and applies to whichever drone is docked.
+        // ---------------------------------------------------------------
+
+        /// <summary>Material names the readout is limited to. Empty means "show every material found".</summary>
+        [Serialized] public ThreadSafeList<string> MaterialFilter { get; set; } = new();
+
+        /// <summary>True when <paramref name="material"/> should appear in the readout under the current filter.</summary>
+        public bool IsMaterialShown(string material) =>
+            this.MaterialFilter.Count == 0 || this.MaterialFilter.Contains(material);
+
+        /// <summary>Adds or removes <paramref name="material"/> from the display filter.</summary>
+        public void ToggleMaterialFilter(string material)
+        {
+            if (string.IsNullOrWhiteSpace(material)) return;
+            if (this.MaterialFilter.Contains(material)) this.MaterialFilter.Remove(material);
+            else this.MaterialFilter.Add(material);
+        }
+
+        /// <summary>Clears the filter so every found material shows again.</summary>
+        public void ClearMaterialFilter() => this.MaterialFilter = new ThreadSafeList<string>();
+
+        /// <summary>
+        /// Every material discovered across this dock's areas — the catalog the filter selects from.
+        /// Derived from the persisted findings rather than a hardcoded list, so it grows with what the
+        /// drone actually finds.
+        /// </summary>
+        public List<string> KnownMaterials =>
+            this.SurveyAreas
+                .SelectMany(a => a.ReadFindings())
+                .Where(f => f.Found)
+                .Select(f => f.OreType)
+                .Distinct()
+                .OrderBy(n => n, StringComparer.Ordinal)
+                .ToList();
+
         // Monotonic id source. Never reused, so a deleted area's id cannot collide with a
         // later one and a stale assignment to a deleted area resolves to "no area".
         [Serialized] private int nextAreaId = 1;
