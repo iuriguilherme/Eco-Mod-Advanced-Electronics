@@ -48,26 +48,37 @@ namespace Eco.Mods.TechTree
         // Material targets: pick which materials the survey results show, the same way items and tags
         // are picked in a recipe or a law. Both empty = show everything found.
         //
-        // TWO pickers because the candidate set is scoped by a single RequiredTag (the attribute takes
-        // one string, not a set), while the drone's detection scope spans two tags. This mirrors the
-        // game's own "is this a natural terrain material" test,
-        // `HasAnyTag(Excavatable, Diggable, Minable)` (VehicleToolComponent), split across the two
-        // pickers. Scoping matters: plain BlockItem also offers crafted/buildable blocks (ashlar,
-        // brick, lumber, hewn log) and placeables (gasoline, logs) that the drone can never detect, so
+        // One picker per tag, because RequiredTag takes a single string (the attribute is
+        // `RequiredTagAttribute(string)`, not a set) while the drone's detection scope spans several
+        // ITEM tags. Scoping matters: plain BlockItem also offers crafted/buildable blocks (ashlar,
+        // brick, lumber, hewn log) and placeables (gasoline, logs) the drone can never detect, so
         // selecting them would do nothing.
+        //
+        // Tag choice is live-verified, not guessed:
+        //  - "Minable" is a BLOCK tag, not an item tag -- a picker scoped to it comes back EMPTY
+        //    (matches PickaxeItem, which tests Block.Get<Minable>(blockitem.OriginType)).
+        //  - "Diggable" is the wrong set: it yields Compost/Dirt/Garbage/Tailings and misses clay/peat.
+        //  - "Rock" and "Ore" are real item tags (TagManager.Tag("Rock"), RepresentedItemType.HasTag("Ore")).
+        //  - Crushed material carries "Excavatable".
+        // `/drone tags` dumps the actual tags of every found material, so this stays evidence-based.
         //
         // Confirmed live: GamePickerList renders and filters from a WorldObjectComponent tab, even
         // though every vanilla usage is inside a civics GameValue.
 
-        /// <summary>Rock, ore, coal and sulfur — the mined materials (BlockTags.Minable).</summary>
-        [Eco, AllowEmpty, RequiredTag(BlockTags.Minable)]
-        [LocDescription("Mined materials (rock, ore, coal, sulfur) to show in the survey results. Leave empty for all.")]
-        public GamePickerList<BlockItem> MinedTargets { get; set; } = new();
+        /// <summary>Rock types — limestone, granite, sandstone, basalt, shale (item tag "Rock").</summary>
+        [Eco, AllowEmpty, RequiredTag("Rock")]
+        [LocDescription("Rock types to show in the survey results. Leave every picker empty for all materials.")]
+        public GamePickerList<BlockItem> RockTargets { get; set; } = new();
 
-        /// <summary>Sand, clay, peat and crushed material — the dug materials (BlockTags.Diggable).</summary>
-        [Eco, AllowEmpty, RequiredTag(BlockTags.Diggable)]
-        [LocDescription("Dug materials (sand, clay, peat, crushed) to show in the survey results. Leave empty for all.")]
-        public GamePickerList<BlockItem> DugTargets { get; set; } = new();
+        /// <summary>Ores — iron, copper, gold (item tag "Ore").</summary>
+        [Eco, AllowEmpty, RequiredTag("Ore")]
+        [LocDescription("Ores to show in the survey results. Leave every picker empty for all materials.")]
+        public GamePickerList<BlockItem> OreTargets { get; set; } = new();
+
+        /// <summary>Crushed material, sand and the other loose materials (item tag "Excavatable").</summary>
+        [Eco, AllowEmpty, RequiredTag(BlockTags.Excavatable)]
+        [LocDescription("Loose materials (crushed, sand) to show in the survey results. Leave every picker empty for all materials.")]
+        public GamePickerList<BlockItem> LooseTargets { get; set; } = new();
 
         /// <summary>
         /// The area id the action buttons operate on. Set by the Prev/Next cycle buttons. (The
@@ -174,9 +185,10 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void ApplyPickerSelection(DroneDockObject dock)
         {
-            // Union of both scoped pickers: mined + dug. Both empty = no filter = show everything.
-            var picked = PickedNames(this.MinedTargets)
-                .Concat(PickedNames(this.DugTargets))
+            // Union of every scoped picker. All empty = no filter = show everything found.
+            var picked = PickedNames(this.RockTargets)
+                .Concat(PickedNames(this.OreTargets))
+                .Concat(PickedNames(this.LooseTargets))
                 .Distinct()
                 .ToList();
 

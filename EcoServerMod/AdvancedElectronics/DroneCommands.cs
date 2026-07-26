@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Eco.Core.Items;
+using Eco.Gameplay.Items;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
 using Eco.Gameplay.Systems.Messaging.Chat.Commands;
@@ -159,6 +162,56 @@ namespace Eco.Mods.TechTree
             foreach (var m in known)
                 user.MsgLocStr($"  {(dock.IsMaterialShown(m) ? "[x]" : "[ ]")} {m}");
         }
+
+        /// <summary>
+        /// Dumps the ITEM TAGS of every material the drone has actually found. Diagnostic: the
+        /// material pickers scope their candidate list by a single item tag each, and which tag a
+        /// given material carries is not reliably inferable from the game source (block tags and item
+        /// tags differ -- "Minable" is a block tag, so an item picker scoped to it is empty). This
+        /// reports the ground truth from the live server so picker scoping is evidence-based instead
+        /// of guessed, in one pass rather than a restart per guess.
+        /// </summary>
+        [ChatSubCommand("Drone", "Dump the item tags of every surveyed material (diagnostic).", ChatAuthorizationLevel.User)]
+        public static void Tags(User user)
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
+
+            var materials = dock.KnownMaterials;
+            if (materials.Count == 0)
+            {
+                user.MsgLocStr("No materials surveyed yet -- run a survey first, then re-run this.");
+                return;
+            }
+
+            // Candidate tags a material picker could be scoped by. Inverted lookup (tag -> its types,
+            // then match our material name) because it uses only TagManager.TagToTypes/Tag, the same
+            // pair vanilla code uses, rather than guessing at a type-to-tags accessor.
+            var candidateTags = new[] { "Rock", "Ore", "Excavatable", "Diggable", "Minable", "MinableRubble", "Fuel", "Metal", "Block" };
+
+            user.MsgLocStr($"Item tags for {materials.Count} surveyed materials on {dock.Name}:");
+            foreach (var material in materials)
+            {
+                var hits = new List<string>();
+                foreach (var tag in candidateTags)
+                {
+                    try
+                    {
+                        var types = TagManager.TagToTypes[TagManager.Tag(tag)];
+                        if (types != null && types.Any(t => IsItemTypeFor(t.Name, material)))
+                            hits.Add(tag);
+                    }
+                    catch { /* unknown tag on this build -- just report it as absent */ }
+                }
+
+                user.MsgLocStr($"  {material}: {(hits.Count == 0 ? "(none of the candidate tags -- unpickable)" : string.Join(", ", hits))}");
+            }
+        }
+
+        /// <summary>True when item type <paramref name="typeName"/> is the item for material <paramref name="material"/>.</summary>
+        private static bool IsItemTypeFor(string typeName, string material) =>
+            typeName.Equals(material + "Item", StringComparison.OrdinalIgnoreCase) ||
+            typeName.Equals(material + "BlockItem", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Dumps the complete server-side state of the nearest accessible dock and its
