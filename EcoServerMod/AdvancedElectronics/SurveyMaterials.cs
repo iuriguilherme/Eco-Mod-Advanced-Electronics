@@ -80,9 +80,42 @@ namespace Eco.Mods.TechTree
     /// </summary>
     public class SurveyMaterialTagger : IModKitPlugin, IInitializablePlugin
     {
-        private string status = "Survey material tags not initialized";
+        private string Status => Failure != null
+            ? $"Survey material tagging FAILED: {Failure}"
+            : Ran ? $"Tagged {TaggedCount} of {BlockItemsSeen} block items as surveyable"
+                  : "Survey material tags not initialized";
 
-        public void Initialize(TimedTask timer)
+        /// <summary>Diagnostic record of what the startup pass did, surfaced by <c>/drone tags</c>.</summary>
+        public static bool Ran;
+        public static int TaggedCount;
+        public static int BlockItemsSeen;
+        public static string Failure;
+
+        public void Initialize(TimedTask timer) => EnsureTagged();
+
+        /// <summary>
+        /// Applies the tag, at most once per boot. Called from plugin init AND from the dock's Survey
+        /// tab: if plugin init runs before the item registry is populated, the startup pass sees
+        /// nothing to tag, and the later call from the tab recovers it. Idempotent -- the set-based
+        /// registry makes a repeat harmless, and <see cref="Ran"/> stops it once it has tagged
+        /// something.
+        /// </summary>
+        public static void EnsureTagged()
+        {
+            if (Ran && TaggedCount > 0) return;
+
+            try
+            {
+                TagMaterials();
+            }
+            catch (Exception e)
+            {
+                // Never take the server down over a UI convenience; report it instead.
+                Failure = e.Message;
+            }
+        }
+
+        private static void TagMaterials()
         {
             // AddTypeToTag(string, Type) is the tidy wrapper for this, but it is not in the 0.13.0.4
             // reference assemblies -- so register through the public registry it wraps: GetOrMake
@@ -91,8 +124,10 @@ namespace Eco.Mods.TechTree
             var tag = TagManager.GetOrMake(SurveyMaterials.TargetTag);
 
             var tagged = 0;
+            var seen = 0;
             foreach (var item in Item.AllItemsIncludingHidden.OfType<BlockItem>())
             {
+                seen++;
                 if (!SurveyMaterials.IsSurveyMaterial(item.OriginType)) continue;
 
                 AddToSet(TagManager.TypeToTags, item.Type, tag);
@@ -100,7 +135,9 @@ namespace Eco.Mods.TechTree
                 tagged++;
             }
 
-            this.status = $"Tagged {tagged} surveyable materials";
+            Ran = true;
+            TaggedCount = tagged;
+            BlockItemsSeen = seen;
         }
 
         /// <summary>Eco's own AddToSet extension is not exposed by the reference assemblies; same behaviour.</summary>
@@ -116,6 +153,6 @@ namespace Eco.Mods.TechTree
 
         public string GetCategory() => "Mods";
 
-        public string GetStatus() => this.status;
+        public string GetStatus() => this.Status;
     }
 }

@@ -78,6 +78,12 @@ namespace Eco.Mods.TechTree
         public override void Initialize()
         {
             base.Initialize();
+
+            // Recovery for the material picker: if the startup pass ran before the item registry was
+            // populated it tagged nothing, and the picker would be empty. Re-running here (idempotent)
+            // catches that case, since items are certainly loaded by the time a dock exists.
+            SurveyMaterialTagger.EnsureTagged();
+
             this.RefreshAll();
         }
 

@@ -178,18 +178,15 @@ namespace Eco.Mods.TechTree
             if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
 
             var materials = dock.KnownMaterials;
-            if (materials.Count == 0)
-            {
-                user.MsgLocStr("No materials surveyed yet -- run a survey first, then re-run this.");
-                return;
-            }
+            user.MsgLocStr(materials.Count == 0
+                ? "No materials surveyed yet (tag diagnostics below still apply)."
+                : $"Item tags for {materials.Count} surveyed materials on {dock.Name}:");
 
             // Candidate tags a material picker could be scoped by. Inverted lookup (tag -> its types,
             // then match our material name) because it uses only TagManager.TagToTypes/Tag, the same
             // pair vanilla code uses, rather than guessing at a type-to-tags accessor.
-            var candidateTags = new[] { "Rock", "Ore", "Excavatable", "Diggable", "Minable", "MinableRubble", "Fuel", "Metal", "Block" };
+            var candidateTags = new[] { SurveyMaterials.TargetTag, "Rock", "Ore", "Excavatable", "Diggable", "Minable", "MinableRubble", "Fuel", "Metal", "Block" };
 
-            user.MsgLocStr($"Item tags for {materials.Count} surveyed materials on {dock.Name}:");
             foreach (var material in materials)
             {
                 var hits = new List<string>();
@@ -199,13 +196,35 @@ namespace Eco.Mods.TechTree
                     {
                         var types = TagManager.TagToTypes[TagManager.Tag(tag)];
                         if (types != null && types.Any(t => IsItemTypeFor(t.Name, material)))
-                            hits.Add(tag);
+                            hits.Add(tag == SurveyMaterials.TargetTag ? "OURS" : tag);
                     }
                     catch { /* unknown tag on this build -- just report it as absent */ }
                 }
 
-                user.MsgLocStr($"  {material}: {(hits.Count == 0 ? "(none of the candidate tags -- unpickable)" : string.Join(", ", hits))}");
+                user.MsgLocStr($"  {material}: {(hits.Count == 0 ? "(no tags -- unpickable)" : string.Join(", ", hits))}");
             }
+
+            // Which link in the chain is broken when the picker comes back empty: did the startup pass
+            // run, did the classifier match anything, did the tag land in the registry, and does a live
+            // re-run agree? Each line rules out a different cause.
+            user.MsgLocStr("Survey-target tag diagnostics:");
+            user.MsgLocStr($"  Startup tagger ran: {(SurveyMaterialTagger.Ran ? "yes" : "NO -- plugin never initialized")}"
+                + (SurveyMaterialTagger.Failure != null ? $" (FAILED: {SurveyMaterialTagger.Failure})" : string.Empty));
+            user.MsgLocStr($"  Tagged at startup: {SurveyMaterialTagger.TaggedCount} of {SurveyMaterialTagger.BlockItemsSeen} block items");
+
+            var ourTag = TagManager.Tag(SurveyMaterials.TargetTag);
+            user.MsgLocStr($"  Tag registered: {(ourTag == null ? "NO" : "yes")}");
+            if (ourTag != null)
+            {
+                var count = TagManager.TagToTypes.TryGetValue(ourTag, out var types) ? types.Count : 0;
+                user.MsgLocStr($"  Types carrying it now: {count}");
+            }
+
+            // Live re-run of the classifier: proves whether the classifier itself matches anything,
+            // independent of when the startup pass ran.
+            var liveMatches = Item.AllItemsIncludingHidden.OfType<BlockItem>()
+                .Count(i => SurveyMaterials.IsSurveyMaterial(i.OriginType));
+            user.MsgLocStr($"  Classifier matches right now: {liveMatches} block items");
         }
 
         /// <summary>True when item type <paramref name="typeName"/> is the item for material <paramref name="material"/>.</summary>
