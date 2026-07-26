@@ -175,11 +175,11 @@ namespace Eco.Mods.TechTree
         {
             var top = area.ReadFindings()
                 .Where(f => f.Found)
-                .OrderByDescending(f => f.Concentration)
+                .OrderByDescending(f => f.Count)
                 .FirstOrDefault();
 
             if (top.Found)
-                return $"{area.CoveragePercent:F0}% surveyed, top {top.OreType} ~{top.Concentration * 100f:F0}%";
+                return $"{area.CoveragePercent:F0}% surveyed, most {top.OreType} (~{top.Count} blocks)";
             if (area.CoveragePercent > 0f)
                 return $"{area.CoveragePercent:F0}% surveyed, nothing found";
             return "not surveyed yet";
@@ -205,7 +205,7 @@ namespace Eco.Mods.TechTree
             // edited or deleted -- shown even while the drone is between areas or docked.
             var findings = entry.ReadFindings()
                 .Where(f => f.Found)
-                .OrderByDescending(f => f.Concentration)
+                .OrderByDescending(f => f.Count)
                 .ToList();
 
             if (findings.Count == 0)

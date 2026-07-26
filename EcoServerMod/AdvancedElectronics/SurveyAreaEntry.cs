@@ -17,10 +17,12 @@ namespace Eco.Mods.TechTree
     public class OreFindingSnapshot
     {
         [Serialized] public string OreType { get; set; }
+        [Serialized] public int Count { get; set; }
         [Serialized] public int X { get; set; }
         [Serialized] public int Y { get; set; }
         [Serialized] public int Z { get; set; }
         [Serialized] public int DepthBelowSurface { get; set; }
+        [Serialized] public int DepthMax { get; set; }
         [Serialized] public float Concentration { get; set; }
 
         public OreFindingSnapshot() { }
@@ -28,16 +30,18 @@ namespace Eco.Mods.TechTree
         public static OreFindingSnapshot From(SurveyFinding f) => new OreFindingSnapshot
         {
             OreType = f.OreType,
+            Count = f.Count,
             X = f.Position.X,
             Y = f.Position.Y,
             Z = f.Position.Z,
             DepthBelowSurface = f.DepthBelowSurface,
+            DepthMax = f.DepthMax,
             Concentration = f.Concentration,
         };
 
         /// <summary>Back to the Eco-free finding shape the readout formatter consumes.</summary>
         public SurveyFinding ToSurveyFinding(int areaId) =>
-            SurveyFinding.Create(areaId, this.OreType, new BlockPos(this.X, this.Y, this.Z), this.DepthBelowSurface, this.Concentration);
+            SurveyFinding.Create(areaId, this.OreType, this.Count, new BlockPos(this.X, this.Y, this.Z), this.DepthBelowSurface, this.DepthMax, this.Concentration);
     }
 
     /// <summary>

@@ -48,57 +48,45 @@ namespace Eco.Mods.TechTree
             if (block == null)
                 return false;
 
-            // ASSUMPTION -- verify against a live server: Block.Is<T>()'s
-            // stripped body means the exact pass/fail boundary (e.g. whether
-            // it checks the block's most-derived declared type or something
-            // attribute-inheritance-aware) could not be executed offline;
-            // the reflection dump only confirms the [Minable] attribute is
-            // present at the type level on every raw ore block and absent
-            // from crushed/pickupable variants.
-            if (!block.Is<Minable>())
-                return false;
-
-            // ASSUMPTION -- verify against a live server: using the block's
-            // own concrete type name (minus the "Block" suffix vanilla ore
-            // types consistently use, e.g. "IronOreBlock" -> "IronOre") as
-            // the ore-type identifier SurveyRecord accumulates against. This
-            // was picked over Block.RepresentedItemType.Name (also present
-            // on these types) because it needs no extra hop through the
-            // represented-item type and reads directly off the block that
-            // was just queried; either would work equally well as a stable
-            // per-ore key, since SurveyRecord treats oreType as an opaque
-            // string.
+            // Specific type name minus the "Block" suffix (e.g. "IronOreBlock" -> "IronOre",
+            // "LimestoneBlock" -> "Limestone", "SandBlock" -> "Sand"). This IS the specific-type
+            // granularity the readout reports (KTD1); SurveyRecord treats it as an opaque key.
             var typeName = block.GetType().Name;
             const string blockSuffix = "Block";
             var name = typeName.EndsWith(blockSuffix, System.StringComparison.Ordinal)
                 ? typeName.Substring(0, typeName.Length - blockSuffix.Length)
                 : typeName;
 
-            // [Minable] alone is too broad: vanilla tags plain rock with it too
-            // (BasaltBlock is [Solid, Wall, Minable(5)], structurally identical to
-            // CopperOreBlock's [Solid, Wall, Minable(3)]). Reporting every minable block
-            // buries the actual find under stone, since rock is far more common than ore
-            // and would dominate every cell's density.
+            // Classify by mining marker (KTD1). Every raw MINABLE block is a survey material -- this
+            // covers Rock (Limestone, Granite, Basalt, Sandstone...), Ore (IronOre, CopperOre, Coal --
+            // Coal counts as ore), and Sulfur. Crushed variants are [Diggable]/[Crushed], NOT [Minable],
+            // so they are excluded here for free (R5).
             //
-            // No attribute distinguishes them, so v1 discriminates by name: the deposits
-            // a player prospects for. Deliberately narrow and easy to extend -- adding a
-            // resource is one entry here.
-            if (!IsProspectableDeposit(name))
-                return false;
+            // ASSUMPTION -- verify against a live server: Block.Is<Minable>()/Is<Diggable>()'s stripped
+            // bodies mean the exact pass/fail boundary could not be executed offline; the reflection
+            // dump confirms [Minable] on raw ore/rock and [Diggable]/[Crushed] on crushed/dug blocks.
+            if (block.Is<Minable>())
+            {
+                oreType = name;
+                return true;
+            }
 
-            oreType = name;
-            return true;
+            // DIGGABLE materials are broader than we want (Dirt, Grass, Gravel are diggable too), so
+            // restrict to the curated set the player surveys for: Sand, Clay, Peat.
+            // ASSUMPTION -- verify live: the Diggable marker and these exact stripped type names.
+            if (block.Is<Diggable>() && IsSurveyedDiggable(name))
+            {
+                oreType = name;
+                return true;
+            }
+
+            return false;
         }
 
-        /// <summary>
-        /// Deposits worth reporting (R7): anything ending in "Ore", plus Coal.
-        ///
-        /// Crushed variants are INCLUDED deliberately. They read as processing leftovers
-        /// but are a more valuable prospecting find than the raw ore block, so a survey
-        /// that hid them would steer players away from the better site.
-        /// </summary>
-        private static bool IsProspectableDeposit(string name) =>
-            name.EndsWith("Ore", System.StringComparison.Ordinal)
-            || name.Equals("Coal", System.StringComparison.Ordinal);
+        /// <summary>Diggable materials worth surveying (R1): Sand, Clay, Peat. Excludes Dirt/Grass/Gravel.</summary>
+        private static bool IsSurveyedDiggable(string name) =>
+            name.Equals("Sand", System.StringComparison.Ordinal)
+            || name.Equals("Clay", System.StringComparison.Ordinal)
+            || name.Equals("Peat", System.StringComparison.Ordinal);
     }
 }

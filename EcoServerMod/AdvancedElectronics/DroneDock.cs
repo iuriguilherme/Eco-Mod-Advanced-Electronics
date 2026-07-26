@@ -397,42 +397,13 @@ namespace Eco.Mods.TechTree
         }
 
         // ---------------------------------------------------------------
-        // U6: dock readout (R14/R15/R8) -- text status/densest-cell lines via
-        // WorldObject.SetAnimatedState(string, string), coverage gauge via
-        // WorldObject.SetAnimatedState(string, float). Pure line/number formatting is
-        // DockReadout's job (see that class's docs); this section only gathers the
-        // live inputs (DroneLifecycle.Status, OreSensorComponent's per-ore results)
-        // and pushes DockReadout's output through the real sync API, on a throttled
-        // tick per KTD3's proven WorldObject/WorldObjectComponent Tick() surface
-        // (confirmed virtual on WorldObject itself via reflection against
-        // Eco.Gameplay.dll -- same recurring-callback surface DroneMoverComponent/
-        // DroneLifecycle/OreSensorComponent already rely on, just one level up: a
-        // WorldObject's own Tick() is what drives TickComponents() for all of those).
-        //
-        // ASSUMPTION -- verify against a live server: WorldObject.SetAnimatedState's
-        // exact sync semantics (whether it diffs against the previous value itself, or
-        // sends a network update on every call regardless of change) cannot be
-        // confirmed offline -- Eco.ReferenceAssemblies ships method bodies stripped,
-        // same caveat as this file's other ASSUMPTION-flagged Eco API calls. This is
-        // exactly why the refresh below is throttled to ReadoutRefreshIntervalSeconds
-        // rather than called from every raw tick: even in the worst case (no internal
-        // diffing), a several-times-a-second network write for a slowly-changing text
-        // panel is wasteful, so the throttle is a safe default regardless of which way
-        // the unconfirmed sync semantics actually resolve.
+        // Dock readout driver. The survey results live in the dock's Survey tab (the in-window
+        // panel) and the chat commands -- KTD3 retired the world-space floating text and the object
+        // tooltip. This section only (a) folds the assigned area's live samples into its persisted
+        // snapshot and refreshes the tab on a throttled tick (a WorldObjectComponent's own Tick does
+        // not reliably fire on the dock, so the dock drives it), and (b) pushes the boolean Working
+        // animation state for future art. No survey text is synced to the client.
         // ---------------------------------------------------------------
-
-        // Named state-slot prefixes. The client-side Unity WorldObject component
-        // declares a FIXED array of names in its StringStates/FloatStates inspector
-        // fields (see Assets/EcoModKit/Scripts/WorldObject.cs in the Unity project) --
-        // there is no dynamic/variable-length synced state, so this dock always writes
-        // the same fixed set of slot names (padding unused ore-line slots with an
-        // empty string) rather than a variable number of calls. Wiring the matching
-        // prefab-side StringStates/FloatStates names is a follow-up Unity-side task
-        // (see docs/plans/2026-07-11-001-feat-survey-drone-plan.md's U9), not built by
-        // this backend-only unit.
-        private const string StatusStateName = "ReadoutStatus";
-        private const string OreLineStateNamePrefix = "ReadoutOre";
-        private const string CoverageStateName = "ReadoutCoverage";
 
         private const float ReadoutRefreshIntervalSeconds = 1f;
 
@@ -497,82 +468,18 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Gathers the live status/per-ore inputs from <see cref="SpawnedDrone"/>'s
-        /// components (null/no-lifecycle/no-sensor all degrade gracefully to "no data"
-        /// rather than throwing -- a docked-but-not-yet-spawned or still-initializing
-        /// drone is a normal transient state, not an error) and pushes
-        /// <see cref="DockReadout"/>'s formatted output through
-        /// <see cref="WorldObject.SetAnimatedState"/>.
+        /// Folds the assigned area's live samples into its persisted snapshot (KTD11) and refreshes
+        /// the dock's Survey tab -- the survey-readout surface. No survey text is synced to the
+        /// client; the world-space text and object tooltip were retired (KTD3).
         /// </summary>
         private void RefreshReadout()
         {
-            DroneStatus? status = null;
-            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed
-                && this.SpawnedDrone.TryGetComponent<DroneLifecycle>(out var lifecycle))
-            {
-                status = lifecycle.Status;
-            }
-
-            // Fold the assigned area's live samples into its persisted snapshot (KTD11), then
-            // read the readout straight from that snapshot -- so it is per-area and survives a
-            // restart. An unassigned dock shows no findings, only the status line.
             this.PersistAssignedAreaFindings();
-            var entry = this.AssignedSurveyArea;
-            var findings = entry?.ReadFindings().ToList() ?? new List<SurveyFinding>();
-            var coverage = entry?.CoveragePercent ?? 0f;
 
-            // Drive the Survey tab's results text from this (proven) dock tick: a
-            // WorldObjectComponent's own Tick does not reliably fire on the dock, so the tab
-            // cannot self-refresh its live readout (U9).
+            // A WorldObjectComponent's own Tick does not reliably fire on the dock, so the dock
+            // drives the tab's refresh from its own (proven) tick.
             if (this.TryGetComponent<SurveyAreasComponent>(out var surveyTab))
                 surveyTab.RefreshResults();
-
-            var lines = DockReadout.BuildStateLines(status, findings);
-
-            this.SetAnimatedState(StatusStateName, lines[0]);
-            for (var i = 0; i < DockReadout.MaxOreLines; i++)
-            {
-                // lines[0] is the status line, so ore line i lives at lines[i + 1].
-                var text = i + 1 < lines.Count ? lines[i + 1] : string.Empty;
-                this.SetAnimatedState(OreLineStateNamePrefix + i, text);
-            }
-
-            this.SetAnimatedState(CoverageStateName, coverage);
-        }
-
-        /// <summary>
-        /// Renders the detailed survey readout (per-ore finding lines + coverage gauge, R8/R14)
-        /// into this dock's in-game info window via Eco's NewTooltip system. This is the "popup
-        /// panel" surface: the world-space text above the dock (<see cref="DockReadoutDisplay"/>)
-        /// is reserved for the short drone status line only, so the per-ore detail lives here.
-        /// <see cref="CacheAs.Disabled"/> recomputes on every view -- the same choice vanilla
-        /// PumpJackItem.OilTooltip makes for live data -- because the assigned area's findings
-        /// change as the drone roams. Reads the assigned area's persisted snapshot (KTD11), the
-        /// same source <see cref="RefreshReadout"/> uses.
-        /// </summary>
-        [NewTooltip(CacheAs.Disabled, 100)]
-        public LocString SurveyReadoutTooltip()
-        {
-            if (this.SurveyAreas.Count == 0)
-                return Localizer.DoStr("Survey Readout\nNo survey areas yet.");
-
-            // An at-a-glance overview of EVERY area (KTD11 snapshots), decoupled from assignment:
-            // the info window shows all areas' coverage and top find without a drone assigned.
-            var lines = this.SurveyAreas.Select(area =>
-            {
-                var top = area.ReadFindings()
-                    .Where(f => f.Found)
-                    .OrderByDescending(f => f.Concentration)
-                    .FirstOrDefault();
-
-                var tail = top.Found
-                    ? $", top {top.OreType} ~{top.Concentration * 100f:F0}%"
-                    : (area.CoveragePercent <= 0f ? " (not surveyed)" : ", nothing found");
-                var here = area.Id == this.AssignedSurveyAreaId ? "  [drone here]" : string.Empty;
-                return $"{area.Name} -- {area.CoveragePercent:F0}% surveyed{tail}{here}";
-            });
-
-            return Localizer.DoStr($"Survey Readout\n{string.Join("\n", lines)}");
         }
     }
 

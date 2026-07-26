@@ -95,7 +95,7 @@ namespace Eco.Mods.TechTree
             // not grow, not that it disappears.
             var findings = area.ReadFindings()
                 .Where(f => f.Found)
-                .OrderByDescending(f => f.Concentration)
+                .OrderByDescending(f => f.Count)
                 .ToList();
 
             if (findings.Count == 0)
@@ -164,7 +164,7 @@ namespace Eco.Mods.TechTree
                 user.MsgLocStr("  Findings: (no area assigned)");
             else
             {
-                var findings = area.ReadFindings().Where(f => f.Found).ToList();
+                var findings = area.ReadFindings().Where(f => f.Found).OrderByDescending(f => f.Count).ToList();
                 if (findings.Count == 0)
                     user.MsgLocStr($"  Findings for '{area.Name}': none yet (coverage {area.CoveragePercent:F0}%).");
                 else

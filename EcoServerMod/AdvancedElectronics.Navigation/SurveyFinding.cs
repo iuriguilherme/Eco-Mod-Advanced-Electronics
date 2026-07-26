@@ -48,47 +48,56 @@ namespace AdvancedElectronics.Navigation
         /// <summary>Which survey area this finding belongs to (R3a attribution).</summary>
         public int AreaId { get; }
 
+        /// <summary>The material type name (an ore, a rock, sulfur, sand, ...). Field name is historical.</summary>
         public string OreType { get; }
 
-        /// <summary>The precise block to dig: the shallowest observed occurrence of this ore in the densest plot.</summary>
+        /// <summary>Total blocks of this material found in the area — the quantity headline (KTD2).</summary>
+        public int Count { get; }
+
+        /// <summary>The precise block to dig: the shallowest observed occurrence of this material in the area.</summary>
         public BlockPos Position { get; }
 
-        /// <summary>Blocks below the surface of <see cref="Position"/> — the dig-effort signal (R5).</summary>
+        /// <summary>Blocks below the surface of <see cref="Position"/> — the shallowest depth (== depth-range minimum).</summary>
         public int DepthBelowSurface { get; }
 
+        /// <summary>Deepest observed occurrence, in blocks below surface — the depth-range maximum.</summary>
+        public int DepthMax { get; }
+
         /// <summary>
-        /// Ore-blocks / sampled-blocks in the plot this finding was drawn from
-        /// (R5 concentration). Aggregated per plot rather than per block because a
-        /// single block is either ore or not — concentration needs a window. The
-        /// window is one plot; the <see cref="Position"/> stays block-precise.
+        /// Material-blocks / sampled-blocks in the area (secondary, ore-oriented signal). Demoted from
+        /// the readout headline in favour of <see cref="Count"/> (KTD2/R3); kept for callers that want it.
         /// </summary>
         public float Concentration { get; }
 
-        private SurveyFinding(bool found, int areaId, string oreType, BlockPos position, int depthBelowSurface, float concentration)
+        private SurveyFinding(bool found, int areaId, string oreType, int count, BlockPos position, int depthBelowSurface, int depthMax, float concentration)
         {
             Found = found;
             AreaId = areaId;
             OreType = oreType;
+            Count = count;
             Position = position;
             DepthBelowSurface = depthBelowSurface;
+            DepthMax = depthMax;
             Concentration = concentration;
         }
 
-        public static SurveyFinding NotFound { get; } = new SurveyFinding(false, 0, null, default, 0, 0f);
+        public static SurveyFinding NotFound { get; } = new SurveyFinding(false, 0, null, 0, default, 0, 0, 0f);
 
-        public static SurveyFinding Create(int areaId, string oreType, BlockPos position, int depthBelowSurface, float concentration) =>
-            new SurveyFinding(true, areaId, oreType, position, depthBelowSurface, concentration);
+        public static SurveyFinding Create(int areaId, string oreType, int count, BlockPos position, int depthBelowSurface, int depthMax, float concentration) =>
+            new SurveyFinding(true, areaId, oreType, count, position, depthBelowSurface, depthMax, concentration);
 
         public bool Equals(SurveyFinding other) =>
             Found == other.Found &&
             AreaId == other.AreaId &&
             OreType == other.OreType &&
+            Count == other.Count &&
             Position.Equals(other.Position) &&
             DepthBelowSurface == other.DepthBelowSurface &&
+            DepthMax == other.DepthMax &&
             Concentration.Equals(other.Concentration);
 
         public override bool Equals(object obj) => obj is SurveyFinding other && Equals(other);
 
-        public override int GetHashCode() => HashCode.Combine(Found, AreaId, OreType, Position, DepthBelowSurface, Concentration);
+        public override int GetHashCode() => HashCode.Combine(Found, AreaId, OreType, Count, Position, DepthBelowSurface, DepthMax, Concentration);
     }
 }

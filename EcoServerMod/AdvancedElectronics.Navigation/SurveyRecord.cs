@@ -101,51 +101,54 @@ namespace AdvancedElectronics.Navigation
         }
 
         /// <summary>
-        /// The best finding for <paramref name="oreType"/> in
-        /// <paramref name="areaId"/>: the plot with the highest concentration
-        /// (ore-blocks / sampled-blocks — NOT the highest raw count), reporting
-        /// that plot's shallowest ore block as the precise dig target. Returns
-        /// <see cref="SurveyFinding.NotFound"/> when no sample of this ore has
-        /// been recorded in this area yet.
+        /// The area-total finding for <paramref name="oreType"/> in <paramref name="areaId"/> (KTD2):
+        /// total block count across every plot, the shallowest occurrence in the area as the dig
+        /// target, and the depth range (shallowest–deepest). Concentration is retained as a secondary
+        /// area-level ratio (material blocks / sampled blocks). Returns <see cref="SurveyFinding.NotFound"/>
+        /// when no sample of this material has been recorded in this area yet.
         /// </summary>
-        public SurveyFinding BestFinding(int areaId, string oreType)
+        public SurveyFinding MaterialFinding(int areaId, string oreType)
         {
             if (string.IsNullOrEmpty(oreType) || !_byArea.TryGetValue(areaId, out var plots))
                 return SurveyFinding.NotFound;
 
+            var totalCount = 0;
+            var totalSampled = 0;
+            var shallowestDepth = int.MaxValue;
+            var deepestDepth = int.MinValue;
+            var shallowestPos = default(BlockPos);
             var found = false;
-            PlotData bestData = null;
-            var bestRatio = 0f;
 
             foreach (var data in plots.Values)
             {
-                if (!data.TryGetOre(oreType, out var oreCount, out _, out _) || oreCount == 0)
+                totalSampled += data.SampledCount;
+                if (!data.TryGetOre(oreType, out var count, out var plotShallowest, out var plotShallowestPos, out var plotDeepest) || count == 0)
                     continue;
 
-                var ratio = (float)oreCount / data.SampledCount;
-                if (!found || ratio > bestRatio)
+                found = true;
+                totalCount += count;
+                if (plotShallowest < shallowestDepth)
                 {
-                    found = true;
-                    bestData = data;
-                    bestRatio = ratio;
+                    shallowestDepth = plotShallowest;
+                    shallowestPos = plotShallowestPos;
                 }
+                if (plotDeepest > deepestDepth)
+                    deepestDepth = plotDeepest;
             }
 
             if (!found)
                 return SurveyFinding.NotFound;
 
-            bestData.TryGetOre(oreType, out _, out var shallowestDepth, out var shallowestPos);
-            return SurveyFinding.Create(areaId, oreType, shallowestPos, shallowestDepth, bestRatio);
+            var concentration = totalSampled > 0 ? (float)totalCount / totalSampled : 0f;
+            return SurveyFinding.Create(areaId, oreType, totalCount, shallowestPos, shallowestDepth, deepestDepth, concentration);
         }
 
         /// <summary>
-        /// The best finding per ore type in <paramref name="areaId"/> — the
-        /// machine-readable record a mining drone consumes (R6) and the readout
-        /// renders (R7). Only areas' own findings appear; another area's findings
-        /// are never included (R3a attribution).
+        /// The area-total finding per material type in <paramref name="areaId"/> — what the readout
+        /// renders (R2). Only this area's own findings appear; another area's are never included (R3a).
         /// </summary>
         public IEnumerable<SurveyFinding> Findings(int areaId) =>
-            SampledOreTypes(areaId).Select(ore => BestFinding(areaId, ore)).Where(f => f.Found);
+            SampledOreTypes(areaId).Select(ore => MaterialFinding(areaId, ore)).Where(f => f.Found);
 
         /// <summary>
         /// How much of <paramref name="area"/> has been surveyed: the fraction of
@@ -194,7 +197,7 @@ namespace AdvancedElectronics.Navigation
             {
                 if (!_ores.TryGetValue(oreType, out var ore))
                 {
-                    ore = new OreData { Count = 0, ShallowestDepth = depthBelowSurface, ShallowestPos = position };
+                    ore = new OreData { Count = 0, ShallowestDepth = depthBelowSurface, ShallowestPos = position, DeepestDepth = depthBelowSurface };
                     _ores[oreType] = ore;
                 }
 
@@ -204,21 +207,25 @@ namespace AdvancedElectronics.Navigation
                     ore.ShallowestDepth = depthBelowSurface;
                     ore.ShallowestPos = position;
                 }
+                if (depthBelowSurface > ore.DeepestDepth)
+                    ore.DeepestDepth = depthBelowSurface;
             }
 
-            public bool TryGetOre(string oreType, out int count, out int shallowestDepth, out BlockPos shallowestPos)
+            public bool TryGetOre(string oreType, out int count, out int shallowestDepth, out BlockPos shallowestPos, out int deepestDepth)
             {
                 if (_ores.TryGetValue(oreType, out var ore))
                 {
                     count = ore.Count;
                     shallowestDepth = ore.ShallowestDepth;
                     shallowestPos = ore.ShallowestPos;
+                    deepestDepth = ore.DeepestDepth;
                     return true;
                 }
 
                 count = 0;
                 shallowestDepth = 0;
                 shallowestPos = default;
+                deepestDepth = 0;
                 return false;
             }
 
@@ -227,6 +234,7 @@ namespace AdvancedElectronics.Navigation
                 public int Count;
                 public int ShallowestDepth;
                 public BlockPos ShallowestPos;
+                public int DeepestDepth;
             }
         }
     }
