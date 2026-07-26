@@ -394,11 +394,23 @@ namespace Eco.Mods.TechTree
             }
         }
 
-        /// <summary>Destroys the spawned drone WorldObject when the item is removed from the dock.</summary>
+        /// <summary>
+        /// Destroys the spawned drone WorldObject when the item is removed from the dock, resetting
+        /// state so a fresh drone spawns on re-insert. Removing the item is always allowed (never
+        /// blocked): a drone that is out roaming can glitch, strand, or fail to path home, so removal
+        /// is treated as "reset" rather than "recall". The <see cref="SpawnedDrone"/> reference can be
+        /// stale or null (e.g. the item is pulled before the post-restart re-link runs), which would
+        /// otherwise leave the persisted drone orphaned and still ticking — so resolve it by its
+        /// serialized id as a fallback and destroy that.
+        /// </summary>
         private void DespawnDrone()
         {
-            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed)
-                WorldObjectManager.DestroyPermanently(this.SpawnedDrone);
+            var drone = this.SpawnedDrone;
+            if ((drone == null || drone.IsDestroyed) && this.spawnedDroneObjectId != Guid.Empty)
+                drone = ServiceHolder<IWorldObjectManager>.Obj.GetFromID(this.spawnedDroneObjectId) as SurveyDroneObject;
+
+            if (drone != null && !drone.IsDestroyed)
+                WorldObjectManager.DestroyPermanently(drone);
 
             this.SpawnedDrone = null;
             this.spawnedDroneObjectId = Guid.Empty;

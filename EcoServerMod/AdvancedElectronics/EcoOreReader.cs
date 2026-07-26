@@ -59,13 +59,21 @@ namespace Eco.Mods.TechTree
 
             // Classify by mining marker (KTD1). Every raw MINABLE block is a survey material -- this
             // covers Rock (Limestone, Granite, Basalt, Sandstone...), Ore (IronOre, CopperOre, Coal --
-            // Coal counts as ore), and Sulfur. Crushed variants are [Diggable]/[Crushed], NOT [Minable],
-            // so they are excluded here for free (R5).
+            // Coal counts as ore), and Sulfur.
             //
             // ASSUMPTION -- verify against a live server: Block.Is<Minable>()/Is<Diggable>()'s stripped
             // bodies mean the exact pass/fail boundary could not be executed offline; the reflection
             // dump confirms [Minable] on raw ore/rock and [Diggable]/[Crushed] on crushed/dug blocks.
             if (block.Is<Minable>())
+            {
+                oreType = name;
+                return true;
+            }
+
+            // Crushed variants of rock/ore/sulfur (CrushedGranite, CrushedIronOre, CrushedSulfur...).
+            // They are [Diggable]/[Crushed], NOT [Minable], so the gate above misses them, but they are
+            // a real in-world material worth reporting. Identify by the "Crushed" name prefix.
+            if (name.StartsWith("Crushed", System.StringComparison.Ordinal))
             {
                 oreType = name;
                 return true;
