@@ -1,33 +1,26 @@
 using System;
 using System.Linq;
-using Eco.Core.Plugins.Interfaces;
-using Eco.Core.Utils;
-using Eco.Gameplay.Items;
 using Eco.World.Blocks;
 
 namespace Eco.Mods.TechTree
 {
     /// <summary>
-    /// The single definition of "a material this drone can survey", shared by the sensor (which
-    /// classifies blocks it scans) and the picker tagging below (which decides what the player may
-    /// select). One source so the two can never drift: a material the drone reports is always
-    /// selectable, and nothing selectable is undetectable.
+    /// The single definition of "a material this drone can survey", used by the sensor to classify
+    /// the blocks it scans.
     ///
-    /// Classification is type-level so both callers can use it -- the sensor holds a Block instance
-    /// and passes its type, the tagger walks item types. <c>Block.Get&lt;T&gt;(Type)</c> is the same
-    /// type-level marker probe vanilla uses (PickaxeItem tests
-    /// <c>Block.Get&lt;Minable&gt;(blockitem.OriginType)</c>).
+    /// Classification is type-level rather than instance-level so any caller can ask about a block
+    /// type without holding a block. <c>Block.Get&lt;T&gt;(Type)</c> is the same type-level marker
+    /// probe vanilla uses (PickaxeItem tests <c>Block.Get&lt;Minable&gt;(blockitem.OriginType)</c>).
+    ///
+    /// This deliberately does NOT drive the dock's material picker. Scoping that picker to exactly
+    /// this set needs a tag, and a mod-registered tag never reaches the client: the server registry
+    /// was verifiably correct (30 of 113 block items tagged) while the picker stayed empty, because
+    /// TagManager.Initialize does its one-time naming pass and calls SetupDone() before mods can
+    /// register. The picker therefore uses the closest stock tag, "Excavatable", which live
+    /// diagnostics showed covers every material this classifier accepts.
     /// </summary>
     public static class SurveyMaterials
     {
-        /// <summary>
-        /// Custom tag the material picker is scoped by. Applied at startup to exactly the items whose
-        /// block the drone can detect, which is why the picker offers no crafted/buildable blocks and
-        /// misses no detectable material -- neither is expressible with a stock tag (see
-        /// <see cref="SurveyMaterialTagger"/>).
-        /// </summary>
-        public const string TargetTag = "AdvancedElectronicsSurveyTarget";
-
         /// <summary>Diggable materials worth surveying. Excludes dirt/grass/gravel as noise.</summary>
         private static readonly string[] SurveyedDiggables = { "Sand", "Clay", "Peat" };
 
@@ -63,96 +56,5 @@ namespace Eco.Mods.TechTree
             value.EndsWith(suffix, StringComparison.Ordinal) && value.Length > suffix.Length
                 ? value.Substring(0, value.Length - suffix.Length)
                 : value;
-    }
-
-    /// <summary>
-    /// Tags every surveyable material's item with <see cref="SurveyMaterials.TargetTag"/> at startup,
-    /// so the dock's material picker can be scoped to exactly what the drone detects.
-    ///
-    /// Why a custom tag: a GamePickerList's candidate set is scoped by a SINGLE stock tag
-    /// (<c>RequiredTagAttribute(string)</c>), and no stock tag matches the drone's detection scope --
-    /// "Minable" is a BLOCK tag so an item picker scoped to it is empty, "Diggable" yields
-    /// compost/dirt/garbage/tailings while missing clay and peat, and crushed material sits under
-    /// "Excavatable". Registering our own tag is the supported way out: TagManager.AddTypeToTag is
-    /// public and documented "for tags populated programmatically rather than via [Tag] attributes",
-    /// and GetOrMake creates the tag on demand. Mirrors HousingTags.Initialize, which tags items by
-    /// housing category the same way.
-    /// </summary>
-    public class SurveyMaterialTagger : IModKitPlugin, IInitializablePlugin
-    {
-        private string Status => Failure != null
-            ? $"Survey material tagging FAILED: {Failure}"
-            : Ran ? $"Tagged {TaggedCount} of {BlockItemsSeen} block items as surveyable"
-                  : "Survey material tags not initialized";
-
-        /// <summary>Diagnostic record of what the startup pass did, surfaced by <c>/drone tags</c>.</summary>
-        public static bool Ran;
-        public static int TaggedCount;
-        public static int BlockItemsSeen;
-        public static string Failure;
-
-        public void Initialize(TimedTask timer) => EnsureTagged();
-
-        /// <summary>
-        /// Applies the tag, at most once per boot. Called from plugin init AND from the dock's Survey
-        /// tab: if plugin init runs before the item registry is populated, the startup pass sees
-        /// nothing to tag, and the later call from the tab recovers it. Idempotent -- the set-based
-        /// registry makes a repeat harmless, and <see cref="Ran"/> stops it once it has tagged
-        /// something.
-        /// </summary>
-        public static void EnsureTagged()
-        {
-            if (Ran && TaggedCount > 0) return;
-
-            try
-            {
-                TagMaterials();
-            }
-            catch (Exception e)
-            {
-                // Never take the server down over a UI convenience; report it instead.
-                Failure = e.Message;
-            }
-        }
-
-        private static void TagMaterials()
-        {
-            // AddTypeToTag(string, Type) is the tidy wrapper for this, but it is not in the 0.13.0.4
-            // reference assemblies -- so register through the public registry it wraps: GetOrMake
-            // creates the tag on demand, then both directions of the index are updated exactly as
-            // AddTagToType does internally (TypeToTags and TagToTypes are public static).
-            var tag = TagManager.GetOrMake(SurveyMaterials.TargetTag);
-
-            var tagged = 0;
-            var seen = 0;
-            foreach (var item in Item.AllItemsIncludingHidden.OfType<BlockItem>())
-            {
-                seen++;
-                if (!SurveyMaterials.IsSurveyMaterial(item.OriginType)) continue;
-
-                AddToSet(TagManager.TypeToTags, item.Type, tag);
-                AddToSet(TagManager.TagToTypes, tag, item.Type);
-                tagged++;
-            }
-
-            Ran = true;
-            TaggedCount = tagged;
-            BlockItemsSeen = seen;
-        }
-
-        /// <summary>Eco's own AddToSet extension is not exposed by the reference assemblies; same behaviour.</summary>
-        private static void AddToSet<TKey, TValue>(System.Collections.Generic.Dictionary<TKey, System.Collections.Generic.HashSet<TValue>> map, TKey key, TValue value)
-        {
-            if (!map.TryGetValue(key, out var set))
-            {
-                set = new System.Collections.Generic.HashSet<TValue>();
-                map[key] = set;
-            }
-            set.Add(value);
-        }
-
-        public string GetCategory() => "Mods";
-
-        public string GetStatus() => this.Status;
     }
 }

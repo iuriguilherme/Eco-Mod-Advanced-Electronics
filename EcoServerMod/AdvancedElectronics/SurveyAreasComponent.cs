@@ -52,18 +52,23 @@ namespace Eco.Mods.TechTree
         /// Material targets: pick which materials the survey results show, the same way items and tags
         /// are picked in a recipe or a law. Empty shows everything found.
         ///
-        /// Scoped by our OWN tag, applied at startup to exactly the items whose block the drone can
-        /// detect (<see cref="SurveyMaterialTagger"/>). No stock tag expresses that set -- "Minable" is
-        /// a block tag so an item picker scoped to it is empty, "Diggable" yields
-        /// compost/dirt/garbage/tailings while missing clay and peat, crushed sits under "Excavatable",
-        /// and plain BlockItem drags in crafted buildables (ashlar, brick, lumber) the drone can never
-        /// find. Because the tag is applied from the same classifier the sensor uses, the picker offers
-        /// exactly the detectable materials -- no junk, nothing missing, and the two cannot drift.
+        /// Scoped to the stock "Excavatable" tag. Established by live diagnostics (`/drone tags`):
+        /// every material the drone actually detects -- clay, coal, crushed variants, limestone, peat,
+        /// sandstone, sulfur -- carries it, while the crafted buildables that polluted a plain
+        /// BlockItem picker (ashlar, brick, lumber, hewn log) and the placeables (gasoline, logs) do
+        /// not. It is not a perfect fit (a few non-target soils such as dirt and tailings are also
+        /// excavatable, and selecting one simply does nothing), but it is the closest stock tag and
+        /// the only kind the client can use.
+        ///
+        /// A custom tag covering exactly the detectable set was built and PROVEN not to work: the
+        /// server-side registry was correct (30 of 113 block items tagged, tag registered, classifier
+        /// agreeing) yet the picker stayed empty, because TagManager.Initialize does a one-time naming
+        /// pass and calls SetupDone() before mods can register, so a late tag never reaches the client.
         ///
         /// Confirmed live: GamePickerList renders and filters from a WorldObjectComponent tab, even
         /// though every vanilla usage is inside a civics GameValue.
         /// </summary>
-        [Eco, AllowEmpty, RequiredTag(SurveyMaterials.TargetTag)]
+        [Eco, AllowEmpty, RequiredTag(BlockTags.Excavatable)]
         [LocDescription("Materials to show in the survey results. Leave empty to show everything found.")]
         public GamePickerList<BlockItem> MaterialTargets { get; set; } = new();
 
@@ -78,12 +83,6 @@ namespace Eco.Mods.TechTree
         public override void Initialize()
         {
             base.Initialize();
-
-            // Recovery for the material picker: if the startup pass ran before the item registry was
-            // populated it tagged nothing, and the picker would be empty. Re-running here (idempotent)
-            // catches that case, since items are certainly loaded by the time a dock exists.
-            SurveyMaterialTagger.EnsureTagged();
-
             this.RefreshAll();
         }
 
