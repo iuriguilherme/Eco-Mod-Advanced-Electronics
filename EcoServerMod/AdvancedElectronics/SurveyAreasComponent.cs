@@ -4,9 +4,12 @@ using System.Text;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using Eco.Core.Controller;
+using Eco.Gameplay.Civics.GameValues;
+using Eco.Gameplay.Items;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
 using Eco.Shared.Items;
+using Eco.Shared.Localization;
 using Eco.Shared.Networking;
 using Eco.Shared.Serialization;
 
@@ -40,12 +43,19 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string ResultsDisplay { get; private set; } = string.Empty;
 
-        /// <summary>The material target filter: which materials the results above are limited to.</summary>
-        [SyncToView, Autogen, UITypeName("StringDisplay")]
-        public string FilterDisplay { get; private set; } = string.Empty;
-
-        /// <summary>Cursor into the dock's discovered-material catalog, driven by the Material Prev/Next buttons.</summary>
-        private int filterCursor;
+        /// <summary>
+        /// Material targets: pick which materials the results show, the same way items and tags are
+        /// picked in a recipe or a store. Empty shows everything found.
+        ///
+        /// FEASIBILITY PROBE: this is the game's own <see cref="GamePickerList{T}"/> — an [Eco] type
+        /// with a generated client view, used by civics laws (e.g. MatchesDemographic). Every vanilla
+        /// usage is inside a civics GameValue, never a WorldObjectComponent tab, so whether the client
+        /// renders a picker HERE is unproven. If it renders blank the feature is not achievable through
+        /// the ModKit; a search-picker is the only sane UI for this (a button-per-material list is
+        /// worse than no filter at all).
+        /// </summary>
+        [Eco, LocDescription("Materials to show in the survey results. Leave empty to show everything found.")]
+        public GamePickerList<Item> MaterialTargets { get; set; } = new();
 
         /// <summary>
         /// The area id the action buttons operate on. Set by the Prev/Next cycle buttons. (The
@@ -132,44 +142,6 @@ namespace Eco.Mods.TechTree
             this.RefreshAll();
         }
 
-        // --- Material target filter (display-time: narrows what the results show) ---
-
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Material Prev — highlight the previous material")]
-        public void MaterialPrev(Player player) => this.CycleMaterial(-1);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Material Next — highlight the next material")]
-        public void MaterialNext(Player player) => this.CycleMaterial(+1);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Toggle Material — show/hide the highlighted material in the results")]
-        public void ToggleMaterial(Player player)
-        {
-            if (this.Parent is not DroneDockObject dock) return;
-            var known = dock.KnownMaterials;
-            if (known.Count == 0) return;
-
-            this.filterCursor = Math.Clamp(this.filterCursor, 0, known.Count - 1);
-            dock.ToggleMaterialFilter(known[this.filterCursor]);
-            this.RefreshAll();
-        }
-
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Show All Materials — clear the material filter")]
-        public void ShowAllMaterials(Player player)
-        {
-            if (this.Parent is not DroneDockObject dock) return;
-            dock.ClearMaterialFilter();
-            this.RefreshAll();
-        }
-
-        private void CycleMaterial(int direction)
-        {
-            if (this.Parent is not DroneDockObject dock) return;
-            var known = dock.KnownMaterials;
-            if (known.Count == 0) { this.filterCursor = 0; this.RefreshFilter(); return; }
-
-            this.filterCursor = ((this.filterCursor + direction) % known.Count + known.Count) % known.Count;
-            this.RefreshFilter();
-        }
-
         private SurveyAreaEntry Selected(DroneDockObject dock) =>
             dock.SurveyAreas.FirstOrDefault(a => a.Id == this.TargetAreaId);
 
@@ -179,43 +151,32 @@ namespace Eco.Mods.TechTree
         {
             this.RefreshAreas();
             this.RefreshResults();
-            this.RefreshFilter();
         }
 
-        public void RefreshFilter()
+        /// <summary>
+        /// Projects the picker's current selection into the dock's serialized material filter, so the
+        /// readout (and the chat command) work off one source. Maps a selected Item type to a material
+        /// name by stripping the "Item" suffix -- the mirror of how the sensor derives a material name
+        /// from a block type ("IronOreBlock" -> "IronOre", "IronOreItem" -> "IronOre").
+        /// </summary>
+        private void ApplyPickerSelection(DroneDockObject dock)
         {
-            this.FilterDisplay = this.BuildFilterText();
-            this.Changed(nameof(this.FilterDisplay));
-        }
+            var picked = this.MaterialTargets?.GetTypes()
+                .Select(t => t.Name.EndsWith("Item", StringComparison.Ordinal)
+                    ? t.Name.Substring(0, t.Name.Length - "Item".Length)
+                    : t.Name)
+                .ToList();
 
-        private string BuildFilterText()
-        {
-            if (this.Parent is not DroneDockObject dock)
-                return string.Empty;
+            if (picked == null) return;
 
-            var known = dock.KnownMaterials;
-            var sb = new StringBuilder("Material filter\n");
+            // Only rewrite when the selection actually differs, so the 1s refresh tick does not fight
+            // a filter set from chat.
+            if (picked.Count == dock.MaterialFilter.Count && picked.All(dock.MaterialFilter.Contains))
+                return;
 
-            if (known.Count == 0)
-            {
-                sb.Append("Nothing found yet -- materials appear here as the drone finds them.");
-                return sb.ToString();
-            }
-
-            sb.Append(dock.MaterialFilter.Count == 0
-                ? "Showing all materials. Toggle one to narrow the results.\n"
-                : $"Showing {dock.MaterialFilter.Count} of {known.Count} materials.\n");
-
-            var cursor = Math.Clamp(this.filterCursor, 0, known.Count - 1);
-            for (var i = 0; i < known.Count; i++)
-            {
-                var shown = dock.MaterialFilter.Count == 0 || dock.MaterialFilter.Contains(known[i]);
-                sb.Append(i == cursor ? "> " : "   ")
-                  .Append(shown ? "[x] " : "[ ] ")
-                  .Append(known[i])
-                  .Append('\n');
-            }
-            return sb.ToString();
+            dock.ClearMaterialFilter();
+            foreach (var name in picked)
+                dock.ToggleMaterialFilter(name);
         }
 
         public void RefreshAreas()
@@ -276,6 +237,8 @@ namespace Eco.Mods.TechTree
             if (this.Parent is not DroneDockObject dock)
                 return string.Empty;
 
+            this.ApplyPickerSelection(dock);
+
             var sb = new StringBuilder("Survey results\n");
             var entry = this.Selected(dock);
             sb.Append("Selected area: ").Append(entry?.Name ?? "(none -- use Prev/Next)").Append("\n\n");
@@ -315,6 +278,9 @@ namespace Eco.Mods.TechTree
             if (entry.SurveyDepth > 0)
                 sb.Append("Scanned to ").Append(entry.SurveyDepth)
                   .Append(" blocks below surface; median surface level ").Append(entry.MedianSurface).Append(".\n");
+
+            if (dock.MaterialFilter.Count > 0)
+                sb.Append("Filtered to: ").Append(string.Join(", ", dock.MaterialFilter)).Append('\n');
 
             AppendDroneStatusFooter(sb, dock);
             return sb.ToString();
