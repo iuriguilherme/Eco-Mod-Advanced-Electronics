@@ -152,20 +152,37 @@ namespace Eco.Mods.TechTree
             if (this.Parent is not DroneDockObject dock || dock.SurveyAreas.Count == 0)
                 return "No survey areas yet. Use Create to draw one on the map.";
 
-            var selectedEntry = dock.SurveyAreas.FirstOrDefault(a => a.Id == this.TargetAreaId);
             var sb = new StringBuilder();
-            sb.Append("Selected: ")
-              .Append(selectedEntry != null ? $"{selectedEntry.Name} ({selectedEntry.PlotCount} plots)" : "(none -- use Prev/Next)")
-              .Append("   <- Assign/Edit/View/Delete act on this\n\n");
+            sb.Append("Prev/Next selects an area; Assign/Edit/View/Delete act on the selected one.\n\n");
 
+            // One compact line per area, decoupled from assignment: coverage and the strongest
+            // find are read straight off each area's persisted snapshot, so every area's data shows
+            // whether or not the drone is assigned to it.
             foreach (var area in dock.SurveyAreas)
             {
                 var selected = area.Id == this.TargetAreaId ? "> " : "   ";
                 var assigned = area.Id == dock.AssignedSurveyAreaId ? "   [assigned to drone]" : string.Empty;
                 sb.Append(selected).Append(area.Name)
-                  .Append(" -- ").Append(area.PlotCount).Append(" plots").Append(assigned).Append('\n');
+                  .Append(" -- ").Append(area.PlotCount).Append(" plots, ")
+                  .Append(FormatAreaSummary(area))
+                  .Append(assigned).Append('\n');
             }
             return sb.ToString();
+        }
+
+        /// <summary>Compact "coverage%, top find" summary for an area's list line, from its snapshot.</summary>
+        private static string FormatAreaSummary(SurveyAreaEntry area)
+        {
+            var top = area.ReadFindings()
+                .Where(f => f.Found)
+                .OrderByDescending(f => f.Concentration)
+                .FirstOrDefault();
+
+            if (top.Found)
+                return $"{area.CoveragePercent:F0}% surveyed, top {top.OreType} ~{top.Concentration * 100f:F0}%";
+            if (area.CoveragePercent > 0f)
+                return $"{area.CoveragePercent:F0}% surveyed, nothing found";
+            return "not surveyed yet";
         }
 
         private string BuildResultsText()
@@ -174,16 +191,19 @@ namespace Eco.Mods.TechTree
                 return string.Empty;
 
             var sb = new StringBuilder("Survey results\n");
-            var entry = dock.AssignedSurveyArea;
-            sb.Append("Assigned area: ").Append(entry?.Name ?? "(none)").Append('\n');
+            var entry = this.Selected(dock);
+            sb.Append("Selected area: ").Append(entry?.Name ?? "(none -- use Prev/Next)").Append('\n');
 
+            // Drone status is about what the drone is DOING (its assigned area), reported alongside
+            // but distinct from the selected area being viewed -- viewing does not require the drone.
             var drone = dock.SpawnedDrone;
             if (drone != null && !drone.IsDestroyed && drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
-                sb.Append("Drone: ").Append(lifecycle.Status).Append('\n');
+                sb.Append("Drone: ").Append(lifecycle.Status)
+                  .Append(" (").Append(dock.AssignedSurveyArea?.Name ?? "no area assigned").Append(")\n");
 
             if (entry == null)
             {
-                sb.Append("No area assigned. Select an area and Assign it so the drone surveys it.");
+                sb.Append("No area selected. Use Create to draw one, or Prev/Next to pick one.");
                 return sb.ToString();
             }
 

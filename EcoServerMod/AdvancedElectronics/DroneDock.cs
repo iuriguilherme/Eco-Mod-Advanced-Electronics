@@ -526,20 +526,26 @@ namespace Eco.Mods.TechTree
         [NewTooltip(CacheAs.Disabled, 100)]
         public LocString SurveyReadoutTooltip()
         {
-            var entry = this.AssignedSurveyArea;
-            var oreLines = (entry?.ReadFindings() ?? Enumerable.Empty<SurveyFinding>())
-                .Where(f => f.Found)
-                .OrderBy(f => f.OreType, StringComparer.Ordinal)
-                .Take(DockReadout.MaxOreLines)
-                .Select(DockReadout.FormatOreLine)
-                .ToList();
+            if (this.SurveyAreas.Count == 0)
+                return Localizer.DoStr("Survey Readout\nNo survey areas yet.");
 
-            var coverage = entry?.CoveragePercent ?? 0f;
-            var body = oreLines.Count > 0
-                ? string.Join("\n", oreLines)
-                : "No survey data yet.";
+            // An at-a-glance overview of EVERY area (KTD11 snapshots), decoupled from assignment:
+            // the info window shows all areas' coverage and top find without a drone assigned.
+            var lines = this.SurveyAreas.Select(area =>
+            {
+                var top = area.ReadFindings()
+                    .Where(f => f.Found)
+                    .OrderByDescending(f => f.Concentration)
+                    .FirstOrDefault();
 
-            return Localizer.DoStr($"Survey Readout\n{body}\nCoverage: {coverage:F0}%");
+                var tail = top.Found
+                    ? $", top {top.OreType} ~{top.Concentration * 100f:F0}%"
+                    : (area.CoveragePercent <= 0f ? " (not surveyed)" : ", nothing found");
+                var here = area.Id == this.AssignedSurveyAreaId ? "  [drone here]" : string.Empty;
+                return $"{area.Name} -- {area.CoveragePercent:F0}% surveyed{tail}{here}";
+            });
+
+            return Localizer.DoStr($"Survey Readout\n{string.Join("\n", lines)}");
         }
     }
 
