@@ -118,14 +118,12 @@ namespace Eco.Mods.TechTree
             if (!this.Parent.TryGetComponent<DroneMoverComponent>(out var mover))
                 return;
 
-            // The drone surveys the dock's assigned survey area (KTD9). The "area:<id>" token
-            // is opaque to the state machine — it only drives change-detection and the target
-            // label — flowing through the same OnDistrictAssigned/membership machinery (the
-            // state machine keeps its generic district-named transitions; renaming them is
-            // deferred cosmetic cleanup).
-            var assignedToken = this.HomeDock.AssignedSurveyAreaId != 0
-                ? "area:" + this.HomeDock.AssignedSurveyAreaId
-                : null;
+            // The drone surveys the dock's assigned survey area (KTD9). The token is opaque to the
+            // state machine — it only drives change-detection and the target label. It encodes the
+            // area id AND an edit epoch, so editing the assigned area's plots changes the token and
+            // re-dispatches the drone (fresh pathfinding + sweep of the new shape) exactly like an
+            // unassign+reassign.
+            var assignedToken = this.HomeDock.AssignedAreaToken;
 
             if (!string.Equals(assignedToken, this.lastKnownAssignedArea, StringComparison.Ordinal))
             {

@@ -44,10 +44,11 @@ namespace Eco.Mods.TechTree
             if (plots.Count > maxPlots) { player.User?.MsgLocStr($"Survey area too large: {plots.Count} plots, limit {maxPlots}. No change made."); return; }
 
             // Redrawing the geometry makes this effectively a new area, so its old survey no
-            // longer describes it (KTD11): SetPlots clears the entry's snapshot, and
-            // ClearSurveyData drops the dock's live in-memory record for it too.
+            // longer describes it (KTD11): SetPlots clears the entry's snapshot, and OnAreaEdited
+            // drops the dock's live in-memory record AND -- if the drone is assigned to this area --
+            // bumps the assignment epoch so the drone restarts pathfinding + sweep for the new shape.
             entry.SetPlots(plots);
-            dock.ClearSurveyData(entry.Id);
+            dock.OnAreaEdited(entry.Id);
         }
 
         /// <summary>View: open the editor read-only, pre-painted with the area's plots, so the player can see it on the map without changing it.</summary>

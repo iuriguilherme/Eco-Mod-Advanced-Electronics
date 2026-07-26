@@ -176,6 +176,33 @@ namespace Eco.Mods.TechTree
             this.surveyRecord?.ClearArea(id);
         }
 
+        // Bumped whenever the ASSIGNED area's geometry is edited, so it becomes part of the token
+        // the drone's lifecycle watches -- an edit then re-dispatches the drone exactly like an
+        // unassign+reassign (fresh pathfinding, fresh sweep of the new shape). Not serialized: it
+        // is a transient change nonce, and the lifecycle's own change-detection field is likewise
+        // in-memory, so a restart re-dispatches regardless.
+        private int assignedAreaEpoch;
+
+        /// <summary>
+        /// The drone's standing assignment as a change-detection token, or null when unassigned.
+        /// Encodes both the area id AND an edit epoch, so editing the assigned area's plots changes
+        /// the token and forces a re-dispatch even though the id is unchanged.
+        /// </summary>
+        public string AssignedAreaToken =>
+            this.AssignedSurveyAreaId != 0 ? $"area:{this.AssignedSurveyAreaId}:{this.assignedAreaEpoch}" : null;
+
+        /// <summary>
+        /// Called after an area's plots are redrawn (edit): clears its survey data (new geometry =
+        /// new survey) and, when it is the assigned area, bumps the epoch so the drone restarts its
+        /// pathfinding and sweep for the new shape as if it had been unassigned and reassigned.
+        /// </summary>
+        public void OnAreaEdited(int id)
+        {
+            this.ClearSurveyData(id);
+            if (this.AssignedSurveyAreaId == id)
+                this.assignedAreaEpoch++;
+        }
+
         /// <summary>
         /// Assigns the area with <paramref name="id"/> as the drone's standing target, or clears
         /// the assignment when <paramref name="id"/> is 0. Ignores an id that does not resolve to
