@@ -48,53 +48,17 @@ namespace Eco.Mods.TechTree
             if (block == null)
                 return false;
 
-            // Specific type name minus the "Block" suffix (e.g. "IronOreBlock" -> "IronOre",
-            // "LimestoneBlock" -> "Limestone", "SandBlock" -> "Sand"). This IS the specific-type
-            // granularity the readout reports (KTD1); SurveyRecord treats it as an opaque key.
-            var typeName = block.GetType().Name;
-            const string blockSuffix = "Block";
-            var name = typeName.EndsWith(blockSuffix, System.StringComparison.Ordinal)
-                ? typeName.Substring(0, typeName.Length - blockSuffix.Length)
-                : typeName;
+            // Classification lives in SurveyMaterials, shared with the startup tagger that scopes the
+            // dock's material picker -- ONE definition, so a material the drone reports is always
+            // selectable in the picker and nothing selectable is undetectable.
+            var blockType = block.GetType();
+            if (!SurveyMaterials.IsSurveyMaterial(blockType))
+                return false;
 
-            // Classify by mining marker (KTD1). Every raw MINABLE block is a survey material -- this
-            // covers Rock (Limestone, Granite, Basalt, Sandstone...), Ore (IronOre, CopperOre, Coal --
-            // Coal counts as ore), and Sulfur.
-            //
-            // ASSUMPTION -- verify against a live server: Block.Is<Minable>()/Is<Diggable>()'s stripped
-            // bodies mean the exact pass/fail boundary could not be executed offline; the reflection
-            // dump confirms [Minable] on raw ore/rock and [Diggable]/[Crushed] on crushed/dug blocks.
-            if (block.Is<Minable>())
-            {
-                oreType = name;
-                return true;
-            }
-
-            // Crushed variants of rock/ore/sulfur (CrushedGranite, CrushedIronOre, CrushedSulfur...).
-            // They are [Diggable]/[Crushed], NOT [Minable], so the gate above misses them, but they are
-            // a real in-world material worth reporting. Identify by the "Crushed" name prefix.
-            if (name.StartsWith("Crushed", System.StringComparison.Ordinal))
-            {
-                oreType = name;
-                return true;
-            }
-
-            // DIGGABLE materials are broader than we want (Dirt, Grass, Gravel are diggable too), so
-            // restrict to the curated set the player surveys for: Sand, Clay, Peat.
-            // ASSUMPTION -- verify live: the Diggable marker and these exact stripped type names.
-            if (block.Is<Diggable>() && IsSurveyedDiggable(name))
-            {
-                oreType = name;
-                return true;
-            }
-
-            return false;
+            // The specific type name minus "Block" ("IronOreBlock" -> "IronOre") IS the specific-type
+            // granularity the readout reports; SurveyRecord treats it as an opaque key.
+            oreType = SurveyMaterials.MaterialName(blockType);
+            return true;
         }
-
-        /// <summary>Diggable materials worth surveying (R1): Sand, Clay, Peat. Excludes Dirt/Grass/Gravel.</summary>
-        private static bool IsSurveyedDiggable(string name) =>
-            name.Equals("Sand", System.StringComparison.Ordinal)
-            || name.Equals("Clay", System.StringComparison.Ordinal)
-            || name.Equals("Peat", System.StringComparison.Ordinal);
     }
 }
