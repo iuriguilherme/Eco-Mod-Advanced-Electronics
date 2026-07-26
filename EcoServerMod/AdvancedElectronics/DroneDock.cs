@@ -159,8 +159,21 @@ namespace Eco.Mods.TechTree
             if (entry == null) return;
 
             this.SurveyAreas.Remove(entry);
+            this.ClearSurveyData(id);
             if (this.AssignedSurveyAreaId == id)
                 this.AssignedSurveyAreaId = 0;
+        }
+
+        /// <summary>
+        /// Drops an area's findings from both the serialized snapshot (if the entry still exists)
+        /// and the live in-memory record (KTD11). Called on delete and on edit — an edit redraws
+        /// the geometry, so its old survey no longer describes it. Reassignment does NOT call this:
+        /// findings belong to the area, not the drone's current target.
+        /// </summary>
+        public void ClearSurveyData(int id)
+        {
+            this.SurveyAreas.FirstOrDefault(a => a.Id == id)?.ClearFindings();
+            this.surveyRecord?.ClearArea(id);
         }
 
         /// <summary>
@@ -195,6 +208,36 @@ namespace Eco.Mods.TechTree
                 (int)System.MathF.Round(worldPos.X),
                 (int)System.MathF.Round(worldPos.Z),
                 PlotUtil.PropertyPlotLength);
+        }
+
+        // The dock's live, in-memory survey record (KTD11): the OreSensorComponent feeds every
+        // sample here attributed to the assigned area id, and RefreshReadout projects the assigned
+        // area's findings into that area's serialized snapshot for persistence + display. NOT
+        // serialized itself — it is the running accumulator (raw sampled blocks + per-plot
+        // concentration); the durable, restart-surviving copy is the per-area OreFindingSnapshot
+        // list on each SurveyAreaEntry. plotSize matches IsPositionInAssignedArea's plot mapping.
+        private SurveyRecord surveyRecord;
+
+        /// <summary>The dock's per-area survey accumulator, created on first use.</summary>
+        public SurveyRecord SurveyRecord =>
+            this.surveyRecord ??= new SurveyRecord(PlotUtil.PropertyPlotLength);
+
+        /// <summary>
+        /// Copies the assigned area's live findings into its persisted snapshot (KTD11), so they
+        /// survive a restart and remain readable while another area is assigned. Skips when there
+        /// is no assigned area or no samples yet, so an empty post-restart record does not wipe a
+        /// previously-persisted snapshot before the drone has re-surveyed.
+        /// </summary>
+        private void PersistAssignedAreaFindings()
+        {
+            var entry = this.AssignedSurveyArea;
+            if (entry == null || this.surveyRecord == null) return;
+
+            var area = entry.ToSurveyArea();
+            var coverage = this.surveyRecord.Coverage(area);
+            if (coverage <= 0f) return; // no samples for this area yet — keep any persisted snapshot.
+
+            entry.SetFindings(this.surveyRecord.Findings(entry.Id), coverage * 100f);
         }
 
         protected override void Initialize()
@@ -437,21 +480,19 @@ namespace Eco.Mods.TechTree
         private void RefreshReadout()
         {
             DroneStatus? status = null;
-            IReadOnlyList<(string OreType, DensestCellResult Result)> oreResults =
-                Array.Empty<(string, DensestCellResult)>();
-
-            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed)
+            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed
+                && this.SpawnedDrone.TryGetComponent<DroneLifecycle>(out var lifecycle))
             {
-                if (this.SpawnedDrone.TryGetComponent<DroneLifecycle>(out var lifecycle))
-                    status = lifecycle.Status;
-
-                if (this.SpawnedDrone.TryGetComponent<OreSensorComponent>(out var sensor))
-                {
-                    oreResults = sensor.SampledOreTypes
-                        .Select(oreType => (oreType, sensor.DensestCell(oreType)))
-                        .ToList();
-                }
+                status = lifecycle.Status;
             }
+
+            // Fold the assigned area's live samples into its persisted snapshot (KTD11), then
+            // read the readout straight from that snapshot -- so it is per-area and survives a
+            // restart. An unassigned dock shows no findings, only the status line.
+            this.PersistAssignedAreaFindings();
+            var entry = this.AssignedSurveyArea;
+            var findings = entry?.ReadFindings().ToList() ?? new List<SurveyFinding>();
+            var coverage = entry?.CoveragePercent ?? 0f;
 
             // Drive the Survey tab's results text from this (proven) dock tick: a
             // WorldObjectComponent's own Tick does not reliably fire on the dock, so the tab
@@ -459,7 +500,7 @@ namespace Eco.Mods.TechTree
             if (this.TryGetComponent<SurveyAreasComponent>(out var surveyTab))
                 surveyTab.RefreshResults();
 
-            var lines = DockReadout.BuildStateLines(status, oreResults);
+            var lines = DockReadout.BuildStateLines(status, findings);
 
             this.SetAnimatedState(StatusStateName, lines[0]);
             for (var i = 0; i < DockReadout.MaxOreLines; i++)
@@ -469,43 +510,31 @@ namespace Eco.Mods.TechTree
                 this.SetAnimatedState(OreLineStateNamePrefix + i, text);
             }
 
-            this.SetAnimatedState(CoverageStateName, DockReadout.ComputeCoveragePercent(oreResults));
+            this.SetAnimatedState(CoverageStateName, coverage);
         }
 
         /// <summary>
-        /// Renders the detailed survey readout (per-ore densest-cell lines + coverage
-        /// gauge, R8/R14) into this dock's in-game info window via Eco's NewTooltip
-        /// system. This is the "popup panel" surface: the world-space text above the
-        /// dock (<see cref="DockReadoutDisplay"/>) is deliberately reserved for the short
-        /// drone status line only, so the volumetric per-ore detail lives here where it
-        /// has room. <see cref="CacheAs.Disabled"/> recomputes on every view -- the same
-        /// choice vanilla PumpJackItem.OilTooltip makes for live, position/state-derived
-        /// data -- because the paired drone's sampled ore data changes continuously while
-        /// it roams. Reads the same <see cref="SpawnedDrone"/> sensor inputs as
-        /// <see cref="RefreshReadout"/> and formats them through <see cref="DockReadout"/>.
+        /// Renders the detailed survey readout (per-ore finding lines + coverage gauge, R8/R14)
+        /// into this dock's in-game info window via Eco's NewTooltip system. This is the "popup
+        /// panel" surface: the world-space text above the dock (<see cref="DockReadoutDisplay"/>)
+        /// is reserved for the short drone status line only, so the per-ore detail lives here.
+        /// <see cref="CacheAs.Disabled"/> recomputes on every view -- the same choice vanilla
+        /// PumpJackItem.OilTooltip makes for live data -- because the assigned area's findings
+        /// change as the drone roams. Reads the assigned area's persisted snapshot (KTD11), the
+        /// same source <see cref="RefreshReadout"/> uses.
         /// </summary>
         [NewTooltip(CacheAs.Disabled, 100)]
         public LocString SurveyReadoutTooltip()
         {
-            IReadOnlyList<(string OreType, DensestCellResult Result)> oreResults =
-                Array.Empty<(string, DensestCellResult)>();
-
-            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed
-                && this.SpawnedDrone.TryGetComponent<OreSensorComponent>(out var sensor))
-            {
-                oreResults = sensor.SampledOreTypes
-                    .Select(oreType => (oreType, sensor.DensestCell(oreType)))
-                    .ToList();
-            }
-
-            var oreLines = oreResults
-                .Where(e => e.Result.Found)
-                .OrderBy(e => e.OreType, StringComparer.Ordinal)
+            var entry = this.AssignedSurveyArea;
+            var oreLines = (entry?.ReadFindings() ?? Enumerable.Empty<SurveyFinding>())
+                .Where(f => f.Found)
+                .OrderBy(f => f.OreType, StringComparer.Ordinal)
                 .Take(DockReadout.MaxOreLines)
-                .Select(e => DockReadout.FormatOreLine(e.OreType, e.Result))
+                .Select(DockReadout.FormatOreLine)
                 .ToList();
 
-            var coverage = DockReadout.ComputeCoveragePercent(oreResults);
+            var coverage = entry?.CoveragePercent ?? 0f;
             var body = oreLines.Count > 0
                 ? string.Join("\n", oreLines)
                 : "No survey data yet.";
@@ -524,7 +553,7 @@ namespace Eco.Mods.TechTree
     /// </summary>
     [Serialized]
     [LocDisplayName("Drone Dock")]
-    [LocDescription("Home point for a survey drone. Insert a Survey Drone to pair and dispatch it; assign a survey district with /drone district <name>.")]
+    [LocDescription("Home point for a survey drone. Insert a Survey Drone to pair and dispatch it, then draw and assign a survey area from the dock's Survey tab.")]
     [Ecopedia("Crafted Objects", "Advanced Electronics", true, true, null)]
     [Weight(1000)]
     public class DroneDockItem : WorldObjectItem<DroneDockObject>

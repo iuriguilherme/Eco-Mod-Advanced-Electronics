@@ -61,12 +61,12 @@ namespace Eco.Mods.TechTree
             // ASSUMPTION -- verify against a live server: using the block's
             // own concrete type name (minus the "Block" suffix vanilla ore
             // types consistently use, e.g. "IronOreBlock" -> "IronOre") as
-            // the ore-type identifier SurveyGrid accumulates against. This
+            // the ore-type identifier SurveyRecord accumulates against. This
             // was picked over Block.RepresentedItemType.Name (also present
             // on these types) because it needs no extra hop through the
             // represented-item type and reads directly off the block that
             // was just queried; either would work equally well as a stable
-            // per-ore key, since SurveyGrid treats oreType as an opaque
+            // per-ore key, since SurveyRecord treats oreType as an opaque
             // string.
             var typeName = block.GetType().Name;
             const string blockSuffix = "Block";

@@ -80,32 +80,34 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
-            var drone = dock.SpawnedDrone;
-            if (drone == null || drone.IsDestroyed || !drone.TryGetComponent<OreSensorComponent>(out var sensor))
+            var area = dock.AssignedSurveyArea;
+            user.MsgLocStr($"Survey results for {dock.Name}"
+                + (area == null ? " (no area assigned)" : $" -- area '{area.Name}'"));
+
+            if (area == null)
             {
-                user.MsgLocStr($"{dock.Name}: no drone is out surveying. Insert a Survey Drone and assign an area.");
+                user.MsgLocStr("  Assign an area to the drone so it surveys one.");
                 return;
             }
 
-            user.MsgLocStr($"Survey results for {dock.Name}"
-                + (dock.AssignedSurveyArea == null ? " (no area assigned)" : $" -- area '{dock.AssignedSurveyArea.Name}'"));
-
-            var results = sensor.SampledOreTypes
-                .Select(oreType => (OreType: oreType, Result: sensor.DensestCell(oreType)))
-                .Where(entry => entry.Result.Found)
-                .OrderByDescending(entry => entry.Result.Ratio)
+            // Findings persist with the area (KTD11): read them straight off the area, shown
+            // whether or not a drone is currently out. A missing drone only means the data will
+            // not grow, not that it disappears.
+            var findings = area.ReadFindings()
+                .Where(f => f.Found)
+                .OrderByDescending(f => f.Concentration)
                 .ToList();
 
-            if (results.Count == 0)
+            if (findings.Count == 0)
             {
                 user.MsgLocStr("  Nothing found yet. The drone reports as it roams -- give it time to cover ground.");
                 return;
             }
 
-            foreach (var entry in results)
-                user.MsgLocStr($"  {DockReadout.FormatOreLine(entry.OreType, entry.Result)}");
+            foreach (var f in findings)
+                user.MsgLocStr($"  {DockReadout.FormatOreLine(f)}");
 
-            user.MsgLocStr($"  Coverage: {DockReadout.ComputeCoveragePercent(results.Select(e => (e.OreType, e.Result)).ToList()):F0}%");
+            user.MsgLocStr($"  Coverage: {area.CoveragePercent:F0}%");
         }
 
         /// <summary>
@@ -153,21 +155,25 @@ namespace Eco.Mods.TechTree
             else
                 user.MsgLocStr("  Mover: component MISSING");
 
-            if (drone.TryGetComponent<OreSensorComponent>(out var sensor))
-            {
-                var any = false;
-                foreach (var oreType in sensor.SampledOreTypes)
-                {
-                    any = true;
-                    var cell = sensor.DensestCell(oreType);
-                    user.MsgLocStr(cell.Found
-                        ? $"  {DockReadout.FormatOreLine(oreType, cell)} ({cell.OreCount}/{cell.SampledCount} blocks)"
-                        : $"  {oreType}: no data");
-                }
-                if (!any) user.MsgLocStr("  Ore data: none sampled yet.");
-            }
+            user.MsgLocStr($"  Sensor: {(drone.TryGetComponent<OreSensorComponent>(out _) ? "present" : "component MISSING")}");
+
+            // Findings live on the assigned area now (KTD11), not the sensor -- report that area's
+            // persisted snapshot.
+            var area = dock.AssignedSurveyArea;
+            if (area == null)
+                user.MsgLocStr("  Findings: (no area assigned)");
             else
-                user.MsgLocStr("  Sensor: component MISSING");
+            {
+                var findings = area.ReadFindings().Where(f => f.Found).ToList();
+                if (findings.Count == 0)
+                    user.MsgLocStr($"  Findings for '{area.Name}': none yet (coverage {area.CoveragePercent:F0}%).");
+                else
+                {
+                    user.MsgLocStr($"  Findings for '{area.Name}' (coverage {area.CoveragePercent:F0}%):");
+                    foreach (var f in findings)
+                        user.MsgLocStr($"    {DockReadout.FormatOreLine(f)}");
+                }
+            }
         }
 
         /// <summary>

@@ -214,12 +214,10 @@ namespace Eco.Mods.TechTree
         {
             this.stateMachine.OnDistrictAssigned("area:" + this.HomeDock.AssignedSurveyAreaId);
 
-            // Fresh area -> fresh survey: without this the sensor keeps the previous area's
-            // findings and the readout shows the old densest cell after a reassign (B1).
-            // Findings are not yet per-area (U3), so a reassign resets the accumulated data.
-            if (this.Parent.TryGetComponent<OreSensorComponent>(out var sensor))
-                sensor.ResetSurvey();
-
+            // No survey reset on reassign (KTD11): findings are per-area and persist with the
+            // area, so switching the drone between areas keeps each area's own data. The sensor
+            // attributes new samples to whichever area is assigned; a reassign is just a new
+            // attribution target, not a wipe.
             var entry = this.HomeDock.AssignedSurveyArea;
             if (entry == null)
             {

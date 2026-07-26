@@ -174,35 +174,36 @@ namespace Eco.Mods.TechTree
                 return string.Empty;
 
             var sb = new StringBuilder("Survey results\n");
-            sb.Append("Assigned area: ").Append(dock.AssignedSurveyArea?.Name ?? "(none)").Append('\n');
+            var entry = dock.AssignedSurveyArea;
+            sb.Append("Assigned area: ").Append(entry?.Name ?? "(none)").Append('\n');
 
             var drone = dock.SpawnedDrone;
-            if (drone == null || drone.IsDestroyed || !drone.TryGetComponent<OreSensorComponent>(out var sensor))
+            if (drone != null && !drone.IsDestroyed && drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
+                sb.Append("Drone: ").Append(lifecycle.Status).Append('\n');
+
+            if (entry == null)
             {
-                sb.Append("No drone is out surveying. Insert a Survey Drone and assign an area.");
+                sb.Append("No area assigned. Select an area and Assign it so the drone surveys it.");
                 return sb.ToString();
             }
 
-            if (drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
-                sb.Append("Drone: ").Append(lifecycle.Status).Append('\n');
-
-            var results = sensor.SampledOreTypes
-                .Select(oreType => (OreType: oreType, Result: sensor.DensestCell(oreType)))
-                .Where(entry => entry.Result.Found)
-                .OrderByDescending(entry => entry.Result.Ratio)
+            // Findings persist with the area (KTD11): these are entry's own, kept until it is
+            // edited or deleted -- shown even while the drone is between areas or docked.
+            var findings = entry.ReadFindings()
+                .Where(f => f.Found)
+                .OrderByDescending(f => f.Concentration)
                 .ToList();
 
-            if (results.Count == 0)
+            if (findings.Count == 0)
             {
                 sb.Append("Nothing found yet. The drone reports as it roams -- give it time to cover ground.");
                 return sb.ToString();
             }
 
-            foreach (var entry in results)
-                sb.Append(DockReadout.FormatOreLine(entry.OreType, entry.Result)).Append('\n');
+            foreach (var f in findings)
+                sb.Append(DockReadout.FormatOreLine(f)).Append('\n');
 
-            var coverage = DockReadout.ComputeCoveragePercent(results.Select(e => (e.OreType, e.Result)).ToList());
-            sb.Append("Coverage: ").Append(coverage.ToString("F0")).Append('%');
+            sb.Append("Coverage: ").Append(entry.CoveragePercent.ToString("F0")).Append('%');
             return sb.ToString();
         }
     }

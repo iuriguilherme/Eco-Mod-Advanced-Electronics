@@ -43,7 +43,11 @@ namespace Eco.Mods.TechTree
             if (plots == null || plots.Count == 0) return;
             if (plots.Count > maxPlots) { player.User?.MsgLocStr($"Survey area too large: {plots.Count} plots, limit {maxPlots}. No change made."); return; }
 
+            // Redrawing the geometry makes this effectively a new area, so its old survey no
+            // longer describes it (KTD11): SetPlots clears the entry's snapshot, and
+            // ClearSurveyData drops the dock's live in-memory record for it too.
             entry.SetPlots(plots);
+            dock.ClearSurveyData(entry.Id);
         }
 
         /// <summary>View: open the editor read-only, pre-painted with the area's plots, so the player can see it on the map without changing it.</summary>

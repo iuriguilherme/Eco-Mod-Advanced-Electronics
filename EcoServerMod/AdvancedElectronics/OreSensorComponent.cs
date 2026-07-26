@@ -7,10 +7,13 @@ using Eco.Shared.Serialization;
 namespace Eco.Mods.TechTree
 {
     /// <summary>
-    /// Samples ore-bearing blocks under/around the drone as it roams and
-    /// accumulates per-cell per-ore density into a <see cref="SurveyGrid"/>
-    /// (U5, R7/R8, KTD5). The densest cell per ore type is then queryable
-    /// via <see cref="DensestCell"/>.
+    /// Samples ore-bearing blocks under/around the drone as it roams and feeds each sample
+    /// into the OWNING DOCK's per-area <see cref="SurveyRecord"/> (KTD11), attributed to the
+    /// dock's currently-assigned survey area. The record — not this component — owns the
+    /// findings, so they persist with the area across a drone swap and are not tied to this
+    /// sensor instance. This component only decides WHICH blocks to sample each tick and where
+    /// to attribute them; all aggregation/concentration math lives in the Eco-free
+    /// <see cref="SurveyRecord"/> (U2, covered by its own tests).
     ///
     /// Per KTD3 / DroneMoverComponent.cs's own class doc (and
     /// docs/solutions/best-practices/eco-013-server-driven-movement.md),
@@ -24,29 +27,11 @@ namespace Eco.Mods.TechTree
     /// entire behavior is intentionally hardcoded). A WorldObject carrying
     /// both components moves and surveys independently each tick; neither
     /// knows about the other.
-    ///
-    /// Grid math itself is fully delegated to
-    /// AdvancedElectronics.Navigation.SurveyGrid (U5, covered by
-    /// SurveyGridTests.cs) via <see cref="EcoOreReader"/> (this unit's
-    /// IOreReader implementation) - this component only decides WHICH
-    /// blocks to sample each tick and feeds the results in; it does not
-    /// reimplement any density/cell-mapping logic itself.
     /// </summary>
     [Serialized]
     [NoIcon]
     public class OreSensorComponent : WorldObjectComponent
     {
-        // Design constant (not an unverified live API -- a tunable choice,
-        // like DroneMoverComponent's MoveSpeedMetersPerSecond/MaxStepHeight).
-        // Per KTD5, cell size is a single tunable constant; 8 world units
-        // was picked as a starting middle ground between a cell coarse
-        // enough to accumulate meaningful sample counts per cell in a
-        // reasonable roam time and fine enough to still localize a deposit
-        // usefully within a district - unconfirmed against a live district's
-        // actual scale, revisit once in-game verification (out of this
-        // unit's scope) is run.
-        private const float SurveyCellSize = 8f;
-
         // The drone's own ground column plus its four orthogonal neighbors,
         // mirroring GridPathfinder's 4-connected Neighbors() shape - a
         // modest, cheap-per-tick sampling footprint rather than a full-area
@@ -80,14 +65,12 @@ namespace Eco.Mods.TechTree
         // so coverage accumulates as it moves.
         private int nextSampleOffset;
 
-        private SurveyGrid surveyGrid;
         private IOreReader oreReader;
         private EcoWorldSampler worldSampler;
 
         public override void Initialize()
         {
             base.Initialize();
-            this.surveyGrid = new SurveyGrid(SurveyCellSize);
             this.oreReader = new EcoOreReader();
             // Reused only for GroundHeightAt (U3's already-established, already-
             // ASSUMPTION-documented ground-column lookup) -- this component adds
@@ -95,45 +78,19 @@ namespace Eco.Mods.TechTree
             this.worldSampler = new EcoWorldSampler();
         }
 
-        /// <summary>
-        /// Discards all accumulated findings and starts a fresh survey. Called when the dock's
-        /// assigned area changes (U8 reassign) so the readout reflects the NEW area rather than
-        /// keeping the previous area's densest cell — findings are not yet per-area (that is U3),
-        /// so a reassign resets the survey. Safe to call before <see cref="Initialize"/> has run.
-        /// </summary>
-        public void ResetSurvey()
-        {
-            this.surveyGrid = new SurveyGrid(SurveyCellSize);
-            this.nextSampleOffset = 0;
-        }
-
-        /// <summary>
-        /// The densest observed cell for <paramref name="oreType"/> so far
-        /// (argmax of ore-count / sampled-count, per KTD5 - not raw count).
-        /// See <see cref="DensestCellResult.Found"/> for the "no data yet"
-        /// case.
-        /// </summary>
-        public DensestCellResult DensestCell(string oreType) => this.surveyGrid.DensestCell(oreType);
-
-        /// <summary>
-        /// Every ore type sampled so far (U6, R14 dock readout) -- pass-through to
-        /// <see cref="SurveyGrid.SampledOreTypes"/>. Lets <see cref="DroneDockObject"/> build
-        /// its per-ore readout lines without hardcoding a fixed ore list.
-        /// </summary>
-        public IEnumerable<string> SampledOreTypes => this.surveyGrid.SampledOreTypes;
-
         public override void Tick()
         {
             base.Tick();
 
-            // R6/KTD5: gate sampling on DroneLifecycle's Surveying status when a
-            // lifecycle component is present (see DroneLifecycle.ShouldSample's own
-            // doc comment, which names this component as its intended consumer).
-            // No lifecycle attached (e.g. a drone not yet wired to a dock, or a
-            // standalone test rig) falls back to always-sample rather than never --
-            // this component's own responsibility is "which blocks to sample", not
-            // "whether the drone is currently allowed to survey".
-            if (this.Parent.TryGetComponent<DroneLifecycle>(out var lifecycle) && !lifecycle.ShouldSample)
+            // R6/KTD5: gate sampling on DroneLifecycle's Surveying status. No lifecycle,
+            // no home dock, or no assigned area means there is no survey area to attribute
+            // samples to -- nothing to do this tick (findings are per-area now, KTD11).
+            if (!this.Parent.TryGetComponent<DroneLifecycle>(out var lifecycle) || !lifecycle.ShouldSample)
+                return;
+            if (lifecycle.HomeDock is not DroneDockObject dock)
+                return;
+            var areaId = dock.AssignedSurveyAreaId;
+            if (areaId == 0)
                 return;
 
             var position = this.Parent.Position;
@@ -150,8 +107,9 @@ namespace Eco.Mods.TechTree
 
             // Scan DOWN from the surface: ore is underground, so reading only the
             // surface block reported "no ore" everywhere regardless of what the drone
-            // was standing on. Every block in the column counts toward the cell's
-            // sampled total, so density stays "ore found / blocks looked at".
+            // was standing on. Every block in the column counts toward the plot's
+            // sampled total, so concentration stays "ore found / blocks looked at".
+            var record = dock.SurveyRecord;
             for (int depth = 0; depth < this.SurveyDepthBlocks; depth++)
             {
                 int y = surfaceY - depth;
@@ -160,9 +118,9 @@ namespace Eco.Mods.TechTree
 
                 // TryGetOreType leaves oreType null for a non-ore block --
                 // RecordSample treats that as "sampled, no ore" (still counts
-                // toward the cell's coverage), exactly as intended.
+                // toward the plot's coverage), exactly as intended.
                 this.oreReader.TryGetOreType(x, y, z, out var oreType);
-                this.surveyGrid.RecordSample(x, y, z, oreType, depth);
+                record.RecordSample(x, y, z, oreType, depth, areaId);
             }
         }
     }
