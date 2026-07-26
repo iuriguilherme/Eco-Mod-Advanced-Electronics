@@ -106,40 +106,14 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public SurveyDroneObject SpawnedDrone { get; private set; }
 
-        /// <summary>
-        /// Name of the survey district assigned via <c>/drone district &lt;name&gt;</c>
-        /// (U4, R12), or null when unassigned. Stored as a name -- not a live
-        /// <c>District</c> reference -- for two reasons: (1) it keeps this field
-        /// trivially serializable, unlike a civics object graph; (2) it self-heals if
-        /// the district is later renamed or deleted, since DistrictAssignment
-        /// re-resolves the name on every membership check instead of trusting a stale
-        /// cached reference. See DistrictAssignment.cs for the resolve/membership-test
-        /// logic that reads this field back into a live District.
-        /// </summary>
-        [Serialized]
-        public string AssignedDistrictName { get; private set; }
-
-        /// <summary>
-        /// Sets the assigned survey district by name, or clears it when
-        /// <paramref name="districtName"/> is null/blank. Kept as a plain setter here
-        /// (name validation against the district registry happens in
-        /// DroneCommands.District before calling this) so DroneDockObject itself does not
-        /// need to depend on the chat-command layer.
-        /// </summary>
-        public void SetAssignedDistrict(string districtName)
-        {
-            this.AssignedDistrictName = string.IsNullOrWhiteSpace(districtName) ? null : districtName;
-        }
-
         // ---------------------------------------------------------------
         // U4: dock-owned survey areas (R1a/R2a/R3, KTD9). Areas are the dock's
         // own serialized data -- no mod-wide registry -- so they persist because
         // the dock does and are discarded with it. The dock's PropertyAuthComponent
         // is the only access gate (RPC callers enforce ConsumerAccess; these methods
         // are the plain state operations behind them, deliberately auth-free so the
-        // survey-areas tab component owns the [RPC] surface). Coexists with
-        // AssignedDistrictName above until the end-of-plan cleanup retires the
-        // district scaffold.
+        // survey-areas tab component owns the [RPC] surface). Areas fully replaced the
+        // earlier named-district assignment (retired in U10).
         // ---------------------------------------------------------------
 
         /// <summary>Every survey area this dock owns. Serialized; survives a restart with the dock.</summary>
@@ -208,8 +182,7 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// True when <paramref name="worldPos"/> falls inside one of the dock's assigned survey
-        /// area's plots; false when no area is assigned. The survey-area analogue of
-        /// <c>DistrictAssignment.IsPositionInAssignedDistrict</c>, re-resolving the area from its
+        /// area's plots; false when no area is assigned. Re-resolves the area from its
         /// serialized entry on every call (no cached geometry). Rounds the world column the same
         /// way the pathfinder does, then maps to a plot via the Eco-free <see cref="SurveyArea"/>.
         /// </summary>

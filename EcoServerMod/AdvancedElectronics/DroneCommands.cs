@@ -9,63 +9,16 @@ using Eco.Shared.Items;
 namespace Eco.Mods.TechTree
 {
     /// <summary>
-    /// Chat commands for the survey drone dock (U4, R12). District assignment ships as
-    /// a chat command in v1 per KTD4: the spike proved district *reads* work
-    /// (docs/solutions/best-practices/eco-013-reading-district-civics-data.md) but left
-    /// the on-object picker unproven (the 0.11-era UI attribute is gone in 0.13), so
-    /// <c>/drone district &lt;name&gt;</c> is the guaranteed path here. An on-object
-    /// picker is opportunistic future work (U6) and is not attempted in this unit.
+    /// Chat commands for the survey drone dock: diagnostics and the survey readout. Area
+    /// assignment lives on the dock's Survey tab (the drawn-on-map area model, U4-U9,
+    /// replaced the earlier named-district assignment); these commands read state and drive
+    /// the same dock-owned areas for live testing.
     /// </summary>
     [ChatCommandHandler]
     public static class DroneCommands
     {
         [ChatCommand("Advanced Electronics drone commands.", ChatAuthorizationLevel.User)]
         public static void Drone(User user) { }
-
-        /// <summary>
-        /// Assigns (or, with an empty/omitted name, clears) the survey district on the
-        /// target dock.
-        ///
-        /// DESIGN CALL (the one genuinely open call in this unit -- see class doc for
-        /// why a chat command exists at all): a chat command has no client raycast or
-        /// "targeted WorldObject" to read, so this unit must pick which dock the
-        /// command applies to. The target is the *nearest DroneDockObject the invoking player
-        /// has full access to*
-        /// (<c>WorldObject.IsAuthorized(user, AccessType.FullAccess)</c>), not simply
-        /// the nearest dock in the world. Reasoning: (1) it mirrors "owner/admin" auth
-        /// per KTD4 -- an admin passes IsAuthorized regardless of ownership, an
-        /// ordinary player only passes it on docks they own or were granted access to;
-        /// (2) letting any player redirect a district assignment on someone else's dock
-        /// just by standing near it would be a real griefing vector, so proximity alone
-        /// (nearest-any-dock) was rejected in favor of proximity-plus-authorization.
-        /// </summary>
-        [ChatSubCommand("Drone", "Assign the survey district for your nearest accessible drone dock. Empty name clears the assignment. Usage: /drone district <name>", ChatAuthorizationLevel.User)]
-        public static void District(User user, string name = "")
-        {
-            var dock = FindNearestAuthorizedDock(user);
-            if (dock == null)
-            {
-                user.MsgLocStr("No drone dock you have access to was found nearby.");
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                dock.SetAssignedDistrict(null);
-                user.MsgLocStr($"Cleared the survey district assignment for {dock.Name}.");
-                return;
-            }
-
-            var district = DistrictAssignment.FindDistrictByName(name);
-            if (district == null)
-            {
-                user.MsgLocStr($"No district named '{name}' was found. Draw it on the map first, then retry.");
-                return;
-            }
-
-            dock.SetAssignedDistrict(district.Name);
-            user.MsgLocStr($"Assigned survey district '{district.Name}' to {dock.Name}.");
-        }
 
         /// <summary>
         /// Lists the dock's survey areas with their ids (diagnostic). Bridges the gap until the
@@ -130,12 +83,12 @@ namespace Eco.Mods.TechTree
             var drone = dock.SpawnedDrone;
             if (drone == null || drone.IsDestroyed || !drone.TryGetComponent<OreSensorComponent>(out var sensor))
             {
-                user.MsgLocStr($"{dock.Name}: no drone is out surveying. Insert a Survey Drone and assign a district.");
+                user.MsgLocStr($"{dock.Name}: no drone is out surveying. Insert a Survey Drone and assign an area.");
                 return;
             }
 
             user.MsgLocStr($"Survey results for {dock.Name}"
-                + (string.IsNullOrEmpty(dock.AssignedDistrictName) ? " (no district assigned)" : $" -- district '{dock.AssignedDistrictName}'"));
+                + (dock.AssignedSurveyArea == null ? " (no area assigned)" : $" -- area '{dock.AssignedSurveyArea.Name}'"));
 
             var results = sensor.SampledOreTypes
                 .Select(oreType => (OreType: oreType, Result: sensor.DensestCell(oreType)))
@@ -174,7 +127,6 @@ namespace Eco.Mods.TechTree
 
             user.MsgLocStr($"Dock '{dock.Name}' at {dock.Position3i}:");
             user.MsgLocStr($"  Survey areas: {dock.SurveyAreas.Count}, assigned area: {(dock.AssignedSurveyArea?.Name ?? "(none)")} (id {dock.AssignedSurveyAreaId})");
-            user.MsgLocStr($"  District (legacy): {(string.IsNullOrEmpty(dock.AssignedDistrictName) ? "(none)" : dock.AssignedDistrictName)}");
             user.MsgLocStr($"  Paired drone item: {(dock.HasDrone ? "yes" : "no")}");
             user.MsgLocStr($"  Anim state Working: {FormatAnimState(dock, DroneDockObject.WorkingStateName)}");
 
@@ -228,10 +180,11 @@ namespace Eco.Mods.TechTree
             obj.AnimatedStates.TryGetValue(name, out var value) ? (value?.ToString() ?? "null") : "not yet pushed";
 
         /// <summary>
-        /// Nearest-owned-or-authorized-dock lookup backing the design call documented
-        /// on <see cref="District"/>. Eco exposes no "targeted WorldObject" helper
-        /// reachable from a server-side chat command, so proximity plus per-object
-        /// authorization is the most defensible stand-in available.
+        /// Nearest-owned-or-authorized-dock lookup for the chat commands. A chat command has
+        /// no client raycast or "targeted WorldObject" to read, so the target is the nearest
+        /// DroneDockObject the invoking player has full access to
+        /// (<c>WorldObject.IsAuthorized(user, AccessType.FullAccess)</c>) -- proximity plus
+        /// per-object authorization, so standing near someone else's dock can't redirect it.
         /// </summary>
         private static DroneDockObject FindNearestAuthorizedDock(User user)
         {

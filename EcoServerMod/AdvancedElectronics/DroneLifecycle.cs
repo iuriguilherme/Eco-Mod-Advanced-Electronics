@@ -2,7 +2,6 @@ using System;
 using System.Numerics;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
-using Eco.Gameplay.LegislationSystem;
 using Eco.Gameplay.Objects;
 using Eco.Shared.IoC;
 using Eco.Shared.Serialization;
@@ -56,12 +55,6 @@ namespace Eco.Mods.TechTree
         // interval instead of freezing the retry pacing forever.
         private const float FallbackTickDeltaSeconds = 0.05f;
 
-        // Bounds for the in-district destination search (see
-        // ResolveDestinationInDistrict) -- see that method's doc for why this search
-        // exists at all.
-        private const int DestinationSearchMaxRadius = 96;
-        private const int DestinationSearchRingStep = 4;
-
         // Roam hop sizing (see TickSurveyRoam). Min exceeds OreSensorComponent's
         // SurveyCellSize (8) so consecutive roam points tend to land in different
         // survey cells and coverage actually spreads; max keeps each hop's A* cheap.
@@ -84,7 +77,7 @@ namespace Eco.Mods.TechTree
         private readonly Random roamRandom = new Random();
         private readonly EcoWorldSampler worldSampler = new EcoWorldSampler();
 
-        private string lastKnownAssignedDistrictName;
+        private string lastKnownAssignedArea;
         private float secondsSinceLastReturnRetry;
         private float secondsSinceLastRoamAttempt;
         private float roamRetryIntervalSeconds = RoamRetryIntervalSeconds;
@@ -129,38 +122,34 @@ namespace Eco.Mods.TechTree
             if (!this.Parent.TryGetComponent<DroneMoverComponent>(out var mover))
                 return;
 
-            // U8 repoint: a dock-owned survey area (KTD9) takes precedence over the legacy
-            // district assignment. The token is opaque to the state machine — it only drives
-            // change-detection and the target label — so an "area:<id>" token flows through the
-            // same OnDistrictAssigned/membership machinery as a district name. The district path
-            // below stays intact as the fallback until the end-of-plan cleanup removes it.
-            var hasArea = this.HomeDock.AssignedSurveyAreaId != 0;
-            var assignedName = hasArea
+            // The drone surveys the dock's assigned survey area (KTD9). The "area:<id>" token
+            // is opaque to the state machine — it only drives change-detection and the target
+            // label — flowing through the same OnDistrictAssigned/membership machinery (the
+            // state machine keeps its generic district-named transitions; renaming them is
+            // deferred cosmetic cleanup).
+            var assignedToken = this.HomeDock.AssignedSurveyAreaId != 0
                 ? "area:" + this.HomeDock.AssignedSurveyAreaId
-                : this.HomeDock.AssignedDistrictName;
+                : null;
 
-            if (!string.Equals(assignedName, this.lastKnownAssignedDistrictName, StringComparison.Ordinal))
+            if (!string.Equals(assignedToken, this.lastKnownAssignedArea, StringComparison.Ordinal))
             {
-                this.lastKnownAssignedDistrictName = assignedName;
+                this.lastKnownAssignedArea = assignedToken;
 
-                if (!string.IsNullOrWhiteSpace(assignedName))
+                if (!string.IsNullOrWhiteSpace(assignedToken))
                 {
-                    // Covers Idle->EnRoute (fresh dispatch), Surveying->EnRoute and
-                    // EnRoute(region)->EnRoute(new region) (R13 reassignment), and
-                    // Unreachable->EnRoute (new reachable region assigned).
-                    if (hasArea)
-                        this.DispatchToArea(mover);
-                    else
-                        this.DispatchToDistrict(mover, assignedName);
+                    // Idle/Surveying/EnRoute -> EnRoute to the newly-assigned area (R13
+                    // reassignment re-paths immediately from the drone's current position).
+                    this.DispatchToArea(mover);
                 }
                 else if (this.stateMachine.Status == DroneStatus.Surveying ||
                          (this.stateMachine.Status == DroneStatus.EnRoute && this.stateMachine.TravelTarget == DroneTravelTarget.District))
                 {
-                    // District cleared while actively pursuing one -- start the
-                    // return-to-dock leg (R6: Surveying -> EnRoute(dock) -> Idle).
+                    // Area unassigned while actively pursuing one -- start the return-to-dock
+                    // leg (R6: Surveying -> EnRoute(dock) -> Idle). DroneTravelTarget.District
+                    // is the state machine's generic "toward the assigned region" target.
                     this.BeginReturnToDock(mover, viaDistrictCleared: true);
                 }
-                // else: cleared while already Idle/EnRoute(dock)/Unreachable -- nothing
+                // else: unassigned while already Idle/EnRoute(dock)/Unreachable -- nothing
                 // was in progress to interrupt.
 
                 return;
@@ -213,59 +202,13 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Dispatches toward <paramref name="districtName"/> from the drone's CURRENT
-        /// position (R13) -- never the dock. The state machine transitions immediately
-        /// and optimistically (see <see cref="DroneStateMachine.OnDistrictAssigned"/>);
-        /// path success/failure is reported back via a separate follow-up call, exactly
-        /// mirroring the pure state machine's two-call contract.
-        /// </summary>
-        private void DispatchToDistrict(DroneMoverComponent mover, string districtName)
-        {
-            this.stateMachine.OnDistrictAssigned(districtName);
-
-            var district = DistrictAssignment.FindDistrictByName(districtName);
-            if (district == null)
-            {
-                // Name no longer resolves (renamed/deleted between assignment and this
-                // tick) -- nothing to path to.
-                this.LastDispatchNote = $"district '{districtName}' did not resolve";
-                this.HandleNoPath(mover);
-                return;
-            }
-
-            // R13: the search below is anchored at this.Parent.Position -- the drone's
-            // CURRENT position -- not HomeDock.Position. This is what makes a
-            // reassignment re-path immediately from wherever the drone already is
-            // instead of first returning home and re-dispatching from the dock.
-            // (DroneMoverComponent.SetDestination independently always paths FROM the
-            // current position too, so an anchoring mistake here couldn't route the
-            // drone through the dock regardless -- but anchoring the destination
-            // SEARCH here as well keeps the chosen in-district point close to the
-            // drone rather than close to the dock.)
-            var destination = ResolveDestinationInDistrict(district, this.Parent.Position);
-            if (destination == null)
-            {
-                this.LastDispatchNote = $"district '{districtName}' resolved but has no reachable plot to target (empty district map?)";
-                this.HandleNoPath(mover);
-                return;
-            }
-
-            var target = destination.Value;
-            if (!mover.SetDestination(target))
-            {
-                this.LastDispatchNote = $"no path from {this.Parent.Position.X:F0},{this.Parent.Position.Z:F0} to district point {target.X:F0},{target.Z:F0}";
-                this.HandleNoPath(mover);
-                return;
-            }
-
-            this.LastDispatchNote = $"dispatched to district point {target.X:F0},{target.Z:F0}";
-        }
-
-        /// <summary>
-        /// Area analogue of <see cref="DispatchToDistrict"/> (U8/KTD9): dispatches toward the
-        /// dock's assigned survey area from the drone's CURRENT position (R13). The state
-        /// machine target is a synthetic "area:&lt;id&gt;" label; membership and geometry come
-        /// from the area's own plots.
+        /// Dispatches toward the dock's assigned survey area from the drone's CURRENT position
+        /// (R13) -- never the dock, so a reassignment re-paths immediately from wherever the
+        /// drone already is. The state machine transitions immediately and optimistically (see
+        /// <see cref="DroneStateMachine.OnDistrictAssigned"/> -- its generic "region assigned"
+        /// event, named from the pre-area design); path success/failure is reported back via a
+        /// separate follow-up call. The target is a synthetic "area:&lt;id&gt;" label; membership
+        /// and geometry come from the area's own plots.
         /// </summary>
         private void DispatchToArea(DroneMoverComponent mover)
         {
@@ -305,18 +248,15 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// True when the drone's current assigned region contains <paramref name="pos"/>. Prefers
-        /// the dock's survey area (U8/KTD9); falls back to the legacy district when no area is
-        /// assigned. The single membership seam every arrival/roam check goes through.
+        /// True when the drone's assigned survey area contains <paramref name="pos"/> (U8/KTD9).
+        /// The single membership seam every arrival/roam check goes through.
         /// </summary>
         private bool IsPositionInAssignedRegion(Vector3 pos) =>
-            this.HomeDock.AssignedSurveyAreaId != 0
-                ? this.HomeDock.IsPositionInAssignedArea(pos)
-                : this.HomeDock.IsPositionInAssignedDistrict(pos);
+            this.HomeDock.IsPositionInAssignedArea(pos);
 
         /// <summary>
-        /// Area analogue of <see cref="ResolveDestinationInDistrict"/>: the point inside
-        /// <paramref name="area"/> nearest <paramref name="anchor"/>, by enumerating the area's
+        /// The point inside <paramref name="area"/> nearest <paramref name="anchor"/>, by
+        /// enumerating the area's
         /// own plots and converting each to its world center via
         /// <see cref="PlotPos.CenterWorldPos"/>. Returns the anchor unchanged when it is already
         /// inside the area. No distance cap; keeps the anchor's Y (the pathfinder is
@@ -463,14 +403,13 @@ namespace Eco.Mods.TechTree
         /// <summary>
         /// Keeps the drone roaming while Surveying (F2/R6). When the current hop has
         /// finished (<see cref="DroneMoverComponent.IsMoving"/> false), picks the next
-        /// in-district waypoint: up to <see cref="RoamPickAttempts"/> random hops of
+        /// in-area waypoint: up to <see cref="RoamPickAttempts"/> random hops of
         /// <see cref="RoamStepMin"/>-<see cref="RoamStepMax"/> world units from the
         /// current position, each membership-tested via
-        /// <see cref="DroneDockObject.IsPositionInAssignedDistrict"/> (the only proven
-        /// district-geometry query -- see ResolveDestinationInDistrict's doc) and then
+        /// <see cref="DroneDockObject.IsPositionInAssignedArea"/> and then
         /// path-tested via <see cref="DroneMoverComponent.SetDestination"/>. A fully
-        /// failed round (e.g. the drone sits in a pocket, or the district shrank) falls
-        /// back to ResolveDestinationInDistrict to pull the drone back inside, and
+        /// failed round (e.g. the drone sits in a pocket, or the area shrank) falls
+        /// back to <see cref="ResolveDestinationInArea"/> to pull the drone back inside, and
         /// retries are paced by <see cref="RoamRetryIntervalSeconds"/> so a stuck drone
         /// does not run pathfinding every tick. A drone that cannot roam merely stays
         /// put and keeps sampling its current columns -- never a state-machine error.
@@ -499,7 +438,7 @@ namespace Eco.Mods.TechTree
                     current.Y,
                     current.Z + (float)Math.Sin(angle) * distance);
 
-                // Cheap rejections BEFORE the expensive pathfind: district membership is
+                // Cheap rejections BEFORE the expensive pathfind: area membership is
                 // a point test, and a candidate whose own column is solid/obstructed can
                 // never be a valid destination now that the goal column is no longer
                 // obstacle-exempt for roam hops. Both spare a full A* search per reject.
@@ -521,34 +460,16 @@ namespace Eco.Mods.TechTree
                 }
             }
 
-            // No random hop landed in-region with a path -- pull back toward the region
-            // body (also covers "region was reassigned smaller under us"). Area takes
-            // precedence over the legacy district, mirroring dispatch.
-            if (this.HomeDock.AssignedSurveyAreaId != 0)
+            // No random hop landed in-area with a path -- pull back toward the area body
+            // (also covers "area was reassigned smaller under us").
+            var entry = this.HomeDock.AssignedSurveyArea;
+            if (entry != null)
             {
-                var entry = this.HomeDock.AssignedSurveyArea;
-                if (entry != null)
+                var areaFallback = ResolveDestinationInArea(entry.ToSurveyArea(), current);
+                if (areaFallback != null && mover.SetDestination(areaFallback.Value))
                 {
-                    var areaFallback = ResolveDestinationInArea(entry.ToSurveyArea(), current);
-                    if (areaFallback != null && mover.SetDestination(areaFallback.Value))
-                    {
-                        this.roamRetryIntervalSeconds = RoamRetryIntervalSeconds;
-                        return;
-                    }
-                }
-            }
-            else
-            {
-                var districtName = this.HomeDock.AssignedDistrictName;
-                var district = string.IsNullOrWhiteSpace(districtName) ? null : DistrictAssignment.FindDistrictByName(districtName);
-                if (district != null)
-                {
-                    var fallback = ResolveDestinationInDistrict(district, current);
-                    if (fallback != null && mover.SetDestination(fallback.Value))
-                    {
-                        this.roamRetryIntervalSeconds = RoamRetryIntervalSeconds;
-                        return;
-                    }
+                    this.roamRetryIntervalSeconds = RoamRetryIntervalSeconds;
+                    return;
                 }
             }
 
@@ -556,60 +477,6 @@ namespace Eco.Mods.TechTree
             // the server a bounded, decaying amount of pathfinding instead of a fixed
             // per-2s tax forever.
             this.roamRetryIntervalSeconds = MathF.Min(this.roamRetryIntervalSeconds * 2f, RoamRetryMaxIntervalSeconds);
-        }
-
-        /// <summary>
-        /// Finds a point inside <paramref name="district"/> nearest to
-        /// <paramref name="anchor"/>, by enumerating the district's OWN plots.
-        ///
-        /// This replaces an earlier expanding-ring search that probed outward from the
-        /// drone using only point-membership tests and gave up after a fixed radius.
-        /// That heuristic silently made any district drawn farther than its cap
-        /// undiscoverable: dispatch resolved no destination, and the drone sat at the
-        /// dock reporting Unreachable forever — the exact symptom seen on the live
-        /// server (assignment succeeded, drone never moved).
-        ///
-        /// A district map is a plot-granular <c>Array2D&lt;int&gt;</c> of district IDs
-        /// (<c>DistrictMap.Map</c>, the same array <c>GetDistrictAtWorldPos</c> reads
-        /// through <c>PlotPos</c>), so the district's true extent is directly
-        /// enumerable and <c>PlotPos.CenterWorldPos</c> converts a plot back to world
-        /// coordinates. Scanning it is exact and has no distance cap. This runs on
-        /// dispatch and on backed-off roam fallbacks, not per tick.
-        ///
-        /// The returned point keeps the anchor's Y: the pathfinder is ground-following
-        /// and resolves real terrain height per column, so only X/Z matter here.
-        /// </summary>
-        private static Vector3? ResolveDestinationInDistrict(District district, Vector3 anchor)
-        {
-            if (DistrictAssignment.IsPositionInDistrict(anchor, district))
-                return anchor;
-
-            var map = district.ContainingMap?.Map;
-            if (map?.Array == null || map.Size.x <= 0)
-                return null;
-
-            var width = map.Size.x;
-            var districtId = district.Id;
-            var bestDistanceSq = float.MaxValue;
-            Vector3? best = null;
-
-            for (var i = 0; i < map.Array.Length; i++)
-            {
-                if (map.Array[i] != districtId)
-                    continue;
-
-                var center = new PlotPos(i % width, i / width).CenterWorldPos;
-                var dx = center.x - anchor.X;
-                var dz = center.y - anchor.Z;
-                var distanceSq = (dx * dx) + (dz * dz);
-                if (distanceSq >= bestDistanceSq)
-                    continue;
-
-                bestDistanceSq = distanceSq;
-                best = new Vector3(center.x, anchor.Y, center.y);
-            }
-
-            return best;
         }
     }
 }
