@@ -62,6 +62,25 @@ window (verified live on the Drone Dock). Inside it:
   shape (settable, assigned), not the `PartsComponent.Description` computed-getter shape — the
   computed getter works for a stock component with a generated view but not for a mod component.
   A plain `[SyncToView] string` with no `UITypeName` did not render; give it a `UITypeName`.
+- **A rich per-row list or a Selector dropdown is NOT available to a mod tab.** The stock
+  "My Deeds" list, the Authorization tab, and the jurisdiction/demographic Selector dropdowns
+  render through a hand-written **client-side** `WorldObjectPanel` MonoBehaviour (e.g. `DeedsUI`,
+  `AuthComponentView`) bound to a codegen'd `WorldObjectComponentView` via
+  `[WorldObjectUIPanel("...")]`, instantiating row prefabs. **The ModKit does not expose
+  `WorldObjectPanel`, `WorldObjectComponentView`, or `[WorldObjectUIPanel]`** (absent from
+  `Assets/EcoModKit` and `Assets/EcoLibs`), so a mod cannot write one. A `[SyncToView]`
+  collection of a mod-defined `IController` renders **blank** in the generic auto-view (it does
+  not crash the way an `IEnumerable<string>` does, but it shows nothing). Native Selector
+  dropdowns (`[Eco, UITypeName("Selector")] GamePickerList<T>`) additionally source their options
+  from a **global registry of a viewable type** (Item, Deed, Settlement) — dock-local mod data
+  has no such registry. Net: a mod tab is limited to text + buttons + editable `[Eco]` scalars;
+  a rich list/table/dropdown requires client-side UI the ModKit does not provide.
+- **The escape hatch for custom client UI is a bundle prefab MonoBehaviour driven by
+  animated-states.** A mod ships its own MonoBehaviour on the WorldObject prefab (e.g. this
+  project's `DockReadoutDisplay`) that reads server-synced `StringStates`/`FloatStates` (pushed
+  by `WorldObject.SetAnimatedState`) and renders whatever Unity UI it wants. This is Unity client
+  work, the data channel is one-way (server -> client), and interaction still routes through the
+  server-side `[RPC]` tab — but it is the only way to render UI the generic auto-view cannot.
 
 **2. The map *editor* is reachable and returns drawn plots — use it for area selection.**
 `player.EditMap(MapEditRequest)` opens the same plot editor district/deed editing uses (it runs

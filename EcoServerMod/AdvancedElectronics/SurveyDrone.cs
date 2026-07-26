@@ -91,9 +91,6 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(DroneMoverComponent))]
     [RequireComponent(typeof(OreSensorComponent))]
     [RequireComponent(typeof(DroneLifecycle))]
-    // ISOLATED UI PROBE — TEMPORARY, remove with SurveyAreaRowProbe.cs. Tests whether a
-    // mod-controller list renders, on the drone so it can't crash the dock. Open the drone.
-    [RequireComponent(typeof(SurveyAreaProbeComponent))]
     public class SurveyDroneObject : WorldObject
     {
         /// <summary>
