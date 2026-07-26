@@ -44,18 +44,19 @@ namespace Eco.Mods.TechTree
         public string ResultsDisplay { get; private set; } = string.Empty;
 
         /// <summary>
-        /// Material targets: pick which materials the results show, the same way items and tags are
-        /// picked in a recipe or a store. Empty shows everything found.
+        /// Material targets: pick which materials the survey results show, the same way items and tags
+        /// are picked in a recipe or a law. Empty shows everything found.
         ///
-        /// FEASIBILITY PROBE: this is the game's own <see cref="GamePickerList{T}"/> — an [Eco] type
-        /// with a generated client view, used by civics laws (e.g. MatchesDemographic). Every vanilla
-        /// usage is inside a civics GameValue, never a WorldObjectComponent tab, so whether the client
-        /// renders a picker HERE is unproven. If it renders blank the feature is not achievable through
-        /// the ModKit; a search-picker is the only sane UI for this (a button-per-material list is
-        /// worse than no filter at all).
+        /// Scoped to <see cref="BlockItem"/>, not <c>Item</c>: BlockItem is the base for items that
+        /// represent placeable/mineable blocks (it carries the "Block" tag), so the picker offers
+        /// terrain materials with their Rock/Ore/Fuel tag filters — the same candidate set the court's
+        /// "Dig Or Mine / With Item Used" picker shows — instead of the entire store-like item catalog.
+        ///
+        /// Confirmed live: GamePickerList renders and filters from a WorldObjectComponent tab, even
+        /// though every vanilla usage is inside a civics GameValue.
         /// </summary>
-        [Eco, LocDescription("Materials to show in the survey results. Leave empty to show everything found.")]
-        public GamePickerList<Item> MaterialTargets { get; set; } = new();
+        [Eco, AllowEmpty, LocDescription("Materials to show in the survey results. Leave empty to show everything found.")]
+        public GamePickerList<BlockItem> MaterialTargets { get; set; } = new();
 
         /// <summary>
         /// The area id the action buttons operate on. Set by the Prev/Next cycle buttons. (The
@@ -155,16 +156,15 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// Projects the picker's current selection into the dock's serialized material filter, so the
-        /// readout (and the chat command) work off one source. Maps a selected Item type to a material
-        /// name by stripping the "Item" suffix -- the mirror of how the sensor derives a material name
-        /// from a block type ("IronOreBlock" -> "IronOre", "IronOreItem" -> "IronOre").
+        /// readout (and the chat command) work off one source. Maps a picked item type to the material
+        /// name the sensor records, mirroring how that name is derived from a block type: strip the
+        /// "Item" suffix, then a "Block" suffix if one remains ("IronOreItem" -> "IronOre",
+        /// "LimestoneBlockItem" -> "Limestone", matching the sensor's "LimestoneBlock" -> "Limestone").
         /// </summary>
         private void ApplyPickerSelection(DroneDockObject dock)
         {
             var picked = this.MaterialTargets?.GetTypes()
-                .Select(t => t.Name.EndsWith("Item", StringComparison.Ordinal)
-                    ? t.Name.Substring(0, t.Name.Length - "Item".Length)
-                    : t.Name)
+                .Select(t => MaterialNameFromItemType(t.Name))
                 .ToList();
 
             if (picked == null) return;
@@ -178,6 +178,18 @@ namespace Eco.Mods.TechTree
             foreach (var name in picked)
                 dock.ToggleMaterialFilter(name);
         }
+
+        /// <summary>Item type name -> the material name the sensor records. See <see cref="ApplyPickerSelection"/>.</summary>
+        private static string MaterialNameFromItemType(string typeName)
+        {
+            var name = StripSuffix(typeName, "Item");
+            return StripSuffix(name, "Block");
+        }
+
+        private static string StripSuffix(string value, string suffix) =>
+            value.EndsWith(suffix, StringComparison.Ordinal) && value.Length > suffix.Length
+                ? value.Substring(0, value.Length - suffix.Length)
+                : value;
 
         public void RefreshAreas()
         {
