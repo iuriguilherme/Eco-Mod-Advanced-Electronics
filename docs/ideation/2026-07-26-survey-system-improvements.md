@@ -128,6 +128,38 @@ before choosing a mechanism.
 
 ---
 
+## Open defect — orphaned survey drone objects in the world
+
+**Status: confirmed, unfixed, not yet reproduced deterministically.** Observed across multiple live
+sessions and again on 2026-07-27. This is the defect the README's alpha warning refers to. It is
+unrelated to the 0.0.1 packaging work — it predates it.
+
+**Symptom:** Survey drone world objects are left in the world with no owning dock. They survive
+server restarts and have to be removed by hand with admin tools.
+
+**Why it matters more than a stray prop:** a drone still runs its `DroneLifecycle` tick. An orphan
+is not inert scenery — it is an object still doing work against a dock that may no longer exist, so
+the cost grows with playtime and it is the most likely source of the next confusing bug report.
+
+**Exit routes to check** — the fix is probably one of these leaking, not a general lifecycle flaw:
+
+- `DroneDock.DespawnDrone` has an id-fallback path; confirm it destroys on *every* route, not just
+  the common one.
+- Removing the drone item from dock storage destroys the world object (shipped this cycle). Verify
+  it still holds when the dock is removed first, or when both happen in the same tick.
+- Picking up a dock creates a fresh world object on replacement (see the deferred item above). The
+  old dock's paired drone is a prime orphan candidate — its owner reference dies with the old
+  object, and nothing else holds a claim on it.
+- Restart-resume (KTD10) was left pending. A drone deployed at shutdown may come back with no live
+  pairing.
+- Deleting or redrawing an area while the drone is mid-survey.
+
+**Wanted outcome:** a deterministic repro, a fix for whichever route leaks, and a cleanup path —
+an admin command or a startup sweep — for drones already orphaned in existing worlds. Existing
+players cannot benefit from a fix that only prevents *new* orphans.
+
+---
+
 ## Recommended next step
 
 Brainstorm **survivor #1 (area-centric decoupled tab)** first — highest leverage, lowest cost, cashes in shipped work, and it's the surface that #2/#3/#4 all attach to. Then #2 (park-and-sweep coverage) as the autonomy-defining follow-up.
