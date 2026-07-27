@@ -287,7 +287,7 @@ namespace Eco.Mods.TechTree
 
             if (findings.Count == 0 && all.Count > 0)
             {
-                sb.Append("No material in this area matches the current filter -- use Show All Materials.\n");
+                sb.Append("No material in this area matches the current filter -- clear the Material Targets picker above to show everything found.\n");
             }
             else if (findings.Count == 0)
             {
