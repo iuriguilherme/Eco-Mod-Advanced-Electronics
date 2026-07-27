@@ -127,6 +127,10 @@ EcoServerMod/**/Local.props
 # Bundle build output — rebuilt locally, see README > Build the client asset bundle.
 /AssetBundles/
 
+# Release zips assembled by scripts/package-release.sh — published to mod.io,
+# not versioned here.
+/dist/
+
 # ---------------------------------------------------------------------------
 # Third-party content — deliberately NOT redistributed here.
 #

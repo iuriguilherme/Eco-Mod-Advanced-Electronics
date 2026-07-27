@@ -205,6 +205,19 @@ pairing state is not yet persisted).
   category with YAML frontmatter.
 - Shared vocabulary: `CONCEPTS.md`.
 
+### Cutting a release
+
+`scripts/package-release.sh [--version X.Y.Z]` builds the Release DLLs, runs the tests,
+and assembles `dist/AdvancedElectronics-<version>-eco<game>.zip` in the layout
+[Installing a release](#installing-a-release) describes — ready to upload to mod.io.
+
+Rebuild the asset bundle in Unity **first**. The script does not build it (that needs the
+Editor) but it does refuse to package one that is older than anything under `Assets/Art`,
+because the bundle carries the prefabs and the `DockReadoutDisplay` MonoBehaviour — a
+stale bundle ships client behaviour that silently disagrees with the DLLs. If a `git`
+operation has rewritten source mtimes and you know the bundle is current, `--force`
+overrides.
+
 ## Known limitations
 
 - **Picking up a Drone Dock discards its survey areas and findings.** The dock item is
