@@ -38,8 +38,8 @@ requirements.
 The single Survey tab becomes two: **Areas** (manage and assign) and **Results** (read). Area
 creation, renaming, redrawing and deletion move into Eco's native map editor — the same mechanism
 districts use — reached by one button. Assignment becomes one button per existing area, so the
-player picks an area directly instead of cycling to it. The Results tab carries the material picker
-and the findings text and no buttons at all.
+player picks an area directly instead of cycling to it. The Results tab shows one area's findings at a
+time, chosen with Prev/Next and independent of which area the drone is assigned to.
 
 ### Requirements
 
@@ -47,12 +47,12 @@ and the findings text and no buttons at all.
 Two tabs on the dock. **Areas** holds, top to bottom: the assignment line, the numbered area list,
 the assign buttons, then the map-manager button — that order matters because the buttons are labelled
 by position and are meaningless until the list that names them has been read. Member declaration
-order in the component is what produces it. **Results** holds the material-target picker and the
-findings readout.
+order in the component is what produces it. **Results** holds, top to bottom: the material-target
+picker, the line naming the area being viewed, the Prev/Next selection buttons, then that area's
+findings. Selection controls sit **above** the findings because findings are variable-length — bottom-
+anchored controls would drift off-screen exactly when an area has many materials.
 
-The **Areas** tab must not require scrolling at a typical area count. **Results is exempt**: reading
-findings is inherently content-heavy, and R5's six fields per area across several areas cannot fit a
-screen. Scrolling a readout the player chose to open is not the defect R6 targets.
+Neither tab requires scrolling at a typical area count.
 
 **R2 — One assign button per existing area.**
 The Areas tab shows a button per area the dock owns (`Assign Area 1`, `Assign Area 2`, …). Buttons
@@ -73,10 +73,15 @@ One `Manage Areas on Map` button opens Eco's map editor showing **all** of the d
 entries at once. Creating, renaming, redrawing and deleting areas all happen there and are applied
 on confirm. The tab carries no Create/Edit/View/Delete buttons.
 
-**R5 — The Results tab carries no buttons.**
-It renders the material-target picker (a compact collapsible row) and the findings text — per-material
-quantity, shallowest location, depth range, coverage, scanned depth and median surface — plus the
-drone's status line as a footer.
+**R5 — The Results tab shows one area at a time, chosen with Prev/Next.**
+It renders the material-target picker (a compact collapsible row), a line naming the area being viewed
+(`Viewing: 2 of 4 — North Ridge`, marked when it is the assigned one), Prev/Next buttons, and that
+area's findings — per-material quantity, shallowest location, depth range, coverage, scanned depth and
+median surface — plus the drone's status line as a footer. Two buttons is the whole control surface.
+
+**Selecting is not assigning.** The Results cursor is independent of the drone's assignment, so any
+area's findings can be read without dispatching the drone there — preserving the view-without-
+assignment decoupling shipped in `c9d5f12`.
 
 **R6 — Vertical button stacking is the thing being removed.**
 Success is measured by controls that fit without scrolling, not merely fewer buttons. Prefer compact
@@ -92,7 +97,8 @@ correct.
    button again.
 3. To create or change areas: `Manage Areas on Map` → the map editor opens with every area drawn and
    named → add, rename, redraw or delete → confirm.
-4. To read findings: **Results** tab → optionally narrow with the material picker → read the findings.
+4. To read findings: **Results** tab → Prev/Next to the area you care about → optionally narrow with
+   the material picker. Viewing an area never changes what the drone is working on.
 
 ### Acceptance examples
 
@@ -105,7 +111,9 @@ correct.
 - **AE4 — Map management:** `Manage Areas on Map` opens with all 3 areas visible and named; adding a
   fourth and deleting the first is reflected in the tab afterwards, with the fourth gaining its own
   button.
-- **AE5 — Results is button-free:** the Results tab shows the picker and findings only.
+- **AE5 — Results shows one area:** the Results tab shows the picker, the `Viewing:` line, Prev/Next,
+  and that area's findings. Cycling to another area changes the readout and does **not** change the
+  drone's assignment.
 - **AE6 — Beyond the pool:** creating more areas than the button pool supports leaves the extras
   listed and readable but not assignable from the tab.
 
@@ -153,11 +161,14 @@ correct.
 - **KTD2 — Area names round-trip, so renaming stays on the map.** `EntryDescription` is both sent and
   returned; districts rename from it. This closes the requirements doc's open question and means R4
   covers rename with no tab control.
-- **KTD3 — Results shows every area, not a selected one.** With Prev/Next gone there is no selection
-  control left, and tying reading to assignment would undo the view-without-assignment decoupling
-  shipped in commit `c9d5f12` (the plan describing it, `2026-07-26-001`, was implemented directly and
-  remains requirements-only, so the commit is the reference). Findings render per area at full detail,
-  assigned area first — Results is exempt from the no-scroll rule per R1.
+- **KTD3 — Results shows one selected area, with its own Prev/Next cursor**
+  (session-settled: user-directed — chosen over rendering every area). Rendering all areas at full
+  detail meant scrolling past everything to reach the one you wanted, and the picker scrolled away
+  with it; at 4-10 areas that is a wall of text. A dedicated view cursor keeps the tab to one screen.
+  The cursor is separate from the drone's assignment, preserving the view-without-assignment
+  decoupling shipped in commit `c9d5f12` (the plan describing it, `2026-07-26-001`, was implemented
+  directly and remains requirements-only, so the commit is the reference). Two Prev/Next buttons are
+  an accepted cost — the defect R6 targets is a column of buttons, not any button at all.
 - **KTD4 — Per-area buttons are a fixed pool gated by `VisibilityParam`.** RPC methods are declared at
   compile time, so N buttons cannot be generated. Declare a pool of 10 `AssignAreaN` RPCs, each
   carrying `[RPC, VisibilityParam(nameof(AreaNExists))]`. The precedent is
@@ -277,10 +288,12 @@ position, and assigns it unless it is already assigned, in which case it clears 
 members follow the `AreaBonusComponent` shape and are pushed via `Changed()` per KTD4a.
 
 **Convert the results text in this unit, not U3.** `BuildResultsText` resolves its area through
-`TargetAreaId`, which this unit deletes — so the KTD3 conversion (render every area, assigned first,
-no selection) lands here alongside that deletion. U3 then only relocates an already selection-free
-block. Splitting it the other way leaves the intermediate commit either uncompilable or showing a
-permanently empty readout.
+`TargetAreaId`, which this unit deletes — that field currently serves double duty as both the
+assignment target and the results selection. Assignment no longer needs a cursor (buttons address
+areas directly), so replace it here with a **view cursor** that only drives the results readout, plus
+its Prev/Next buttons and the `Viewing: N of M — <name>` line (KTD3). U3 then relocates that whole
+block unchanged. Splitting it the other way leaves the intermediate commit either uncompilable or
+showing a permanently empty readout.
 
 **Execution note.** Verify the visibility binding hides a button live before building all ten — if it
 does not bind, the pool renders at fixed size and out-of-range buttons must no-op with the list
@@ -296,7 +309,8 @@ the existing `[RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton")]
 - Assign with no drone docked → the line reports the assignment AND names the missing drone (R3).
 - Create a 4th area on the map with the dock panel open → a 4th button appears without reopening
   (proves the `Changed()` push in KTD4a); deleting an area removes its button the same way.
-- The results text renders every area with no selection control and no reference to Prev/Next.
+- The results text shows one area with a working Prev/Next cursor; cycling it does not change which
+  area the drone is assigned to.
 - Covers AE6. 11+ areas → the 11th is listed but has no button; chat assignment still reaches it.
 - Deleting the assigned area (via U1) leaves the line unassigned and no button orphaned.
 - Positions re-map after a deletion: with areas 1,2,3 and 2 deleted, buttons 1 and 2 address the two
@@ -306,8 +320,8 @@ the existing `[RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton")]
 
 #### U3. Split Areas and Results into two tabs
 
-**Goal.** Move the findings readout and material picker to their own tab so neither tab needs
-scrolling.
+**Goal.** Move the findings readout, its selection cursor and the material picker to their own tab so
+neither tab needs scrolling.
 
 **Requirements.** R1, R5, R6. KTD3, KTD6.
 
@@ -315,20 +329,21 @@ scrolling.
 
 **Files.**
 - `EcoServerMod/AdvancedElectronics/SurveyResultsComponent.cs` (new) — second tab component carrying
-  the material picker and the findings text.
-- `EcoServerMod/AdvancedElectronics/SurveyAreasComponent.cs` — drop the results/picker members.
+  the material picker, the view cursor with its Prev/Next buttons and `Viewing:` line, and the
+  findings text.
+- `EcoServerMod/AdvancedElectronics/SurveyAreasComponent.cs` — drop the results/picker/cursor members.
 - `EcoServerMod/AdvancedElectronics/DroneDock.cs` — `[RequireComponent]` for the new component, and
   refresh it from the dock tick alongside the existing tab refresh.
 
-**Approach.** Relocate the already selection-free results block from U2 into the new component.
-Findings render per area with the assigned area first (KTD3), each area's block carrying its
-per-material quantity, shallowest location and depth range, plus coverage, scanned depth and median
-surface, with the drone status as a footer. **Filtered-empty states:** an area whose materials are all
-filtered out keeps its block and shows a "no matching materials here" line rather than vanishing, so a
-filter matching nothing anywhere reads as filtered rather than as a blank panel; the message points at
-the Material Targets picker, never at a button (R5 forbids buttons here). If the second tab does not
-register, fold both sections back into one component in management-then-results order and record that
-in the plan's open questions rather than reworking behaviour.
+**Approach.** Relocate the results block built in U2 — cursor, Prev/Next, `Viewing:` line, findings —
+into the new component unchanged. The viewed area's block carries its per-material quantity, shallowest
+location and depth range, plus coverage, scanned depth and median surface, with the drone status as a
+footer. **Filtered-empty state:** when the picker filters out everything in the viewed area, show a
+"no matching materials in this area" line rather than an empty panel, pointing at the Material Targets
+picker — never at a button that does not exist (the stale "Show All Materials" string is already
+corrected). If the second tab does not register, fold both sections back into one component in
+management-then-results order and record that in the plan's open questions rather than reworking
+behaviour.
 
 **Execution note.** Confirm the second tab actually registers before moving content into it; the
 earlier attempt in this project silently did not appear.
@@ -337,14 +352,16 @@ earlier attempt in this project silently did not appear.
 component shape and its dock-driven `RefreshResults` call.
 
 **Test scenarios.**
-- Covers AE5. Results tab shows picker + findings and no buttons.
-- Covers AE3. With 3 areas, the Areas tab does not scroll (Results is exempt per R1).
-- Every area's findings appear, assigned area first; an unassigned dock still shows all findings.
-- The material filter still narrows what the Results tab lists.
-- A filter matching nothing in one area → that area keeps its block with a "no matching materials"
-  line; a filter matching nothing anywhere → every block says so, no blank panel, and no text names a
-  button that does not exist.
+- Covers AE5. Results shows the picker, `Viewing:` line, Prev/Next and one area's findings.
+- Covers AE3. With 3 areas, neither tab scrolls.
+- Cycling Prev/Next changes the readout without changing the assignment; an unassigned dock can still
+  read every area by cycling.
+- The viewed area's `[assigned]` marker appears only on the assigned one.
+- The material filter narrows the viewed area's materials; when it matches nothing there, the panel
+  says so and points at the picker rather than at a button.
 - A dock with no areas shows a clear empty state on both tabs rather than blank panels.
+- An area deleted while it is the one being viewed → the cursor lands on a valid area rather than a
+  blank or out-of-range readout.
 
 **Verification.** Both tabs render, each fits without scrolling at 3 areas, and findings remain
 visible with no drone assigned.
@@ -363,8 +380,9 @@ visible with no drone assigned.
 R1–R6 satisfied — except where a feasibility bet's recorded fallback applies: bet 1's fallback relaxes
 R1 to a single tab in management-then-results order, and bet 3's relaxes R2's hide-unused clause to a
 capped visible pool. Build clean and Navigation tests green; deployed; area management happens on the
-map; assignment is one click per area; the Areas tab does not scroll at a typical area count; each
-feasibility bet is either working or its recorded fallback is in place.
+map; assignment is one click per area; findings are readable one area at a time without changing the
+assignment; neither tab scrolls at a typical area count; each feasibility bet is either working or its
+recorded fallback is in place.
 
 ### Feasibility bets
 
@@ -395,3 +413,8 @@ Each is testable in one restart and each degrades gracefully:
 - Whether the map editor's empty-entry handling needs the equivalent of the district
   "delete empty districts?" prompt, or whether an area drawn with no plots should simply be dropped.
   Deferred to implementation — visible the first time an empty entry is confirmed.
+- **Trim the Areas list to buy button room?** The list currently carries coverage and top material per
+  area, which the Results tab now shows in full — so the summary partly duplicates it. Cutting the
+  list to name plus plot count shortens it and leaves room for more assign buttons before the tab
+  scrolls, at the cost of an at-a-glance overview. Worth judging against the real layout in play
+  rather than on paper.
