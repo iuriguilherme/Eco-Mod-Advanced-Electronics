@@ -115,14 +115,50 @@ EcoServerMod/**/[Bb]in/
 EcoServerMod/**/[Oo]bj/
 EcoServerMod/**/Local.props
 
+# Dotfiles/dirs are local working material (screenshots, references, tool state).
 .*
 !.gitignore
 !.gitattributes
+!.vsconfig
+
+# Scratch notes kept beside the docs they annotate.
 *.local.md
-Assets/TextMesh*
-Assets/Eco*
-Assets/Art/ThirdParty*
-Assets/Settings*
-AssetBundles
-Packages
-ProjectSettings
+
+# Bundle build output — rebuilt locally, see README > Build the client asset bundle.
+/AssetBundles/
+
+# ---------------------------------------------------------------------------
+# Third-party content — deliberately NOT redistributed here.
+#
+# These are Strange Loop Games' ModKit/client libraries, their embedded Unity
+# packages, and vendored third-party art libs. They ship with the Eco ModKit
+# distribution, not with this repo. Restoring them is step 1 of README > Setup.
+#
+# IMPORTANT: our tracked prefabs reference assets in these folders BY GUID, so
+# the restored copy must be the official ModKit distribution (which carries the
+# original .meta files). A hand-copied or re-imported tree gets fresh GUIDs and
+# silently strips components off our prefabs. README > Setup has the check.
+# ---------------------------------------------------------------------------
+/Assets/EcoModKit/
+/Assets/EcoModKit.meta
+/Assets/EcoLibs/
+/Assets/EcoLibs.meta
+# The Eco client assembly definition. Scripts under Assets/ with no nearer
+# asmdef compile into it -- including ours -- so it must be restored too.
+/Assets/Eco.Client.asmdef
+/Assets/Eco.Client.asmdef.meta
+/Assets/Art/ThirdPartyPublic/
+/Assets/Art/ThirdPartyPublic.meta
+/Packages/com.strangeloopgames.*/
+
+# Unity-shipped TextMesh Pro resources — re-imported by the editor on demand.
+/Assets/TextMesh Pro/
+/Assets/TextMesh Pro.meta
+
+# Per-package editor tool state (machine-local paths, assistant preferences),
+# not project configuration.
+/ProjectSettings/Packages/
+
+# NOTE: ProjectSettings/, Packages/manifest.json and Packages/packages-lock.json
+# are intentionally TRACKED. They are this project's own configuration and a
+# clone cannot reproduce the build without them.
