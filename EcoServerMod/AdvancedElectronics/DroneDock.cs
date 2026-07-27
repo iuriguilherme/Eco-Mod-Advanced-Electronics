@@ -56,6 +56,9 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(OccupancyRequirementComponent))]
     [RequireComponent(typeof(SurveyAreasComponent))]
     [RequireComponent(typeof(SurveyResultsComponent))]
+    // TEMPORARY: UI vocabulary probes. Remove both once the layout brainstorm has its screenshots.
+    [RequireComponent(typeof(UIShowcaseComponent))]
+    [RequireComponent(typeof(UILayoutProbeComponent))]
     [Tag("Usable")]
     public class DroneDockObject : WorldObject, IRepresentsItem
     {
