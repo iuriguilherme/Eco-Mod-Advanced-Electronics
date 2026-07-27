@@ -55,6 +55,7 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(PublicStorageComponent))]
     [RequireComponent(typeof(OccupancyRequirementComponent))]
     [RequireComponent(typeof(SurveyAreasComponent))]
+    [RequireComponent(typeof(SurveyResultsComponent))]
     [Tag("Usable")]
     public class DroneDockObject : WorldObject, IRepresentsItem
     {
@@ -537,8 +538,10 @@ namespace Eco.Mods.TechTree
 
             // A WorldObjectComponent's own Tick does not reliably fire on the dock, so the dock
             // drives the tab's refresh from its own (proven) tick.
-            if (this.TryGetComponent<SurveyAreasComponent>(out var surveyTab))
-                surveyTab.RefreshResults();
+            if (this.TryGetComponent<SurveyAreasComponent>(out var areasTab))
+                areasTab.RefreshAreas();
+            if (this.TryGetComponent<SurveyResultsComponent>(out var resultsTab))
+                resultsTab.RefreshAll();
         }
     }
 

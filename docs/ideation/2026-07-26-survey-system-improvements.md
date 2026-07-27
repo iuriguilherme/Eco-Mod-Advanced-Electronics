@@ -105,6 +105,29 @@ The "real" fix for #4: a bundle-shipped Unity MonoBehaviour on the dock prefab, 
 
 ---
 
+## Deferred — picked-up docks lose their survey areas
+
+**Observed live (2026-07-27).** Picking up a Drone Dock and replacing it resets its survey areas and
+findings. The dock item is **stackable**, so placing one always constructs a fresh WorldObject with no
+carried state — the areas, their findings, and the assignment all live on the object that was removed.
+
+**Wanted:** make the dock behave like a crafting table — a non-stackable item that carries its
+persistent values, so a player can relocate a dock without losing map data. That is a change to the
+item's identity and persistence model, not to the survey system, so it was deliberately kept out of
+the UI rework.
+
+**Why it is worth doing:** survey areas are drawn by hand and their findings accumulate over real play
+time, so losing them to a relocation is a much heavier penalty than losing a machine's inventory. The
+current behaviour is also inconsistent with how the rest of the game's placed objects behave, which is
+the kind of inconsistency players read as a bug rather than a rule.
+
+**Scope sketch (not a plan):** `DroneDockItem` becomes non-stackable and carries the dock's serialized
+state across pickup/placement — the areas list, per-area findings snapshots, assignment, material
+filter, and the paired drone. Worth checking how vanilla persists storage/settings through pickup
+before choosing a mechanism.
+
+---
+
 ## Recommended next step
 
 Brainstorm **survivor #1 (area-centric decoupled tab)** first — highest leverage, lowest cost, cashes in shipped work, and it's the surface that #2/#3/#4 all attach to. Then #2 (park-and-sweep coverage) as the autonomy-defining follow-up.
