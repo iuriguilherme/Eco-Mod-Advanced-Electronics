@@ -44,10 +44,16 @@ namespace Eco.Mods.TechTree
         /// excavatable, and selecting one simply does nothing), but it is the closest stock tag and
         /// the only kind the client can use.
         ///
-        /// A custom tag covering exactly the detectable set was built and PROVEN not to work: the
-        /// server-side registry was correct (30 of 113 block items tagged, tag registered, classifier
-        /// agreeing) yet the picker stayed empty, because TagManager.Initialize does a one-time naming
-        /// pass and calls SetupDone() before mods can register, so a late tag never reaches the client.
+        /// A custom tag covering exactly the detectable set was built and did not work: the server-side
+        /// registry was correct (30 of 113 block items tagged, tag registered, classifier agreeing) yet
+        /// the picker stayed empty. The cause is NOT that mods register too late for tags in general --
+        /// InitMods() runs before TagManager.Initialize() (Eco.ModKit/ModDataSync.cs:63-66), so a [Tag]
+        /// ATTRIBUTE on a mod type, or on a vanilla item replaced by a .override file, does reach the
+        /// client. What fails is RUNTIME association: the client filters RequiredTag against
+        /// ViewClassInfo.Tags, built once while ControllerManager is constructed
+        /// (Eco.Core/Controller/ControllerMarshalerService.cs:367), and anything tagged after that build
+        /// is invisible to the picker. So the attribute/.override route remains open; only the runtime
+        /// route is closed. See docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md.
         ///
         /// Confirmed live: GamePickerList renders and filters from a WorldObjectComponent tab, even
         /// though every vanilla usage is inside a civics GameValue.

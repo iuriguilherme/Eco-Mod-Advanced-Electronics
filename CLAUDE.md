@@ -10,6 +10,7 @@ Unity client project for an Eco (Strange Loop Games) game mod: "Advanced Electro
 - Client side only: this project produces the visual assets (prefabs, icons, block meshes) for the mod. Matching server-side C# definitions must exist on the Eco game server, and objects match by **name** — a `WorldObject` prefab name here must equal the server object name exactly.
 - Modding reference: https://wiki.play.eco/en/Mod_Development and `Assets/EcoModKit/Docs/README.md` (step-by-step for items, world objects, block sets, emoji).
 - Documented learnings: `docs/solutions/` — solutions to past problems (bugs, best practices, workflow patterns) for this mod, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`).
+- Shared vocabulary: `CONCEPTS.md` — domain terms with project-specific meaning (survey area, plot, finding, coverage, assignment); relevant when orienting to the mod or discussing its behavior.
 
 ## Layout (inside `Eco Mod Advanced Electronics/`)
 
