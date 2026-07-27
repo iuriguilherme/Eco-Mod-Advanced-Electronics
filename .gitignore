@@ -119,6 +119,7 @@ EcoServerMod/**/Local.props
 .*
 !.gitignore
 !.gitattributes
+!.github
 !.vsconfig
 
 # Scratch notes kept beside the docs they annotate.
