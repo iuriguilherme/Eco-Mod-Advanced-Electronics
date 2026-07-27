@@ -48,13 +48,22 @@ For running the mod on a server — no build tools, no Unity, no clone required.
 1. Download the release zip from
    [the mod.io page](https://mod.io/g/eco/m/advanced-electronics).
 2. Stop the Eco server.
-3. Extract the zip over the server's `Eco_Data/Server/` directory. Everything lands in one
-   folder, `Mods/UserCode/AdvancedElectronics/`:
+3. Extract the zip and put the `AdvancedElectronics` folder into the server's
+   `Eco_Data/Server/Mods/UserCode/`, giving you `Mods/UserCode/AdvancedElectronics/`:
    - `AdvancedElectronics.dll` — the mod
    - `AdvancedElectronics.Navigation.dll` — the navigation core the mod cannot load without
    - `AdvancedElectronics.unity3d` — the client asset bundle, which the server transfers to
      connecting players automatically (players install nothing by hand)
-4. Start the server and check the mods listing for **Advanced Electronics**.
+4. **If updating, delete the old copy first** — see the warning below.
+5. Start the server and check the mods listing for **Advanced Electronics**.
+
+> **Updating: remove the old copy from `Mods/` entirely, don't just move it aside.**
+> Eco scans `Mods/` recursively and keys asset bundles by **filename**, so a second copy
+> of `AdvancedElectronics.unity3d` anywhere beneath `Mods/` aborts startup with
+> `System.ArgumentException: An item with the same key has already been added. Key:
+> AdvancedElectronics.unity3d`. A folder you created and named `Ignore`, `old` or `backup`
+> is still scanned — the name means nothing to the server. Move old copies out of `Mods/`
+> or delete them.
 
 To uninstall, delete the `Mods/UserCode/AdvancedElectronics/` folder. Note that removing
 the mod discards any placed Drone Docks along with their survey areas and findings.

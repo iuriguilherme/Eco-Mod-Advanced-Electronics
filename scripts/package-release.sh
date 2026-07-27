@@ -2,18 +2,23 @@
 #
 # Assembles the ready-to-upload release zip for the mod.io page.
 #
-# Produces  dist/AdvancedElectronics-<version>-eco<game>.zip  laid out so a server
-# admin extracts it straight over Eco_Data/Server/:
+# Produces  dist/AdvancedElectronics-<version>-eco<game>.zip  containing ONE folder,
+# which the admin drops into Mods/UserCode/:
 #
-#   Mods/UserCode/AdvancedElectronics/AdvancedElectronics.dll
-#   Mods/UserCode/AdvancedElectronics/AdvancedElectronics.Navigation.dll
-#   Mods/UserCode/AdvancedElectronics/AdvancedElectronics.unity3d
-#   Mods/UserCode/AdvancedElectronics/README.txt  COPYING  COPYING.LESSER
+#   AdvancedElectronics/AdvancedElectronics.dll
+#   AdvancedElectronics/AdvancedElectronics.Navigation.dll
+#   AdvancedElectronics/AdvancedElectronics.unity3d
+#   AdvancedElectronics/README.txt  COPYING  COPYING.LESSER
 #
-# Everything sits in its own mod folder, the way the other UserCode mods are laid
-# out -- so the whole mod is one directory to add, inspect or delete. Eco loads
-# pre-compiled mods from Mods/ subdirectories (Mods/README.md), and the bundle sits
-# beside its DLLs the same way NuclearReactor keeps binaryReactor.unity3d.
+# The zip does NOT carry a Mods/UserCode/ prefix. Server owners know where mods go,
+# and shipping the prefix invites extracting it INSIDE UserCode, which produces a
+# nested Mods/UserCode/Mods/UserCode/... copy. That is not merely untidy: Eco scans
+# Mods/ recursively and keys asset bundles by FILENAME, so a second copy of
+# AdvancedElectronics.unity3d anywhere under Mods/ aborts server startup with
+# "An item with the same key has already been added". One folder, one place.
+#
+# The bundle sits beside its DLLs the same way NuclearReactor keeps
+# binaryReactor.unity3d.
 #
 # The asset bundle is NOT built here -- it comes out of the Unity Editor
 # (Eco Tools > Mod Kit > Build Current Bundle). This script's most important job is
@@ -93,7 +98,7 @@ fi
 # --- 4. Stage and zip -----------------------------------------------------------
 echo "==> Staging"
 rm -rf "$STAGE"
-MODDIR="$STAGE/Mods/UserCode/AdvancedElectronics"
+MODDIR="$STAGE/AdvancedElectronics"
 mkdir -p "$MODDIR"
 
 cp "$RELEASE_DIR/AdvancedElectronics.dll"            "$MODDIR/"
@@ -124,14 +129,31 @@ Version ${VERSION}, built for Eco ${GAME_VERSION}.
 
 INSTALL
   1. Stop the Eco server.
-  2. Extract this zip over your server's Eco_Data/Server/ directory. Everything
-     lands in one folder, Mods/UserCode/AdvancedElectronics/:
+  2. Extract this zip and put the AdvancedElectronics folder into
+     Eco_Data/Server/Mods/UserCode/ , so you end up with
+     Mods/UserCode/AdvancedElectronics/ containing:
         AdvancedElectronics.dll             the mod
         AdvancedElectronics.Navigation.dll  navigation core; the mod will not
                                             load without it
         AdvancedElectronics.unity3d         client assets, sent to players
                                             automatically -- players install nothing
-  3. Start the server. The mods listing should show "Advanced Electronics".
+  3. If you are UPDATING, delete the old copy first -- see below.
+  4. Start the server. The mods listing should show "Advanced Electronics".
+
+UPDATING -- READ THIS
+  Delete the previous AdvancedElectronics folder (or any loose
+  AdvancedElectronics*.dll / AdvancedElectronics.unity3d left in UserCode)
+  BEFORE copying the new one in.
+
+  Eco scans Mods/ recursively and keys asset bundles by filename, so a second
+  copy of AdvancedElectronics.unity3d anywhere under Mods/ -- including in a
+  folder you created and named something like "Ignore", "old" or "backup" --
+  aborts server startup with:
+
+     System.ArgumentException: An item with the same key has already been
+     added. Key: AdvancedElectronics.unity3d
+
+  Renaming the folder does not help. Move old copies OUT of Mods/ entirely.
 
 UNINSTALL
   Delete the Mods/UserCode/AdvancedElectronics/ folder. Removing the mod
