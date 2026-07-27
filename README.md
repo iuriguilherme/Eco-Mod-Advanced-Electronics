@@ -169,7 +169,7 @@ pairing state is not yet persisted).
 - Server code: `EcoServerMod/README.md` (projects, version pinning, building).
 - Client assets: `docs/guides/2026-07-survey-drone-unity-prefab-guide.md` (keyboard-only
   prefab workflow, name-matching rules).
-- Tests: `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` (69 tests over
+- Tests: `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` (68 tests over
   the pure navigation/survey/lifecycle core — no Eco dependency, so they run anywhere).
 - Documented learnings: `docs/solutions/` — solutions to past problems, organized by
   category with YAML frontmatter.
