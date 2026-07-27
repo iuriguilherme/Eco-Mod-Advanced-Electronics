@@ -189,14 +189,30 @@ pairing state is not yet persisted).
   one's state. Tracked in `docs/ideation/2026-07-26-survey-system-improvements.md`.
 - Assign buttons cover the first six areas; beyond that use `/drone assignarea <id>`.
 
-## Third-party content and licensing
+## Licence
+
+This mod is licensed under the **GNU Lesser General Public License, version 3 or later**
+(LGPL-3.0-or-later). The full texts are in [`COPYING`](COPYING) (GPLv3) and
+[`COPYING.LESSER`](COPYING.LESSER) (the LGPL terms that apply on top of it).
+
+In short: you may use, modify and redistribute this mod, including as part of a larger
+work that is not itself LGPL — but changes *to this mod* must be published under the same
+licence, and users must be able to replace it with their own modified build. That last
+property is why LGPL rather than GPL: the mod links against Eco's proprietary assemblies
+and is loaded by a proprietary server, which the LGPL explicitly permits and the GPL would
+not.
+
+The licence covers the contents of this repository — the server C#, the navigation
+library, the Unity scripts and prefabs we authored, and the documentation.
+
+### Third-party content
 
 Everything tracked in this repository is our own work. Strange Loop Games' ModKit, client
 libraries and embedded Unity packages are **not** redistributed here — they are
 account-gated downloads for owners of the game, so mirroring them would route around that
 gate. See [Setup after cloning](#setup-after-cloning) for the paths involved and how to
-supply your own copy. Eco, the ModKit and their assets remain the property of Strange Loop
-Games and are used under their mod-development terms.
+supply your own copy.
 
-This project does not yet declare a licence of its own; until it does, no permissions are
-granted beyond viewing the source. Open an issue if you want to use it for something.
+Eco, the ModKit and their assets remain the property of Strange Loop Games and are used
+under their mod-development terms. Our LGPL grant covers only our own code — it does not
+extend to anything of theirs, and it does not give you rights to the game or the ModKit.
