@@ -8,6 +8,11 @@ was found, one area at a time, filtered to the materials you care about).
 
 Built and tested against **Eco 0.13.0.4** (`Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024`).
 
+**Mod page:** [mod.io/g/eco/m/advanced-electronics](https://mod.io/g/eco/m/advanced-electronics)
+— released builds are published there. This repository is the source; you only need to
+build anything if you are developing the mod. Server admins should take the release zip
+from mod.io and follow [Installing a release](#installing-a-release).
+
 ## Repository layout
 
 | Path | What it is |
@@ -19,6 +24,24 @@ Built and tested against **Eco 0.13.0.4** (`Eco.ReferenceAssemblies 0.13.0.4-bet
 | `AssetBundles/` | Bundle build output (git-ignored — rebuild it locally, see step 2). |
 | `docs/` | Plans, spike findings, manual test protocol, documented learnings (`docs/solutions/`). |
 | `CONCEPTS.md` | Shared domain vocabulary (survey area, plot, finding, coverage, assignment). |
+
+## Installing a release
+
+For running the mod on a server — no build tools, no Unity, no clone required.
+
+1. Download the release zip from
+   [the mod.io page](https://mod.io/g/eco/m/advanced-electronics).
+2. Stop the Eco server.
+3. Extract the zip over the server's `Eco_Data/Server/` directory. Its `Mods/UserCode/`
+   folder merges into yours, placing three files:
+   - `AdvancedElectronics.dll` — the mod
+   - `AdvancedElectronics.Navigation.dll` — the navigation core the mod cannot load without
+   - `AdvancedElectronics.unity3d` — the client asset bundle, which the server transfers to
+     connecting players automatically (players install nothing by hand)
+4. Start the server and check the mods listing for **Advanced Electronics**.
+
+To uninstall, delete those three files. Note that removing the mod discards any placed
+Drone Docks along with their survey areas and findings.
 
 ## Setup after cloning
 
@@ -120,10 +143,10 @@ git-ignored, so build it locally:
 1. Open this repo's root folder in Unity 6000.3.19f1 and open `Assets/DroneScene.unity`.
 2. Menu **Eco Tools > Mod Kit > Build Current Bundle** (or "ModKit Tools…" to build all
    bundles). Output lands in `AssetBundles/AdvancedElectronics.unity3d`.
-3. Copy `AdvancedElectronics.unity3d` to the server, into a mod folder such as
-   `Mods/AdvancedElectronics/`. Eco transfers mod assets to connecting clients — clients
-   do not install anything by hand. (Bundle placement follows the
-   [Eco mod development wiki](https://wiki.play.eco/en/Mod_Development); if objects
+3. Copy `AdvancedElectronics.unity3d` into the server's `Mods/UserCode/`, beside the two
+   DLLs. Eco transfers mod assets to connecting clients — clients do not install anything
+   by hand. (Eco also loads pre-compiled mods from `Mods/` subdirectories, but
+   `Mods/UserCode/` is the layout this mod is developed and tested against. If objects
    appear as missing-model placeholders in-game, bundle placement is the first thing to
    re-check.)
 
