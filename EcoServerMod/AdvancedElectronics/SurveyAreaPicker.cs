@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using AdvancedElectronics.Navigation;
 using Eco.Gameplay.Players;
@@ -12,96 +13,207 @@ using Eco.Shared.Voxel;
 namespace Eco.Mods.TechTree
 {
     /// <summary>
-    /// Opens the game's map-editing interface for a survey area (U6/U7): create a new area,
-    /// edit an existing one's plots, or view one read-only. Uses the deed pattern proven live
-    /// (AllowNewEntries=false, one fixed editable entry, EntryStatus.MaxArea cap,
-    /// RelatedRegistrar unset; KTD8). The dock is mutated only after a valid confirm, so a
-    /// cancel/disconnect (null return) leaves everything untouched (R9).
+    /// Opens the game's map editor as the dock's AREA MANAGER (U1): every area the dock owns appears
+    /// at once as a named entry, and creating, renaming, redrawing and deleting all happen there —
+    /// the same way districts are managed (<c>DistrictMap.EditAsync</c> / <c>OnMapEdited</c> in the Eco
+    /// source). This replaces the old one-area-at-a-time Create/Edit/View/Delete buttons.
+    ///
+    /// The dock is mutated only after a confirm, so a cancel or disconnect (null return) leaves
+    /// everything untouched.
     /// </summary>
     public static class SurveyAreaPicker
     {
-        private const int EditableEntryId = 1;
+        // Entry id handed to the seeded placeholder when the dock owns no areas yet. Any positive id
+        // is safe there precisely because no area exists to collide with.
+        private const int PlaceholderEntryId = 1;
 
-        /// <summary>Create: draw a new area from an empty map and store it on the dock. Returns the new entry, or null on cancel/empty/over-cap.</summary>
-        public static async Task<SurveyAreaEntry> PickAndCreate(Player player, DroneDockObject dock, int maxPlots, string name)
+        // Distinct colours so areas are told apart on the map; cycled by position.
+        private static readonly Color[] EntryColors =
         {
-            if (player == null || dock == null) return null;
+            Color.Green, Color.Blue, Color.Yellow, Color.Orange, Color.Red, Color.Cyan,
+        };
 
-            var plots = await RunPicker(player, BuildRequest(name, maxPlots, null, readOnly: false));
-            if (plots == null || plots.Count == 0) return null;
-            if (plots.Count > maxPlots) { player.User?.MsgLocStr($"Survey area too large: {plots.Count} plots, limit {maxPlots}. Nothing was created."); return null; }
+        /// <summary>
+        /// Opens the map editor on all of the dock's areas and applies whatever the player confirms.
+        /// </summary>
+        public static async Task ManageAreas(Player player, DroneDockObject dock, int maxPlots)
+        {
+            if (player == null || dock == null) return;
 
-            return dock.CreateSurveyArea(name, plots);
+            var edited = await player.EditMap(BuildRequest(dock, maxPlots));
+
+            // Cancelled, disconnected, or a malformed round-trip. MapEntries is checked as well as Map
+            // because the reconcile below treats "absent from MapEntries" as a deletion -- without this
+            // guard a partial return would wipe every area and its findings, and the dock has no undo.
+            if (edited?.Map == null || edited.MapEntries == null) return;
+
+            Reconcile(player, dock, edited, maxPlots);
         }
 
-        /// <summary>Edit: open the editor pre-painted with the area's current plots, and on confirm replace them. No-op on cancel or empty draw (an area is never edited down to nothing).</summary>
-        public static async Task PickAndEdit(Player player, DroneDockObject dock, SurveyAreaEntry entry, int maxPlots)
+        /// <summary>
+        /// Builds the multi-entry request: one entry per area with its plots painted, rename/delete
+        /// enabled per entry, and the plot cap attached.
+        /// </summary>
+        private static MapEditRequest BuildRequest(DroneDockObject dock, int maxPlots)
         {
-            if (player == null || dock == null || entry == null) return;
+            var map        = new Array2D<int>(PlotUtil.WorldPlotDims);
+            var mapEntries = new Dictionary<int, MapEntry>();
+            var entryStatus = new Dictionary<int, EditableEntryStatus>();
 
-            var plots = await RunPicker(player, BuildRequest(entry.Name, maxPlots, entry.Plots(), readOnly: false));
-            if (plots == null || plots.Count == 0) return;
-            if (plots.Count > maxPlots) { player.User?.MsgLocStr($"Survey area too large: {plots.Count} plots, limit {maxPlots}. No change made."); return; }
+            var index = 0;
+            foreach (var area in dock.SurveyAreas)
+            {
+                foreach (var plot in area.Plots())
+                    map[new Vector2i(plot.X, plot.Z)] = area.Id;
 
-            // Redrawing the geometry makes this effectively a new area, so its old survey no
-            // longer describes it (KTD11): SetPlots clears the entry's snapshot, and OnAreaEdited
-            // drops the dock's live in-memory record AND -- if the drone is assigned to this area --
-            // bumps the assignment epoch so the drone restarts pathfinding + sweep for the new shape.
-            entry.SetPlots(plots);
-            dock.OnAreaEdited(entry.Id);
-        }
+                mapEntries[area.Id] = new MapEntry
+                {
+                    MapEntryId       = area.Id,
+                    Color            = EntryColors[index++ % EntryColors.Length],
+                    EntryDescription = area.Name,
+                };
 
-        /// <summary>View: open the editor read-only, pre-painted with the area's plots, so the player can see it on the map without changing it.</summary>
-        public static async Task PickView(Player player, DroneDockObject dock, SurveyAreaEntry entry, int maxPlots)
-        {
-            if (player == null || dock == null || entry == null) return;
-            await RunPicker(player, BuildRequest(entry.Name, maxPlots, entry.Plots(), readOnly: true));
-        }
+                // Per-entry status is what actually enables the rename field and delete button on the
+                // client -- DefaultEntryStatus is consulted only for ids ABSENT from this dictionary,
+                // and every existing area is present here because this is also where the cap lives.
+                entryStatus[area.Id] = new EditableEntryStatus
+                {
+                    AllowNameChange = true,
+                    AllowDelete     = true,
+                    Readonly        = false,
+                    MaxArea         = maxPlots,
+                };
+            }
 
-        private static MapEditRequest BuildRequest(string name, int maxPlots, IEnumerable<PlotCoord> existing, bool readOnly)
-        {
-            var map = new Array2D<int>(PlotUtil.WorldPlotDims);
-            if (existing != null)
-                foreach (var plot in existing)
-                    map[new Vector2i(plot.X, plot.Z)] = EditableEntryId;
+            // A dock with no areas would otherwise open an editor with nothing to draw into, and the
+            // map is the ONLY creation path now -- so seed a placeholder the player can draw straight
+            // into. Confirming with nothing drawn simply creates nothing.
+            if (mapEntries.Count == 0)
+            {
+                mapEntries[PlaceholderEntryId] = new MapEntry
+                {
+                    MapEntryId       = PlaceholderEntryId,
+                    Color            = EntryColors[0],
+                    EntryDescription = "Survey Area 1",
+                };
+                entryStatus[PlaceholderEntryId] = new EditableEntryStatus
+                {
+                    AllowNameChange = true,
+                    AllowDelete     = true,
+                    Readonly        = false,
+                    MaxArea         = maxPlots,
+                };
+            }
 
             return new MapEditRequest
             {
-                MapHintTitle    = readOnly ? "Survey Area (view)" : "Survey Area",
-                MapHint         = Localizer.DoStr(readOnly
-                    ? "Viewing the survey area. Close when done."
-                    : "Draw the area for the drone to survey, then confirm."),
-                AllowNewEntries = false,
-                Readonly        = readOnly,
+                MapHintTitle    = "Survey Areas",
+                MapHint         = Localizer.DoStr(
+                    "Draw the areas for the drone to survey. Add, rename, redraw or delete areas here, then confirm."),
+                AllowNewEntries = true,
+                AllowNameChange = true, // the overlay's own title -- entry renaming comes from EntryStatus
+                Readonly        = false,
                 Overlay = new EditableOverlay
                 {
-                    Name       = string.IsNullOrWhiteSpace(name) ? "Survey Area" : name,
+                    Name       = "Survey Areas",
                     Map        = map,
-                    MapEntries = new()
-                    {
-                        { EditableEntryId, new MapEntry { MapEntryId = EditableEntryId, Color = Color.Green, EntryDescription = Localizer.DoStr("Survey area") } },
-                    },
+                    MapEntries = mapEntries,
                 },
-                EntryStatus = new()
+                EntryStatus        = entryStatus,
+                DefaultEntryStatus = new EditableEntryStatus
                 {
-                    { EditableEntryId, new EditableEntryStatus { AllowNameChange = false, AllowDelete = false, Readonly = readOnly, MaxArea = maxPlots } },
+                    AllowNameChange = true,
+                    AllowDelete     = true,
+                    Readonly        = false,
+                    MaxArea         = maxPlots,
                 },
             };
         }
 
-        private static async Task<List<PlotCoord>> RunPicker(Player player, MapEditRequest request)
+        /// <summary>
+        /// Applies the confirmed map to the dock: entries the player removed are deleted, ids the dock
+        /// does not know are created, and known ids get their name refreshed and their plots replaced
+        /// ONLY when the geometry actually changed.
+        ///
+        /// Unlike districts this needs no id re-keying: the dock never stores the map array, so plots
+        /// are read out against the ids the client returned and handed straight to
+        /// <see cref="DroneDockObject.CreateSurveyArea"/>, which assigns the dock's own id.
+        /// </summary>
+        private static void Reconcile(Player player, DroneDockObject dock, IMapEntryOverlay edited, int maxPlots)
         {
-            var edited = await player.EditMap(request);
-            if (edited?.Map == null)
-                return null; // cancelled, no client, or disconnected.
+            var plotsById = PlotsByEntryId(edited);
 
-            var plots = new List<PlotCoord>();
+            // Deletions first: an area whose entry the player removed is gone, along with its findings.
+            // DeleteSurveyArea also unassigns the drone when it was working that area.
+            foreach (var area in dock.SurveyAreas.ToList())
+                if (!edited.MapEntries.ContainsKey(area.Id))
+                    dock.DeleteSurveyArea(area.Id);
+
+            foreach (var pair in edited.MapEntries)
+            {
+                var entryId = pair.Key;
+                var name    = pair.Value.EntryDescription;
+                var plots   = plotsById.TryGetValue(entryId, out var p) ? p : new List<PlotCoord>();
+                var area    = dock.SurveyAreas.FirstOrDefault(a => a.Id == entryId);
+
+                // The client's MaxArea is a hint, not a guarantee -- re-check server-side, exactly as
+                // the single-area picker did, so an over-cap area never reaches the drone's sweep.
+                if (plots.Count > maxPlots)
+                {
+                    player.User?.MsgLocStr(
+                        $"Survey area '{name}' is too large: {plots.Count} plots, limit {maxPlots}. That area was left unchanged.");
+                    continue;
+                }
+
+                if (area == null)
+                {
+                    // A new entry. An entry drawn with no plots is not an area; skip it silently so a
+                    // confirmed-but-untouched placeholder does not create an empty area.
+                    if (plots.Count == 0) continue;
+                    dock.CreateSurveyArea(string.IsNullOrWhiteSpace(name) ? "Survey Area" : name, plots);
+                    continue;
+                }
+
+                // Renaming must NOT clear findings -- it is not a redraw.
+                if (!string.IsNullOrWhiteSpace(name) && name != area.Name)
+                    dock.RenameSurveyArea(area.Id, name);
+
+                // Replace plots only on a real geometry change: SetPlots clears the area's findings and
+                // OnAreaEdited bumps the re-dispatch epoch, so replacing unconditionally would wipe
+                // every area's survey data on every confirm, including areas the player never touched.
+                if (plots.Count > 0 && !SamePlots(area.Plots(), plots))
+                {
+                    area.SetPlots(plots);
+                    dock.OnAreaEdited(area.Id);
+                }
+            }
+        }
+
+        /// <summary>Plots drawn for each entry id, read out of the returned map array.</summary>
+        private static Dictionary<int, List<PlotCoord>> PlotsByEntryId(IMapEntryOverlay edited)
+        {
+            var plotsById = new Dictionary<int, List<PlotCoord>>();
             edited.Map.ForEach((pos, index) =>
             {
-                if (edited.Map[pos] == EditableEntryId)
-                    plots.Add(new PlotCoord(pos.X, pos.Y));
+                var id = edited.Map[pos];
+                if (id == 0) return; // unpainted
+
+                if (!plotsById.TryGetValue(id, out var list))
+                {
+                    list = new List<PlotCoord>();
+                    plotsById[id] = list;
+                }
+                list.Add(new PlotCoord(pos.X, pos.Y));
             });
-            return plots;
+            return plotsById;
+        }
+
+        /// <summary>Order-insensitive plot-set comparison -- the test for "did the geometry change".</summary>
+        private static bool SamePlots(IEnumerable<PlotCoord> a, IEnumerable<PlotCoord> b)
+        {
+            var setA = new HashSet<PlotCoord>(a);
+            var setB = new HashSet<PlotCoord>(b);
+            return setA.SetEquals(setB);
         }
     }
 }

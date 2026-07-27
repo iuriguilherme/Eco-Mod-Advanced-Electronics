@@ -18,36 +18,109 @@ using Eco.Shared.Serialization;
 namespace Eco.Mods.TechTree
 {
     /// <summary>
-    /// The dock's single "Survey" tab (U7 + U9): manage survey areas AND read the drone's
-    /// findings in one place. Consolidated into one component because a SECOND mod component
-    /// declaring its own tab did not register a tab on the client (the separate Survey Results
-    /// tab never appeared); one component with two text sections renders reliably.
+    /// The dock's "Survey" tab. Members are declared in the order they render, because with only
+    /// stacked full-width elements available declaration order IS reading order:
     ///
-    /// Client-render surfaces used (all settled live): StringDisplay read-only text (settable +
-    /// Changed), BigButton ConsumerAccess RPCs, and an editable [Eco] int field for select-by-id.
-    /// The editable field's render is the one unproven piece — so Prev/Next cycle buttons (pure
-    /// BigButtons, proven) also set the target id, guaranteeing a working selection either way.
-    /// See docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md.
+    ///   1. Areas    -- the assignment line, then the numbered area list
+    ///   2. Assign   -- one button per existing area (position-labelled; the list supplies the names)
+    ///   3. Manage   -- one button opening the map, where areas are created/renamed/redrawn/deleted
+    ///   4. Results  -- material picker, the area being viewed, Prev/Next, then that area's findings
+    ///
+    /// Assign buttons come after the list because their labels are static position numbers and are
+    /// meaningless until the list that names them has been read. The Results cursor is INDEPENDENT of
+    /// the drone's assignment, so any area's findings can be read without dispatching the drone there.
+    ///
+    /// Splitting Results into its own tab is planned but deferred (a second mod component's tab did
+    /// not register when tried before); see docs/plans/2026-07-26-003-feat-survey-tab-ui-rework-plan.md.
     /// </summary>
     [Serialized, CreateComponentTabLoc("Survey", true), HasIcon]
     public class SurveyAreasComponent : WorldObjectComponent
     {
         private const int MaxAreaPlots = 40; // v1 tier cap (R1b); drone-tier-owned later.
 
+        /// <summary>Size of the compile-time assign-button pool. Areas beyond it use /drone assignarea.</summary>
+        public const int AssignButtonPool = 10;
+
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
 
-        /// <summary>The dock's areas as read-only text, with the selected id marked.</summary>
+        // ---------------------------------------------------------------
+        // 1. Areas -- assignment line + numbered list
+        // ---------------------------------------------------------------
+
+        /// <summary>The assignment line followed by the dock's numbered area list.</summary>
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string AreasDisplay { get; private set; } = string.Empty;
 
-        /// <summary>The drone's survey findings as read-only text (R7). Refreshed from the dock's tick.</summary>
-        [SyncToView, Autogen, UITypeName("StringDisplay")]
-        public string ResultsDisplay { get; private set; } = string.Empty;
-
-        // Material targets: pick which materials the survey results show, the same way items and tags
-        // are picked in a recipe or a law. Both empty = show everything found.
+        // ---------------------------------------------------------------
+        // 2. Assign -- one button per existing area
         //
+        // RPCs are declared at compile time, so N buttons cannot be generated; a fixed pool is gated
+        // per position by a [SyncToView] bool, which the client re-evaluates when RefreshAreas pushes
+        // Changed() for it. Same shape as the vanilla AreaBonusComponent (a WorldObjectComponent
+        // combining [SyncToView] bool + VisibilityParam on a BigButton RPC).
+        //
+        // Clicking the button of the already-assigned area unassigns, so there is no Unassign button.
+        // ---------------------------------------------------------------
+
+        [SyncToView] public bool AreaExists1() => this.AreaCount() >= 1;
+        [SyncToView] public bool AreaExists2() => this.AreaCount() >= 2;
+        [SyncToView] public bool AreaExists3() => this.AreaCount() >= 3;
+        [SyncToView] public bool AreaExists4() => this.AreaCount() >= 4;
+        [SyncToView] public bool AreaExists5() => this.AreaCount() >= 5;
+        [SyncToView] public bool AreaExists6() => this.AreaCount() >= 6;
+        [SyncToView] public bool AreaExists7() => this.AreaCount() >= 7;
+        [SyncToView] public bool AreaExists8() => this.AreaCount() >= 8;
+        [SyncToView] public bool AreaExists9() => this.AreaCount() >= 9;
+        [SyncToView] public bool AreaExists10() => this.AreaCount() >= 10;
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists1)), UITypeName("BigButton"), Description("Assign Area 1")]
+        public void AssignArea1(Player player) => this.ToggleAssign(1);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists2)), UITypeName("BigButton"), Description("Assign Area 2")]
+        public void AssignArea2(Player player) => this.ToggleAssign(2);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists3)), UITypeName("BigButton"), Description("Assign Area 3")]
+        public void AssignArea3(Player player) => this.ToggleAssign(3);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists4)), UITypeName("BigButton"), Description("Assign Area 4")]
+        public void AssignArea4(Player player) => this.ToggleAssign(4);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists5)), UITypeName("BigButton"), Description("Assign Area 5")]
+        public void AssignArea5(Player player) => this.ToggleAssign(5);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists6)), UITypeName("BigButton"), Description("Assign Area 6")]
+        public void AssignArea6(Player player) => this.ToggleAssign(6);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists7)), UITypeName("BigButton"), Description("Assign Area 7")]
+        public void AssignArea7(Player player) => this.ToggleAssign(7);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists8)), UITypeName("BigButton"), Description("Assign Area 8")]
+        public void AssignArea8(Player player) => this.ToggleAssign(8);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists9)), UITypeName("BigButton"), Description("Assign Area 9")]
+        public void AssignArea9(Player player) => this.ToggleAssign(9);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists10)), UITypeName("BigButton"), Description("Assign Area 10")]
+        public void AssignArea10(Player player) => this.ToggleAssign(10);
+
+        // ---------------------------------------------------------------
+        // 3. Manage -- the map is the area manager
+        // ---------------------------------------------------------------
+
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Manage Areas on Map")]
+        public async Task ManageAreasOnMap(Player player)
+        {
+            if (this.Parent is not DroneDockObject dock) return;
+            await SurveyAreaPicker.ManageAreas(player, dock, MaxAreaPlots);
+            this.ClampViewCursor(dock);
+            this.RefreshAll();
+        }
+
+        // ---------------------------------------------------------------
+        // 4. Results -- material picker, viewed area, Prev/Next, findings
+        // ---------------------------------------------------------------
+
         /// <summary>
         /// Material targets: pick which materials the survey results show, the same way items and tags
         /// are picked in a recipe or a law. Empty shows everything found.
@@ -72,13 +145,29 @@ namespace Eco.Mods.TechTree
         [LocDescription("Materials to show in the survey results. Leave empty to show everything found.")]
         public GamePickerList<BlockItem> MaterialTargets { get; set; } = new();
 
+        /// <summary>Which area the findings below belong to.</summary>
+        [SyncToView, Autogen, UITypeName("StringDisplay")]
+        public string ViewingDisplay { get; private set; } = string.Empty;
+
+        // Prev/Next sit ABOVE the findings: findings are variable-length, so bottom-anchored controls
+        // would drift off-screen exactly when an area has many materials.
+
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("◀ Prev area")]
+        public void ViewPrev(Player player) => this.CycleView(-1);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Next area ▶")]
+        public void ViewNext(Player player) => this.CycleView(+1);
+
+        /// <summary>The viewed area's findings (R7). Refreshed from the dock's tick.</summary>
+        [SyncToView, Autogen, UITypeName("StringDisplay")]
+        public string ResultsDisplay { get; private set; } = string.Empty;
+
         /// <summary>
-        /// The area id the action buttons operate on. Set by the Prev/Next cycle buttons. (The
-        /// tried [Eco] numeric-stepper field rendered but did not apply the typed value for a mod
-        /// component -- it is a quantity input, not a selector -- so selection is cycle-driven; a
-        /// proper dropdown of a viewable area type is the next UI iteration.)
+        /// Index into the dock's area list of the area whose findings are shown. Purely a VIEW cursor:
+        /// it never changes what the drone is assigned to, which is what keeps reading decoupled from
+        /// dispatching (c9d5f12).
         /// </summary>
-        private int TargetAreaId;
+        private int viewIndex;
 
         public override void Initialize()
         {
@@ -86,79 +175,47 @@ namespace Eco.Mods.TechTree
             this.RefreshAll();
         }
 
-        // --- Selection (cycle fallback for the editable id field) ---
+        // --- Assignment ---
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Prev — select the previous area")]
-        public void SelectPrev(Player player) => this.Cycle(-1);
+        private int AreaCount() => this.Parent is DroneDockObject dock ? dock.SurveyAreas.Count : 0;
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Next — select the next area")]
-        public void SelectNext(Player player) => this.Cycle(+1);
-
-        private void Cycle(int direction)
+        /// <summary>
+        /// Assigns the area at 1-based <paramref name="position"/>, or unassigns when it is already the
+        /// assigned one -- so the same button both starts and stops work on that area.
+        /// </summary>
+        private void ToggleAssign(int position)
         {
             if (this.Parent is not DroneDockObject dock) return;
-            var ids = dock.SurveyAreas.Select(a => a.Id).ToList();
-            if (ids.Count == 0) { this.TargetAreaId = 0; this.RefreshAll(); return; }
+            if (position < 1 || position > dock.SurveyAreas.Count) return;
 
-            var idx = ids.IndexOf(this.TargetAreaId);
-            idx = idx < 0 ? 0 : (idx + direction + ids.Count) % ids.Count;
-            this.TargetAreaId = ids[idx];
-            this.RefreshAreas();
-        }
-
-        // --- Actions on the selected area / new area ---
-
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Create — draw a new survey area on the map")]
-        public async Task CreateArea(Player player)
-        {
-            if (this.Parent is not DroneDockObject dock) return;
-            var name = $"Survey Area {dock.SurveyAreas.Count + 1}";
-            var created = await SurveyAreaPicker.PickAndCreate(player, dock, MaxAreaPlots, name);
-            if (created != null) this.TargetAreaId = created.Id;
+            var area = dock.SurveyAreas[position - 1];
+            dock.AssignSurveyArea(dock.AssignedSurveyAreaId == area.Id ? 0 : area.Id);
             this.RefreshAll();
         }
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Assign — send the drone to survey the selected area")]
-        public void AssignArea(Player player)
+        // --- Results view cursor ---
+
+        private void CycleView(int direction)
         {
-            if (this.Parent is not DroneDockObject dock) return;
-            dock.AssignSurveyArea(this.TargetAreaId);
-            this.RefreshAll();
+            var count = this.AreaCount();
+            if (count == 0) { this.viewIndex = 0; this.RefreshResults(); return; }
+
+            this.viewIndex = ((this.viewIndex + direction) % count + count) % count;
+            this.RefreshResults();
         }
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Unassign — recall the drone; it stops surveying")]
-        public void UnassignArea(Player player)
+        /// <summary>Keeps the cursor in range after areas are added or deleted on the map.</summary>
+        private void ClampViewCursor(DroneDockObject dock)
         {
-            if (this.Parent is not DroneDockObject dock) return;
-            dock.AssignSurveyArea(0);
-            this.RefreshAll();
+            var count = dock.SurveyAreas.Count;
+            this.viewIndex = count == 0 ? 0 : Math.Clamp(this.viewIndex, 0, count - 1);
         }
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Edit — redraw the selected area's plots")]
-        public async Task EditArea(Player player)
+        private SurveyAreaEntry ViewedArea(DroneDockObject dock)
         {
-            if (this.Parent is not DroneDockObject dock) return;
-            await SurveyAreaPicker.PickAndEdit(player, dock, this.Selected(dock), MaxAreaPlots);
-            this.RefreshAll();
+            this.ClampViewCursor(dock);
+            return dock.SurveyAreas.Count == 0 ? null : dock.SurveyAreas[this.viewIndex];
         }
-
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("View — show the selected area on the map (read-only)")]
-        public async Task ViewArea(Player player)
-        {
-            if (this.Parent is not DroneDockObject dock) return;
-            await SurveyAreaPicker.PickView(player, dock, this.Selected(dock), MaxAreaPlots);
-        }
-
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Delete — remove the selected area")]
-        public void DeleteArea(Player player)
-        {
-            if (this.Parent is not DroneDockObject dock) return;
-            dock.DeleteSurveyArea(this.TargetAreaId);
-            this.RefreshAll();
-        }
-
-        private SurveyAreaEntry Selected(DroneDockObject dock) =>
-            dock.SurveyAreas.FirstOrDefault(a => a.Id == this.TargetAreaId);
 
         // --- Refresh ---
 
@@ -168,76 +225,85 @@ namespace Eco.Mods.TechTree
             this.RefreshResults();
         }
 
-        /// <summary>
-        /// Projects the picker's current selection into the dock's serialized material filter, so the
-        /// readout (and the chat command) work off one source. Maps a picked item type to the material
-        /// name the sensor records, mirroring how that name is derived from a block type: strip the
-        /// "Item" suffix, then a "Block" suffix if one remains ("IronOreItem" -> "IronOre",
-        /// "LimestoneBlockItem" -> "Limestone", matching the sensor's "LimestoneBlock" -> "Limestone").
-        /// </summary>
-        private void ApplyPickerSelection(DroneDockObject dock)
-        {
-            var picked = PickedNames(this.MaterialTargets).Distinct().ToList();
-
-            // Only rewrite when the selection actually differs, so the 1s refresh tick does not fight
-            // a filter set from chat.
-            if (picked.Count == dock.MaterialFilter.Count && picked.All(dock.MaterialFilter.Contains))
-                return;
-
-            dock.ClearMaterialFilter();
-            foreach (var name in picked)
-                dock.ToggleMaterialFilter(name);
-        }
-
-        /// <summary>The material names currently selected in one picker (empty when it is null or unset).</summary>
-        private static IEnumerable<string> PickedNames(GamePickerList<BlockItem> picker) =>
-            picker?.GetTypes().Select(t => MaterialNameFromItemType(t.Name)) ?? Enumerable.Empty<string>();
-
-        /// <summary>Item type name -> the material name the sensor records. See <see cref="ApplyPickerSelection"/>.</summary>
-        private static string MaterialNameFromItemType(string typeName)
-        {
-            var name = StripSuffix(typeName, "Item");
-            return StripSuffix(name, "Block");
-        }
-
-        private static string StripSuffix(string value, string suffix) =>
-            value.EndsWith(suffix, StringComparison.Ordinal) && value.Length > suffix.Length
-                ? value.Substring(0, value.Length - suffix.Length)
-                : value;
-
         public void RefreshAreas()
         {
             this.AreasDisplay = this.BuildAreasText();
             this.Changed(nameof(this.AreasDisplay));
+
+            // Without this push the client never re-evaluates button visibility, so a newly created
+            // area gains no button and a deleted one keeps its own until the dock is reopened.
+            this.Changed(nameof(this.AreaExists1));
+            this.Changed(nameof(this.AreaExists2));
+            this.Changed(nameof(this.AreaExists3));
+            this.Changed(nameof(this.AreaExists4));
+            this.Changed(nameof(this.AreaExists5));
+            this.Changed(nameof(this.AreaExists6));
+            this.Changed(nameof(this.AreaExists7));
+            this.Changed(nameof(this.AreaExists8));
+            this.Changed(nameof(this.AreaExists9));
+            this.Changed(nameof(this.AreaExists10));
         }
 
         public void RefreshResults()
         {
+            this.ViewingDisplay = this.BuildViewingText();
+            this.Changed(nameof(this.ViewingDisplay));
+
             this.ResultsDisplay = this.BuildResultsText();
             this.Changed(nameof(this.ResultsDisplay));
         }
 
+        // --- Text ---
+
         private string BuildAreasText()
         {
-            if (this.Parent is not DroneDockObject dock || dock.SurveyAreas.Count == 0)
-                return "No survey areas yet. Use Create to draw one on the map.";
+            if (this.Parent is not DroneDockObject dock)
+                return string.Empty;
 
             var sb = new StringBuilder();
-            sb.Append("Prev/Next selects an area; Assign/Edit/View/Delete act on the selected one.\n\n");
+            sb.Append(this.BuildAssignmentLine(dock)).Append("\n\n");
 
-            // One compact line per area, decoupled from assignment: coverage and the strongest
-            // find are read straight off each area's persisted snapshot, so every area's data shows
-            // whether or not the drone is assigned to it.
+            if (dock.SurveyAreas.Count == 0)
+            {
+                sb.Append("No survey areas yet. Use Manage Areas on Map to draw your first one.");
+                return sb.ToString();
+            }
+
+            var position = 1;
             foreach (var area in dock.SurveyAreas)
             {
-                var selected = area.Id == this.TargetAreaId ? "> " : "   ";
-                var assigned = area.Id == dock.AssignedSurveyAreaId ? "   [assigned to drone]" : string.Empty;
-                sb.Append(selected).Append(area.Name)
+                var assigned = area.Id == dock.AssignedSurveyAreaId ? "   [assigned]" : string.Empty;
+                sb.Append(position++).Append(". ").Append(area.Name)
                   .Append(" -- ").Append(area.PlotCount).Append(" plots, ")
                   .Append(FormatAreaSummary(area, dock))
                   .Append(assigned).Append('\n');
             }
+
+            if (dock.SurveyAreas.Count > AssignButtonPool)
+                sb.Append("\nAreas past ").Append(AssignButtonPool)
+                  .Append(" have no button -- assign them with /drone assignarea <id>.\n");
+
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// The authoritative "what is the drone working on" line. Three states, not two: assignment
+        /// does not require a drone to exist, so without the no-drone variant the tab would report
+        /// success while nothing happens in the world.
+        /// </summary>
+        private string BuildAssignmentLine(DroneDockObject dock)
+        {
+            var area = dock.AssignedSurveyArea;
+            if (area == null)
+                return "Assigned: none -- pick an area below to start surveying.";
+
+            var position = dock.SurveyAreas.IndexOf(area) + 1;
+            var drone = dock.SpawnedDrone;
+            var hasDrone = drone != null && !drone.IsDestroyed;
+
+            return hasDrone
+                ? $"Assigned: {position} -- {area.Name}"
+                : $"Assigned: {position} -- {area.Name} (no drone -- build and dock one to start surveying)";
         }
 
         /// <summary>
@@ -258,6 +324,17 @@ namespace Eco.Mods.TechTree
             return "not surveyed yet";
         }
 
+        private string BuildViewingText()
+        {
+            if (this.Parent is not DroneDockObject dock) return string.Empty;
+
+            var area = this.ViewedArea(dock);
+            if (area == null) return "Viewing: no areas yet.";
+
+            var assigned = area.Id == dock.AssignedSurveyAreaId ? "   [assigned]" : string.Empty;
+            return $"Viewing: {this.viewIndex + 1} of {dock.SurveyAreas.Count} -- {area.Name}{assigned}";
+        }
+
         private string BuildResultsText()
         {
             if (this.Parent is not DroneDockObject dock)
@@ -265,20 +342,19 @@ namespace Eco.Mods.TechTree
 
             this.ApplyPickerSelection(dock);
 
-            var sb = new StringBuilder("Survey results\n");
-            var entry = this.Selected(dock);
-            sb.Append("Selected area: ").Append(entry?.Name ?? "(none -- use Prev/Next)").Append("\n\n");
+            var entry = this.ViewedArea(dock);
+            var sb = new StringBuilder();
 
             if (entry == null)
             {
-                sb.Append("No area selected. Use Create to draw one, or Prev/Next to pick one.");
+                sb.Append("Draw an area on the map, then assign the drone to survey it.");
                 AppendDroneStatusFooter(sb, dock);
                 return sb.ToString();
             }
 
-            // Findings persist with the area (KTD11): these are entry's own, kept until it is
-            // edited or deleted -- shown even while the drone is between areas or docked. The
-            // material filter narrows what is DISPLAYED; everything stays recorded.
+            // Findings persist with the area (KTD11): these are entry's own, kept until it is edited or
+            // deleted -- shown even while the drone is between areas or docked. The material filter
+            // narrows what is DISPLAYED; everything stays recorded.
             var all = entry.ReadFindings().Where(f => f.Found).ToList();
             var findings = all
                 .Where(f => dock.IsMaterialShown(f.OreType))
@@ -287,7 +363,7 @@ namespace Eco.Mods.TechTree
 
             if (findings.Count == 0 && all.Count > 0)
             {
-                sb.Append("No material in this area matches the current filter -- clear the Material Targets picker above to show everything found.\n");
+                sb.Append("No matching materials in this area -- clear the Material Targets picker above to show everything found.\n");
             }
             else if (findings.Count == 0)
             {
@@ -313,7 +389,7 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Coverage-aware message when the selected area has no findings. Distinguishes "not started"
+        /// Coverage-aware message when the viewed area has no findings. Distinguishes "not started"
         /// from "in progress" from "fully covered, nothing here" -- so a finished-but-empty survey no
         /// longer tells the player to keep waiting, which never reveals anything new.
         /// </summary>
@@ -328,7 +404,7 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// Appends the drone's live status as a separated FOOTER -- what the drone is DOING (its
-        /// assigned area), kept out of the selected area's survey data above it.
+        /// assigned area), kept out of the viewed area's survey data above it.
         /// </summary>
         private static void AppendDroneStatusFooter(StringBuilder sb, DroneDockObject dock)
         {
@@ -337,5 +413,44 @@ namespace Eco.Mods.TechTree
                 sb.Append("\nDrone: ").Append(lifecycle.Status)
                   .Append(" (").Append(dock.AssignedSurveyArea?.Name ?? "no area assigned").Append(')');
         }
+
+        // --- Material picker projection ---
+
+        /// <summary>
+        /// Projects the picker's current selection into the dock's serialized material filter, so the
+        /// readout (and the chat command) work off one source. Maps a picked item type to the material
+        /// name the sensor records, mirroring how that name is derived from a block type: strip the
+        /// "Item" suffix, then a "Block" suffix if one remains ("IronOreItem" -> "IronOre",
+        /// "LimestoneBlockItem" -> "Limestone", matching the sensor's "LimestoneBlock" -> "Limestone").
+        /// </summary>
+        private void ApplyPickerSelection(DroneDockObject dock)
+        {
+            var picked = PickedNames(this.MaterialTargets).Distinct().ToList();
+
+            // Only rewrite when the selection actually differs, so the 1s refresh tick does not fight
+            // a filter set from chat.
+            if (picked.Count == dock.MaterialFilter.Count && picked.All(dock.MaterialFilter.Contains))
+                return;
+
+            dock.ClearMaterialFilter();
+            foreach (var name in picked)
+                dock.ToggleMaterialFilter(name);
+        }
+
+        /// <summary>The material names currently selected in the picker (empty when null or unset).</summary>
+        private static IEnumerable<string> PickedNames(GamePickerList<BlockItem> picker) =>
+            picker?.GetTypes().Select(t => MaterialNameFromItemType(t.Name)) ?? Enumerable.Empty<string>();
+
+        /// <summary>Item type name -> the material name the sensor records. See <see cref="ApplyPickerSelection"/>.</summary>
+        private static string MaterialNameFromItemType(string typeName)
+        {
+            var name = StripSuffix(typeName, "Item");
+            return StripSuffix(name, "Block");
+        }
+
+        private static string StripSuffix(string value, string suffix) =>
+            value.EndsWith(suffix, StringComparison.Ordinal) && value.Length > suffix.Length
+                ? value.Substring(0, value.Length - suffix.Length)
+                : value;
     }
 }
