@@ -38,11 +38,14 @@ namespace Eco.Mods.TechTree
         private const int MaxAreaPlots = 40; // v1 tier cap (R1b); drone-tier-owned later.
 
         /// <summary>
-        /// Size of the compile-time assign-button pool. RPCs are methods, so the ceiling is however
-        /// many are declared -- there is no runtime cost to a larger pool, and how far the player is
-        /// willing to scroll is their call. Areas past it are assigned with /drone assignarea.
+        /// Size of the compile-time assign-button pool. RPCs are methods, so SOME ceiling has to exist
+        /// -- buttons cannot be generated per area. Six is a product choice, not a technical one: the
+        /// motivating late-game setup is one area per resource (coal, iron ore, limestone, gold ore,
+        /// copper ore), each in a different biome, which is five with one spare. Four would fit without
+        /// scrolling but would not fit that setup, and fitting real use beats a self-imposed no-scroll
+        /// rule. Raise it if mod users ask for more. Areas past it are assigned with /drone assignarea.
         /// </summary>
-        public const int AssignButtonPool = 20;
+        public const int AssignButtonPool = 6;
 
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
@@ -85,20 +88,6 @@ namespace Eco.Mods.TechTree
         [SyncToView] public bool AreaExists4() => this.AreaCount() >= 4;
         [SyncToView] public bool AreaExists5() => this.AreaCount() >= 5;
         [SyncToView] public bool AreaExists6() => this.AreaCount() >= 6;
-        [SyncToView] public bool AreaExists7() => this.AreaCount() >= 7;
-        [SyncToView] public bool AreaExists8() => this.AreaCount() >= 8;
-        [SyncToView] public bool AreaExists9() => this.AreaCount() >= 9;
-        [SyncToView] public bool AreaExists10() => this.AreaCount() >= 10;
-        [SyncToView] public bool AreaExists11() => this.AreaCount() >= 11;
-        [SyncToView] public bool AreaExists12() => this.AreaCount() >= 12;
-        [SyncToView] public bool AreaExists13() => this.AreaCount() >= 13;
-        [SyncToView] public bool AreaExists14() => this.AreaCount() >= 14;
-        [SyncToView] public bool AreaExists15() => this.AreaCount() >= 15;
-        [SyncToView] public bool AreaExists16() => this.AreaCount() >= 16;
-        [SyncToView] public bool AreaExists17() => this.AreaCount() >= 17;
-        [SyncToView] public bool AreaExists18() => this.AreaCount() >= 18;
-        [SyncToView] public bool AreaExists19() => this.AreaCount() >= 19;
-        [SyncToView] public bool AreaExists20() => this.AreaCount() >= 20;
 
         [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists1)), UITypeName("BigButton"), Description("Assign Area 1")]
         public void AssignArea1(Player player) => this.ToggleAssign(1);
@@ -117,48 +106,6 @@ namespace Eco.Mods.TechTree
 
         [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists6)), UITypeName("BigButton"), Description("Assign Area 6")]
         public void AssignArea6(Player player) => this.ToggleAssign(6);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists7)), UITypeName("BigButton"), Description("Assign Area 7")]
-        public void AssignArea7(Player player) => this.ToggleAssign(7);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists8)), UITypeName("BigButton"), Description("Assign Area 8")]
-        public void AssignArea8(Player player) => this.ToggleAssign(8);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists9)), UITypeName("BigButton"), Description("Assign Area 9")]
-        public void AssignArea9(Player player) => this.ToggleAssign(9);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists10)), UITypeName("BigButton"), Description("Assign Area 10")]
-        public void AssignArea10(Player player) => this.ToggleAssign(10);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists11)), UITypeName("BigButton"), Description("Assign Area 11")]
-        public void AssignArea11(Player player) => this.ToggleAssign(11);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists12)), UITypeName("BigButton"), Description("Assign Area 12")]
-        public void AssignArea12(Player player) => this.ToggleAssign(12);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists13)), UITypeName("BigButton"), Description("Assign Area 13")]
-        public void AssignArea13(Player player) => this.ToggleAssign(13);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists14)), UITypeName("BigButton"), Description("Assign Area 14")]
-        public void AssignArea14(Player player) => this.ToggleAssign(14);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists15)), UITypeName("BigButton"), Description("Assign Area 15")]
-        public void AssignArea15(Player player) => this.ToggleAssign(15);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists16)), UITypeName("BigButton"), Description("Assign Area 16")]
-        public void AssignArea16(Player player) => this.ToggleAssign(16);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists17)), UITypeName("BigButton"), Description("Assign Area 17")]
-        public void AssignArea17(Player player) => this.ToggleAssign(17);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists18)), UITypeName("BigButton"), Description("Assign Area 18")]
-        public void AssignArea18(Player player) => this.ToggleAssign(18);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists19)), UITypeName("BigButton"), Description("Assign Area 19")]
-        public void AssignArea19(Player player) => this.ToggleAssign(19);
-
-        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists20)), UITypeName("BigButton"), Description("Assign Area 20")]
-        public void AssignArea20(Player player) => this.ToggleAssign(20);
 
         // --- Assignment ---
 
@@ -205,20 +152,6 @@ namespace Eco.Mods.TechTree
             this.Changed(nameof(this.AreaExists4));
             this.Changed(nameof(this.AreaExists5));
             this.Changed(nameof(this.AreaExists6));
-            this.Changed(nameof(this.AreaExists7));
-            this.Changed(nameof(this.AreaExists8));
-            this.Changed(nameof(this.AreaExists9));
-            this.Changed(nameof(this.AreaExists10));
-            this.Changed(nameof(this.AreaExists11));
-            this.Changed(nameof(this.AreaExists12));
-            this.Changed(nameof(this.AreaExists13));
-            this.Changed(nameof(this.AreaExists14));
-            this.Changed(nameof(this.AreaExists15));
-            this.Changed(nameof(this.AreaExists16));
-            this.Changed(nameof(this.AreaExists17));
-            this.Changed(nameof(this.AreaExists18));
-            this.Changed(nameof(this.AreaExists19));
-            this.Changed(nameof(this.AreaExists20));
         }
 
         // --- Text ---

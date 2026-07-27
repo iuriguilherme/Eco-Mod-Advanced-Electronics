@@ -402,8 +402,11 @@ Each is testable in one restart and each degrades gracefully:
 
 ### Assumptions
 
-- **Button pool cap.** 10 assign buttons is assumed sufficient. Areas beyond it remain visible and
-  readable but are assignable only via `/drone assignarea`.
+- **Button pool cap: 6** (settled in play, not assumed). RPCs are compile-time methods so some ceiling
+  must exist; six is a product choice sized to the motivating late-game setup — one area per resource
+  (coal, iron ore, limestone, gold ore, copper ore), each in a different biome, which is five with one
+  spare. Four would fit without scrolling but would not fit that setup. Areas beyond the pool remain
+  visible and readable but are assignable only via `/drone assignarea`; raise the pool if mod users ask.
 - Position-to-area mapping follows the dock's stored list order; deleting an area re-maps positions,
   which is acceptable because the numbered list is rendered from the same order.
 - The map editor's plot cap applies per entry, as it does today for the single-entry request.
