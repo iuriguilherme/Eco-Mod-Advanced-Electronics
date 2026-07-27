@@ -8,7 +8,7 @@
 #   AdvancedElectronics/AdvancedElectronics.dll
 #   AdvancedElectronics/AdvancedElectronics.Navigation.dll
 #   AdvancedElectronics/AdvancedElectronics.unity3d
-#   AdvancedElectronics/README.txt  COPYING  COPYING.LESSER
+#   AdvancedElectronics/README.txt  LICENSE
 #
 # The zip does NOT carry a Mods/UserCode/ prefix. Server owners know where mods go,
 # and shipping the prefix invites extracting it INSIDE UserCode, which produces a
@@ -104,7 +104,7 @@ mkdir -p "$MODDIR"
 cp "$RELEASE_DIR/AdvancedElectronics.dll"            "$MODDIR/"
 cp "$RELEASE_DIR/AdvancedElectronics.Navigation.dll" "$MODDIR/"
 cp "$BUNDLE"                                         "$MODDIR/"
-cp COPYING COPYING.LESSER                            "$MODDIR/"
+cp LICENSE                                           "$MODDIR/"
 
 cat > "$MODDIR/README.txt" <<TXT
 Advanced Electronics — an Eco mod adding a ground survey drone.
@@ -166,8 +166,8 @@ USAGE
   was found, one area at a time.
 
 LICENSE
-  LGPL-3.0-or-later. See COPYING and COPYING.LESSER. Source is at the GitHub
-  link above; you may modify and redistribute this mod under the same terms.
+  LGPL-3.0-or-later. See LICENSE. Source is at the GitHub link above; you may
+  modify and redistribute this mod under the same terms.
 
   Eco and the Eco ModKit are the property of Strange Loop Games and are not
   included in or covered by this license.

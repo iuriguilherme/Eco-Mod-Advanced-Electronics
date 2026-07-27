@@ -256,8 +256,10 @@ overrides.
 ## License
 
 This mod is licensed under the **GNU Lesser General Public License, version 3 or later**
-(LGPL-3.0-or-later). The full texts are in [`COPYING`](COPYING) (GPLv3) and
-[`COPYING.LESSER`](COPYING.LESSER) (the LGPL terms that apply on top of it).
+(LGPL-3.0-or-later). The full text is in [`LICENSE`](LICENSE). The LGPL incorporates the
+terms of the [GNU GPL v3](https://www.gnu.org/licenses/gpl-3.0.txt) by reference and adds
+permissions on top of it; only the LGPL text is kept here, since that is the licence this
+project grants.
 
 In short: you may use, modify and redistribute this mod, including as part of a larger
 work that is not itself LGPL — but changes *to this mod* must be published under the same
