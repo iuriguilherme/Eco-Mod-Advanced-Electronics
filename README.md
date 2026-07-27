@@ -28,9 +28,11 @@ touching server C#, skip this section entirely and go to
 [Deploying to a server](#deploying-to-a-server-for-testing).
 
 **The Unity half does need a restore step.** This repository contains only our own work.
-Strange Loop Games' ModKit and client libraries are theirs to distribute, so they are
-git-ignored rather than vendored here, and a fresh clone will not open cleanly in Unity
-until you put them back:
+The Eco ModKit is distributed by Strange Loop Games from the
+[play.eco](https://play.eco) website, behind an account that owns the game — there is no
+public download URL, and redistributing it here would route around that gate. So it is
+git-ignored rather than vendored, and a fresh clone will not open cleanly in Unity until
+you supply your own copy:
 
 | Path (git-ignored) | What it is |
 |---|---|
@@ -42,13 +44,16 @@ until you put them back:
 | `Packages/com.strangeloopgames.eco-modkit-deps/` | ModKit's package dependencies (embedded Unity package) |
 | `Assets/TextMesh Pro/` | Unity's TMP resources — the editor re-imports these on demand |
 
-Restore them from the **official Eco ModKit distribution for 0.13.0.4**, which Strange Loop
-Games publishes for mod authors — start from the
-[Mod Development wiki](https://wiki.play.eco/en/Mod_Development). (Their
-[EcoModKit repo](https://github.com/StrangeLoopGames/EcoModKit) holds *example mods*, not
-the kit itself.) `Packages/manifest.json` and `Packages/packages-lock.json` are tracked
-here and already declare the two embedded packages, so dropping those folders into
-`Packages/` is enough — do not re-add them through the Package Manager.
+**You need to own Eco.** Log in to [play.eco](https://play.eco) with the Strange Loop
+Games account the game is registered to and download the ModKit for **0.13.0.4** from
+there; the step-by-step is
+[Installing the ModKit](https://wiki.play.eco/en/Installing_the_ModKit) on the Eco wiki.
+Note that their public [EcoModKit repo](https://github.com/StrangeLoopGames/EcoModKit)
+holds *example mods*, not the kit — you cannot substitute it.
+
+`Packages/manifest.json` and `Packages/packages-lock.json` are tracked here and already
+declare the two embedded packages, so dropping those folders into `Packages/` is enough —
+do not re-add them through the Package Manager.
 
 ### Why the copy has to be the official one
 
@@ -79,8 +84,10 @@ prefab still shows a **WorldObject** component in the Inspector (not "Missing Sc
   `EcoServerMod/README.md` > Version matching if yours differs.
 - A **.NET 10 SDK** (`dotnet --list-sdks` shows a 10.x entry). No-admin user-local
   install instructions are in `EcoServerMod/README.md` > Building.
-- **Unity 6000.3.19f1** — only needed to (re)build the client asset bundle (step 2);
-  skip if you already have `AdvancedElectronics.unity3d` from a previous build.
+- **Unity 6000.3.19f1** plus the Eco ModKit restored per
+  [Setup after cloning](#setup-after-cloning) — only needed to (re)build the client asset
+  bundle (step 2); skip both if you already have `AdvancedElectronics.unity3d` from a
+  previous build.
 
 ### 1. Build and deploy the server DLLs
 
@@ -185,10 +192,11 @@ pairing state is not yet persisted).
 ## Third-party content and licensing
 
 Everything tracked in this repository is our own work. Strange Loop Games' ModKit, client
-libraries and embedded Unity packages are **not** redistributed here — see
-[Setup after cloning](#setup-after-cloning) for the paths involved and how to restore
-them. Eco, the ModKit and their assets remain the property of Strange Loop Games and are
-used under their mod-development terms.
+libraries and embedded Unity packages are **not** redistributed here — they are
+account-gated downloads for owners of the game, so mirroring them would route around that
+gate. See [Setup after cloning](#setup-after-cloning) for the paths involved and how to
+supply your own copy. Eco, the ModKit and their assets remain the property of Strange Loop
+Games and are used under their mod-development terms.
 
 This project does not yet declare a licence of its own; until it does, no permissions are
 granted beyond viewing the source. Open an issue if you want to use it for something.
