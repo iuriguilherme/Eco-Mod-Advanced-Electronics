@@ -17,6 +17,14 @@ related_components: [EcoServerMod/AdvancedElectronics]
 
 # Designing a usable panel when the only primitive is a vertical stack
 
+> **⚠ Premise under revision (2026-07-27).** This doc assumes a mod tab can only render stacked,
+> full-width elements. That is **false**: the client's autogen set includes `ButtonGrid`,
+> `HorzBox` and `Table`, selected server-side by `UITypeName`. The layout *reasoning* below still
+> holds wherever the stack is genuinely the constraint, and the row-budget arithmetic is still
+> the right way to think — but do not treat "one column" as a hard limit. See
+> `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` and
+> `docs/ideation/2026-07-27-mod-ui-vocabulary.md`. Full rewrite pending live verification.
+
 ## Context
 
 An Eco mod's `WorldObjectComponent` tab renders as a **single column of full-width elements, in

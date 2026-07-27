@@ -68,6 +68,37 @@ window (verified live on the Drone Dock). Inside it:
   shape (settable, assigned), not the `PartsComponent.Description` computed-getter shape — the
   computed getter works for a stock component with a generated view but not for a mod component.
   A plain `[SyncToView] string` with no `UITypeName` did not render; give it a `UITypeName`.
+- **The autogen vocabulary is 68 templates wide, and `UITypeName` picks from it BY NAME.**
+  This is the most important thing on the page, and it was under-read for weeks. A component
+  flagged `CreateComponentTab`/`Autogen` renders with **zero client code**: the client's
+  `AutoViewComponentUI` → `AutoSetupUI` chooses a prefab **per property, by name**, from
+  `PrefabsCollection.viewUIs` (`Client/Assets/UI/Prefabs.prefab`) — **68 entries**, plus a few
+  special-cased in code. The steering wheel is entirely server-side (`UITypeName`,
+  `UIListTypeName`, `ComponentTabName`), and those literals ship in the ModKit's
+  `Eco.Shared.dll`. Per SLG's own wiki (`UI-System.md:53`): *"it works with mods. Since the type
+  data for the views is sent over on server connect, you don't have to recompile the client to
+  get it."*
+
+  Names in the shipped set include `Table`, `IEnumerable`, `ButtonList`, `ExpandableList`,
+  `ButtonGrid`, `HorzBox`, `NestedMeter`, `Range`, `Boolean`, `Color`, `ItemInput`,
+  `SectionHeader`, `LinedHeader`, `StringDescription`, `LongString`, `StringPlaque`. **This
+  project used four.** Anything below that reads as "a mod tab can only do X" should be checked
+  against that list before it is believed — including the two bullets that follow.
+
+  *Verified by reading the client and the SLG wiki on 2026-07-27; which of these render correctly
+  from a mod component tab is NOT yet live-tested. See
+  `docs/ideation/2026-07-27-mod-ui-vocabulary.md` for the ranked candidates and the planned probe.*
+
+- **The ceiling: a mod cannot ADD to that set, or ship client code.** Three independent
+  mechanisms close it. Panel prefabs come from a serialized `GameObject[]` on a client prefab (a
+  fixed array, not a joinable registry); view types are discovered from
+  `AppDomain.CurrentDomain.GetAssemblies()` (`LookupAssemblies.cs:17`); and
+  `InjectionPreventer.cs:78` **quits the game** on a non-whitelisted assembly. Decisively,
+  `ModBundleManager.cs:241-315` sorts bundle assets into exactly ModObject / ModImage / ModItem /
+  ModBenefit / BlockSet / Font / ChatEmote / ImageContainer — **there is no UI branch**. Bundle
+  content reaches client UI only as icons, sprites and fonts. So: reuse-only, but the reusable set
+  is 68 wide.
+
 - **A rich per-row list of YOUR OWN data is not available to a mod tab.** The stock
   "My Deeds" list, the Authorization tab, and the jurisdiction/demographic Selector dropdowns
   render through a hand-written **client-side** `WorldObjectPanel` MonoBehaviour (e.g. `DeedsUI`,
@@ -76,8 +107,14 @@ window (verified live on the Drone Dock). Inside it:
   `WorldObjectPanel`, `WorldObjectComponentView`, or `[WorldObjectUIPanel]`** (absent from
   `Assets/EcoModKit` and `Assets/EcoLibs`), so a mod cannot write one. A `[SyncToView]`
   collection of a mod-defined `IController` renders **blank** in the generic auto-view (it does
-  not crash the way an `IEnumerable<string>` does, but it shows nothing). This half stands: to
-  display mod-owned rows, compose text.
+  not crash the way an `IEnumerable<string>` does, but it shows nothing).
+
+  **Corrected 2026-07-27:** the conclusion drawn from this — *"lists are impossible, compose
+  text"* — was too broad. An `IEnumerable` template exists in the shipped set, so the failure was
+  the **element type** (elements must be View types; a mod-defined type has no generated client
+  view), not the list. What stands is the narrow claim: a list of *mod-owned* rows has no element
+  view. What is now open is whether a list bound to **game types that already have views** works
+  from a mod tab — untested, and the gate on the highest-value UI work available.
 - **But a native item PICKER does render from a mod tab — the constraint is the DATA, not the
   tab.** `[Eco, AllowEmpty, RequiredTag(...)] GamePickerList<BlockItem>` renders the same
   multi-select popup a civic law uses, from an ordinary mod `WorldObjectComponent` tab, and its
