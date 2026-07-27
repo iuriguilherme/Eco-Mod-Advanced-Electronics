@@ -49,6 +49,26 @@ then move to the next.
 Because each Plot is visited discretely, a Survey Area need not be contiguous, and a Plot the drone
 cannot reach is skipped rather than stalling the survey.
 
+## Client–server binding
+
+### World Object
+A placed, interactable object in the world, as opposed to an item carried in inventory. Each one is
+defined twice: a server-side class that holds its behaviour and state, and a client-side prefab that
+supplies its model and any in-world visuals.
+
+Placing an item generally produces a *new* World Object rather than restoring the one that was
+picked up, which is why state living on a World Object does not automatically survive relocation.
+
+### Name Match
+The rule that binds a World Object's two halves: the client prefab and the server class are linked
+by having the **same name**, with nothing else connecting them.
+
+A mismatch fails silently and in the worst direction — the server loads and behaves correctly while
+the object renders as a missing-model placeholder, so the symptom appears purely visual and points
+away from the cause. Renaming either half without the other, or letting a tool regenerate a prefab
+under a different name, breaks the binding with no error at build or load time. The same applies to
+items and their icon assets.
+
 ## Dock and assignment
 
 ### Drone Dock
