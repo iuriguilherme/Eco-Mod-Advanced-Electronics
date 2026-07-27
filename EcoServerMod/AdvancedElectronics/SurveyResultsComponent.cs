@@ -60,10 +60,10 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string ViewingDisplay { get; private set; } = string.Empty;
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("◀ Prev area")]
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Previous Area")]
         public void ViewPrev(Player player) => this.CycleView(-1);
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Next area ▶")]
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Next Area")]
         public void ViewNext(Player player) => this.CycleView(+1);
 
         /// <summary>The viewed area's findings (R7). Refreshed from the dock's tick.</summary>
@@ -139,7 +139,6 @@ namespace Eco.Mods.TechTree
             if (entry == null)
             {
                 sb.Append("Draw an area on the map, then assign the drone to survey it.");
-                AppendDroneStatusFooter(sb, dock);
                 return sb.ToString();
             }
 
@@ -175,7 +174,6 @@ namespace Eco.Mods.TechTree
             if (dock.MaterialFilter.Count > 0)
                 sb.Append("Filtered to: ").Append(string.Join(", ", dock.MaterialFilter)).Append('\n');
 
-            AppendDroneStatusFooter(sb, dock);
             return sb.ToString();
         }
 
@@ -191,18 +189,6 @@ namespace Eco.Mods.TechTree
             if (entry.CoveragePercent >= 99.5f)
                 return "Survey complete -- nothing found in this area.";
             return $"Surveyed {entry.CoveragePercent:F0}% so far -- nothing found yet.";
-        }
-
-        /// <summary>
-        /// Appends the drone's live status as a separated FOOTER -- what the drone is DOING (its
-        /// assigned area), kept out of the viewed area's survey data above it.
-        /// </summary>
-        private static void AppendDroneStatusFooter(StringBuilder sb, DroneDockObject dock)
-        {
-            var drone = dock.SpawnedDrone;
-            if (drone != null && !drone.IsDestroyed && drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
-                sb.Append("\nDrone: ").Append(lifecycle.Status)
-                  .Append(" (").Append(dock.AssignedSurveyArea?.Name ?? "no area assigned").Append(')');
         }
 
         /// <summary>

@@ -24,9 +24,10 @@ namespace Eco.Mods.TechTree
     /// Members are declared in the order they render, because with only stacked full-width elements
     /// available declaration order IS reading order:
     ///
-    ///   1. the assignment line, then the numbered area list
-    ///   2. one assign button per existing area (position-labelled; the list supplies the names)
-    ///   3. one button opening the map, where areas are created/renamed/redrawn/deleted
+    ///   1. the map manager button -- FIRST so it never moves; the text below it changes length as
+    ///      areas are added, surveyed and renamed, and an anchor that drifts is one you have to hunt for
+    ///   2. the assignment line, the drone's status, then the numbered area list
+    ///   3. one assign button per existing area (position-labelled; the list supplies the names)
     ///
     /// Assign buttons come after the list because their labels are static position numbers and are
     /// meaningless until the list that names them has been read.
@@ -36,17 +37,34 @@ namespace Eco.Mods.TechTree
     {
         private const int MaxAreaPlots = 40; // v1 tier cap (R1b); drone-tier-owned later.
 
-        /// <summary>Size of the compile-time assign-button pool. Areas beyond it use /drone assignarea.</summary>
-        public const int AssignButtonPool = 10;
+        /// <summary>
+        /// Size of the compile-time assign-button pool. RPCs are methods, so the ceiling is however
+        /// many are declared -- there is no runtime cost to a larger pool, and how far the player is
+        /// willing to scroll is their call. Areas past it are assigned with /drone assignarea.
+        /// </summary>
+        public const int AssignButtonPool = 20;
 
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
 
         // ---------------------------------------------------------------
-        // 1. Areas -- assignment line + numbered list
+        // 1. Manage -- the map is the area manager. Declared FIRST so it holds a fixed position
+        //    regardless of how long the text below it grows.
         // ---------------------------------------------------------------
 
-        /// <summary>The assignment line followed by the dock's numbered area list.</summary>
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Manage Areas on Map")]
+        public async Task ManageAreasOnMap(Player player)
+        {
+            if (this.Parent is not DroneDockObject dock) return;
+            await SurveyAreaPicker.ManageAreas(player, dock, MaxAreaPlots);
+            this.RefreshAll();
+        }
+
+        // ---------------------------------------------------------------
+        // 2. Areas -- assignment line, drone status, numbered list
+        // ---------------------------------------------------------------
+
+        /// <summary>The assignment line, the drone's status, then the dock's numbered area list.</summary>
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string AreasDisplay { get; private set; } = string.Empty;
 
@@ -71,6 +89,16 @@ namespace Eco.Mods.TechTree
         [SyncToView] public bool AreaExists8() => this.AreaCount() >= 8;
         [SyncToView] public bool AreaExists9() => this.AreaCount() >= 9;
         [SyncToView] public bool AreaExists10() => this.AreaCount() >= 10;
+        [SyncToView] public bool AreaExists11() => this.AreaCount() >= 11;
+        [SyncToView] public bool AreaExists12() => this.AreaCount() >= 12;
+        [SyncToView] public bool AreaExists13() => this.AreaCount() >= 13;
+        [SyncToView] public bool AreaExists14() => this.AreaCount() >= 14;
+        [SyncToView] public bool AreaExists15() => this.AreaCount() >= 15;
+        [SyncToView] public bool AreaExists16() => this.AreaCount() >= 16;
+        [SyncToView] public bool AreaExists17() => this.AreaCount() >= 17;
+        [SyncToView] public bool AreaExists18() => this.AreaCount() >= 18;
+        [SyncToView] public bool AreaExists19() => this.AreaCount() >= 19;
+        [SyncToView] public bool AreaExists20() => this.AreaCount() >= 20;
 
         [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists1)), UITypeName("BigButton"), Description("Assign Area 1")]
         public void AssignArea1(Player player) => this.ToggleAssign(1);
@@ -102,17 +130,35 @@ namespace Eco.Mods.TechTree
         [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists10)), UITypeName("BigButton"), Description("Assign Area 10")]
         public void AssignArea10(Player player) => this.ToggleAssign(10);
 
-        // ---------------------------------------------------------------
-        // 3. Manage -- the map is the area manager
-        // ---------------------------------------------------------------
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists11)), UITypeName("BigButton"), Description("Assign Area 11")]
+        public void AssignArea11(Player player) => this.ToggleAssign(11);
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Manage Areas on Map")]
-        public async Task ManageAreasOnMap(Player player)
-        {
-            if (this.Parent is not DroneDockObject dock) return;
-            await SurveyAreaPicker.ManageAreas(player, dock, MaxAreaPlots);
-            this.RefreshAll();
-        }
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists12)), UITypeName("BigButton"), Description("Assign Area 12")]
+        public void AssignArea12(Player player) => this.ToggleAssign(12);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists13)), UITypeName("BigButton"), Description("Assign Area 13")]
+        public void AssignArea13(Player player) => this.ToggleAssign(13);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists14)), UITypeName("BigButton"), Description("Assign Area 14")]
+        public void AssignArea14(Player player) => this.ToggleAssign(14);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists15)), UITypeName("BigButton"), Description("Assign Area 15")]
+        public void AssignArea15(Player player) => this.ToggleAssign(15);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists16)), UITypeName("BigButton"), Description("Assign Area 16")]
+        public void AssignArea16(Player player) => this.ToggleAssign(16);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists17)), UITypeName("BigButton"), Description("Assign Area 17")]
+        public void AssignArea17(Player player) => this.ToggleAssign(17);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists18)), UITypeName("BigButton"), Description("Assign Area 18")]
+        public void AssignArea18(Player player) => this.ToggleAssign(18);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists19)), UITypeName("BigButton"), Description("Assign Area 19")]
+        public void AssignArea19(Player player) => this.ToggleAssign(19);
+
+        [RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists20)), UITypeName("BigButton"), Description("Assign Area 20")]
+        public void AssignArea20(Player player) => this.ToggleAssign(20);
 
         // --- Assignment ---
 
@@ -163,6 +209,16 @@ namespace Eco.Mods.TechTree
             this.Changed(nameof(this.AreaExists8));
             this.Changed(nameof(this.AreaExists9));
             this.Changed(nameof(this.AreaExists10));
+            this.Changed(nameof(this.AreaExists11));
+            this.Changed(nameof(this.AreaExists12));
+            this.Changed(nameof(this.AreaExists13));
+            this.Changed(nameof(this.AreaExists14));
+            this.Changed(nameof(this.AreaExists15));
+            this.Changed(nameof(this.AreaExists16));
+            this.Changed(nameof(this.AreaExists17));
+            this.Changed(nameof(this.AreaExists18));
+            this.Changed(nameof(this.AreaExists19));
+            this.Changed(nameof(this.AreaExists20));
         }
 
         // --- Text ---
@@ -173,7 +229,8 @@ namespace Eco.Mods.TechTree
                 return string.Empty;
 
             var sb = new StringBuilder();
-            sb.Append(this.BuildAssignmentLine(dock)).Append("\n\n");
+            sb.Append(this.BuildAssignmentLine(dock)).Append('\n');
+            sb.Append(BuildDroneStatusLine(dock)).Append("\n\n");
 
             if (dock.SurveyAreas.Count == 0)
             {
@@ -216,6 +273,21 @@ namespace Eco.Mods.TechTree
             return hasDrone
                 ? $"Assigned: {position} -- {area.Name}"
                 : $"Assigned: {position} -- {area.Name} (no drone -- build and dock one to start surveying)";
+        }
+
+        /// <summary>
+        /// What the drone is DOING, as its own line under the assignment. Lives on this tab rather
+        /// than with the findings: it belongs with assignment, which is what this tab controls.
+        /// </summary>
+        private static string BuildDroneStatusLine(DroneDockObject dock)
+        {
+            var drone = dock.SpawnedDrone;
+            if (drone == null || drone.IsDestroyed)
+                return "Drone: none docked.";
+
+            return drone.TryGetComponent<DroneLifecycle>(out var lifecycle)
+                ? $"Drone: {lifecycle.Status}"
+                : "Drone: docked.";
         }
 
         /// <summary>

@@ -170,7 +170,7 @@ namespace Eco.Mods.TechTree
                     // A new entry. An entry drawn with no plots is not an area; skip it silently so a
                     // confirmed-but-untouched placeholder does not create an empty area.
                     if (plots.Count == 0) continue;
-                    dock.CreateSurveyArea(string.IsNullOrWhiteSpace(name) ? "Survey Area" : name, plots);
+                    dock.CreateSurveyArea(ResolveNewAreaName(dock, name), plots);
                     continue;
                 }
 
@@ -187,6 +187,36 @@ namespace Eco.Mods.TechTree
                     dock.OnAreaEdited(area.Id);
                 }
             }
+        }
+
+        /// <summary>
+        /// The name a newly drawn area should carry. The map editor is a shared civics surface, so an
+        /// entry the player did not name comes back with the client's own default ("New District") --
+        /// meaningless on a drone dock. Any such placeholder becomes the next free "Survey Area N",
+        /// numbered by what the dock already owns rather than by area count, so deleting area 2 of 3
+        /// does not make the next one collide with area 3.
+        /// </summary>
+        private static string ResolveNewAreaName(DroneDockObject dock, string returnedName)
+        {
+            if (!IsPlaceholderName(returnedName)) return returnedName;
+
+            var taken = dock.SurveyAreas.Select(a => a.Name).ToHashSet(System.StringComparer.OrdinalIgnoreCase);
+            for (var n = 1; ; n++)
+            {
+                var candidate = $"Survey Area {n}";
+                if (!taken.Contains(candidate)) return candidate;
+            }
+        }
+
+        /// <summary>True when the name is blank or one of the client's own defaults for a new entry.</summary>
+        private static bool IsPlaceholderName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return true;
+
+            var trimmed = name.Trim();
+            return trimmed.Equals("New District", System.StringComparison.OrdinalIgnoreCase)
+                || trimmed.Equals("New Entry", System.StringComparison.OrdinalIgnoreCase)
+                || trimmed.Equals("District", System.StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>Plots drawn for each entry id, read out of the returned map array.</summary>
