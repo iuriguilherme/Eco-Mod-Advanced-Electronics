@@ -5,10 +5,15 @@
 # Produces  dist/AdvancedElectronics-<version>-eco<game>.zip  laid out so a server
 # admin extracts it straight over Eco_Data/Server/:
 #
-#   Mods/UserCode/AdvancedElectronics.dll
-#   Mods/UserCode/AdvancedElectronics.Navigation.dll
-#   Mods/UserCode/AdvancedElectronics.unity3d
-#   README.txt  COPYING  COPYING.LESSER
+#   Mods/UserCode/AdvancedElectronics/AdvancedElectronics.dll
+#   Mods/UserCode/AdvancedElectronics/AdvancedElectronics.Navigation.dll
+#   Mods/UserCode/AdvancedElectronics/AdvancedElectronics.unity3d
+#   Mods/UserCode/AdvancedElectronics/README.txt  COPYING  COPYING.LESSER
+#
+# Everything sits in its own mod folder, the way the other UserCode mods are laid
+# out -- so the whole mod is one directory to add, inspect or delete. Eco loads
+# pre-compiled mods from Mods/ subdirectories (Mods/README.md), and the bundle sits
+# beside its DLLs the same way NuclearReactor keeps binaryReactor.unity3d.
 #
 # The asset bundle is NOT built here -- it comes out of the Unity Editor
 # (Eco Tools > Mod Kit > Build Current Bundle). This script's most important job is
@@ -24,7 +29,7 @@
 
 set -euo pipefail
 
-VERSION="0.1.0"
+VERSION="0.0.1"
 GAME_VERSION="0.13.0.4"
 FORCE=0
 
@@ -88,24 +93,39 @@ fi
 # --- 4. Stage and zip -----------------------------------------------------------
 echo "==> Staging"
 rm -rf "$STAGE"
-mkdir -p "$STAGE/Mods/UserCode"
+MODDIR="$STAGE/Mods/UserCode/AdvancedElectronics"
+mkdir -p "$MODDIR"
 
-cp "$RELEASE_DIR/AdvancedElectronics.dll"            "$STAGE/Mods/UserCode/"
-cp "$RELEASE_DIR/AdvancedElectronics.Navigation.dll" "$STAGE/Mods/UserCode/"
-cp "$BUNDLE"                                         "$STAGE/Mods/UserCode/"
-cp COPYING COPYING.LESSER                            "$STAGE/"
+cp "$RELEASE_DIR/AdvancedElectronics.dll"            "$MODDIR/"
+cp "$RELEASE_DIR/AdvancedElectronics.Navigation.dll" "$MODDIR/"
+cp "$BUNDLE"                                         "$MODDIR/"
+cp COPYING COPYING.LESSER                            "$MODDIR/"
 
-cat > "$STAGE/README.txt" <<TXT
+cat > "$MODDIR/README.txt" <<TXT
 Advanced Electronics — an Eco mod adding a ground survey drone.
 Version ${VERSION}, built for Eco ${GAME_VERSION}.
 
   Mod page: https://mod.io/g/eco/m/advanced-electronics
   Source:   https://github.com/iuriguilherme/Eco-Mod-Advanced-Electronics
+  Devlog:   https://www.youtube.com/watch?v=xqkzmVZ5kcM&list=PLHZA8oVAgAd4
+
+*** ALPHA -- DO NOT USE ON A WORLD YOU CARE ABOUT ***
+
+  Expect breaking changes between versions, including ones that are not
+  migrated: an update can change how dock and drone state is stored, and
+  older saved state may not survive it.
+
+  This version is also known to leave orphaned objects in the world --
+  drones that outlive their dock, or objects an update no longer
+  recognises -- which may need removing by hand with admin tools.
+
+  Run it on a test world, or one where losing placed Drone Docks and their
+  survey data is acceptable. Back up your save before updating.
 
 INSTALL
   1. Stop the Eco server.
-  2. Extract this zip over your server's Eco_Data/Server/ directory. The three
-     files below land in Mods/UserCode/:
+  2. Extract this zip over your server's Eco_Data/Server/ directory. Everything
+     lands in one folder, Mods/UserCode/AdvancedElectronics/:
         AdvancedElectronics.dll             the mod
         AdvancedElectronics.Navigation.dll  navigation core; the mod will not
                                             load without it
@@ -114,8 +134,8 @@ INSTALL
   3. Start the server. The mods listing should show "Advanced Electronics".
 
 UNINSTALL
-  Delete those three files. Removing the mod discards any placed Drone Docks
-  along with their survey areas and findings.
+  Delete the Mods/UserCode/AdvancedElectronics/ folder. Removing the mod
+  discards any placed Drone Docks along with their survey areas and findings.
 
 USAGE
   Craft a Drone Dock and a Survey Drone at the Electric Machinist Table. Place
@@ -123,20 +143,49 @@ USAGE
   assign one. Insert the Survey Drone item to launch. The Results tab shows what
   was found, one area at a time.
 
-LICENCE
+LICENSE
   LGPL-3.0-or-later. See COPYING and COPYING.LESSER. Source is at the GitHub
   link above; you may modify and redistribute this mod under the same terms.
 
   Eco and the Eco ModKit are the property of Strange Loop Games and are not
-  included in or covered by this licence.
+  included in or covered by this license.
 TXT
 
 echo "==> Zipping"
 mkdir -p dist
 rm -f "$OUT"
-( cd "$STAGE" && zip -qr "../$(basename "$OUT")" . )
+
+# `zip` is absent from a stock Git-for-Windows shell, so fall back to Python's
+# zipfile (python3 is already required by nothing else here, but is present on
+# every machine that can run the Unity/dotnet toolchain we depend on).
+if command -v zip >/dev/null 2>&1; then
+    ( cd "$STAGE" && zip -qr "../$(basename "$OUT")" . )
+elif command -v python3 >/dev/null 2>&1; then
+    python3 - "$STAGE" "$OUT" <<'PY'
+import os, sys, zipfile
+stage, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for root, _, files in os.walk(stage):
+        for f in sorted(files):
+            full = os.path.join(root, f)
+            z.write(full, os.path.relpath(full, stage).replace(os.sep, "/"))
+PY
+else
+    fail "neither 'zip' nor 'python3' available to build the archive"
+fi
+
+[ -f "$OUT" ] || fail "archive was not created"
 rm -rf "$STAGE"
 
 echo
 echo "Built: $OUT"
-unzip -l "$OUT"
+if command -v unzip >/dev/null 2>&1; then
+    unzip -l "$OUT"
+else
+    python3 - "$OUT" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as z:
+    for i in z.infolist():
+        print(f"{i.file_size:>10}  {i.filename}")
+PY
+fi

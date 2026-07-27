@@ -13,6 +13,22 @@ Built and tested against **Eco 0.13.0.4** (`Eco.ReferenceAssemblies 0.13.0.4-bet
 build anything if you are developing the mod. Server admins should take the release zip
 from mod.io and follow [Installing a release](#installing-a-release).
 
+**Devlog:** [YouTube playlist](https://www.youtube.com/watch?v=xqkzmVZ5kcM&list=PLHZA8oVAgAd4)
+— how and why the mod is being built.
+
+> ### ⚠ Alpha — do not use on a world you care about
+>
+> This mod is in **alpha**. Expect breaking changes between versions, including ones that
+> are not migrated: an update can change how dock and drone state is stored, and older
+> saved state may not survive it.
+>
+> It is also known to **leave orphaned objects in the world** — drones that outlive their
+> dock, or objects an update no longer recognises — which may need removing by hand with
+> admin tools.
+>
+> Run it on a test world, or a world where losing placed Drone Docks and their survey data
+> is acceptable. Back up your save before updating.
+
 ## Repository layout
 
 | Path | What it is |
@@ -32,16 +48,16 @@ For running the mod on a server — no build tools, no Unity, no clone required.
 1. Download the release zip from
    [the mod.io page](https://mod.io/g/eco/m/advanced-electronics).
 2. Stop the Eco server.
-3. Extract the zip over the server's `Eco_Data/Server/` directory. Its `Mods/UserCode/`
-   folder merges into yours, placing three files:
+3. Extract the zip over the server's `Eco_Data/Server/` directory. Everything lands in one
+   folder, `Mods/UserCode/AdvancedElectronics/`:
    - `AdvancedElectronics.dll` — the mod
    - `AdvancedElectronics.Navigation.dll` — the navigation core the mod cannot load without
    - `AdvancedElectronics.unity3d` — the client asset bundle, which the server transfers to
      connecting players automatically (players install nothing by hand)
 4. Start the server and check the mods listing for **Advanced Electronics**.
 
-To uninstall, delete those three files. Note that removing the mod discards any placed
-Drone Docks along with their survey areas and findings.
+To uninstall, delete the `Mods/UserCode/AdvancedElectronics/` folder. Note that removing
+the mod discards any placed Drone Docks along with their survey areas and findings.
 
 ## Setup after cloning
 
@@ -124,6 +140,11 @@ server's `Mods/UserCode/` directory:
 - `AdvancedElectronics.dll` — the mod
 - `AdvancedElectronics.Navigation.dll` — the navigation core the mod cannot load without
 
+Eco loads pre-compiled mods from `Mods/` and any of its subdirectories, so a flat
+`Mods/UserCode/` is fine for a dev loop where you are overwriting DLLs constantly.
+Releases use `Mods/UserCode/AdvancedElectronics/` instead, matching how other UserCode
+mods are laid out — one folder to add or delete.
+
 Or automate the copy: create `EcoServerMod/AdvancedElectronics/Local.props`
 (git-ignored) pointing at your server, and every build deploys both DLLs itself:
 
@@ -143,10 +164,8 @@ git-ignored, so build it locally:
 1. Open this repo's root folder in Unity 6000.3.19f1 and open `Assets/DroneScene.unity`.
 2. Menu **Eco Tools > Mod Kit > Build Current Bundle** (or "ModKit Tools…" to build all
    bundles). Output lands in `AssetBundles/AdvancedElectronics.unity3d`.
-3. Copy `AdvancedElectronics.unity3d` into the server's `Mods/UserCode/`, beside the two
-   DLLs. Eco transfers mod assets to connecting clients — clients do not install anything
-   by hand. (Eco also loads pre-compiled mods from `Mods/` subdirectories, but
-   `Mods/UserCode/` is the layout this mod is developed and tested against. If objects
+3. Copy `AdvancedElectronics.unity3d` next to the two DLLs on the server. Eco transfers
+   mod assets to connecting clients — clients do not install anything by hand. (If objects
    appear as missing-model placeholders in-game, bundle placement is the first thing to
    re-check.)
 
@@ -225,7 +244,7 @@ overrides.
   one's state. Tracked in `docs/ideation/2026-07-26-survey-system-improvements.md`.
 - Assign buttons cover the first six areas; beyond that use `/drone assignarea <id>`.
 
-## Licence
+## License
 
 This mod is licensed under the **GNU Lesser General Public License, version 3 or later**
 (LGPL-3.0-or-later). The full texts are in [`COPYING`](COPYING) (GPLv3) and
@@ -233,12 +252,12 @@ This mod is licensed under the **GNU Lesser General Public License, version 3 or
 
 In short: you may use, modify and redistribute this mod, including as part of a larger
 work that is not itself LGPL — but changes *to this mod* must be published under the same
-licence, and users must be able to replace it with their own modified build. That last
+license, and users must be able to replace it with their own modified build. That last
 property is why LGPL rather than GPL: the mod links against Eco's proprietary assemblies
 and is loaded by a proprietary server, which the LGPL explicitly permits and the GPL would
 not.
 
-The licence covers the contents of this repository — the server C#, the navigation
+The license covers the contents of this repository — the server C#, the navigation
 library, the Unity scripts and prefabs we authored, and the documentation.
 
 ### Third-party content
