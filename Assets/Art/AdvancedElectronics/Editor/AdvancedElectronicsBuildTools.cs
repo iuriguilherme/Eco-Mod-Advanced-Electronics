@@ -175,6 +175,25 @@ public static class AdvancedElectronicsBuildTools
             Debug.Log($"[AdvancedElectronics] Added encapsulating BoxCollider to '{go.name}' (size {boxCollider.size}).");
         }
 
+        // WorldObject.size is the object's block footprint. The client reads it to build
+        // the placement-preview occupancy cells (WorldObjectPlacementPreviewer iterates
+        // size.ConvertI().XYZIter()); a zero size yields zero cells and a degenerate,
+        // seatless ghost that never validates against the ground -- the object then
+        // cannot be placed with no server-side error. Neither this tool nor the ModKit's
+        // WorldObjectSetup used to set it, so it stayed at Unity's default of zero.
+        // Derive it from the encapsulating renderer bounds, ceil to whole blocks, min 1.
+        if (worldObject.size == Vector3.zero)
+        {
+            var sizeBounds = new Bounds(go.transform.position, Vector3.zero);
+            foreach (var renderer in go.GetComponentsInChildren<Renderer>())
+                sizeBounds.Encapsulate(renderer.bounds);
+            worldObject.size = new Vector3(
+                Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.x)),
+                Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.y)),
+                Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.z)));
+            Debug.Log($"[AdvancedElectronics] Set WorldObject.size on '{go.name}' to {worldObject.size} (block footprint).");
+        }
+
         if (isDock)
         {
             var display = go.GetComponent<DockReadoutDisplay>();

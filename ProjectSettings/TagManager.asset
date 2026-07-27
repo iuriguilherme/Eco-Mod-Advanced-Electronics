@@ -3,58 +3,58 @@
 --- !u!78 &1
 TagManager:
   serializedVersion: 3
-  tags: []
+  tags:
+  - UMAKeepChain
+  - Atmosphere
+  - Meteor
+  - ModItem
+  - ModObject
+  - ModBlock
+  - Block
+  - WorldObject
+  - Item
+  - ModBenefit
+  - FirstPersonCamera
+  - Hand
+  - ModImage
+  - UMAIgnore
+  - Animal_Non Ragdoll Collider
   layers:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - RoomObjects
   - Water
   - UI
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
+  - Harvesters
+  - BlocksPlayerMovement
+  - PostProcess
+  - Terrain
+  - IgnorePlayer
+  - Player
+  - PlayerFeet
+  - Minimap
+  - Atmosphere
+  - IgnoreSelfCollision
+  - Avatar
+  - Fade
+  - CollidesWithTerrain
+  - Animals
+  - Foliage
+  - OnlyGI
+  - IgnoreInteraction
+  - DecorationSpawnQuery
+  - MovingPlatform
+  - MovingPlatformSimulation
+  - FirstPersonView
+  - AvatarFaceView
+  - BlockSelection
+  - Projectiles
+  - TitleScreen
+  - ShadowPlacement
   m_SortingLayers:
   - name: Default
     uniqueID: 0
     locked: 0
   m_RenderingLayers:
   - Default
-  - Light Layer 1
-  - Light Layer 2
-  - Light Layer 3
-  - Light Layer 4
-  - Light Layer 5
-  - Light Layer 6
-  - Light Layer 7
-  - Decal Layer default
-  - Decal Layer 1
-  - Decal Layer 2
-  - Decal Layer 3
-  - Decal Layer 4
-  - Decal Layer 5
-  - Decal Layer 6
-  - Decal Layer 7

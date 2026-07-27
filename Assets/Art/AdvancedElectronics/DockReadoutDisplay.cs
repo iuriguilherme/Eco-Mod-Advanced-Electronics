@@ -150,14 +150,11 @@ public class DockReadoutDisplay : MonoBehaviour
         if (this.readoutText == null)
             return;
 
-        var body = string.Empty;
-        foreach (var line in this.lines)
-        {
-            if (string.IsNullOrEmpty(line))
-                continue;
-            body += line + "\n";
-        }
-
-        this.readoutText.text = $"{body}Coverage: {this.coveragePercent:F0}%";
+        // The world-space text is reserved for the short drone status line only.
+        // lines[0] is the status (server StatusStateName = "ReadoutStatus"). The
+        // detailed per-ore survey + coverage moved to the dock's info-window tooltip
+        // (server DroneDockObject.SurveyReadoutTooltip), so they are intentionally not
+        // rendered here even though the ore/coverage listeners still update their fields.
+        this.readoutText.text = this.lines[0] ?? string.Empty;
     }
 }
