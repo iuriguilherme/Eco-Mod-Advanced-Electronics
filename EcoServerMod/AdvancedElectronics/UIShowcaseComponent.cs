@@ -29,10 +29,20 @@ namespace Eco.Mods.TechTree
     ///    see the sibling component below.
     /// </summary>
     [Serialized, CreateComponentTabLoc("UI Showcase", true), HasIcon]
-    public class UIShowcaseComponent : WorldObjectComponent
+    public class UIShowcaseComponent : WorldObjectComponent, INotifyPropertyChanged
     {
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
+
+        /// <summary>
+        /// v3: [Eco] stopped the click from crashing, but the edited value never stuck -- the
+        /// stepper moved and the number did not. Vanilla components carrying editable [Eco]
+        /// members implement INotifyPropertyChanged (PerformCivicActionComponent does), which is
+        /// the missing half: the write lands, but without a change notification nothing tells the
+        /// view to re-read it. Pairing this with [Serialized] on the members below is the
+        /// hypothesis under test.
+        /// </summary>
+        public event PropertyChangedEventHandler PropertyChanged;
 
         // --- Controls: proven in v1, kept so a regression is obvious at a glance ---
 
@@ -47,24 +57,28 @@ namespace Eco.Mods.TechTree
         //     drops the server, the contract is "editable template needs a reachable setter",
         //     and every interactive template in the 68 opens up. ---
 
-        [Eco, UITypeName("Boolean")]
+        [Serialized, Eco, UITypeName("Boolean")]
         public bool BooleanProbe { get; set; } = true;
 
-        [Eco, UITypeName("Int32")]
+        [Serialized, Eco, UITypeName("Int32")]
         public int Int32Probe { get; set; } = 42;
 
-        [Eco, UITypeName("Single")]
+        [Serialized, Eco, UITypeName("Single")]
         public float SingleProbe { get; set; } = 3.5f;
 
         // --- Display templates worth a second look for the real UI. LongString earned its
         //     place in v1: a labelled multi-line box with its OWN scrollbar, which is the
         //     findings readout solved (fixed height, scrolls internally, panel stays put). ---
 
-        [SyncToView, Autogen, UITypeName("LongString")]
-        public string LongStringProbe { get; private set; } =
-            "LongString again -- this is the shape the survey findings should use. It scrolls " +
-            "inside its own box instead of growing the panel, which is exactly the property the " +
-            "current text-blob readout lacks.";
+        // LongString turned out to be an EDITABLE template, not a display one -- it renders a text
+        // box the player can type into, and typing into it with a private setter crashed the
+        // client exactly as the Range stepper did in v1. Same contract, second confirmation.
+        // Declared editable here so it survives being typed in. If the survey findings want a
+        // read-only scrolling box, that is a different template (StringDescription or a
+        // Deprecated/HeaderList variant) -- this one always accepts input.
+        [Serialized, Eco, UITypeName("LongString")]
+        public string LongStringProbe { get; set; } =
+            "LongString is EDITABLE -- type in it. v2 crashed here because the setter was private.";
 
         [SyncToView, Autogen, UITypeName("SectionHeader")]
         public string SectionHeaderProbe { get; private set; } = "SectionHeader -- grouping";

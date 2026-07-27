@@ -58,7 +58,8 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(SurveyResultsComponent))]
     // TEMPORARY: UI vocabulary probes. Remove both once the layout brainstorm has its screenshots.
     [RequireComponent(typeof(UIShowcaseComponent))]
-    [RequireComponent(typeof(UILayoutProbeComponent))]
+    // BISECT 2026-07-27: container tab disabled -- dock interaction crashed the client with v2.
+    // [RequireComponent(typeof(UILayoutProbeComponent))]
     [Tag("Usable")]
     public class DroneDockObject : WorldObject, IRepresentsItem
     {
