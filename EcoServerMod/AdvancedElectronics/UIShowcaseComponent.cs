@@ -100,8 +100,20 @@ namespace Eco.Mods.TechTree
         // Risk is nil, which is why this one sits on the dock: on a name miss the client logs
         // "Can't convert named type to system type" and View.cs:356-357 RETURNS, skipping the
         // member. A miss renders nothing; it does not throw.
-        [SyncToView, Autogen, UITypeName("ItemInput")]
+        //
+        // Declared BARE, with no UITypeName. Every vanilla scalar Type member is bare
+        // ([SyncToView] alone -- GameValueManager.cs:28, TriggerSettings.cs:31, and note that
+        // last one is called "Icon", so a Type is expected to draw as its item icon). An earlier
+        // draft here guessed UITypeName("ItemInput"); vanilla's only ItemInput usage is on a
+        // LimitedInventory (PictureFrameComponent.cs:46), so that name was wrong for a Type.
+        [SyncToView, Autogen]
         public Type ItemTypeProbe { get; private set; } = typeof(IronOreItem);
+
+        // The same question with an explicit template, because a bare member rendering nothing is
+        // ambiguous: it could mean the type never crossed, or that autogen had no default prefab
+        // for it. Two members separate those two outcomes in one deploy.
+        [SyncToView, Autogen, UITypeName("StringDisplay")]
+        public Type ItemTypeTemplatedProbe { get; private set; } = typeof(CoalItem);
 
         public override void Initialize()
         {
@@ -114,6 +126,7 @@ namespace Eco.Mods.TechTree
             this.Changed(nameof(this.LongStringProbe));
             this.Changed(nameof(this.SectionHeaderProbe));
             this.Changed(nameof(this.ItemTypeProbe));
+            this.Changed(nameof(this.ItemTypeTemplatedProbe));
         }
     }
 
