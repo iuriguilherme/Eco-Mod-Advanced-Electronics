@@ -59,6 +59,12 @@ supplies its model and any in-world visuals.
 Placing an item generally produces a *new* World Object rather than restoring the one that was
 picked up, which is why state living on a World Object does not automatically survive relocation.
 
+The client-side half is a **template**, not a per-object asset: the client holds one inactive copy
+and instantiates an enabled clone for each World Object the server reports. A template shipped
+active breaks that cloning, and the failure looks like a rendering glitch rather than a packaging
+one — the object is listed and located correctly by the server while nothing is drawn, appearing
+only once the area is re-loaded.
+
 ### Name Match
 The rule that binds a World Object's two halves: the client prefab and the server class are linked
 by having the **same name**, with nothing else connecting them.
