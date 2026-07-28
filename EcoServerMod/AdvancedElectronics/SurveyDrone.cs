@@ -91,6 +91,10 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(DroneMoverComponent))]
     [RequireComponent(typeof(OreSensorComponent))]
     [RequireComponent(typeof(DroneLifecycle))]
+    // TEMPORARY v7: the container probe lives here rather than on the dock. A list whose elements
+    // do not deserialize to View disconnects the client from the whole object on interact, so it
+    // is quarantined onto the object the mod can afford to lose. Delete with the other probes.
+    [RequireComponent(typeof(UIContainerProbeComponent))]
     public class SurveyDroneObject : WorldObject
     {
         /// <summary>

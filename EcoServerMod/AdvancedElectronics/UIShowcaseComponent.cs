@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using Eco.Core.Controller;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
+using Eco.Gameplay.Property;
 using Eco.Shared.Items;
 using Eco.Shared.Localization;
 using Eco.Shared.Networking;
@@ -83,6 +85,24 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("SectionHeader")]
         public string SectionHeaderProbe { get; private set; } = "SectionHeader -- grouping";
 
+        // --- v7: the ViewMapper escape hatch (SAFE -- cannot crash). ---
+        //
+        // A mod component has no compiled client view class, so the client rebuilds each member's
+        // type from a NAME through View.cs:100-129. That switch is the real ceiling on what data
+        // can cross to a mod tab: bool/int/float/string/Enum/Range/Color/Vector3i/void, plus
+        // List<View> and Dictionary. Past it there are two fallbacks, and the second is untested:
+        // View.cs:124-126 resolves ANY name registered in ViewMapper.
+        //
+        // A scalar Type member serializes as "ViewClassInfo" (TypeGenerationHelper.cs:62). If
+        // ViewMapper knows that name, an item TYPE can be displayed directly -- icon and localised
+        // name for free, instead of hand-formatting the item name into a text block.
+        //
+        // Risk is nil, which is why this one sits on the dock: on a name miss the client logs
+        // "Can't convert named type to system type" and View.cs:356-357 RETURNS, skipping the
+        // member. A miss renders nothing; it does not throw.
+        [SyncToView, Autogen, UITypeName("ItemInput")]
+        public Type ItemTypeProbe { get; private set; } = typeof(IronOreItem);
+
         public override void Initialize()
         {
             base.Initialize();
@@ -93,56 +113,80 @@ namespace Eco.Mods.TechTree
             this.Changed(nameof(this.StringDisplayProbe));
             this.Changed(nameof(this.LongStringProbe));
             this.Changed(nameof(this.SectionHeaderProbe));
+            this.Changed(nameof(this.ItemTypeProbe));
         }
     }
 
     /// <summary>
-    /// TEMPORARY PROBE v2 -- the container half, still quarantined in its own tab so a failure
-    /// costs only this tab.
+    /// TEMPORARY PROBE v7 -- the container question, reopened after reading the client source.
     ///
-    /// v1 put UITypeName("ButtonGrid") on a string and got a blank tab that also swallowed the
-    /// two buttons below it. The mistake was the attribute AND the type: containers are declared
-    /// with UIListTypeName on a collection. Vanilla drives a whole grid of civic-action buttons
-    /// from IEnumerable&lt;Type&gt; that way -- see PerformCivicActionComponent.cs:41-42, which is
-    /// also a COMPUTED GETTER, so collections do not follow the "must be settable and assigned"
-    /// rule that scalars do.
+    /// v5/v6 concluded "containers are closed to mods" because IEnumerable&lt;Type&gt; crashed with
+    /// BOTH mod and vanilla element types. That inference was wrong: IronOreItem and
+    /// SurveyDroneItem are both Type VALUES, so neither run varied the thing that decides it.
     ///
-    /// Elements are Type because the client already has a view for it; a mod-defined element type
-    /// does not, which is what made the old IEnumerable&lt;string&gt; attempt crash.
+    /// The client log gives the mechanism (Player.log, not the server's Logs/):
     ///
-    /// If ButtonGrid renders here, the six-button assign cap dies: the areas list becomes a
-    /// generated grid instead of a hand-written pool of RPC methods.
+    ///     InvalidCastException: Unable to cast object of type 'ViewClassInfo' to type 'View'.
+    ///       at Eco.Shared.Utils.ListExtensions.FromBson[T](IList`1[T], BSONArray)
+    ///
+    /// Chain, all read at the tree:
+    ///   ControllerMarshalerService.cs:451-455  every IEnumerable member is typed
+    ///                                          "IEnumerableView"; element type is carried in a
+    ///                                          SEPARATE listTypeName field.
+    ///   TypeGenerationHelper.cs:62             a Type element generates as ViewClassInfo.
+    ///   View.cs:337-343                        VANILLA path: a compiled, code-generated view
+    ///                                          class supplies the true List&lt;ViewClassInfo&gt;.
+    ///   View.cs:345-359                        MOD path: no compiled class, so the type is
+    ///                                          rebuilt from the name string.
+    ///   View.cs:114                            "IEnumerableView" =&gt; typeof(List&lt;View&gt;),
+    ///                                          DISCARDING listTypeName. ViewClassInfo is not a
+    ///                                          View, so the cast throws.
+    ///
+    /// So the rule is not "no containers", it is: A MOD LIST'S ELEMENTS MUST DESERIALIZE TO View.
+    /// Type does not. Neither does string -- which is why the old IEnumerable&lt;string&gt; crash
+    /// named Eco.Shared.View.View as its target type too. Same line of client code, twice.
+    ///
+    /// This probe finally varies the right axis: elements that ARE controllers with client views.
+    /// Deed is the vanilla precedent (DeedManagementComponent.cs:19 syncs IEnumerable&lt;Deed&gt;)
+    /// and WorldObject is the one every mod already has a handle on via this.Parent.
+    ///
+    /// If either renders, Table and ButtonGrid come back and the six-button assign pool dies.
+    ///
+    /// QUARANTINED ON THE DRONE, NOT THE DOCK. A container failure is not a blank tab -- it is
+    /// "Failed to receive views from the server" and a full client DISCONNECT on interact, so
+    /// per-tab quarantine never actually worked. Per-OBJECT quarantine does: if this crashes,
+    /// only the drone becomes un-interactable and the dock (with the safe probes above) stays
+    /// testable in the same deploy.
     /// </summary>
-    [Serialized, CreateComponentTabLoc("UI Layout", true), HasIcon]
-    public class UILayoutProbeComponent : WorldObjectComponent
+    [Serialized, CreateComponentTabLoc("UI Containers", true), HasIcon]
+    public class UIContainerProbeComponent : WorldObjectComponent
     {
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
 
         [SyncToView, Autogen, UITypeName("StringDisplay")]
-        public string LayoutProbeNote { get; private set; } =
-            "v2: UIListTypeName on IEnumerable<Type>, per PerformCivicActionComponent.";
+        public string ContainerProbeNote { get; private set; } =
+            "v7: elements are controllers (Deed, WorldObject), not Type. If these render, " +
+            "the client's List<View> demand is satisfiable from a mod and containers are open.";
 
-        /// <summary>A grid of buttons generated from a collection.</summary>
-        [Autogen, SyncToView, UIListTypeName("ButtonGrid")]
-        public IEnumerable<Type> ButtonGridProbe => new[]
-        {
-            typeof(IronOreItem),
-            typeof(CoalItem),
-        };
-
-        /// <summary>Same collection as a table, to compare the two list templates side by side.</summary>
+        /// <summary>
+        /// The vanilla precedent, copied to a mod component. Capped at three so a populated world
+        /// does not turn the probe into a wall of deeds.
+        /// </summary>
         [Autogen, SyncToView, UIListTypeName("Table")]
-        public IEnumerable<Type> TableProbe => new[]
-        {
-            typeof(IronOreItem),
-            typeof(CoalItem),
-        };
+        public IEnumerable<Deed> DeedTableProbe => PropertyManager.GetAllDeeds().Take(3);
+
+        /// <summary>
+        /// Same question via a handle every mod component already has. If Deed renders and this
+        /// does not, the difference is the element type's own view, not the container.
+        /// </summary>
+        [Autogen, SyncToView, UIListTypeName("ButtonGrid")]
+        public IEnumerable<WorldObject> ObjectGridProbe => new[] { this.Parent };
 
         public override void Initialize()
         {
             base.Initialize();
-            this.Changed(nameof(this.LayoutProbeNote));
+            this.Changed(nameof(this.ContainerProbeNote));
         }
     }
 }

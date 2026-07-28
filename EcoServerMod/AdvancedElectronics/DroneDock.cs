@@ -56,11 +56,11 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(OccupancyRequirementComponent))]
     [RequireComponent(typeof(SurveyAreasComponent))]
     [RequireComponent(typeof(SurveyResultsComponent))]
-    // TEMPORARY: UI vocabulary probes. Remove both once the layout brainstorm has its screenshots.
+    // TEMPORARY: UI vocabulary probes. Remove once the layout brainstorm has its screenshots.
+    // v7 keeps ONLY the safe probes here. The container probe moved to SurveyDroneObject,
+    // because a container failure disconnects the client from the whole object, not just the
+    // tab -- so the dock has to stay clean for its results to be readable at all.
     [RequireComponent(typeof(UIShowcaseComponent))]
-    // Re-enabled 2026-07-27 v5: the earlier crash was the LongString edit, not this tab.
-    // CLOSED 2026-07-27 v6: containers crash regardless of element type. Do not re-enable.
-    // [RequireComponent(typeof(UILayoutProbeComponent))]
     [Tag("Usable")]
     public class DroneDockObject : WorldObject, IRepresentsItem
     {
