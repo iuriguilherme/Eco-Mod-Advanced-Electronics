@@ -153,7 +153,8 @@ Practical consequence today is unchanged — no `Table` over item types, no gene
 a fixed pool of `[RPC]` methods is still how you offer N buttons and multi-column data stays
 composed text. But record it as *unsolved*, not *impossible*.
 
-The exception is in the **client** log — `%LOCALAPPDATA%Low\Strange Loop Games\Eco\Player.log`, not
+The exception is in the **client** log —
+`%USERPROFILE%\AppData\LocalLow\Strange Loop Games\Eco\Player.log`, not
 the server's `Logs/`. The client's own crash dialog renders off-screen with only its OK button
 reachable, which is what made this look undiagnosable; the full stack trace was on disk throughout.
 
