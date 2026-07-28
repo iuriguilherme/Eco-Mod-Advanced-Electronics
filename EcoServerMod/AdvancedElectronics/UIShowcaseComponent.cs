@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using Eco.Core.Controller;
+using Eco.Core.Utils;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
 using Eco.Gameplay.Property;
@@ -191,23 +192,91 @@ namespace Eco.Mods.TechTree
             "the client's List<View> demand is satisfiable from a mod and containers are open.";
 
         /// <summary>
-        /// The vanilla precedent, copied to a mod component. Capped at three so a populated world
-        /// does not turn the probe into a wall of deeds.
+        /// v8 CONTROL, kept deliberately. Result: renders a header and NO rows, with no error
+        /// logged anywhere. This is the [SyncToView] IEnumerable shape, and blank-with-no-error
+        /// is what it does -- for a vanilla element type as much as a mod one.
         /// </summary>
         [Autogen, SyncToView, UIListTypeName("Table")]
         public IEnumerable<Deed> DeedTableProbe => PropertyManager.GetAllDeeds().Take(3);
 
         /// <summary>
-        /// Same question via a handle every mod component already has. If Deed renders and this
-        /// does not, the difference is the element type's own view, not the container.
+        /// v8 CONTROL. One element (this.Parent), rendered nothing at all. Kept so v9 can tell a
+        /// changed result from a changed world.
         /// </summary>
         [Autogen, SyncToView, UIListTypeName("ButtonGrid")]
         public IEnumerable<WorldObject> ObjectGridProbe => new[] { this.Parent };
+
+        // --- v9: the shape vanilla actually uses for lists. ---
+        //
+        // There are only five UIListTypeName usages in the whole game and FOUR are this one:
+        //
+        //     [Eco, AllowEmpty, UIListTypeName("IEnumerableHeader"), AllowCopyPaste]
+        //     public ControllerList<GameValue<bool>> List { get; set; }
+        //
+        // ControllerList<T> : ThreadSafeList<T>, IClientControlledList, declared [Eco] rather than
+        // [SyncToView], and constructed with a back-reference in the owner's constructor
+        // (LawSection.cs:70-73). The [SyncToView] IEnumerable form I copied in v7/v8 is the
+        // OUTLIER, 1 of 5 -- and it is the one that renders blank.
+        //
+        // Two elements, to separate two questions in one restart:
+        //   DeedControllerList -- vanilla element with a known client view. Isolates the
+        //                         CONTAINER shape: if this fills, ControllerList is the answer.
+        //   ModRowList         -- mod-defined element. Isolates the ELEMENT: if the vanilla one
+        //                         fills and this does not, mod row types are the wall, and that
+        //                         is the real ceiling on a rich per-row list of our own data.
+
+        [Eco, AllowEmpty, UIListTypeName("IEnumerableHeader")]
+        public ControllerList<Deed> DeedControllerList { get; set; }
+
+        [Eco, AllowEmpty, UIListTypeName("IEnumerableHeader")]
+        public ControllerList<ProbeRow> ModRowList { get; set; }
+
+        public UIContainerProbeComponent()
+        {
+            // Vanilla builds these in the owner's ctor with a back-reference naming the property
+            // (LawSection.cs:70-73); the list needs the owner to route change notifications.
+            this.DeedControllerList = new ControllerList<Deed>(this, nameof(this.DeedControllerList));
+            this.ModRowList         = new ControllerList<ProbeRow>(this, nameof(this.ModRowList));
+        }
 
         public override void Initialize()
         {
             base.Initialize();
             this.Changed(nameof(this.ContainerProbeNote));
+
+            // Seed both lists so an empty render means "did not sync", not "nothing to show".
+            if (this.ModRowList.Count == 0)
+            {
+                this.ModRowList.Add(new ProbeRow { Label = "mod row one" });
+                this.ModRowList.Add(new ProbeRow { Label = "mod row two" });
+            }
+
+            if (this.DeedControllerList.Count == 0)
+                foreach (var deed in PropertyManager.GetAllDeeds().Take(2))
+                    this.DeedControllerList.Add(deed);
         }
+    }
+
+    /// <summary>
+    /// TEMPORARY PROBE v9 -- a mod-defined ControllerList row.
+    ///
+    /// Modelled on IfThenBlock (Civics/Laws/IfThenBlock.cs:24-25), the vanilla row type:
+    /// [Serialized] on the class, IController + INotifyPropertyChanged, and [Eco] members for
+    /// whatever the row shows.
+    ///
+    /// The open question is whether a mod can supply a row type at all. Vanilla row types are
+    /// woven by Eco.Fody at build time; this mod project references only Eco.ReferenceAssemblies
+    /// and runs no weaver, so IController's ControllerID has to be implemented by hand. If that
+    /// is not enough, this is where it shows.
+    /// </summary>
+    [Serialized]
+    public class ProbeRow : IController, INotifyPropertyChanged
+    {
+        [Eco] public string Label { get; set; } = "row";
+
+        int controllerID = -1;
+        public ref int ControllerID => ref this.controllerID;
+
+        public event PropertyChangedEventHandler PropertyChanged;
     }
 }
