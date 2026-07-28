@@ -192,8 +192,8 @@ namespace Eco.Mods.TechTree
         // out of the server log. A probe should identify itself on screen.
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string ContainerProbeNote { get; private set; } =
-            "v10: ControllerList + IHasClientControlledContainers on the component. " +
-            "Two seeded lists below (2 deeds, 2 mod rows). Blank here means the list did not sync.";
+            "v11: rows now name their own UI via UITypeName (Selector for deeds, HorzBox for mod " +
+            "rows) alongside UIListTypeName for the container. 2 deeds + 2 mod rows are seeded.";
 
         /// <summary>
         /// v8 CONTROL, kept deliberately. Result: renders a header and NO rows, with no error
@@ -240,10 +240,29 @@ namespace Eco.Mods.TechTree
         // implementing it costs exactly one identifier in the class declaration and no bodies.
         // v9's lists were declared correctly but had no client-side RPCs to manage them, which
         // is consistent with what was observed: they synced without error and rendered nothing.
-        [Eco, AllowEmpty, UIListTypeName("IEnumerableHeader")]
+        // v11: name the ROW UI as well as the container.
+        //
+        // From SLG's own wiki (Eco.wiki/UI-System.md:9):
+        //
+        //   "The [UIListTypeName] names the game object to make the list from. For non-lists
+        //    (OR THE UI USED ON EACH LIST ELEMENT) you can tag [UITypeName]."
+        //
+        // Two tags, two jobs: UIListTypeName is the container, UITypeName is each row. The client
+        // agrees at AutoGenUIPicker.cs:31-32, where the row lookup (inList == true) reads
+        // prop.UITypeName. I read that line hours ago and parsed "(!prop.IsList || inList)" as
+        // "non-lists only", so I never set the row half on any of v7-v10.
+        //
+        // Vanilla list members do not set UITypeName, which is why copying them did not reveal
+        // this: vanilla ROW TYPES have their own prefabs in UI/Prefabs/Components/AutoGenUI, found
+        // by name at AutoGenUIPicker.cs:56 (GetPrefabByName on the element type name). IfThenBlock
+        // and LegalAction resolve that way. A mod row type has no prefab and never can, so naming
+        // an existing row UI explicitly is the documented path for exactly this case.
+        //
+        // Two different row UIs, to get two data points from one restart.
+        [Eco, AllowEmpty, UIListTypeName("IEnumerableHeader"), UITypeName("Selector")]
         public ControllerList<Deed> DeedControllerList { get; set; }
 
-        [Eco, AllowEmpty, UIListTypeName("IEnumerableHeader")]
+        [Eco, AllowEmpty, UIListTypeName("IEnumerableHeader"), UITypeName("HorzBox")]
         public ControllerList<ProbeRow> ModRowList { get; set; }
 
         public UIContainerProbeComponent()
