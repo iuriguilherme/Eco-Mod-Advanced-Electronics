@@ -97,23 +97,29 @@ namespace Eco.Mods.TechTree
         // ViewMapper knows that name, an item TYPE can be displayed directly -- icon and localised
         // name for free, instead of hand-formatting the item name into a text block.
         //
-        // Risk is nil, which is why this one sits on the dock: on a name miss the client logs
-        // "Can't convert named type to system type" and View.cs:356-357 RETURNS, skipping the
-        // member. A miss renders nothing; it does not throw.
+        // ANSWERED 2026-07-27 v7, and the answer is NO -- both members removed.
         //
-        // Declared BARE, with no UITypeName. Every vanilla scalar Type member is bare
-        // ([SyncToView] alone -- GameValueManager.cs:28, TriggerSettings.cs:31, and note that
-        // last one is called "Icon", so a Type is expected to draw as its item icon). An earlier
-        // draft here guessed UITypeName("ItemInput"); vanilla's only ItemInput usage is on a
-        // LimitedInventory (PictureFrameComponent.cs:46), so that name was wrong for a Type.
-        [SyncToView, Autogen]
-        public Type ItemTypeProbe { get; private set; } = typeof(IronOreItem);
-
-        // The same question with an explicit template, because a bare member rendering nothing is
-        // ambiguous: it could mean the type never crossed, or that autogen had no default prefab
-        // for it. Two members separate those two outcomes in one deploy.
-        [SyncToView, Autogen, UITypeName("StringDisplay")]
-        public Type ItemTypeTemplatedProbe { get; private set; } = typeof(CoalItem);
+        // A scalar Type member does not reach a mod tab. The client names it "TypeView", and
+        // ViewMapper has no entry for that, so View.cs:128 logs
+        //
+        //     View errors: Can't convert named type to system type: TypeView
+        //
+        // and View.cs:356-357 returns without ever setting the value. Note this corrects an
+        // earlier reading of mine: the member's NAME is "TypeView", not "ViewClassInfo".
+        // TypeGenerationHelper.cs:62 (which does say ViewClassInfo) is a different function from
+        // the one that names members -- ControllerMarshalerService.GetViewTypeName, which is
+        // simply <TypeName> + "View". The list-element crash proves VALUES serialize as
+        // ViewClassInfo objects; the member NAME is a separate thing, and I had conflated them.
+        //
+        // Worse than blank, it renders a trap: autogen still builds an AutoGenSelector row for
+        // the member, showing "None.". Clicking its chevron passes the null type into
+        // SelectorPopupUI.InitFlexible, which throws NullReferenceException in
+        // ViewClassInfo.DerivesType and strands the popup's search box at screen origin. The
+        // client survives, but the UI is left visibly broken.
+        //
+        // So the ViewMapper fallback at View.cs:124-126 is NOT a general escape hatch for
+        // arbitrary registered types -- at least not for Type. Displaying an item needs its
+        // localised name composed into a text block, as the shipping code already does.
 
         public override void Initialize()
         {
@@ -125,8 +131,6 @@ namespace Eco.Mods.TechTree
             this.Changed(nameof(this.StringDisplayProbe));
             this.Changed(nameof(this.LongStringProbe));
             this.Changed(nameof(this.SectionHeaderProbe));
-            this.Changed(nameof(this.ItemTypeProbe));
-            this.Changed(nameof(this.ItemTypeTemplatedProbe));
         }
     }
 
@@ -165,11 +169,15 @@ namespace Eco.Mods.TechTree
     ///
     /// If either renders, Table and ButtonGrid come back and the six-button assign pool dies.
     ///
-    /// QUARANTINED ON THE DRONE, NOT THE DOCK. A container failure is not a blank tab -- it is
-    /// "Failed to receive views from the server" and a full client DISCONNECT on interact, so
-    /// per-tab quarantine never actually worked. Per-OBJECT quarantine does: if this crashes,
-    /// only the drone becomes un-interactable and the dock (with the safe probes above) stays
-    /// testable in the same deploy.
+    /// v7 quarantined this on the drone. That was wasted: a drone window renders no tabs at all,
+    /// so the probe never ran -- no render, no log line, no crash. Absence of a crash there was
+    /// absence of the component, not evidence about containers. v8 puts it back on the dock,
+    /// which is the only object in this mod that reliably shows a mod tab.
+    ///
+    /// Read ContainerProbeNote FIRST. It is a plain StringDisplay, a template already proven to
+    /// work, declared before either list. If the tab shows the note but no lists, the lists
+    /// failed. If the tab is empty or missing entirely, the component never attached and the
+    /// lists are still untested -- which is exactly the ambiguity v7 fell into.
     /// </summary>
     [Serialized, CreateComponentTabLoc("UI Containers", true), HasIcon]
     public class UIContainerProbeComponent : WorldObjectComponent

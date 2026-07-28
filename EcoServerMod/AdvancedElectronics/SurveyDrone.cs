@@ -91,10 +91,14 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(DroneMoverComponent))]
     [RequireComponent(typeof(OreSensorComponent))]
     [RequireComponent(typeof(DroneLifecycle))]
-    // TEMPORARY v7: the container probe lives here rather than on the dock. A list whose elements
-    // do not deserialize to View disconnects the client from the whole object on interact, so it
-    // is quarantined onto the object the mod can afford to lose. Delete with the other probes.
-    [RequireComponent(typeof(UIContainerProbeComponent))]
+    // v7 put the container probe here to quarantine it. That failed: the drone is not a usable
+    // probe host. Its window opens with NO tabs and no content at all -- adding a
+    // [RequireComponent] does not retroactively attach to world objects that were already
+    // persisted, and every drone in the test world is a pre-existing orphan (Task #25). The probe
+    // produced no render and no log line, so it never ran. Moved to DroneDockObject in v8.
+    //
+    // Also visible in that screenshot: this class has no [LocDisplayName], so its window titles
+    // itself "Editable Title". The [LocDisplayName("Survey Drone")] above is on the ITEM.
     public class SurveyDroneObject : WorldObject
     {
         /// <summary>
