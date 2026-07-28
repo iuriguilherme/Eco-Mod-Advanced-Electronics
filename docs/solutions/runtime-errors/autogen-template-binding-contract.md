@@ -1,6 +1,7 @@
 ---
 title: "Autogen UI templates fail three different ways: blank, missing, or a server-killing Missing RPC call Set<Prop>"
 date: 2026-07-27
+last_updated: 2026-07-27
 category: runtime-errors
 module: EcoServerMod
 problem_type: runtime_error
@@ -81,15 +82,32 @@ Match all three parts. The rules, each grounded in a working usage:
 **Display scalar** — `[SyncToView, Autogen, UITypeName("X")]`, settable property, assigned a value,
 and `Changed(nameof(...))` pushed. A never-assigned computed getter draws blank.
 
-**Editable scalar** — declare it `[Eco]` with a **public setter**:
+**Editable scalar** — `[Serialized, Eco]` with a **public setter**. Numerics additionally need
+**`Range(min, max)`**; without bounds every edit clamps straight back to the original value, and the
+`Range` *template* renders as an empty "0 to 0" interval:
 
 ```csharp
-[Eco, UITypeName("Boolean")] public bool BooleanProbe { get; set; } = true;
-[Eco, UITypeName("Int32")]   public int  Int32Probe   { get; set; } = 42;
+[Serialized, Eco, UITypeName("Boolean")]              public bool  BooleanProbe { get; set; } = true;
+[Serialized, Eco, Range(0, 100), UITypeName("Int32")] public int   Int32Probe   { get; set; } = 42;
+[Serialized, Eco, Range(0, 10),  UITypeName("Single")] public float SingleProbe { get; set; } = 3.5f;
 ```
 
 `[Eco]` is the attribute the already-working `MaterialTargets` picker uses, and it is what makes the
-setter reachable. *(Deployed as the fix for symptom 1; not yet re-verified live at time of writing.)*
+setter reachable. Verified live: text and numeric edits both save and survive a restart. Vanilla
+carries the same bounds — `Server/Eco.Gameplay/Components/Collection/PickupBountyComponent.cs:64`
+is `[Eco, Range(-10000, 10000)] public float`. *(That component is newer; the long-stable references
+are store prices and law values, which agree.)*
+
+**Live refresh is a fourth requirement, separate from persistence.** With the above, a write lands
+and survives a restart but the on-screen value does not update until the window is reopened.
+Components carrying editable `[Eco]` members implement `INotifyPropertyChanged` — and declaring the
+interface is not enough, the event has to actually be **raised**. Declared-but-never-raised is
+exactly the persist-but-don't-refresh symptom.
+
+**`LongString` is an EDITABLE template, not a display one.** It renders a typable box, so it belongs
+in the editable group above; giving it a private setter crashes on the first keystroke, exactly like
+a numeric stepper. A read-only scrolling readout needs a different template. This correction matters
+because the template's *appearance* (a bordered, scrolling text area) reads as a display widget.
 
 **Container / list** — `UIListTypeName` on a **collection**, not `UITypeName` on a scalar, and the
 element must be a type the client already has a view for. Vanilla's reference shape, driving a whole
@@ -102,9 +120,27 @@ public IEnumerable<Type> AvailableCivicActions => CivicsManager.Obj.GetCivicActi
 
 Two details in that line are easy to miss and both matter: it is a **computed getter**, so the
 "must be settable and assigned" rule for scalars does **not** apply to collections; and the element
-type is `Type`, a game type with a generated client view — a mod-defined element type has none,
-which is what made an earlier `IEnumerable<string>` attempt crash with
-`Cannot convert String to View`.
+type is `Type`, a game type with a generated client view.
+
+**However — containers do not work from a mod component at all.** Copying that declaration exactly
+still crashes the dock window on interaction. Tested across six builds:
+
+| Elements | Result |
+|---|---|
+| `SurveyDroneItem`, `DroneDockItem` (mod types) | crash |
+| `IronOreItem`, `CoalItem` (vanilla types) | crash |
+| container member absent | works |
+
+Since vanilla element types crash identically, **the element type is not the variable** —
+`UIListTypeName` containers are unreachable from a mod `WorldObjectComponent`, and the earlier
+`IEnumerable<string>` crash was a symptom of the same wall rather than a type mismatch. The
+practical consequence: no `Table` for tabular data and no `ButtonGrid` for a generated button list,
+so a fixed pool of `[RPC]` methods remains the only way to offer N buttons, and multi-column data
+stays composed text.
+
+The exception text is unavailable: the client's crash dialog renders off-screen with only its OK
+button reachable, and the server log stays clean because the throw happens client-side during view
+construction. Diagnosis was by bisection, not by reading an error.
 
 ## Why This Works
 
