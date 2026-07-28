@@ -107,11 +107,19 @@ namespace Eco.Mods.TechTree
         [Serialized, Eco, Range(0, 10), UITypeName("Single")]
         public float T_Single { get; set; } = 3.5f;
 
-        // Range wants a range-shaped value, not a scalar -- on a float it drew an empty "0 to 0"
-        // interval in an earlier build. Kept to confirm that reading, because coverage-as-a-meter is
-        // a ranked candidate and this is the nearest template in the set.
-        [Serialized, Eco, Range(0, 100), UITypeName("Range")]
-        public float T_Range { get; set; } = 60f;
+        // Range is REMOVED, and it is the counterexample to "scalars are safe". On a float it drew
+        // an empty "0 to 0" interval in an earlier build, so its value shape was already known to be
+        // wrong -- but it was left declared editable anyway, and merely HOVERING it dropped the
+        // server:
+        //
+        //     Could not finding matching RPC signature for method: SetT_Range
+        //     ---> System.NotSupportedException: Specified method is not supported.
+        //
+        // The crash-safety argument only covers an UNKNOWN template name, which the client logs and
+        // skips (View.cs:356). A KNOWN template bound to a mismatched value shape still generates a
+        // setter RPC, and the server throws when it cannot match the signature. So the real rule is:
+        // an editable template is only safe when the member type matches the shape the template
+        // expects. Range needs a range-shaped value; there is no float form of it.
 
         // Per-area colour, which would tie the dock's area list to the colours already cycled onto
         // the map entries -- currently two surfaces showing the same areas with no shared colour.
