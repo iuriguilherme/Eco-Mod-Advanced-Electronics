@@ -1,7 +1,7 @@
 ---
 title: "Autogen UI templates fail three different ways: blank, missing, or a server-killing Missing RPC call Set<Prop>"
 date: 2026-07-27
-last_updated: 2026-07-27
+last_updated: 2026-07-28
 category: runtime-errors
 module: EcoServerMod
 problem_type: runtime_error
@@ -12,6 +12,7 @@ symptoms:
   - "Interacting with the object disconnects the client: Failed to receive views from the server, InvalidCastException: Unable to cast object of type 'ViewClassInfo' to type 'View'"
   - "A member declared with UITypeName renders nothing at all, and takes the members below it down with it"
   - "A template renders but shows the wrong control shape (two fields where one was expected)"
+  - "An edited value persists across a restart but the on-screen control never updates until the window is reopened"
 root_cause: wrong_api
 resolution_type: code_fix
 applies_when:
@@ -99,16 +100,59 @@ carries the same bounds — `Server/Eco.Gameplay/Components/Collection/PickupBou
 is `[Eco, Range(-10000, 10000)] public float`. *(That component is newer; the long-stable references
 are store prices and law values, which agree.)*
 
-**Live refresh is a fourth requirement, separate from persistence.** With the above, a write lands
-and survives a restart but the on-screen value does not update until the window is reopened.
-Components carrying editable `[Eco]` members implement `INotifyPropertyChanged` — and declaring the
-interface is not enough, the event has to actually be **raised**. Declared-but-never-raised is
-exactly the persist-but-don't-refresh symptom.
+**Live refresh is a fourth requirement, separate from persistence — PROVEN 2026-07-28.** An
+auto-property `[Serialized, Eco]` member persists a write and survives a restart, but the on-screen
+value never moves until the window is reopened: the stepper clicks, the number does not change, and
+the new value only appears after the next restart. `[Eco]` change tracking alone does not refresh a
+mod component's view. Declaring `INotifyPropertyChanged` on the component is likewise not enough —
+the notification has to be **raised**.
 
-**`LongString` is an EDITABLE template, not a display one.** It renders a typable box, so it belongs
-in the editable group above; giving it a private setter crashes on the first keystroke, exactly like
-a numeric stepper. A read-only scrolling readout needs a different template. This correction matters
-because the template's *appearance* (a bordered, scrolling text area) reads as a display widget.
+This was settled by an A/B in one deploy: two adjacent `Int32` members, identical but for the setter.
+
+```csharp
+// Control -- persists, never refreshes on screen.
+[Serialized, Eco, Range(0, 100), UITypeName("Int32")]
+public int T_Int32 { get; set; } = 42;
+
+// Refreshes live. An explicit backing field is required, because an auto-property
+// gives you no setter body to push from.
+int t_Int32Live = 7;
+
+[Serialized, Eco, Range(0, 100), UITypeName("Int32")]
+public int T_Int32Live
+{
+    get => this.t_Int32Live;
+    set
+    {
+        this.t_Int32Live = value;
+        this.Changed(nameof(this.T_Int32Live));
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.T_Int32Live)));
+    }
+}
+```
+
+Live updated on screen; the control did not. Both persisted. **So any editable member a player is
+meant to watch needs an explicit backing field and a push in the setter** — this is what makes a mod
+tab's controls feel alive rather than dead, and it is a per-member cost, not a one-line component fix.
+
+**Two templates LOOK like display and are actually EDITABLE: `LongString` and `StringDescription`.**
+Both render as bordered, high-contrast text areas that read as readouts, and both crash on the first
+keystroke when given a private setter — `Missing RPC call SetLongStringProbe`, then
+`Missing RPC call SetT_StringDescription` for the same reason weeks apart. Declare them
+`[Serialized, Eco]` with a public setter. A genuinely read-only multi-line readout needs a different
+template; appearance is not evidence of read-only-ness in this vocabulary.
+
+**Some templates render but cannot persist, and no attribute fixes it.** `UITypeName("Color")` draws
+a working colour picker from a mod tab, but the chosen colour is gone after a restart:
+`Eco.Shared.Utils.Color` (`Server/Eco.Shared/Utils/Color.cs:13`) is a plain `struct` with no
+`[Serialized]` attribute of its own, so `[Serialized]` on the *property* has nothing to write.
+Vanilla contains **zero** `UITypeName("Color")` usages, so there is no reference shape to copy either.
+To offer a colour, store a serializable value (an index or name) and map it to a `Color` for display.
+
+**Unexplained, recorded rather than guessed at:** `StringPlaqueEditable` accepts typed text but does
+not persist across a restart, on the same `[Serialized, Eco]` + public-setter shape that works for
+`LongString`, `StringInput` and `StringDescription`. Do not assume the shape is sufficient for every
+text template.
 
 **Container / list** — `UIListTypeName` on a **collection**, not `UITypeName` on a scalar, and the
 element must be a type the client already has a view for. Vanilla's reference shape, driving a whole
