@@ -7,6 +7,7 @@ using Eco.Core.Utils;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
 using Eco.Gameplay.Property;
+using Eco.Gameplay.Utils;
 using Eco.Shared.Items;
 using Eco.Shared.Localization;
 using Eco.Shared.Networking;
@@ -181,15 +182,18 @@ namespace Eco.Mods.TechTree
     /// lists are still untested -- which is exactly the ambiguity v7 fell into.
     /// </summary>
     [Serialized, CreateComponentTabLoc("UI Containers", true), HasIcon]
-    public class UIContainerProbeComponent : WorldObjectComponent
+    public class UIContainerProbeComponent : WorldObjectComponent, IHasClientControlledContainers
     {
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
 
+        // ALWAYS name the build here. v9 rendered identically to v8 and this note still read
+        // "v7", so the screenshot could not confirm which DLL was loaded -- that had to be dug
+        // out of the server log. A probe should identify itself on screen.
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string ContainerProbeNote { get; private set; } =
-            "v7: elements are controllers (Deed, WorldObject), not Type. If these render, " +
-            "the client's List<View> demand is satisfiable from a mod and containers are open.";
+            "v10: ControllerList + IHasClientControlledContainers on the component. " +
+            "Two seeded lists below (2 deeds, 2 mod rows). Blank here means the list did not sync.";
 
         /// <summary>
         /// v8 CONTROL, kept deliberately. Result: renders a header and NO rows, with no error
@@ -225,6 +229,17 @@ namespace Eco.Mods.TechTree
         //                         fills and this does not, mod row types are the wall, and that
         //                         is the real ceiling on a rich per-row list of our own data.
 
+        // v10 adds the piece v9 was missing. Every vanilla owner of a ControllerList implements
+        // IHasClientControlledContainers, and the interface's own comment says why:
+        //
+        //   "If any class has lists that need to be managed by RPCs from the client, add this
+        //    interface and it will automatically get all those RPCs it needs."
+        //    -- ControllerListExtensions.cs:35-37
+        //
+        // It is declared [ForceCreateView] and every member is a DEFAULT interface method, so
+        // implementing it costs exactly one identifier in the class declaration and no bodies.
+        // v9's lists were declared correctly but had no client-side RPCs to manage them, which
+        // is consistent with what was observed: they synced without error and rendered nothing.
         [Eco, AllowEmpty, UIListTypeName("IEnumerableHeader")]
         public ControllerList<Deed> DeedControllerList { get; set; }
 
