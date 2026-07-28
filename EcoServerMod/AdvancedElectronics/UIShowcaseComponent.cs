@@ -67,8 +67,12 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("String")]
         public string T_String { get; private set; } = "String";
 
-        [SyncToView, Autogen, UITypeName("StringDescription")]
-        public string T_StringDescription { get; private set; } =
+        // MOVED to editable after a live crash. Declared display-only with a private setter, editing
+        // it dropped the server with "Missing RPC call SetT_StringDescription". That is the second
+        // member of the looks-like-display-but-is-editable family, after LongString -- the black
+        // full-width bar reads as a readout, and it accepts input.
+        [Serialized, Eco, UITypeName("StringDescription")]
+        public string T_StringDescription { get; set; } =
             "StringDescription -- multi-line candidate for findings. Limestone: ~210 blocks, " +
             "shallowest at (412, 63, -88), depth 2-14. IronOre: ~48 blocks, depth 9-22.";
 
@@ -121,10 +125,40 @@ namespace Eco.Mods.TechTree
         // an editable template is only safe when the member type matches the shape the template
         // expects. Range needs a range-shaped value; there is no float form of it.
 
-        // Per-area colour, which would tie the dock's area list to the colours already cycled onto
-        // the map entries -- currently two surfaces showing the same areas with no shared colour.
-        [Serialized, Eco, UITypeName("Color")]
+        // Renders a real colour picker, but the chosen colour does NOT survive a restart, and
+        // [Serialized] is dropped here because it cannot help: Eco.Shared.Utils.Color is a plain
+        // struct with no [Serialized] attribute of its own, so the serializer has nothing to write.
+        // Vanilla has zero UITypeName("Color") usages, so there is no reference shape to copy.
+        // Keep it in the showcase as a rendering data point; treat per-area colour as unavailable
+        // until something serializable backs it (e.g. store an int/string and map it to a Color).
+        [Eco, UITypeName("Color")]
         public Color T_Color { get; set; } = Color.Green;
+
+        // ---- Live-refresh experiment (ONE member, so the result is unambiguous). ----
+        //
+        // Every editable member so far writes and persists but does not update on screen until the
+        // window is reopened or the server restarts -- the steppers move and the number does not.
+        // The recorded rule is that [Eco] change tracking is not enough on a mod component:
+        // INotifyPropertyChanged must be RAISED, and declaring the interface (as this class does)
+        // without ever firing it is exactly the persist-but-do-not-refresh symptom.
+        //
+        // This is the highest-value open question for the real dock UI, because it is what makes
+        // the current assign buttons feel dead. T_Int32Live pushes the change explicitly; T_Int32
+        // above is the unchanged control. If Live updates on screen and the control does not, the
+        // fix for the whole interface is one Changed() call per setter.
+        int t_Int32Live = 7;
+
+        [Serialized, Eco, Range(0, 100), UITypeName("Int32")]
+        public int T_Int32Live
+        {
+            get => this.t_Int32Live;
+            set
+            {
+                this.t_Int32Live = value;
+                this.Changed(nameof(this.T_Int32Live));
+                this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.T_Int32Live)));
+            }
+        }
 
         public override void Initialize()
         {
