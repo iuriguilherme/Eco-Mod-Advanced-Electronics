@@ -109,12 +109,29 @@ window (verified live on the Drone Dock). Inside it:
   collection of a mod-defined `IController` renders **blank** in the generic auto-view (it does
   not crash the way an `IEnumerable<string>` does, but it shows nothing).
 
-  **Corrected 2026-07-27:** the conclusion drawn from this — *"lists are impossible, compose
-  text"* — was too broad. An `IEnumerable` template exists in the shipped set, so the failure was
-  the **element type** (elements must be View types; a mod-defined type has no generated client
-  view), not the list. What stands is the narrow claim: a list of *mod-owned* rows has no element
-  view. What is now open is whether a list bound to **game types that already have views** works
-  from a mod tab — untested, and the gate on the highest-value UI work available.
+  **Settled 2026-07-27 by live test — the original claim was right, for the wrong reason.**
+  Mid-investigation this was softened to "the failure was the element type, not the list", because
+  `IEnumerable`, `Table` and `ButtonGrid` all exist in the shipped set and vanilla drives a button
+  grid from `IEnumerable<Type>`. Six deployed builds settled it the other way:
+
+  | Container member | Result |
+  |---|---|
+  | `UIListTypeName` over **mod** element types | crashes the object's window on interaction |
+  | `UIListTypeName` over **vanilla** element types (`IronOreItem`, `CoalItem`) | crashes identically |
+  | member absent | works |
+
+  Vanilla elements crashing *identically* is what settles it: **the element type was never the
+  variable.** `UIListTypeName` containers are unreachable from a mod `WorldObjectComponent`
+  regardless of what they are bound to, and the old `IEnumerable<string>` crash was this same wall
+  rather than a type mismatch. So: no `Table`, no `ButtonGrid`, no per-row list of any kind. To
+  display rows from a mod tab, compose text — the original guidance, now with a correct reason
+  behind it.
+
+  The exception text is unavailable: the client's crash dialog renders off-screen with only its OK
+  button reachable, and the server log stays clean because the throw is client-side during view
+  construction. This was diagnosed by bisection, not by reading an error. See
+  `docs/solutions/runtime-errors/autogen-template-binding-contract.md` for the full contract and
+  the three failure modes.
 - **But a native item PICKER does render from a mod tab — the constraint is the DATA, not the
   tab.** `[Eco, AllowEmpty, RequiredTag(...)] GamePickerList<BlockItem>` renders the same
   multi-select popup a civic law uses, from an ordinary mod `WorldObjectComponent` tab, and its
