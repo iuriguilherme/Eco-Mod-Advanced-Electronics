@@ -36,6 +36,65 @@ public static class AdvancedElectronicsBuildTools
     public static void FinishDronePrefab() => FinishPrefab("SurveyDrone", isDock: false);
 
     /// <summary>
+    /// Disables the root GameObject of every bundled mod object, in both the prefab assets and
+    /// the scene. Run this once, then rebuild the bundle.
+    ///
+    /// The Eco client requires bundle objects to ship DISABLED: it keeps the bundled object as an
+    /// inactive TEMPLATE and instantiates an enabled copy per world object. Ours shipped enabled,
+    /// and the client says so on every load:
+    ///
+    ///     Loaded objects should start as DISABLED, but object "DroneDock" in bundle
+    ///     "...AdvancedElectronics.unity3d" is not. This can cause many problems, you should
+    ///     disable the object by default.
+    ///
+    /// The observed symptom is a placed Drone Dock that is invisible and non-interactable until
+    /// the player leaves the area and returns, at which point it (and any drones) appear. The
+    /// tooltip lists the object the whole time, so the server has it and only the client's copy is
+    /// wrong -- which is what an active template rather than a per-instance clone looks like.
+    /// </summary>
+    [MenuItem("Eco Tools/Advanced Electronics/Disable Mod Object Roots (fixes invisible objects)")]
+    public static void DisableModObjectRoots()
+    {
+        var fixedCount = 0;
+
+        // 1. The prefab assets that get bundled.
+        foreach (var guid in AssetDatabase.FindAssets("t:Prefab", new[] { ArtFolder }))
+        {
+            var path   = AssetDatabase.GUIDToAssetPath(guid);
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (prefab == null || !prefab.activeSelf) continue;
+
+            var instance = PrefabUtility.LoadPrefabContents(path);
+            instance.SetActive(false);
+            PrefabUtility.SaveAsPrefabAsset(instance, path);
+            PrefabUtility.UnloadPrefabContents(instance);
+            fixedCount++;
+            Debug.Log($"[AdvancedElectronics] Disabled prefab root: {path}");
+        }
+
+        // 2. The scene GameObjects the finishers work from, which are what the bundle build reads
+        //    when they are registered on a scene root's ModkitPrefabContainer.
+        foreach (var root in SceneManager.GetActiveScene().GetRootGameObjects())
+        {
+            foreach (var child in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (!child.gameObject.CompareTag("ModObject") || !child.gameObject.activeSelf) continue;
+                child.gameObject.SetActive(false);
+                fixedCount++;
+                Debug.Log($"[AdvancedElectronics] Disabled scene ModObject: {child.name}");
+            }
+        }
+
+        AssetDatabase.SaveAssets();
+        if (fixedCount > 0) EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+
+        Debug.Log(fixedCount == 0
+            ? "[AdvancedElectronics] Nothing to do -- every mod object root was already disabled."
+            : $"[AdvancedElectronics] Disabled {fixedCount} root(s). SAVE THE SCENE, then rebuild the bundle " +
+              "(Eco Tools > Mod Kit) and copy AdvancedElectronics.unity3d to the server's mod folder.");
+    }
+
+    /// <summary>
     /// U10's item-icon step (2b in the guide), fully scripted: instantiates
     /// Assets/EcoModKit/Prefabs/ItemTemplate.prefab under the scene's "Items"
     /// root, unpacks it completely (same effect as the README's manual
@@ -213,7 +272,16 @@ public static class AdvancedElectronicsBuildTools
         EnsureArtFolder();
 
         var path = $"{ArtFolder}/{go.name}.prefab";
+
+        // Save the prefab DISABLED. The client keeps a bundled object as an inactive template and
+        // clones an enabled copy per world object; shipping it active makes placed objects
+        // invisible until the area is re-streamed, and the client logs
+        // "Loaded objects should start as DISABLED" on every load. Toggle around the save so the
+        // scene object the author is looking at is left the way they had it.
+        var wasActive = go.activeSelf;
+        go.SetActive(false);
         var prefab = PrefabUtility.SaveAsPrefabAsset(go, path, out var success);
+        go.SetActive(wasActive);
         if (!success || prefab == null)
         {
             Debug.LogError($"[AdvancedElectronics] Failed to save '{go.name}' as a prefab at {path}. Check the Console above for the underlying Unity error.");

@@ -271,7 +271,7 @@ tooltip carries no survey list)`.
 - `dotnet build EcoServerMod/AdvancedElectronics -c Release` — 0 errors.
 - `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` — green, including the updated
   `SurveyRecordTests` quantity assertions.
-- Deploy `AdvancedElectronics.dll` to `<eco-server>\Eco_Data\Server\Mods\UserCode`.
+- Deploy `AdvancedElectronics.dll` to the test server's `Eco_Data\Server\Mods\UserCode` folder.
 - Live (user authority): survey an area with rock + ore + sand/clay/peat → the dock panel lists each
   specific material with quantity + shallowest + depth range, sorted by quantity; dirt/grass/gravel
   and crushed variants absent; `/drone survey` matches; no floating text over the dock; tooltip has no
