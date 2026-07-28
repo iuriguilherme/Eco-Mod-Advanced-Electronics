@@ -371,7 +371,7 @@ visible with no drone assigned.
 - `dotnet build EcoServerMod/AdvancedElectronics -c Release` — 0 errors.
 - `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` — 68/68 (no Navigation change is
   expected; a regression here means a unit reached further than intended).
-- Deploy `AdvancedElectronics.dll` to `<eco-server>\Eco_Data\Server\Mods\UserCode`.
+- Deploy `AdvancedElectronics.dll` to the test server's `Eco_Data\Server\Mods\UserCode` folder.
 - Live (user authority): AE1–AE6 above, plus the three feasibility bets resolved explicitly —
   second tab registers, multi-entry map round-trips, button visibility binds.
 
