@@ -60,10 +60,10 @@ namespace Eco.Mods.TechTree
         [Serialized, Eco, UITypeName("Boolean")]
         public bool BooleanProbe { get; set; } = true;
 
-        [Serialized, Eco, UITypeName("Int32")]
+        [Serialized, Eco, Range(0, 100), UITypeName("Int32")]
         public int Int32Probe { get; set; } = 42;
 
-        [Serialized, Eco, UITypeName("Single")]
+        [Serialized, Eco, Range(0, 10), UITypeName("Single")]
         public float SingleProbe { get; set; } = 3.5f;
 
         // --- Display templates worth a second look for the real UI. LongString earned its
