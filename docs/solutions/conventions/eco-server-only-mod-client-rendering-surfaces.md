@@ -109,28 +109,55 @@ window (verified live on the Drone Dock). Inside it:
   collection of a mod-defined `IController` renders **blank** in the generic auto-view (it does
   not crash the way an `IEnumerable<string>` does, but it shows nothing).
 
-  **Settled 2026-07-27 by live test — the original claim was right, for the wrong reason.**
-  Mid-investigation this was softened to "the failure was the element type, not the list", because
-  `IEnumerable`, `Table` and `ButtonGrid` all exist in the shipped set and vanilla drives a button
-  grid from `IEnumerable<Type>`. Six deployed builds settled it the other way:
+  **Root cause read from source 2026-07-27 — the constraint is real but far narrower than
+  "containers are closed", and two earlier readings of it were wrong.** Six deployed builds
+  produced the observations; the client log (`Player.log`, see below) produced the mechanism:
 
-  | Container member | Result |
-  |---|---|
-  | `UIListTypeName` over **mod** element types | crashes the object's window on interaction |
-  | `UIListTypeName` over **vanilla** element types (`IronOreItem`, `CoalItem`) | crashes identically |
-  | member absent | works |
+  ```
+  System.InvalidCastException: Unable to cast object of type 'ViewClassInfo' to type 'View'.
+    at Eco.Shared.Utils.ListExtensions.FromBson[T](IList`1[T] list, BSONArray bsonArray)
+    at Eco.Shared.View.View.UpdateProperty(...)
+  ```
 
-  Vanilla elements crashing *identically* is what settles it: **the element type was never the
-  variable.** `UIListTypeName` containers are unreachable from a mod `WorldObjectComponent`
-  regardless of what they are bound to, and the old `IEnumerable<string>` crash was this same wall
-  rather than a type mismatch. So: no `Table`, no `ButtonGrid`, no per-row list of any kind. To
-  display rows from a mod tab, compose text — the original guidance, now with a correct reason
-  behind it.
+  The chain, each link read at the tree:
 
-  The exception text is unavailable: the client's crash dialog renders off-screen with only its OK
-  button reachable, and the server log stays clean because the throw is client-side during view
-  construction. This was diagnosed by bisection, not by reading an error. See
-  `docs/solutions/runtime-errors/autogen-template-binding-contract.md` for the full contract and
+  | Step | Where | What happens |
+  |---|---|---|
+  | 1 | `Server/Eco.Core/Controller/ControllerMarshalerService.cs:451-455` | **Any** `IEnumerable` member is typed `"IEnumerableView"`; the element type goes into a *separate* `listTypeName` field |
+  | 2 | `Server/Eco.Core/Controller/Generators/TypeGenerationHelper.cs:62` | a `Type` element generates as `ViewClassInfo` |
+  | 3 | `Server/Eco.Shared/View/View.cs:337-343` | **vanilla path** — a compiled, code-generated view class exists, so `propInfo.PropertyType` is the true `List<ViewClassInfo>` |
+  | 4 | `Server/Eco.Shared/View/View.cs:345-359` | **mod path** — no compiled view class, so the type is rebuilt from a name string via `GetTypeFromName` |
+  | 5 | `Server/Eco.Shared/View/View.cs:114` | `case "IEnumerableView": return typeof(List<View>);` — `listTypeName` is **discarded** |
+  | 6 | — | elements decode to `ViewClassInfo`, the list demands `View`, cast throws |
+
+  So the rule is: **a mod list's elements must deserialize to `View`.** `Type` does not (it becomes
+  `ViewClassInfo`), and neither does `string` — which is why the old `IEnumerable<string>` crash and
+  the `IEnumerable<Type>` crash are the same line of client code. Vanilla escapes this entirely
+  because its component views are code-generated into the client build; the fallback path exists
+  only for types the client was never compiled against, which is every mod component.
+
+  Two things previously recorded here were wrong and are retracted:
+  - *"Vanilla element types crash identically, so the element type is not the variable."* The
+    observation was true, the inference was not: `IronOreItem` and `SurveyDroneItem` are both
+    `Type` values, so both runs sat on the same side of the only distinction that matters.
+  - *"Containers are unreachable from a mod `WorldObjectComponent`."* Unproven. A collection whose
+    elements are `IViewController` instances would satisfy `List<View>` and has never been tested.
+    Until it is, treat containers as **untested-and-crashing-so-far**, not closed.
+
+  Practically, today: still no `Table` or `ButtonGrid` over item types, so compose text. But the
+  reason is a client type-reconstruction gap, not a mod prohibition.
+
+  **The real ceiling is `View.cs:100-129`, not the 68 templates.** Templates decide appearance; that
+  switch decides what data can cross to a mod component at all — `bool`, `int`, `float`, `string`,
+  `Enum`(→`int`), `Range`, `Color`, `Vector3i`, `void`, `List<View>`, `Dictionary<object, object>`,
+  then enums via class info, then **any type registered in `ViewMapper`** (`View.cs:124-126`) — an
+  escape hatch that is still unexplored. The in-source comment is candid about the design:
+
+  > "the type might not exist on the client, but FromBson demands a type passed in. The proper
+  > solution is to change FromBson to accept a dynamic types, but for now we'll just hardcode in a
+  > few types."
+
+  See `docs/solutions/runtime-errors/autogen-template-binding-contract.md` for the full contract and
   the three failure modes.
 - **But a native item PICKER does render from a mod tab — the constraint is the DATA, not the
   tab.** `[Eco, AllowEmpty, RequiredTag(...)] GamePickerList<BlockItem>` renders the same
@@ -344,13 +371,36 @@ public class SurveyAreasComponent : WorldObjectComponent
 }
 ```
 
-The crash signature when the whitelist is violated (a `[SyncToView] IEnumerable<string>` member),
-from the live client log:
+## Where the client log is
+
+**`%USERPROFILE%\AppData\LocalLow\Strange Loop Games\Eco\Player.log`** — current session;
+`Player-prev.log` alongside it is the additive history. It is **not** under the server's `Logs/`
+folder, which is why a client-side throw looks like "no error anywhere" if you only tail the server.
+
+This matters more than it sounds. A whole investigation was run by bisecting deployed builds and
+its conclusion written up as "the exception text is unavailable, diagnosed by bisection, not by
+reading an error" — while the exception, with a full managed stack trace naming the exact cast,
+was on disk the entire time. **Read `Player.log` before bisecting anything client-side.** Search it
+for `Disconnected with error`, `InvalidCastException`, or `Errors report:`.
+
+The crash signature for a list whose elements do not deserialize to `View` — a
+`[SyncToView] IEnumerable<string>` member:
 
 ```
 Failed to receive views from the server
 InvalidOperationException: Cannot convert value: <element> with valuetype String to type: Eco.Shared.View.View
 ```
+
+and the `IEnumerable<Type>` form of the same failure:
+
+```
+System.InvalidCastException: Unable to cast object of type 'ViewClassInfo' to type 'View'.
+```
+
+Both name `View` as the target, because `View.cs:114` hardcodes every mod list to `List<View>`.
+The string signature was recorded in this doc for weeks with `Eco.Shared.View.View` sitting in
+plain sight; it was read as "strings are not allowed" rather than as "the target type is `View`,
+so what *is* a `View`?" — a general mechanism misfiled as a specific prohibition.
 
 The map-editor call that works for a mod caller lives in this repo as the proven reference:
 `EcoServerMod/AdvancedElectronics.Spike/SpikeEditMapCommand.cs` (the deed-pattern `MapEditRequest`

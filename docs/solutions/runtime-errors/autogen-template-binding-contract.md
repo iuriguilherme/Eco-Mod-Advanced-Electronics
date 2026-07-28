@@ -9,6 +9,7 @@ component: tooling
 severity: high
 symptoms:
   - "Clicking a stepper or checkbox in a mod component tab disconnects every player with InvalidOperationException: Missing RPC call Set<PropertyName> for <Component>"
+  - "Interacting with the object disconnects the client: Failed to receive views from the server, InvalidCastException: Unable to cast object of type 'ViewClassInfo' to type 'View'"
   - "A member declared with UITypeName renders nothing at all, and takes the members below it down with it"
   - "A template renders but shows the wrong control shape (two fields where one was expected)"
 root_cause: wrong_api
@@ -122,8 +123,8 @@ Two details in that line are easy to miss and both matter: it is a **computed ge
 "must be settable and assigned" rule for scalars does **not** apply to collections; and the element
 type is `Type`, a game type with a generated client view.
 
-**However — containers do not work from a mod component at all.** Copying that declaration exactly
-still crashes the dock window on interaction. Tested across six builds:
+**However — copying that declaration exactly still crashes the dock window.** Tested across six
+builds:
 
 | Elements | Result |
 |---|---|
@@ -131,16 +132,30 @@ still crashes the dock window on interaction. Tested across six builds:
 | `IronOreItem`, `CoalItem` (vanilla types) | crash |
 | container member absent | works |
 
-Since vanilla element types crash identically, **the element type is not the variable** —
-`UIListTypeName` containers are unreachable from a mod `WorldObjectComponent`, and the earlier
-`IEnumerable<string>` crash was a symptom of the same wall rather than a type mismatch. The
-practical consequence: no `Table` for tabular data and no `ButtonGrid` for a generated button list,
-so a fixed pool of `[RPC]` methods remains the only way to offer N buttons, and multi-column data
-stays composed text.
+The reason is a **client type-reconstruction gap**, and it is specific. A vanilla component has a
+code-generated view class compiled into the client, so its list property really is
+`List<ViewClassInfo>` (`View.cs:337-343`). A mod component has no such class, so the client rebuilds
+the type from a name string — and `View.cs:114` maps *every* list to `typeof(List<View>)`, throwing
+away the element type the server sent alongside it. Since a `Type` member serializes as
+`ViewClassInfo` (`TypeGenerationHelper.cs:62`), the cast fails:
 
-The exception text is unavailable: the client's crash dialog renders off-screen with only its OK
-button reachable, and the server log stays clean because the throw happens client-side during view
-construction. Diagnosis was by bisection, not by reading an error.
+```
+System.InvalidCastException: Unable to cast object of type 'ViewClassInfo' to type 'View'.
+```
+
+**The operative rule: a mod list's elements must deserialize to `View`.** `Type` does not, and
+neither does `string` — the older `IEnumerable<string>` crash names the same target type. Both
+element sets tested above were `Type` values, so those six builds never varied the thing that
+matters; "vanilla elements crash too, therefore the element type is irrelevant" was a bad inference
+from a correct observation. A collection of `IViewController` instances is the untested case.
+
+Practical consequence today is unchanged — no `Table` over item types, no generated `ButtonGrid`, so
+a fixed pool of `[RPC]` methods is still how you offer N buttons and multi-column data stays
+composed text. But record it as *unsolved*, not *impossible*.
+
+The exception is in the **client** log — `%LOCALAPPDATA%Low\Strange Loop Games\Eco\Player.log`, not
+the server's `Logs/`. The client's own crash dialog renders off-screen with only its OK button
+reachable, which is what made this look undiagnosable; the full stack trace was on disk throughout.
 
 ## Why This Works
 
