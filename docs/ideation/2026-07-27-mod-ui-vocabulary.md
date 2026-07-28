@@ -141,9 +141,10 @@ actually changes, and it deserves requirements rather than an incremental patch.
 - `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` — its "rich list is
   not available to a mod tab" section is wrong in the general case and needs rewriting around the
   68-name vocabulary and the true ceiling.
-- `docs/solutions/design-patterns/vertical-stack-only-ui-design.md` — its layout *reasoning* stands,
-  but its premise (a single-column primitive) is false. Revise once the probe confirms, rather than
-  leaving a confidently-wrong doc in the store.
+- `docs/solutions/design-patterns/vertical-stack-only-ui-design.md` — **revised 2026-07-28.** Its
+  layout reasoning stood; its premise (a single-column primitive) was false and is corrected. Most
+  templates render as two-column rows. The row-budget rules survive unchanged, because a row is still
+  the unit of cost and dynamically sized lists still do not render from a mod tab.
 
 Hold both edits until the probe returns live evidence. Recording a *new* wrong conclusion while
 correcting an old one is the failure this project keeps repeating.

@@ -1,13 +1,14 @@
 ---
 title: Designing a usable panel when the only primitive is a vertical stack
 date: 2026-07-27
+last_updated: 2026-07-28
 category: design-patterns
 module: EcoServerMod
 problem_type: design_pattern
 component: tooling
 severity: medium
 applies_when:
-  - "Building a player-facing panel on a surface that renders only stacked, full-width elements in declaration order"
+  - "Building a player-facing panel on a surface that renders one element per row, in declaration order, with no dynamically sized lists"
   - "A feature would add one control per object, or per operation, to an already-crowded panel"
   - "Choosing the size of a fixed pool of compile-time controls that stands in for a dynamic list"
   - "Drawing a mockup for a target whose layout primitives are more restrictive than the mockup medium"
@@ -17,21 +18,37 @@ related_components: [EcoServerMod/AdvancedElectronics]
 
 # Designing a usable panel when the only primitive is a vertical stack
 
-> **⚠ Premise under revision (2026-07-27).** This doc assumes a mod tab can only render stacked,
-> full-width elements. That is **false**: the client's autogen set includes `ButtonGrid`,
-> `HorzBox` and `Table`, selected server-side by `UITypeName`. The layout *reasoning* below still
-> holds wherever the stack is genuinely the constraint, and the row-budget arithmetic is still
-> the right way to think — but do not treat "one column" as a hard limit. See
-> `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` and
-> `docs/ideation/2026-07-27-mod-ui-vocabulary.md`. Full rewrite pending live verification.
+> **Premise corrected 2026-07-27, settled by live test.** The title overstates the constraint. A mod
+> tab is **not** limited to full-width stacked elements: most autogen templates render as
+> **two-column rows** — label on the left, control on the right — and a few (headers,
+> `StringDisplay`, the plaques) go full width. So the horizontal axis is not empty.
+>
+> What survives intact is the thing that actually drives the design: **panel length is the budget,
+> and it is spent one row at a time.** Two-column rows do not change that, because each still costs
+> one row. Every rule below is about row count, and every one of them still holds.
+>
+> What also survives is the *reason* the row budget is fixed: **a dynamically sized list still does
+> not render from a mod tab.** `Table` and `ButtonGrid` exist in the client's set, but binding a
+> collection to them from a mod component produces an empty container — verified across several
+> deployed builds. So a control per object remains a hand-written pool of compile-time RPC methods,
+> and the pool-sizing rule below is still load-bearing rather than a workaround.
+>
+> Read "vertical stack" throughout as "one row per element, in declaration order", not as "one
+> column of full-width controls".
 
 ## Context
 
-An Eco mod's `WorldObjectComponent` tab renders as a **single column of full-width elements, in
-member declaration order**. There are no rows, no columns, no grids, no side-by-side pairs, and no
-dynamically sized lists — RPCs are compile-time methods, so a button per item means a fixed pool of
-button methods written out by hand. The set of things that render at all is a short whitelist
-(`docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md`).
+An Eco mod's `WorldObjectComponent` tab renders **one element per row, in member declaration
+order**. Each row is typically two columns — label left, control right — and some templates take the
+full width; either way an element costs a row and the rows accumulate downward.
+
+What the surface does not give you is **dynamic length**: no grids of generated controls, and no
+dynamically sized lists. `Table` and `ButtonGrid` are in the client's template set, but a collection
+bound to them from a mod component renders an empty container, so a control per item still means a
+fixed pool of RPC methods written out by hand. The set of templates that render at all is a
+whitelist (`docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md`), and the
+binding rules for each are in
+`docs/solutions/runtime-errors/autogen-template-binding-contract.md`.
 
 The drone dock's survey panel grew feature by feature until it was a long ladder of buttons and a
 wall of text, and the verdict from live play was blunt:
@@ -39,9 +56,9 @@ wall of text, and the verdict from live play was blunt:
 > "Vertical buttons are a terrible design, this is not a smartphone app."
 
 That is the situation this doc is about: not *what renders* (covered by the conventions doc) but
-**how to lay out a panel when the layout budget is one column and every feature wants a row.**
+**how to lay out a panel when the budget is vertical space and every feature wants a row.**
 
-The trap underneath it: on a single-column surface, every added element is a subtraction from
+The trap underneath it: when length is the budget, every added element is a subtraction from
 everything else. A feature can work perfectly, ship, and still make the panel worse. Judging a
 control on "does it function" misses the cost it imposes on its neighbours.
 
@@ -99,7 +116,7 @@ and was rejected outright:
 > several rolling up and down to click the buttons ... too much work and zero benefits"
 
 The replacement was a native multi-select picker — **one** row, opening a popup for the actual
-choosing. On a single-column surface, a control that expands to manage the panel's own length is
+choosing. A control that expands to manage the panel's own length is
 usually a net loss; push the interaction into a popup or an editor instead.
 
 **9. A mockup must obey the target's layout primitives.**
@@ -109,13 +126,17 @@ cannot do that; the buttons shipped stacked, and the reaction was:
 
 > "you tricked me — those buttons are still vertical and not horizontal like the preview, lol"
 
-Before drawing, write down the target's primitives (here: full-width only, stacked, declaration
-order) and refuse yourself anything outside them, even when the mockup medium makes it trivial. The
-point of a preview is to make the constraint visible, not to hide it.
+Before drawing, write down the target's primitives (here: one element per row, declaration order,
+no dynamically generated controls) and refuse yourself anything outside them, even when the mockup
+medium makes it trivial. The point of a preview is to make the constraint visible, not to hide it.
+
+Note the primitives themselves have to be *verified*, not assumed — this doc originally recorded
+"full-width only", which was never tested and turned out to be wrong. An unverified constraint in a
+mockup checklist is the same failure as an unbuildable mockup, one level up.
 
 ## Why This Matters
 
-On a single-column surface the panel length *is* the design. Every element competes with every other
+On this surface the panel length *is* the design. Every element competes with every other
 for the same budget, so the usual per-feature test — "does this control work?" — is the wrong test.
 Two features that each pass it can combine into a panel nobody wants to use, which is exactly how
 this one got to a ladder of buttons: no individual step was wrong.
