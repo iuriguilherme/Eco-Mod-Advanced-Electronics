@@ -67,7 +67,6 @@ namespace Eco.Mods.TechTree
     // until the next deploy. ContainerProbeNote is a plain StringDisplay declared first, so a
     // blank tab distinguishes "component not attached" from "list crashed the view".
     [RequireComponent(typeof(UIShowcaseComponent))]
-    [RequireComponent(typeof(UIContainerProbeComponent))]
     [Tag("Usable")]
     public class DroneDockObject : WorldObject, IRepresentsItem
     {
