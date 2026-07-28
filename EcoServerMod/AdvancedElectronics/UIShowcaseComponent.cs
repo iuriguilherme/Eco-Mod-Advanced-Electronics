@@ -127,16 +127,16 @@ namespace Eco.Mods.TechTree
         [Autogen, SyncToView, UIListTypeName("ButtonGrid")]
         public IEnumerable<Type> ButtonGridProbe => new[]
         {
-            typeof(SurveyDroneItem),
-            typeof(DroneDockItem),
+            typeof(IronOreItem),
+            typeof(CoalItem),
         };
 
         /// <summary>Same collection as a table, to compare the two list templates side by side.</summary>
         [Autogen, SyncToView, UIListTypeName("Table")]
         public IEnumerable<Type> TableProbe => new[]
         {
-            typeof(SurveyDroneItem),
-            typeof(DroneDockItem),
+            typeof(IronOreItem),
+            typeof(CoalItem),
         };
 
         public override void Initialize()
