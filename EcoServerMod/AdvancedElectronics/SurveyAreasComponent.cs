@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.ComponentModel;
 using System.Threading.Tasks;
+using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
 using Eco.Gameplay.Civics.GameValues;
 using Eco.Gameplay.Items;
@@ -173,17 +174,12 @@ namespace Eco.Mods.TechTree
 
             var position = 1;
             foreach (var area in dock.SurveyAreas)
-            {
-                var assigned = area.Id == dock.AssignedSurveyAreaId ? "   [assigned]" : string.Empty;
-                sb.Append(position++).Append(". ").Append(area.Name)
-                  .Append(" -- ").Append(area.PlotCount).Append(" plots, ")
-                  .Append(FormatAreaSummary(area, dock))
-                  .Append(assigned).Append('\n');
-            }
+                sb.Append(DockReadout.FormatAreaLine(Snapshot(area, position++, dock))).Append('\n');
 
-            if (dock.SurveyAreas.Count > AssignButtonPool)
-                sb.Append("\nAreas past ").Append(AssignButtonPool)
-                  .Append(" have no button -- assign them with /drone assignarea <id>.\n");
+            var overflow = DockReadout.FormatOverflowNotice(
+                dock.SurveyAreas.Count, AssignButtonPool, "/drone assignarea <id>");
+            if (overflow.Length > 0)
+                sb.Append('\n').Append(overflow).Append('\n');
 
             return sb.ToString();
         }
@@ -224,21 +220,20 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Compact "coverage%, top find" summary for an area's list line, from its snapshot. Honours the
-        /// dock's material filter so the highlighted find is the one the player is targeting.
+        /// Reduces an area to the Eco-free shape <see cref="DockReadout"/> formats. The material
+        /// filter is applied HERE, not there: the formatter is handed the top finding the player can
+        /// actually see, which is why "nothing matching" and "nothing found" collapse to one case.
         /// </summary>
-        private static string FormatAreaSummary(SurveyAreaEntry area, DroneDockObject dock)
+        private static AreaSnapshot Snapshot(SurveyAreaEntry area, int position, DroneDockObject dock)
         {
             var top = area.ReadFindings()
                 .Where(f => f.Found && dock.IsMaterialShown(f.OreType))
                 .OrderByDescending(f => f.Count)
                 .FirstOrDefault();
 
-            if (top.Found)
-                return $"{area.CoveragePercent:F0}% surveyed, most {top.OreType} (~{top.Count} blocks)";
-            if (area.CoveragePercent > 0f)
-                return $"{area.CoveragePercent:F0}% surveyed, nothing matching";
-            return "not surveyed yet";
+            return new AreaSnapshot(
+                position, area.Name, area.PlotCount, area.CoveragePercent, top,
+                area.Id == dock.AssignedSurveyAreaId);
         }
 
     }

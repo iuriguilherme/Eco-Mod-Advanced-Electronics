@@ -93,19 +93,13 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
 
-            var count = dock.SurveyAreas.Count;
-            if (count == 0) { this.viewIndex = 0; this.RefreshAll(); return; }
-
-            this.viewIndex = ((this.viewIndex + direction) % count + count) % count;
+            this.viewIndex = DockReadout.CycleCursor(this.viewIndex, direction, dock.SurveyAreas.Count);
             this.RefreshAll();
         }
 
         /// <summary>Keeps the cursor in range after areas are added or deleted on the map.</summary>
-        private void ClampViewCursor(DroneDockObject dock)
-        {
-            var count = dock.SurveyAreas.Count;
-            this.viewIndex = count == 0 ? 0 : Math.Clamp(this.viewIndex, 0, count - 1);
-        }
+        private void ClampViewCursor(DroneDockObject dock) =>
+            this.viewIndex = DockReadout.ClampCursor(this.viewIndex, dock.SurveyAreas.Count);
 
         private SurveyAreaEntry ViewedArea(DroneDockObject dock)
         {
@@ -129,8 +123,11 @@ namespace Eco.Mods.TechTree
             var area = this.ViewedArea(dock);
             if (area == null) return "Viewing: no areas yet -- draw one from the Areas tab.";
 
-            var assigned = area.Id == dock.AssignedSurveyAreaId ? "   [assigned]" : string.Empty;
-            return $"Viewing: {this.viewIndex + 1} of {dock.SurveyAreas.Count} -- {area.Name}{assigned}";
+            var snapshot = new AreaSnapshot(
+                this.viewIndex + 1, area.Name, area.PlotCount, area.CoveragePercent,
+                SurveyFinding.NotFound, area.Id == dock.AssignedSurveyAreaId);
+
+            return DockReadout.FormatViewingLine(snapshot, dock.SurveyAreas.Count);
         }
 
         private string BuildResultsText()
