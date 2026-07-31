@@ -78,7 +78,8 @@ mapfile -t WORLD_OBJECT_TYPES < <(
 # Item types need a name-matching GameObject under the scene's "Items" root.
 # Every base listed here is something a player can hold: a plain Item, the
 # world-object item that places a WorldObject, the block item that places a
-# block, and the skill book/scroll pair.
+# block, the skill book/scroll pair, and the plugin modules that slot into a
+# crafting table (EfficiencyModule and friends, matched by the Module suffix).
 #
 # PickupableBlock is deliberately NOT listed. A placed block binds through a
 # BlockSet rather than an Items-root GameObject, and this mod ships no BlockSet
@@ -86,7 +87,7 @@ mapfile -t WORLD_OBJECT_TYPES < <(
 # for one would fail the gate on work that was consciously left undone.
 mapfile -t ITEM_TYPES < <(
   printf '%s' "$DECLS" \
-    | grep -oE 'class [A-Za-z0-9_]+ : (Item[ ,{]|WorldObjectItem<|BlockItem<|SkillBook<|SkillScroll<)' \
+    | grep -oE 'class [A-Za-z0-9_]+ : (Item[ ,{]|WorldObjectItem<|BlockItem<|SkillBook<|SkillScroll<|[A-Za-z]*Module[ ,{])' \
     | sed -E 's/class ([A-Za-z0-9_]+) : .*/\1/' \
     | sort -u
 )

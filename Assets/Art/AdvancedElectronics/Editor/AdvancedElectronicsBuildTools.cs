@@ -56,6 +56,7 @@ public static class AdvancedElectronicsBuildTools
         ("EngineeringResearchPaperPostModernItem", new Color(0.90f, 0.90f, 0.95f, 1f)), // near-white paper
         ("AdvancedElectronicsAssemblyItem",      new Color(0.85f, 0.50f, 0.15f, 1f)), // orange
         ("BatteryItem",                          new Color(0.20f, 0.70f, 0.35f, 1f)), // green
+        ("AdvancedElectronicsUpgradeItem",       new Color(0.80f, 0.20f, 0.30f, 1f)), // red -- plugin module
     };
 
     // Prefab finishers. The FIRST string is the server WorldObject class name and is what
