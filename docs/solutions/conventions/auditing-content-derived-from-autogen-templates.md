@@ -1,6 +1,7 @@
 ---
 title: "Audit mod content derived from AutoGen templates for the references you forgot to rename"
 date: 2026-07-31
+last_updated: 2026-07-31
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -39,17 +40,23 @@ names the file and line. It costs time but cannot ship:
 - `AshlarStone` used as `typeof(AshlarStone)` when it is a **tag**, not a type. The ingredient wanted
   the string form: `new IngredientElement("AshlarStone", 20, typeof(IndustrySkill))`.
 - `[AllowPluginModules(..., ItemTypes = new[] { typeof(AdvancedElectronicsUpgradeItem) })]` naming a
-  plugin-module type that had never been written.
+  plugin-module type that had not been written yet (the module now exists and the attribute is
+  live at `EcoServerMod/AdvancedElectronics/AdvancedElectronicsAssembly.cs:127`).
 
 *Silent residue* — a reference to a type that **does** exist, is the wrong one, and type-checks. This
 is the category that matters:
 
 - `BatteryRecipe` emitted `new CraftingElement<BiodieselItem>(1)`. The file was derived from vanilla's
   Biodiesel recipe. Crafting a battery produced biodiesel.
-- `EngineeringResearchPaperPostModernRecipe` emits `new CraftingElement<EngineeringResearchPaperModernItem>()`
-  — vanilla's *Modern* paper, not the PostModern one the recipe is named for
-  (`EcoServerMod/AdvancedElectronics/EngineeringResearchPaperPostModern.cs:55`, unfixed at time of
-  writing, deferred as a balance decision).
+- `EngineeringResearchPaperPostModernRecipe` emitted `new CraftingElement<EngineeringResearchPaperModernItem>()`
+  — vanilla's *Modern* paper, not the PostModern one the recipe is named for. **This one was not a
+  balance issue. It killed the server.** Because the recipe required `IndustrySkill` and vanilla's
+  Industry skill book consumes the Modern paper, the mod made IndustrySkill its own ancestor;
+  `SkillTree` walks that graph without a cycle guard and overflowed the stack during
+  `Initializing skills`. Fixed at
+  `EcoServerMod/AdvancedElectronics/EngineeringResearchPaperPostModern.cs:55`; full analysis in
+  `docs/solutions/runtime-errors/a-mod-recipe-that-closes-a-cycle-in-the-skill-graph.md`.
+  It was filed as a balance question for a day before that was understood.
 - `AdvancedElectronicsAssemblyObject.Initialize()` sets
   `this.GetComponent<HousingComponent>().HomeValue = ElectronicsAssemblyItem.homeValue` — vanilla's
   item, not the mod's own `AdvancedElectronicsAssemblyItem.homeValue`
@@ -91,6 +98,13 @@ It is also mis-attributed when it does surface. A battery that yields biodiesel 
 *balance* problem, not a copy-paste problem, so it gets filed against the wrong part of the system. In
 this case the battery bug was found only because an unrelated build failure forced a line-by-line read
 of the file.
+
+**And the ceiling on the damage is higher than "wrong item".** A `CraftingElement<T>` naming a vanilla
+item does not merely mislabel your output — it writes a new edge into Eco's tech-tree graph, making
+your recipe a producer of something the rest of the tree already depends on. If that edge closes a
+cycle, `SkillTree` recurses without bound and the server will not start, with no log line and no mod
+frame anywhere in the trace. The research-paper entry above cost roughly a day on exactly that path,
+misfiled as balance the whole time. Treat a mismatched output type as a correctness defect on sight.
 
 The cost scales with how well the template matched. The closer the vanilla analogue, the more of it
 you keep, and the more places a stale reference can hide while still looking idiomatic — because it
@@ -156,3 +170,6 @@ new IngredientElement("AshlarStone", 20, typeof(IndustrySkill)),         // tag:
   thing an AutoGen template will not give you, because a generator supplies it rather than the source.
 - `docs/solutions/logic-errors/prefab-finisher-writes-to-the-scene-object-name.md` — the same
   wrong-name-that-still-works failure on the Unity side of this mod.
+- `docs/solutions/runtime-errors/a-mod-recipe-that-closes-a-cycle-in-the-skill-graph.md` — what the
+  research-paper residue above actually did: the invariant it violated, why a second producer of a
+  vanilla item is otherwise fine, and the static check that catches it before the first boot.
