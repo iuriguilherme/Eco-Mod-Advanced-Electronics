@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Eco.Core.Items;
 using Eco.Gameplay.Components;
+using Eco.Gameplay.Components.Auth;
 // FuelSupplyComponent lives here, NOT in Eco.Gameplay.Components alongside
 // FuelConsumptionComponent -- the two fuel components sit in different namespaces, so
 // importing only the obvious one resolves the consumption half and silently fails on
@@ -98,6 +99,26 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(DroneMoverComponent))]
     [RequireComponent(typeof(OreSensorComponent))]
     [RequireComponent(typeof(DroneLifecycle))]
+    // The drone's window opens with no tabs at all, so neither the fuel nor the parts tab
+    // can be reached and fuel cannot be added. Two other explanations were checked first
+    // and ruled out against the tree and the logs:
+    //
+    //   - Missing [Serialized]/[NoIcon] on a custom component blanks the whole window
+    //     (docs/solutions/runtime-errors/worldobjectcomponent-missing-attributes-empty-window.md).
+    //     All three of this object's custom components carry both, and no server log
+    //     contains "has to explicitly define" or "Can't encode instance".
+    //   - The custom components contributing no tabs is correct, not a defect: only
+    //     components with CreateComponentTabLoc render one, and mover/sensor/lifecycle
+    //     are internal. The Fuel and Parts tabs should still come from vanilla components,
+    //     and PartsComponent demonstrably renders on AdvancedElectronicsAssemblyObject.
+    //
+    // What remains: every object in this mod that renders tabs carries an auth component
+    // (DroneDockObject and the assembly both have PropertyAuthComponent), the AutoGen
+    // vehicles this drone is modelled on carry StandaloneAuthComponent, and the drone had
+    // neither. Standalone rather than Property, since a drone is not bound to a deed.
+    // Still unconfirmed in game. If the pane is empty after this, do not stack a second
+    // guess -- diff against a vanilla vehicle that works.
+    [RequireComponent(typeof(StandaloneAuthComponent))]
     // Fuel and parts, mirroring the AutoGen vehicles (Mods/__core__/AutoGen/Vehicle/
     // Excavator.cs on the dedicated server ships this shape). Initialize() calls
     // GetComponent on all three, and GetComponent returns null unless the component is
@@ -139,9 +160,13 @@ namespace Eco.Mods.TechTree
 
         public override LocString DisplayName => Localizer.DoStr("Survey Drone");
 
+        // Liquid fuel (biodiesel, gasoline) -- the vanilla tag the AutoGen vehicles use.
+        // The mod's own Battery would have supplied an "Electric Fuel" tag, but the battery
+        // is deferred (Battery.cs.deferred); a fuel tag no item carries leaves the drone
+        // unfuelable.
         private static string[] fuelTagList = new string[]
         {
-            "Electric Fuel",
+            "Liquid Fuel",
         };
         /// <summary>Display name of the owner this drone acts on behalf of, or null if never stamped.</summary>
         [Serialized]

@@ -14,6 +14,7 @@ using Eco.Gameplay.Items.Recipes;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Occupancy;
 using Eco.Gameplay.Players;
+using Eco.Gameplay.Skills;
 using Eco.Gameplay.Systems.NewTooltip;
 using Eco.Mods.TechTree;
 using Eco.Shared.IoC;
@@ -23,6 +24,7 @@ using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 using Eco.Shared.Voxel;
 using Eco.World.Blocks;
+using static Eco.Gameplay.Components.PartsComponent;
 using Quaternion = Eco.Shared.Math.Quaternion;
 using Vector3 = System.Numerics.Vector3;
 
@@ -56,8 +58,36 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(OccupancyRequirementComponent))]
     [RequireComponent(typeof(SurveyAreasComponent))]
     [RequireComponent(typeof(SurveyResultsComponent))]
+    // TEMPORARY: UI vocabulary probes. Remove once the layout brainstorm has its screenshots.
+    //
+    // v8 brings the container probe back onto the dock. v7 quarantined it on the drone to keep a
+    // possible disconnect off the dock, but the drone renders no tabs at all, so the probe never
+    // ran and the container question stayed untested. The dock is the only object in this mod
+    // that reliably shows a mod tab, so the question cannot be answered anywhere else.
+    //
+    // Accepted risk: if a list of View elements still crashes, the dock becomes un-interactable
+    // until the next deploy. ContainerProbeNote is a plain StringDisplay declared first, so a
+    // blank tab distinguishes "component not attached" from "list crashed the view".
+    // DETACHED 2026-07-31 while chasing the dock's invisibility. Correlation across four
+    // live tests: every build carrying this probe rendered no dock mesh (only the floating
+    // name label and the map marker); the one build without it -- HEAD during the crash
+    // bisect -- rendered the dock with all six tabs. Nothing else about the dock is unique:
+    // PartsComponent, the Mods hooks and base.Initialize() all also sit on the assembly
+    // and/or the drone, both of which render.
+    //
+    // Mechanism (unconfirmed): the asset bundle was NOT rebuilt between the rendering and
+    // non-rendering runs, and the server logs no exception, so the object initializes fine
+    // and the client simply never builds its view. A component whose view fails to
+    // decode client-side would do exactly that. Probe v5 already recorded this component's
+    // container elements crashing dock interaction once before.
+    //
+    // The probe is temporary by its own comment and the UI brainstorm is deferred (task
+    // #34), so detaching costs nothing now. The component itself is untouched -- restoring
+    // is uncommenting one line.
+    //[RequireComponent(typeof(UIShowcaseComponent))]
+    [RequireComponent(typeof(PartsComponent))]
     [Tag("Usable")]
-    public class DroneDockObject : WorldObject, IRepresentsItem
+    public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
         // Single storage slot, drone item only (see Initialize). Slot count is a
         // vanilla-proven Initialize(int) arg; the item-type and stack-limit
@@ -315,12 +345,21 @@ namespace Eco.Mods.TechTree
             entry.SetFindings(this.surveyRecord.Findings(entry.Id), coverage * 100f, depth, median);
         }
 
+        /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
+        partial void ModsPreInitialize();
+        /// <summary>Hook for mods to customize WorldObject after initialization.</summary>
+        partial void ModsPostInitialize();
+
         protected override void Initialize()
         {
-            // No base.Initialize() call -- matches every vanilla object and the Advanced
-            // Mixology reference mod, none of which call base from their Initialize
-            // override. Component setup below reads components directly (they are already
-            // attached by the [RequireComponent] declarations by the time Initialize runs).
+            this.ModsPreInitialize();
+            base.Initialize();  
+            // ModsPreInitialize/base.Initialize()/.../ModsPostInitialize is the AutoGen
+            // object shape (Mods/__core__/AutoGen/Vehicle/Excavator.cs on the dedicated
+            // server ships this exact ordering in source).
+            // An earlier comment here claimed vanilla objects never call base from their
+            // Initialize override; the generated sources do, so the call above is correct
+            // and that claim has been removed rather than left contradicting the code.
             if (this.TryGetComponent<PublicStorageComponent>(out var storage))
             {
                 // Vanilla storage-init shape (verified against the dedicated server's
@@ -332,6 +371,24 @@ namespace Eco.Mods.TechTree
                 storage.Storage.AddInvRestriction(new SpecificItemTypesRestriction(new[] { typeof(SurveyDroneItem) }));
                 storage.Storage.AddInvRestriction(new StackLimitRestriction(1));
                 storage.Storage.OnChanged.Add(this.OnDockStorageChanged);
+            }
+            this.ModsPostInitialize();
+            {
+                this.GetComponent<PartsComponent>().Config(() => LocString.Empty, new PartInfo[]
+                {
+                    // Every entry here must name a type deriving from PartItem, or
+                    // PartsComponent.Config throws "PartsComponent can only be used with
+                    // PartItem." and aborts DroneDockObject.Initialize().
+                    //
+                    // FramedGlassItem was here and is NOT a part -- it is [Tag("Constructable")]
+                    // in AutoGen/Block/FramedGlass.cs. Replaced with SteelPlateItem, which the
+                    // dock recipe already consumes (x20) and which is declared
+                    // "class SteelPlateItem : PartItem". Swap it for any other PartItem if the
+                    // repair cost should differ; the constraint is the base class, not the choice.
+                    new() { TypeName = nameof(AdvancedCircuitItem), Quantity = 1},
+                    new() { TypeName = nameof(SteelPlateItem), Quantity = 1},
+                    new() { TypeName = nameof(SteelGearItem), Quantity = 2},
+                });
             }
         }
 
@@ -565,36 +622,44 @@ namespace Eco.Mods.TechTree
     }
 
     /// <summary>Recipe unlocking <see cref="DroneDockItem"/>.</summary>
-    public class DroneDockRecipe : RecipeFamily
+    [RequiresSkill(typeof(AdvancedElectronicsSkill), 1)]
+    public partial class DroneDockRecipe : RecipeFamily
     {
         // Eco force-creates one instance of every RecipeFamily-derived type at startup
         // (RecipeFamily carries [ForceCreateViewAllDerived]) -- registration belongs in
         // the instance constructor, mirroring vanilla recipes (e.g. StorageChestRecipe).
         public DroneDockRecipe()
         {
-            var recipe = new Recipe(
-                "DroneDock",
-                Localizer.DoStr("Drone Dock"),
-                new IngredientElement[]
+            var recipe = new Recipe();
+            recipe.Init(
+                name: "DroneDock",
+                displayName: Localizer.DoStr("Drone Dock"),
+                ingredients: new List<IngredientElement>
                 {
-                    new IngredientElement(typeof(SteelPlateItem), 8, true),
-                    new IngredientElement(typeof(BasicCircuitItem), 4, true),
+                    new IngredientElement(typeof(AdvancedCircuitItem), 4, typeof(AdvancedElectronicsSkill)),
+                    new IngredientElement(typeof(SteelPlateItem), 20, typeof(AdvancedElectronicsSkill)),
+                    new IngredientElement(typeof(FramedGlassItem), 20, typeof(AdvancedElectronicsSkill)),
+                    new IngredientElement(typeof(SteelGearItem), 6, typeof(AdvancedElectronicsSkill)),
+                    new IngredientElement(typeof(RadiatorItem), 1, true),
+                    new IngredientElement(typeof(LightBulbItem), 1, true),
                 },
-                new CraftingElement[]
+                items: new List<CraftingElement>
                 {
                     new CraftingElement<DroneDockItem>(1),
                 });
 
             this.Recipes = new List<Recipe> { recipe };
-            this.ExperienceOnCraft = 5;
-            this.LaborInCalories = new ConstantValue(400);
-            this.CraftMinutes = new ConstantValue(10);
-            this.Initialize(Localizer.DoStr("Drone Dock"), typeof(DroneDockRecipe));
+            this.ExperienceOnCraft = 15;
+            this.LaborInCalories = CreateLaborInCaloriesValue(500, typeof(AdvancedElectronicsSkill));
+            this.CraftMinutes = CreateCraftTimeValue(beneficiary: typeof(DroneDockRecipe), start: 20, skillType: typeof(AdvancedElectronicsSkill));
+            this.ModsPreInitialize();
+            this.Initialize(displayText: Localizer.DoStr("Drone Dock"), recipeType: typeof(DroneDockRecipe));
+            this.ModsPostInitialize();
 
-            // ASSUMPTION: ElectricMachinistTableObject picked as the most thematically
-            // fitting vanilla crafting table for an "Advanced Electronics" bench. No
-            // dedicated mod crafting table exists yet -- revisit if/when one is designed.
-            CraftingComponent.AddRecipe(typeof(ElectricMachinistTableObject), this);
+            CraftingComponent.AddRecipe(tableType: typeof(AdvancedElectronicsAssemblyObject), recipeFamily: this);
         }
+
+        partial void ModsPreInitialize();
+        partial void ModsPostInitialize();
     }
 }

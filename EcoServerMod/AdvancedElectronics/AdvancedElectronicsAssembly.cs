@@ -107,9 +107,7 @@ namespace Eco.Mods.TechTree
             this.GetComponent<HousingComponent>().HomeValue = ElectronicsAssemblyItem.homeValue;
             this.GetComponent<PartsComponent>().Config(() => LocString.Empty, new PartInfo[]
             {
-                                // ISOLATION TEST: parts left empty. Restore CopperWiringItem
-                                // once we know whether the parts entry is what recurses.
-                                //new() { TypeName = nameof(CopperWiringItem), Quantity = 10},
+                                new() { TypeName = nameof(CopperWiringItem), Quantity = 10},
                             });
             this.ModsPostInitialize();
         }
@@ -126,8 +124,7 @@ namespace Eco.Mods.TechTree
     [IconGroup("World Object Minimap")]
     [Ecopedia("Work Stations", "Craft Tables", createAsSubPage: true)]
     [Weight(5000)] // Defines how heavy AdvancedElectronicsAssembly is.
-    // TODO: re-enable once AdvancedElectronicsUpgradeItem exists again.
-    //[AllowPluginModules(Tags = new[] { "ModernUpgrade" }, ItemTypes = new[] { typeof(AdvancedElectronicsUpgradeItem) })] //noloc
+    [AllowPluginModules(Tags = new[] { "ModernUpgrade" }, ItemTypes = new[] { typeof(AdvancedElectronicsUpgradeItem) })] //noloc
     public partial class AdvancedElectronicsAssemblyItem : WorldObjectItem<AdvancedElectronicsAssemblyObject>, IPersistentData
     {
         protected override OccupancyContext GetOccupancyContext => new SideAttachedContext( 0  | DirectionAxisFlags.Down , WorldObject.GetOccupancyInfo(this.WorldObjectType));
