@@ -1,16 +1,23 @@
 using System.Collections.Generic;
 using Eco.Core.Items;
 using Eco.Gameplay.Components;
+// FuelSupplyComponent lives here, NOT in Eco.Gameplay.Components alongside
+// FuelConsumptionComponent -- the two fuel components sit in different namespaces, so
+// importing only the obvious one resolves the consumption half and silently fails on
+// the supply half.
+using Eco.Gameplay.Components.Storage;
 using Eco.Gameplay.DynamicValues;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Items.Recipes;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Occupancy;
 using Eco.Gameplay.Players;
+using Eco.Gameplay.Skills;
 using Eco.Mods.TechTree;
 using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
+using static Eco.Gameplay.Components.PartsComponent;
 
 namespace Eco.Mods.TechTree
 {
@@ -91,6 +98,13 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(DroneMoverComponent))]
     [RequireComponent(typeof(OreSensorComponent))]
     [RequireComponent(typeof(DroneLifecycle))]
+    // Fuel and parts, mirroring the AutoGen vehicles (Mods/__core__/AutoGen/Vehicle/
+    // Excavator.cs on the dedicated server ships this shape). Initialize() calls
+    // GetComponent on all three, and GetComponent returns null unless the component is
+    // declared here -- the [RequireComponent] attributes are what attach them.
+    [RequireComponent(typeof(FuelSupplyComponent))]
+    [RequireComponent(typeof(FuelConsumptionComponent))]
+    [RequireComponent(typeof(PartsComponent))]
     // v7 put the container probe here to quarantine it. That failed: the drone is not a usable
     // probe host. Its window opens with NO tabs and no content at all -- adding a
     // [RequireComponent] does not retroactively attach to world objects that were already
@@ -99,8 +113,14 @@ namespace Eco.Mods.TechTree
     //
     // Also visible in that screenshot: this class has no [LocDisplayName], so its window titles
     // itself "Editable Title". The [LocDisplayName("Survey Drone")] above is on the ITEM.
-    public class SurveyDroneObject : WorldObject
+    public partial class SurveyDroneObject : WorldObject
     {
+        /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
+        partial void ModsPreInitialize();
+        /// <summary>Hook for mods to customize WorldObject after initialization.</summary>
+        partial void ModsPostInitialize();
+
+        
         /// <summary>
         /// Registers the drone's single-block placement footprint. Required even though
         /// the drone is spawned via WorldObjectManager.ForceAdd (not player-placed) --
@@ -119,6 +139,10 @@ namespace Eco.Mods.TechTree
 
         public override LocString DisplayName => Localizer.DoStr("Survey Drone");
 
+        private static string[] fuelTagList = new string[]
+        {
+            "Electric Fuel",
+        };
         /// <summary>Display name of the owner this drone acts on behalf of, or null if never stamped.</summary>
         [Serialized]
         public string OwnerName { get; private set; }
@@ -143,40 +167,76 @@ namespace Eco.Mods.TechTree
             this.OwnerName = ownership.OwnerName;
             this.OwnerId = ownership.OwnerId;
         }
+        protected override void Initialize()
+        {
+            this.ModsPreInitialize();
+            base.Initialize();
+            this.GetComponent<FuelSupplyComponent>().Initialize(2, fuelTagList);
+            this.GetComponent<FuelConsumptionComponent>().Initialize(275);
+            this.ModsPostInitialize();
+            {
+                this.GetComponent<PartsComponent>().Config(() => LocString.Empty, new PartInfo[]
+                {
+                    new() { TypeName = nameof(AdvancedCircuitItem), Quantity = 1},
+                    new() { TypeName = nameof(ElectricMotorItem), Quantity = 1},
+                    new() { TypeName = nameof(RubberWheelItem), Quantity = 1},
+                    new() { TypeName = nameof(SteelGearItem), Quantity = 1},
+                    new() { TypeName = nameof(LightBulbItem), Quantity = 1},
+                    new() { TypeName = nameof(LubricantItem), Quantity = 2}
+                });
+            }
+        }
     }
 
     /// <summary>Recipe unlocking <see cref="SurveyDroneItem"/>.</summary>
-    public class SurveyDroneRecipe : RecipeFamily
+    [RequiresSkill(typeof(AdvancedElectronicsSkill), 1)]
+    public partial class SurveyDroneRecipe : RecipeFamily
     {
         // Eco force-creates one instance of every RecipeFamily-derived type at startup
         // (RecipeFamily carries [ForceCreateViewAllDerived]) -- registration belongs in
         // the instance constructor, mirroring vanilla recipes (e.g. StorageChestRecipe).
         public SurveyDroneRecipe()
         {
-            var recipe = new Recipe(
-                "SurveyDrone",
-                Localizer.DoStr("Survey Drone"),
-                new IngredientElement[]
+            var recipe = new Recipe();
+            recipe.Init(
+                name: "SurveyDrone",
+                displayName: Localizer.DoStr("Survey Drone"),
+                ingredients: new List<IngredientElement>
                 {
-                    new IngredientElement(typeof(AdvancedCircuitItem), 6, true),
-                    new IngredientElement(typeof(CopperWiringItem), 4, true),
-                    new IngredientElement(typeof(PlasticItem), 4, true),
+                    new IngredientElement(typeof(AdvancedCircuitItem), 6, typeof(AdvancedElectronicsSkill)),
+                    // TODO: v14 item
+                    //new IngredientElement(typeof(InsulatedCopperWiringItem), 4, typeof(AdvancedElectronicsSkill)),
+                    new IngredientElement(typeof(GearboxItem), 4, typeof(AdvancedElectronicsSkill)),
+                    new IngredientElement(typeof(PlasticItem), 20, typeof(AdvancedElectronicsSkill)),
+                    new IngredientElement(typeof(FiberglassItem), 20, typeof(AdvancedElectronicsSkill)),
+                    new IngredientElement(typeof(SteelGearItem), 6, typeof(AdvancedElectronicsSkill)),
+                    new IngredientElement(typeof(ElectricMotorItem), 1, true),
+                    new IngredientElement(typeof(RubberWheelItem), 2, true),
+                    new IngredientElement(typeof(RadiatorItem), 1, true),
+                    new IngredientElement(typeof(SteelAxleItem), 1, true),
+                    new IngredientElement(typeof(LightBulbItem), 2, true),
+                    new IngredientElement(typeof(LubricantItem), 2, true),
                 },
-                new CraftingElement[]
+                items: new List<CraftingElement>
                 {
                     new CraftingElement<SurveyDroneItem>(1),
                 });
 
             this.Recipes = new List<Recipe> { recipe };
-            this.ExperienceOnCraft = 5;
-            this.LaborInCalories = new ConstantValue(400);
-            this.CraftMinutes = new ConstantValue(10);
-            this.Initialize(Localizer.DoStr("Survey Drone"), typeof(SurveyDroneRecipe));
+            this.ExperienceOnCraft = 30;
+            this.LaborInCalories = CreateLaborInCaloriesValue(1000, typeof(AdvancedElectronicsSkill));
+            this.CraftMinutes = CreateCraftTimeValue(beneficiary: typeof(SurveyDroneRecipe), start: 10, skillType: typeof(AdvancedElectronicsSkill));
+            this.ModsPreInitialize();
+            this.Initialize(displayText: Localizer.DoStr("Survey Drone"), recipeType: typeof(SurveyDroneRecipe));
+            this.ModsPostInitialize();
 
-            // ASSUMPTION: see DroneDockRecipe in DroneDockObject.cs -- same crafting-table
-            // pick (ElectricMachinistTableObject), same caveat about no dedicated mod
-            // bench existing yet.
-            CraftingComponent.AddRecipe(typeof(ElectricMachinistTableObject), this);
+            CraftingComponent.AddRecipe(tableType: typeof(AdvancedElectronicsAssemblyObject), recipeFamily: this);
         }
+
+        /// <summary>Hook for mods to customize RecipeFamily before initialization. You can change recipes, xp, labor, time here.</summary>
+        partial void ModsPreInitialize();
+
+        /// <summary>Hook for mods to customize RecipeFamily after initialization, but before registration. You can change skill requirements here.</summary>
+        partial void ModsPostInitialize();
     }
 }
