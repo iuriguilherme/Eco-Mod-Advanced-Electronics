@@ -72,8 +72,14 @@ by having the **same name**, with nothing else connecting them.
 A mismatch fails silently and in the worst direction — the server loads and behaves correctly while
 the object renders as a missing-model placeholder, so the symptom appears purely visual and points
 away from the cause. Renaming either half without the other, or letting a tool regenerate a prefab
-under a different name, breaks the binding with no error at build or load time. The same applies to
-items and their icon assets.
+under a different name, breaks the binding with no error at build or load time.
+
+Which artifact carries the bound name differs by kind, and in neither case is it the image file. A
+World Object binds through its prefab asset's own name; the scene object that prefab was built from
+may be named differently without consequence. An item binds through the name of its object inside
+the scene, not the name of the sprite supplying its icon. Naming the image correctly while the bound
+artifact is named wrong fails exactly like any other mismatch, and is easier to miss because the
+file that looks like the asset is the one that binds nothing.
 
 ## Dock and assignment
 
