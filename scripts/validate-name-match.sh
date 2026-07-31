@@ -34,20 +34,60 @@ if [ ! -d "$SERVER_DIR" ]; then
   exit 2
 fi
 
-# WorldObject subclasses (exact base class "WorldObject", not WorldObjectItem<T>
-# or WorldObjectComponent — the trailing-nothing-after-"WorldObject" pattern
-# below distinguishes them; see this script's header for why).
+# --- Server type discovery ---------------------------------------------------
+#
+# Declarations are matched against a NORMALIZED view of the sources rather than
+# line by line, because a base list legitimately spans several lines:
+#
+#     public partial class BatteryBlock :
+#         PickupableBlock
+#         , IRepresentsItem
+#
+# normalize_sources strips // comments first (so commented-out template code is
+# never discovered as a real type), then joins everything and collapses runs of
+# whitespace, leaving each declaration as "class <Name> : <Base> , <Iface> {".
+#
+# An earlier version of this script grepped 'class X : WorldObject *$' and
+# 'class X : Item *$'. Those end-of-line anchors were meant to exclude
+# WorldObjectItem<T> and WorldObjectComponent, but they also excluded every
+# declaration carrying a trailing interface, a trailing brace, or a generic
+# base — which is nearly all of them. The gate consequently discovered only
+# SurveyDroneObject and SurveyDroneItem and reported PASS while DroneDockObject
+# and six newer types went unchecked: a green gate that verified almost nothing.
+# The same exclusion is now done by requiring a word boundary after the base
+# name rather than end-of-line.
+normalize_sources() {
+  find "$SERVER_DIR" -name '*.cs' -exec cat {} + \
+    | sed -E 's://.*$::' \
+    | tr '\n' ' ' \
+    | sed -E 's/[[:space:]]+/ /g'
+}
+
+DECLS="$(normalize_sources)"
+
+# WorldObject subclasses need a name-matching .prefab. Requiring one of " ,{"
+# after the base name is what keeps WorldObjectItem<T> and WorldObjectComponent
+# out of this list.
 mapfile -t WORLD_OBJECT_TYPES < <(
-  grep -rhoE 'class [A-Za-z0-9_]+ : WorldObject *$' "$SERVER_DIR" \
-    | sed -E 's/class ([A-Za-z0-9_]+) : WorldObject */\1/' \
+  printf '%s' "$DECLS" \
+    | grep -oE 'class [A-Za-z0-9_]+ : WorldObject[ ,{]' \
+    | sed -E 's/class ([A-Za-z0-9_]+) : WorldObject./\1/' \
     | sort -u
 )
 
-# Plain Item subclasses (exact base class "Item", not WorldObjectItem<T> —
-# same trailing-nothing pattern).
+# Item types need a name-matching GameObject under the scene's "Items" root.
+# Every base listed here is something a player can hold: a plain Item, the
+# world-object item that places a WorldObject, the block item that places a
+# block, and the skill book/scroll pair.
+#
+# PickupableBlock is deliberately NOT listed. A placed block binds through a
+# BlockSet rather than an Items-root GameObject, and this mod ships no BlockSet
+# yet (the battery's placed block is explicitly deferred), so demanding an asset
+# for one would fail the gate on work that was consciously left undone.
 mapfile -t ITEM_TYPES < <(
-  grep -rhoE 'class [A-Za-z0-9_]+ : Item *$' "$SERVER_DIR" \
-    | sed -E 's/class ([A-Za-z0-9_]+) : Item */\1/' \
+  printf '%s' "$DECLS" \
+    | grep -oE 'class [A-Za-z0-9_]+ : (Item[ ,{]|WorldObjectItem<|BlockItem<|SkillBook<|SkillScroll<)' \
+    | sed -E 's/class ([A-Za-z0-9_]+) : .*/\1/' \
     | sort -u
 )
 
@@ -109,8 +149,13 @@ done
 for a in "${ASSET_NAMES[@]:-}"; do
   [ -z "$a" ] && continue
   is_known=0
+  # "<Type>_icon.png" is the generated placeholder sprite for <Type>. The suffix
+  # is a human-readable convention only -- nothing binds to the PNG name (the
+  # scene GameObject is the bound artifact) -- so strip it before comparing,
+  # rather than emitting a NOTE for every icon the finisher produces.
+  a_base="${a%_icon}"
   for t in "${WORLD_OBJECT_TYPES[@]:-}" "${ITEM_TYPES[@]:-}"; do
-    [ "$a" = "$t" ] && is_known=1 && break
+    { [ "$a" = "$t" ] || [ "$a_base" = "$t" ]; } && is_known=1 && break
   done
   if [ "$is_known" -eq 0 ]; then
     echo "NOTE: asset '$a' under $ASSET_DIR doesn't match any known server WorldObject/Item name — confirm this is intentional (material/texture/support asset), not a typo of a server class name."
