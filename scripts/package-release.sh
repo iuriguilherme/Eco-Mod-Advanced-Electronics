@@ -125,6 +125,13 @@ Version ${VERSION}, built for Eco ${GAME_VERSION}.
   the whole world's load with it. Updating on a world that already contains
   Drone Docks or Survey Drones is the single most likely way to lose that world.
 
+  *** THIS VERSION SPECIFICALLY: placed Drone Docks WILL NOT LOAD. ***
+
+  This version merges the dock's Areas and Results tabs into a single Survey
+  tab, which removes a stored component from every Drone Dock. That is not a
+  "can fail" -- a dock placed by an earlier version does not survive the
+  update, and no migration ships to rescue it.
+
   The safe update path is a fresh world, or removing every Drone Dock and Survey
   Drone with admin tools BEFORE installing the new version.
 
@@ -179,11 +186,16 @@ USAGE
   Everything else is crafted at the Advanced Electronics Assembly: the Drone Dock,
   the Survey Drone, and the Advanced Electronics Upgrade module.
 
-  Place the dock, open it, and use the Areas tab to draw survey areas on the map and
-  assign one. Insert the Survey Drone item to launch. The Results tab shows what
-  was found, one area at a time.
+  Place the dock and open its Survey tab. Use "Manage Areas on Map" to draw survey
+  areas, then tick the one you want the drone to work on. Insert the Survey Drone
+  item to launch. Findings are shown one area at a time; the area you are reading
+  is chosen separately from the one the drone is working on, so you can check any
+  area without redirecting the drone.
 
 KNOWN ISSUES IN THIS VERSION
+  - Drone Docks placed by an earlier version do not load. This version removes a
+    stored component from the dock and ships no save migration -- see the ALPHA
+    warning above.
   - No placement preview: the Drone Dock and the Advanced Electronics Assembly show
     no ghost outline while you are holding them. They still place normally.
   - The Survey Drone's own window opens with no tabs, so it cannot be refuelled.
