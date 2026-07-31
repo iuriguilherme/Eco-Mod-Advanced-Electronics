@@ -8,7 +8,7 @@
 #   AdvancedElectronics/AdvancedElectronics.dll
 #   AdvancedElectronics/AdvancedElectronics.Navigation.dll
 #   AdvancedElectronics/AdvancedElectronics.unity3d
-#   AdvancedElectronics/README.txt  LICENSE
+#   AdvancedElectronics/README.txt  LICENSE.txt
 #
 # The zip does NOT carry a Mods/UserCode/ prefix. Server owners know where mods go,
 # and shipping the prefix invites extracting it INSIDE UserCode, which produces a
@@ -34,7 +34,7 @@
 
 set -euo pipefail
 
-VERSION="0.0.1"
+VERSION="0.0.2"
 GAME_VERSION="0.13.0.4"
 FORCE=0
 
@@ -104,7 +104,7 @@ mkdir -p "$MODDIR"
 cp "$RELEASE_DIR/AdvancedElectronics.dll"            "$MODDIR/"
 cp "$RELEASE_DIR/AdvancedElectronics.Navigation.dll" "$MODDIR/"
 cp "$BUNDLE"                                         "$MODDIR/"
-cp LICENSE                                           "$MODDIR/"
+cp LICENSE                                           "$MODDIR/LICENSE.txt"
 
 cat > "$MODDIR/README.txt" <<TXT
 Advanced Electronics — an Eco mod adding a ground survey drone.
@@ -116,9 +116,13 @@ Version ${VERSION}, built for Eco ${GAME_VERSION}.
 
 *** ALPHA -- DO NOT USE ON A WORLD YOU CARE ABOUT ***
 
-  Expect breaking changes between versions, including ones that are not
-  migrated: an update can change how dock and drone state is stored, and
-  older saved state may not survive it.
+  This mod ships NO SAVE MIGRATIONS. Objects placed by an earlier version can
+  fail to load after an update, and a world object that fails to load can take
+  the whole world's load with it. Updating on a world that already contains
+  Drone Docks or Survey Drones is the single most likely way to lose that world.
+
+  The safe update path is a fresh world, or removing every Drone Dock and Survey
+  Drone with admin tools BEFORE installing the new version.
 
   This version is also known to leave orphaned objects in the world --
   drones that outlive their dock, or objects an update no longer
@@ -137,13 +141,17 @@ INSTALL
                                             load without it
         AdvancedElectronics.unity3d         client assets, sent to players
                                             automatically -- players install nothing
-  3. If you are UPDATING, delete the old copy first -- see below.
+  3. If you are UPDATING, read the UPDATING section below first.
   4. Start the server. The mods listing should show "Advanced Electronics".
 
 UPDATING -- READ THIS
-  Delete the previous AdvancedElectronics folder (or any loose
-  AdvancedElectronics*.dll / AdvancedElectronics.unity3d left in UserCode)
-  BEFORE copying the new one in.
+  Read the save-migration warning above first. The file side of an update is
+  easy; the world side is not.
+
+  Overwriting the AdvancedElectronics folder in place is fine -- the file names
+  do not change between versions, so a copy-over replaces every shipped file.
+  What you must NOT do is leave a SECOND copy of these files anywhere under
+  Mods/.
 
   Eco scans Mods/ recursively and keys asset bundles by filename, so a second
   copy of AdvancedElectronics.unity3d anywhere under Mods/ -- including in a
@@ -160,13 +168,26 @@ UNINSTALL
   discards any placed Drone Docks along with their survey areas and findings.
 
 USAGE
-  Craft a Drone Dock and a Survey Drone at the Electric Machinist Table. Place
-  the dock, open it, and use the Areas tab to draw survey areas on the map and
+  Advanced Electronics is an Engineer specialty. Craft the Advanced Electronics
+  Skill Book at a Laboratory to discover it, then build the Advanced Electronics
+  Assembly at the Electric Machinist Table.
+
+  Everything else is crafted at the Advanced Electronics Assembly: the Drone Dock,
+  the Survey Drone, and the Advanced Electronics Upgrade module.
+
+  Place the dock, open it, and use the Areas tab to draw survey areas on the map and
   assign one. Insert the Survey Drone item to launch. The Results tab shows what
   was found, one area at a time.
 
+KNOWN ISSUES IN THIS VERSION
+  - No placement preview: the Drone Dock and the Advanced Electronics Assembly show
+    no ghost outline while you are holding them. They still place normally.
+  - The Survey Drone's own window opens with no tabs, so it cannot be refuelled.
+    Fuel consumption is not implemented yet; the drone runs regardless.
+  - Item and skill icons are flat-colour placeholders.
+
 LICENSE
-  LGPL-3.0-or-later. See LICENSE. Source is at the GitHub link above; you may
+  LGPL-3.0-or-later. See LICENSE.txt. Source is at the GitHub link above; you may
   modify and redistribute this mod under the same terms.
 
   Eco and the Eco ModKit are the property of Strange Loop Games and are not
