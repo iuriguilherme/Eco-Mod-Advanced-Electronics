@@ -3,16 +3,20 @@
 # Assembles the ready-to-upload release zip for the mod.io page.
 #
 # Produces  dist/AdvancedElectronics-<version>-eco<game>.zip  containing ONE folder,
-# which the admin drops into Mods/UserCode/:
+# which the admin drops into Mods/:
 #
 #   AdvancedElectronics/AdvancedElectronics.dll
 #   AdvancedElectronics/AdvancedElectronics.Navigation.dll
 #   AdvancedElectronics/AdvancedElectronics.unity3d
 #   AdvancedElectronics/README.txt  LICENSE.txt
 #
-# The zip does NOT carry a Mods/UserCode/ prefix. Server owners know where mods go,
-# and shipping the prefix invites extracting it INSIDE UserCode, which produces a
-# nested Mods/UserCode/Mods/UserCode/... copy. That is not merely untidy: Eco scans
+# Mods/AdvancedElectronics/, NOT Mods/UserCode/AdvancedElectronics/. UserCode is for
+# source-code mods Eco compiles at runtime; a compiled-DLL mod lives directly under
+# Mods/. That is the layout this project deploys to and live-tests against.
+#
+# The zip does NOT carry a Mods/ prefix. Server owners know where mods go, and
+# shipping the prefix invites extracting it INSIDE Mods/, which produces a
+# nested Mods/Mods/... copy. That is not merely untidy: Eco scans
 # Mods/ recursively and keys asset bundles by FILENAME, so a second copy of
 # AdvancedElectronics.unity3d anywhere under Mods/ aborts server startup with
 # "An item with the same key has already been added". One folder, one place.
@@ -134,8 +138,8 @@ Version ${VERSION}, built for Eco ${GAME_VERSION}.
 INSTALL
   1. Stop the Eco server.
   2. Extract this zip and put the AdvancedElectronics folder into
-     Eco_Data/Server/Mods/UserCode/ , so you end up with
-     Mods/UserCode/AdvancedElectronics/ containing:
+     Eco_Data/Server/Mods/ , so you end up with
+     Mods/AdvancedElectronics/ containing:
         AdvancedElectronics.dll             the mod
         AdvancedElectronics.Navigation.dll  navigation core; the mod will not
                                             load without it
@@ -164,7 +168,7 @@ UPDATING -- READ THIS
   Renaming the folder does not help. Move old copies OUT of Mods/ entirely.
 
 UNINSTALL
-  Delete the Mods/UserCode/AdvancedElectronics/ folder. Removing the mod
+  Delete the Mods/AdvancedElectronics/ folder. Removing the mod
   discards any placed Drone Docks along with their survey areas and findings.
 
 USAGE

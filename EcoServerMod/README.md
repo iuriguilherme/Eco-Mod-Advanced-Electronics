@@ -65,7 +65,8 @@ solution.
 ## Deploying
 
 Copy **both** DLLs from `AdvancedElectronics/bin/Debug/net10.0/` into the server's
-`Mods/UserCode/` directory:
+`Mods/AdvancedElectronics/` directory (compiled-DLL mods live directly under `Mods/`;
+`Mods/UserCode/` is for source-code mods Eco compiles at runtime):
 
 - `AdvancedElectronics.dll`
 - `AdvancedElectronics.Navigation.dll` (project dependency — the mod fails to load without it)
@@ -76,7 +77,7 @@ build output on every build:
 ```xml
 <Project>
   <PropertyGroup>
-    <EcoModsDir>C:\path\to\EcoServer\Mods\UserCode</EcoModsDir>
+    <EcoModsDir>C:\path\to\EcoServer\Mods\AdvancedElectronics</EcoModsDir>
   </PropertyGroup>
 </Project>
 ```

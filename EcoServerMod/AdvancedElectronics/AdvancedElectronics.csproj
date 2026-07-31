@@ -29,7 +29,7 @@
   </ItemGroup>
 
   <!-- Optional auto-deploy: set EcoModsDir in Local.props to your server's
-       Mods/UserCode directory to copy the DLLs after every build. Copies every
+       Mods/AdvancedElectronics directory to copy the DLLs after every build. Copies every
        DLL in the output (the mod itself plus AdvancedElectronics.Navigation,
        which the mod cannot load without) rather than only $(TargetPath). -->
   <Target Name="CopyModToEco" AfterTargets="Build" Condition="'$(EcoModsDir)' != ''">
