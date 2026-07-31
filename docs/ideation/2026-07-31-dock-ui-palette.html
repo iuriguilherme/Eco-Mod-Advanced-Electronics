@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drone Dock UI — palette, baseline, and redesign options</title>
+<style>
+/* ------------------------------------------------------------------
+   PAGE CHROME (not Eco -- this is the document around the mockups)
+   ------------------------------------------------------------------ */
+:root{
+  --ink:#e8e2d6; --ink-dim:#a99f8d; --page:#1b1814; --panel:#241f19;
+  --rule:#3a332a; --warn:#d98a3a; --bad:#c94f4f; --ok:#6fae5f; --lead:#7fa6c9;
+
+  /* --- MEASURED ECO GEOMETRY (see "How these numbers were measured") --- */
+  --eco-w: 946px;      /* panel content width  */
+  --eco-fold: 605px;   /* visible height before the panel scrolls */
+  --row: 22px;         /* one standard two-column row */
+  --bigbtn-h: 70px;    /* BigButton height  == 3.2 rows */
+  --bigbtn-w: 120px;   /* BigButton width   == 13% of the panel */
+  --line: 18px;        /* one line of StringDisplay text */
+
+  /* --- ECO PALETTE, sampled from screenshots --- */
+  --e-bg:#c9a574; --e-bg2:#c29c68; --e-bg3:#cdaa7c;
+  --e-edge:#8b6b3f; --e-edge2:#a6845a;
+  --e-label:#4a3418; --e-gold:#a8850f; --e-goldbright:#c8a020;
+  --e-black:#0b0a08; --e-white:#f4efe4;
+  --e-head:#b8925e;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--page); color:var(--ink);
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  padding:0 0 6rem;
+}
+.wrap{max-width:1120px;margin:0 auto;padding:0 1.5rem}
+h1{font-size:1.9rem;line-height:1.2;margin:2.5rem 0 .4rem;letter-spacing:-.02em}
+h2{font-size:1.35rem;margin:3.5rem 0 .6rem;padding-top:1.6rem;border-top:1px solid var(--rule);letter-spacing:-.01em}
+h3{font-size:1.05rem;margin:2rem 0 .5rem;color:#fff}
+h4{font-size:.9rem;margin:1.2rem 0 .4rem;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.08em}
+p{margin:.6rem 0;max-width:74ch}
+ul,ol{max-width:74ch}
+li{margin:.25rem 0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.87em;
+  background:#2c2620;padding:.1em .35em;border-radius:3px;color:#e4d7bd}
+.sub{color:var(--ink-dim);max-width:74ch}
+.tag{display:inline-block;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;
+  padding:.15em .5em;border-radius:3px;vertical-align:middle;font-weight:600}
+.t-ok{background:#22331d;color:var(--ok);border:1px solid #3d5c33}
+.t-bad{background:#361d1d;color:var(--bad);border:1px solid #5c3333}
+.t-warn{background:#37291a;color:var(--warn);border:1px solid #5c4529}
+.t-lead{background:#1d2833;color:var(--lead);border:1px solid #33495c}
+.note{background:var(--panel);border-left:3px solid var(--rule);padding:.8rem 1rem;margin:1rem 0;max-width:78ch}
+.note.lead{border-left-color:var(--lead)}
+.note.bad{border-left-color:var(--bad)}
+.note.warn{border-left-color:var(--warn)}
+table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.87rem}
+th,td{text-align:left;padding:.45rem .6rem;border-bottom:1px solid var(--rule);vertical-align:top}
+th{color:var(--ink-dim);font-weight:600;text-transform:uppercase;font-size:.72rem;letter-spacing:.06em}
+.scroll{overflow-x:auto}
+.num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+
+/* ==================================================================
+   ECO PANEL RENDERING
+   Everything below is geometry-faithful to the measured client.
+   ================================================================== */
+.eco{
+  width:var(--eco-w); max-width:100%;
+  border:2px solid #6b5230; border-radius:5px;
+  background:#b8925e; box-shadow:0 6px 26px rgba(0,0,0,.55);
+  font-family:Georgia,"Times New Roman",serif;
+  margin:1.2rem 0; overflow:hidden;
+}
+.eco-title{
+  background:var(--e-head); border-bottom:1px solid #6b5230;
+  padding:.5rem; text-align:center; color:#3c2a12;
+  font-variant:small-caps; font-size:1.05rem; letter-spacing:.05em;
+}
+.eco-tabs{display:flex;gap:2px;padding:4px 4px 0;background:#b8925e}
+.eco-tab{
+  flex:1; text-align:center; padding:.35rem .2rem;
+  background:linear-gradient(#cdaa7c,#bd9765); border:1px solid #7d6038;
+  border-bottom:none; border-radius:3px 3px 0 0;
+  color:#3c2a12; font-variant:small-caps; font-size:.78rem; letter-spacing:.04em;
+}
+.eco-tab.on{background:linear-gradient(#dcc094,#cba97b);font-weight:700}
+.eco-tab.dim{opacity:.62}
+
+/* the content viewport: fixed height, content beyond it scrolls in-game */
+.eco-view{
+  position:relative; height:var(--eco-fold);
+  background:linear-gradient(var(--e-bg),var(--e-bg2));
+  border-top:1px solid #7d6038; overflow:hidden;
+}
+.eco-view.grow{height:auto;min-height:60px;overflow:visible}
+.eco-body{padding:2px 0}
+
+/* the fold marker */
+.fold{
+  position:absolute; left:0; right:0; bottom:0; height:0;
+  border-top:2px dashed rgba(140,30,30,.75); pointer-events:none;
+}
+.fold::after{
+  content:"▲ fold — everything below this line requires scrolling";
+  position:absolute; right:6px; bottom:2px;
+  font:600 10px/1 -apple-system,sans-serif; color:#7c1f1f; letter-spacing:.04em;
+}
+.overflow-note{
+  background:#5c2020;color:#ffd9d9;font:600 11px/1.4 -apple-system,sans-serif;
+  padding:.35rem .6rem;text-align:center;letter-spacing:.03em;
+}
+
+/* ---- individual templates ---- */
+/* two-column row: label left, control right */
+.r{display:flex;align-items:center;min-height:var(--row);height:var(--row);
+   background:#c5a06d;border-bottom:1px solid #b18d5c}
+.r:nth-child(even){background:#cba876}
+.r-lab{flex:0 0 50%;padding:0 .5rem;color:var(--e-label);
+   font-variant:small-caps;font-size:.8rem;letter-spacing:.03em;white-space:nowrap;overflow:hidden}
+.r-val{flex:1;padding:0 .5rem;color:var(--e-gold);font-size:.8rem;text-align:left}
+
+/* StringDisplay: centred, full width, no row background */
+.sd{padding:1px .5rem;text-align:center;color:#8b6914;font-weight:700;
+    font-size:.76rem;line-height:var(--line);white-space:pre-wrap}
+
+/* headers */
+.h-title{text-align:center;color:#8a6a34;font-variant:small-caps;font-size:.8rem;
+    letter-spacing:.06em;height:var(--row);line-height:var(--row)}
+.h-general{text-align:center;color:#4a3418;font-variant:small-caps;font-size:1.25rem;
+    letter-spacing:.04em;height:34px;line-height:34px;background:#c7a271}
+.h-section,.h-lined{display:flex;align-items:center;height:23px;padding:0 .5rem;
+    background:#c9a473;border-bottom:1px solid #b18d5c;color:var(--e-label);
+    font-variant:small-caps;font-size:.8rem}
+.h-lined{border-top:1px solid #b18d5c}
+
+/* black input-ish surfaces */
+.blackbar{background:var(--e-black);color:var(--e-white);font-weight:700;font-size:.76rem;
+    text-align:center;height:var(--row);line-height:var(--row);overflow:hidden}
+.longstring{display:flex;align-items:flex-start;height:60px;background:#c5a06d;
+    border-bottom:1px solid #b18d5c}
+.longstring .box{margin:4px 0 4px 0;width:36%;height:52px;background:var(--e-black);
+    color:var(--e-white);font-size:.74rem;font-weight:700;padding:.3rem .4rem;overflow:hidden}
+.largeinput{display:flex;height:62px;background:#c5a06d;border-bottom:1px solid #b18d5c}
+.largeinput .box{flex:1;border-left:1px solid #b18d5c;color:#7b5c2c;font-size:.76rem;padding:.3rem .5rem}
+
+/* plaque */
+.plaque{height:110px;margin:4px 8px;border:2px solid #8a6a34;border-radius:3px;
+  background:linear-gradient(160deg,#e8c66a,#d4ad4e 40%,#c99f3f);
+  display:flex;align-items:flex-start;justify-content:center;padding-top:.9rem;
+  color:#5a4212;font-variant:small-caps;font-size:.95rem;letter-spacing:.05em;
+  box-shadow:inset 0 0 0 6px rgba(255,255,255,.18)}
+
+/* stepper (Int32 / Single) */
+.stepper{display:flex;align-items:center;flex:1;gap:2px;padding-right:.3rem}
+.stepper .pm{width:22px;height:17px;background:#1a1713;color:#d9cba8;
+  display:flex;align-items:center;justify-content:center;font:700 12px/1 monospace}
+.stepper .field{flex:1;height:17px;background:var(--e-black);color:var(--e-white);
+  font-weight:700;font-size:.76rem;display:flex;align-items:center;justify-content:center}
+
+/* boolean checkbox */
+.cbox{width:15px;height:15px;background:var(--e-black);border:1px solid #4a3a20;
+  color:#8fd07a;display:flex;align-items:center;justify-content:center;
+  font:700 11px/1 monospace;margin-right:.4rem}
+.cbox.off{color:transparent}
+.r-ctl{flex:1;display:flex;align-items:center;justify-content:flex-end;padding:0 .5rem}
+
+/* dropdown (Selector / GamePickerList) */
+.dd{flex:1;display:flex;align-items:center;justify-content:space-between;padding:0 .3rem 0 .5rem}
+.dd .v{color:#b8541f;font-size:.78rem}
+.dd .caret{width:16px;height:16px;background:#f0e6d0;border:1px solid #8b6b3f;
+  color:#3c2a12;display:flex;align-items:center;justify-content:center;font-size:9px}
+
+/* BIG BUTTON -- the expensive one. 120x70, centred, dead space both sides. */
+.bigbtn-wrap{display:flex;justify-content:center;height:var(--bigbtn-h);align-items:center}
+.bigbtn{
+  width:var(--bigbtn-w); height:56px;
+  background:linear-gradient(#cdaa7c,#bd9765); border:1px solid #7d6038; border-radius:2px;
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  color:#3c2a12;font-variant:small-caps;font-size:.78rem;letter-spacing:.04em;padding:0 .3rem;
+}
+.deadspace{position:relative}
+.deadspace::before,.deadspace::after{
+  content:"dead"; position:absolute; top:50%; transform:translateY(-50%);
+  font:600 9px/1 -apple-system,sans-serif; color:rgba(90,60,20,.4); letter-spacing:.1em;
+}
+.deadspace::before{left:12%}
+.deadspace::after{right:12%}
+
+/* palette card */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem;margin:1rem 0}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+.card-h{padding:.5rem .7rem;border-bottom:1px solid var(--rule);display:flex;
+  justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap}
+.card-h b{font-family:ui-monospace,monospace;font-size:.85rem;color:#fff}
+.card-demo{background:linear-gradient(var(--e-bg),var(--e-bg2));font-family:Georgia,serif;
+  border-bottom:1px solid var(--rule)}
+.card-meta{padding:.5rem .7rem;font-size:.78rem;color:var(--ink-dim)}
+.card-meta dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:.15rem .6rem}
+.card-meta dt{color:#8b8272}
+.card-meta dd{margin:0}
+
+/* option comparison bars */
+.bars{margin:1rem 0}
+.bar-row{display:flex;align-items:center;gap:.7rem;margin:.35rem 0;font-size:.85rem}
+.bar-name{flex:0 0 210px;color:var(--ink-dim)}
+.bar-track{flex:1;height:16px;background:#2c2620;border-radius:2px;position:relative;overflow:hidden}
+.bar-fill{height:100%;background:linear-gradient(90deg,#4a6b3a,#6fae5f)}
+.bar-fill.over{background:linear-gradient(90deg,#7a2f2f,#c94f4f)}
+.bar-foldline{position:absolute;top:0;bottom:0;border-left:2px dashed rgba(255,255,255,.45)}
+.bar-num{flex:0 0 92px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+
+.caption{font-size:.8rem;color:var(--ink-dim);margin:.3rem 0 1.4rem;max-width:74ch}
+.legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.78rem;color:var(--ink-dim);margin:.5rem 0}
+@media (max-width:1000px){ .eco{width:100%} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Drone Dock UI — palette, baseline, and redesign options</h1>
+<p class="sub">
+  Advanced Electronics mod · 2026-07-31 · branch <code>probe/ui-vocabulary</code><br>
+  Companion to <code>docs/solutions/design-patterns/vertical-stack-only-ui-design.md</code>
+  and <code>docs/solutions/runtime-errors/autogen-template-binding-contract.md</code>.
+</p>
+
+<div class="note warn">
+  <b>This mockup obeys the target's layout primitives.</b> That is the whole point of it.
+  A previous HTML preview of this panel drew Previous/Next side by side; Eco cannot do that,
+  the buttons shipped stacked, and the verdict was
+  <i>"you tricked me — those buttons are still vertical and not horizontal like the preview, lol."</i>
+  Every element below is drawn at its <b>measured</b> size and in its <b>real</b> position.
+  Nothing here uses a capability the client has not been observed to have.
+</div>
+
+<h4>How these numbers were measured</h4>
+<p class="sub">
+  Pixel measurements taken from live client screenshots at
+  <code>.references/Screenshots/14/</code> (pre-rework Survey tab, 1009×625) and
+  <code>.references/Screenshots/19/</code> (UI Showcase probe, 987×708), normalised to the
+  panel content box. The showcase component that produced them is
+  <code>EcoServerMod/AdvancedElectronics/UIShowcaseComponent.cs</code> — currently detached at
+  <code>DroneDock.cs:87</code>, one commented line from returning.
+</p>
+
+<!-- ============================================================ -->
+<h2>1 · Ground rules</h2>
+<p>Verified primitives. A mockup that breaks one of these is worthless, because it will be approved and then cannot be built.</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Rule</th><th>Status</th><th>Evidence</th></tr></thead>
+<tbody>
+<tr><td>One element per row, in <b>member declaration order</b>.</td>
+    <td><span class="tag t-ok">verified</span></td>
+    <td>Every deployed build. Reading order is declaration order.</td></tr>
+<tr><td>Most templates render as a <b>two-column row</b> — label left, control right. A few go full width.</td>
+    <td><span class="tag t-ok">verified</span></td>
+    <td>Showcase probe. Corrects this doc set's original "full-width only" claim.</td></tr>
+<tr><td><b>Panel height is the budget</b>, ~605 px of content before it scrolls.</td>
+    <td><span class="tag t-ok">verified</span></td>
+    <td>Screenshot 14 and 19 both show the panel clipping and a scrollbar appearing.</td></tr>
+<tr><td>A <b>dynamically sized list does not render</b> from a mod component.</td>
+    <td><span class="tag t-bad">blocked</span></td>
+    <td>Seven builds. <code>Table</code>/<code>ButtonGrid</code> bound to a collection produce an empty container or crash the window. Root cause is a client type-reconstruction gap (<code>View.cs:114</code>).</td></tr>
+<tr><td>Therefore N controls means a <b>fixed pool of compile-time RPC methods</b>.</td>
+    <td><span class="tag t-ok">verified</span></td>
+    <td>The pool is gated per position by a <code>[SyncToView] bool</code> + <code>VisibilityParam</code>.</td></tr>
+<tr><td>An editable member <b>persists</b> but does not <b>refresh on screen</b> unless the setter explicitly raises <code>PropertyChanged</code>.</td>
+    <td><span class="tag t-ok">verified</span></td>
+    <td>A/B in one deploy, two adjacent <code>Int32</code> members. Needs an explicit backing field — an auto-property gives no setter body to push from. Per-member cost.</td></tr>
+<tr><td>An editable template with an <b>unreachable setter kills the server</b> for every player.</td>
+    <td><span class="tag t-bad">hazard</span></td>
+    <td><code>InvalidOperationException: Missing RPC call Set&lt;Prop&gt;</code>. Not visible until someone clicks.</td></tr>
+<tr><td>A known template bound to a <b>mismatched value shape</b> also kills the server — merely hovering was enough.</td>
+    <td><span class="tag t-bad">hazard</span></td>
+    <td><code>Range</code> on a <code>float</code>: <code>Could not finding matching RPC signature for method: SetT_Range</code>.</td></tr>
+<tr><td>An <b>unknown</b> template name is safe — logged and skipped.</td>
+    <td><span class="tag t-ok">verified</span></td>
+    <td><code>View.cs:356</code>. This is the only crash-safety guarantee, and it is narrower than it sounds.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>The number that drives everything</h3>
+<div class="bars">
+  <div class="bar-row"><span class="bar-name">standard two-column row</span>
+    <span class="bar-track"><span class="bar-fill" style="width:3.6%"></span></span><span class="bar-num">22 px</span></div>
+  <div class="bar-row"><span class="bar-name">one line of StringDisplay</span>
+    <span class="bar-track"><span class="bar-fill" style="width:3%"></span></span><span class="bar-num">18 px</span></div>
+  <div class="bar-row"><span class="bar-name">GeneralHeader</span>
+    <span class="bar-track"><span class="bar-fill" style="width:5.6%"></span></span><span class="bar-num">34 px</span></div>
+  <div class="bar-row"><span class="bar-name">LongString / StringLargeInput</span>
+    <span class="bar-track"><span class="bar-fill" style="width:10%"></span></span><span class="bar-num">~60 px</span></div>
+  <div class="bar-row"><span class="bar-name"><b>BigButton</b></span>
+    <span class="bar-track"><span class="bar-fill over" style="width:11.6%"></span></span><span class="bar-num">70 px</span></div>
+  <div class="bar-row"><span class="bar-name">StringPlaque</span>
+    <span class="bar-track"><span class="bar-fill over" style="width:18.2%"></span></span><span class="bar-num">110 px</span></div>
+</div>
+
+<div class="note bad">
+  <b>BigButton is the panel's commit control, and the dock uses it as a list primitive.</b>
+  It is the OK button at the bottom of a screen: fixed size, not groupable horizontally, designed to
+  appear once. Every property that makes it a good commit button makes it a bad repeated element.
+  <br><br>
+  The measurement is the symptom, not the diagnosis. One renders ~120&nbsp;px wide, ~70&nbsp;px tall,
+  centred, with roughly 400&nbsp;px of dead panel on each side — exactly what a control meant to sit
+  alone at the bottom of a panel would do. The Areas tab's six assign buttons are
+  <b>420&nbsp;px of a 605&nbsp;px viewport</b>, 69% of everything the player sees without scrolling.
+  <br><br>
+  The recorded lesson was "vertical buttons are a terrible design", and the prior rework answered it
+  by using <i>fewer</i> buttons. The sharper reading: buttons are fine, and this one is being used
+  against its purpose. The vocabulary already has controls built for repetition —
+  <code>Boolean</code> for a per-object toggle, <code>Int32</code> for a cursor — and they cost
+  22&nbsp;px because that is what a list element is supposed to cost.
+</div>
+
+<!-- ============================================================ -->
+<h2>2 · The palette</h2>
+<p>
+  Every template the showcase probe actually rendered, drawn at true height. Row cost is in
+  standard-row units (1 unit = 22&nbsp;px). "Live" means the on-screen control updates without
+  reopening the window, which requires the explicit-backing-field setter pattern.
+</p>
+<div class="legend">
+  <span><span class="tag t-ok">safe</span> renders and cannot drop the server</span>
+  <span><span class="tag t-warn">care</span> editable — needs the right attribute shape</span>
+  <span><span class="tag t-bad">avoid</span> known to break something</span>
+</div>
+
+<h3>Display — read-only text</h3>
+<div class="cards">
+
+  <div class="card">
+    <div class="card-h"><b>StringDisplay</b><span class="tag t-ok">safe</span></div>
+    <div class="card-demo"><div class="sd">Assigned: 2 -- Iron Ridge
+Drone: Surveying Iron Ridge (43%)</div></div>
+    <div class="card-meta"><dl>
+      <dt>shape</dt><dd>full width, centred, wraps</dd>
+      <dt>cost</dt><dd>0.8 units <b>per line</b></dd>
+      <dt>binds</dt><dd><code>[SyncToView, Autogen]</code> + settable + assigned</dd>
+      <dt>live</dt><dd>yes, via <code>Changed()</code></dd>
+      <dt>use</dt><dd>the dock's workhorse today. Both tabs' text is this.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>String</b><span class="tag t-ok">safe</span></div>
+    <div class="card-demo"><div class="r"><span class="r-lab">Assigned Area</span><span class="r-val">Iron Ridge</span></div></div>
+    <div class="card-meta"><dl>
+      <dt>shape</dt><dd>two-column, label + gold value</dd>
+      <dt>cost</dt><dd>1 unit</dd>
+      <dt>live</dt><dd>yes</dd>
+      <dt>use</dt><dd><b>underused.</b> Single-fact readouts belong here, not inside a StringDisplay blob.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>StringDescription</b><span class="tag t-warn">care</span></div>
+    <div class="card-demo">
+      <div class="h-title">T_String Description</div>
+      <div class="blackbar">Limestone: ~210 blocks, depth 2-14.</div>
+    </div>
+    <div class="card-meta"><dl>
+      <dt>shape</dt><dd>label line + black full-width bar</dd>
+      <dt>cost</dt><dd>1.7 units</dd>
+      <dt>live</dt><dd>yes</dd>
+      <dt>trap</dt><dd><b>looks like a readout, is editable.</b> Killed the server with <code>Missing RPC call SetT_StringDescription</code>. Needs <code>[Serialized, Eco]</code> + public setter.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>StringTitle</b> · <b>SectionHeader</b> · <b>LinedHeader</b><span class="tag t-ok">safe</span></div>
+    <div class="card-demo">
+      <div class="h-title">Survey Areas</div>
+      <div class="h-section">T_Section Header</div>
+      <div class="h-lined">T_Lined Header</div>
+    </div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd>1 unit each</dd>
+      <dt>trap</dt><dd><b>SectionHeader and LinedHeader render the MEMBER NAME, not the value.</b> Observed: value was <code>"SectionHeader"</code>, screen showed <code>"T_Section Header"</code>. Only <code>StringTitle</code> and <code>GeneralHeader</code> show the assigned string.</dd>
+      <dt>use</dt><dd>cheap grouping — the only structure available in a stack.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>GeneralHeader</b><span class="tag t-ok">safe</span></div>
+    <div class="card-demo"><div class="h-general">Survey Results</div></div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd>1.5 units</dd>
+      <dt>use</dt><dd>the one loud divider. Renders the value. One per panel at most.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>StringPlaque</b><span class="tag t-bad">avoid</span></div>
+    <div class="card-demo"><div class="plaque">Iron Ridge</div></div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd><b>5 units</b> for one line of text</dd>
+      <dt>use</dt><dd>ornate gold plaque. Beautiful, and a fifth of the viewport. No place in a working panel.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>Deprecated</b><span class="tag t-bad">avoid</span></div>
+    <div class="card-demo"><div class="r"><span class="r-lab">T_Deprecated</span><span class="r-val"></span></div></div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd>1 unit, renders member name only</dd>
+      <dt>use</dt><dd>value never appears. Nothing.</dd>
+    </dl></div>
+  </div>
+</div>
+
+<h3>Editable</h3>
+<div class="cards">
+
+  <div class="card">
+    <div class="card-h"><b>Boolean</b><span class="tag t-warn">care</span></div>
+    <div class="card-demo">
+      <div class="r"><span class="r-lab">Area 1 — Coal Basin</span><span class="r-ctl"><span class="cbox off">✔</span></span></div>
+      <div class="r"><span class="r-lab">Area 2 — Iron Ridge</span><span class="r-ctl"><span class="cbox">✔</span></span></div>
+    </div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd><b>1 unit</b></dd>
+      <dt>binds</dt><dd><code>[Serialized, Eco]</code> + public setter</dd>
+      <dt>live</dt><dd>only with an explicit backing field + <code>PropertyChanged</code></dd>
+      <dt>use</dt><dd><b>the cheapest per-object control in the vocabulary.</b> 1 unit against BigButton's 3.2.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>Int32</b> · <b>Single</b><span class="tag t-warn">care</span></div>
+    <div class="card-demo">
+      <div class="r"><span class="r-lab">Viewing area</span><span class="stepper"><span class="pm">−</span><span class="field">2</span><span class="pm">+</span></span></div>
+      <div class="r"><span class="r-lab">T_Single</span><span class="stepper"><span class="pm">−</span><span class="field">3,5</span><span class="pm">+</span></span></div>
+    </div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd><b>1 unit</b></dd>
+      <dt>binds</dt><dd><code>[Serialized, Eco, Range(min,max)]</code> + public setter</dd>
+      <dt>trap</dt><dd>without <code>Range</code> every edit clamps back to the original value</dd>
+      <dt>use</dt><dd><b>a stepper is a two-button cursor in one unit.</b> Prev/Next as BigButtons costs 6.4 units for the same job.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>Selector</b><span class="tag t-warn">care</span></div>
+    <div class="card-demo"><div class="r"><span class="r-lab">Item Type Probe</span><span class="dd"><span class="v">None.</span><span class="caret">▼</span></span></div></div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd>1 unit; opens a popup</dd>
+      <dt>use</dt><dd>rendered live as a real dropdown. Backed by a game type, not an arbitrary list — see the untested section.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>GamePickerList</b><span class="tag t-ok">safe</span></div>
+    <div class="card-demo"><div class="r"><span class="r-lab">Material Targets</span><span class="dd"><span class="v">None.</span><span class="caret">▼</span></span></div></div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd><b>1 unit</b> for an N-item multi-select</dd>
+      <dt>binds</dt><dd><code>[Eco, AllowEmpty, RequiredTag(...)]</code> on <code>GamePickerList&lt;T&gt;</code></dd>
+      <dt>use</dt><dd><b>the proof that popups beat rows.</b> Replaced one toggle button per material — and confirmed working from a WorldObjectComponent tab even though every vanilla usage is inside a civics GameValue.</dd>
+      <dt>limit</dt><dd>only stock tags reach it; a runtime-registered mod tag does not (<code>ControllerMarshalerService.cs:367</code>).</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>LongString</b><span class="tag t-warn">care</span></div>
+    <div class="card-demo"><div class="longstring"><span class="r-lab" style="flex:0 0 25%">Notes</span><span class="box">LongString — editable, scrolls internally</span></div></div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd>2.7 units</dd>
+      <dt>trap</dt><dd>same family as StringDescription — reads as a readout, crashes on first keystroke with a private setter.</dd>
+      <dt>note</dt><dd>has its own internal scrollbar, the only element that does.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>StringInput</b> · <b>TextInput</b> · <b>StringLargeInput</b><span class="tag t-warn">care</span></div>
+    <div class="card-demo">
+      <div class="blackbar" style="text-align:left;padding-left:.5rem">StringInput</div>
+      <div class="largeinput"><span class="r-lab" style="flex:0 0 50%;padding-top:.3rem">Large Input</span><span class="box">StringLargeInput</span></div>
+    </div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd>1 / 2.5 / 2.8 units</dd>
+      <dt>use</dt><dd>naming things. Area rename lives on the map editor instead, which costs zero rows.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>StringPlaqueEditable</b><span class="tag t-bad">avoid</span></div>
+    <div class="card-demo"><div class="plaque" style="height:80px">StringPlaqueEditable</div></div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd>5 units</dd>
+      <dt>defect</dt><dd>accepts typed text and <b>does not persist across a restart</b>, on the same attribute shape that works for LongString and StringInput. Unexplained.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>Color</b><span class="tag t-bad">avoid</span></div>
+    <div class="card-demo"><div class="r"><span class="r-lab">T_Color</span><span class="r-ctl"><span style="width:14px;height:14px;background:#3ddc4a;border:1px solid #2a4a1c"></span></span></div></div>
+    <div class="card-meta"><dl>
+      <dt>cost</dt><dd>1 unit</dd>
+      <dt>defect</dt><dd>renders a real picker; the choice is gone after a restart. <code>Eco.Shared.Utils.Color</code> is a plain struct with no <code>[Serialized]</code>, so the attribute on the property has nothing to write. Zero vanilla usages.</dd>
+      <dt>workaround</dt><dd>store an index or name, map to a Color for display.</dd>
+    </dl></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><b>Range</b><span class="tag t-bad">avoid</span></div>
+    <div class="card-demo"><div class="r"><span class="r-lab">T_Range</span><span class="stepper"><span class="pm">−</span><span class="field">0</span><span class="pm">+</span><span class="field">0</span></span></div></div>
+    <div class="card-meta"><dl>
+      <dt>defect</dt><dd>on a <code>float</code> it drew an empty "0 to 0" interval, and merely <b>hovering</b> it dropped the server: <code>Could not finding matching RPC signature for method: SetT_Range</code>. Wants a range-shaped value; there is no float form.</dd>
+    </dl></div>
+  </div>
+</div>
+
+<h3>The RPC button</h3>
+<div class="eco" style="width:640px">
+  <div class="eco-title">✎ ◉ BigButton, at true size and position</div>
+  <div class="eco-view grow"><div class="eco-body">
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Manage Areas on Map</div></div>
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Assign Area 1</div></div>
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Assign Area 2</div></div>
+  </div></div>
+</div>
+<p class="caption">
+  Three BigButtons = 210&nbsp;px = 9.5 standard rows, and roughly 66% of the panel width is dead in
+  every one of them. It is the only way to expose an <code>[RPC]</code> action today — which is the
+  trap: because it is the <i>only</i> button, it gets reached for whenever something needs clicking,
+  including the many things that are not commits. The redesign options below all convert repeated
+  actions into <b>state edits</b> on repeatable controls, and keep BigButton for the one action that
+  really is a commit.
+</p>
+
+<!-- ============================================================ -->
+<h2>3 · As it is now</h2>
+<p>
+  Both tabs drawn from their current source, at measured geometry, with five survey areas —
+  the motivating late-game setup recorded next to <code>AssignButtonPool</code>
+  (coal, iron ore, limestone, gold ore, copper ore, one per biome).
+</p>
+
+<h3>Areas tab — <code>SurveyAreasComponent.cs</code></h3>
+<div class="eco">
+  <div class="eco-title">✎ ◉ Drone Dock</div>
+  <div class="eco-tabs">
+    <span class="eco-tab on">Areas</span><span class="eco-tab dim">Results</span>
+    <span class="eco-tab dim">Storage</span><span class="eco-tab dim">Authorization</span>
+    <span class="eco-tab dim">For Sale</span><span class="eco-tab dim">Status</span>
+  </div>
+  <div class="eco-view"><div class="eco-body">
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Manage Areas on Map</div></div>
+    <div class="sd">Assigned: 2 -- Iron Ridge
+Drone: Surveying Iron Ridge (43%)
+
+1. Coal Basin -- 18 plots, 100% surveyed, most Coal (~412 blocks)
+2. Iron Ridge -- 24 plots, 43% surveyed, most IronOre (~180 blocks)   [assigned]
+3. Limestone Flats -- 12 plots, not surveyed yet
+4. Gold Creek -- 9 plots, 67% surveyed, nothing matching
+5. Copper Hollow -- 15 plots, not surveyed yet</div>
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Assign Area 1</div></div>
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Assign Area 2</div></div>
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Assign Area 3</div></div>
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Assign Area 4</div></div>
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Assign Area 5</div></div>
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Assign Area 6</div></div>
+    <div class="fold"></div>
+  </div></div>
+  <div class="overflow-note">at the pool's full size of 6, this panel is 652 px against a 605 px viewport — Assign 6 is off-screen</div>
+</div>
+<p class="caption">
+  <b>70 + 162 + 420 = 652&nbsp;px.</b> With five areas it just fits at 582&nbsp;px; the sixth pushes it
+  over. The design already knows this — <code>AssignButtonPool = 6</code> is documented as a product
+  decision that deliberately accepts scrolling. What the measurement adds: the assign buttons,
+  which are the tab's <i>entire purpose</i>, occupy 69% of the viewport and sit <i>below</i> a text
+  block whose height grows with the thing they act on.
+</p>
+
+<h3>Results tab — <code>SurveyResultsComponent.cs</code></h3>
+<div class="eco">
+  <div class="eco-title">✎ ◉ Drone Dock</div>
+  <div class="eco-tabs">
+    <span class="eco-tab dim">Areas</span><span class="eco-tab on">Results</span>
+    <span class="eco-tab dim">Storage</span><span class="eco-tab dim">Authorization</span>
+    <span class="eco-tab dim">For Sale</span><span class="eco-tab dim">Status</span>
+  </div>
+  <div class="eco-view"><div class="eco-body">
+    <div class="r"><span class="r-lab">Material Targets</span><span class="dd"><span class="v">None.</span><span class="caret">▼</span></span></div>
+    <div class="sd">Viewing: 2 of 5 -- Iron Ridge   [assigned]</div>
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Previous Area</div></div>
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Next Area</div></div>
+    <div class="sd">IronOre: ~180 blocks, shallowest at (412, 63, -88), depth 9-22
+Limestone: ~210 blocks, shallowest at (405, 61, -80), depth 2-14
+Coal: ~52 blocks, shallowest at (418, 55, -91), depth 12-19
+Sandstone: ~44 blocks, shallowest at (401, 60, -85), depth 3-9
+Clay: ~12 blocks, shallowest at (409, 62, -83), depth 1-4
+Coverage: 43%
+Scanned to 15 blocks below surface; median surface level 64.</div>
+    <div class="fold"></div>
+  </div></div>
+</div>
+<p class="caption">
+  <b>22 + 18 + 140 + 126 = 306&nbsp;px.</b> Fits with half the panel spare — this tab is not
+  over budget. But <b>140&nbsp;px of it is two buttons that move a cursor by one</b>, and they sit
+  between the "which area" line and the findings they scroll, splitting the one thing the player
+  reads. The dead space to their left and right is where a real UI would have put the findings.
+</p>
+
+<div class="bars">
+  <h4>Row budget, today</h4>
+  <div class="bar-row"><span class="bar-name">Areas (5 areas)</span>
+    <span class="bar-track"><span class="bar-fill" style="width:96%"></span><span class="bar-foldline" style="left:100%"></span></span><span class="bar-num">582 / 605</span></div>
+  <div class="bar-row"><span class="bar-name">Areas (6 areas)</span>
+    <span class="bar-track"><span class="bar-fill over" style="width:100%"></span></span><span class="bar-num">652 / 605</span></div>
+  <div class="bar-row"><span class="bar-name">Results</span>
+    <span class="bar-track"><span class="bar-fill" style="width:51%"></span></span><span class="bar-num">306 / 605</span></div>
+</div>
+
+<!-- ============================================================ -->
+<h2>4 · Untested leads from the SLG wiki</h2>
+<p class="sub">
+  Read 2026-07-31 from <code>Eco.wiki/UI-System.md</code> and
+  <code>Eco.wiki/Fast-UI-extensions.md</code> (task #34). Everything in this section is a
+  <b>lead</b>. None of it has been observed working from a mod component tab. It is here so the
+  options below can be judged against what might become possible, and so nobody re-derives it.
+</p>
+
+<div class="note lead">
+  <b>Lead 1 — <code>[Eco]</code> is a composite and it decomposes.</b><br>
+  <code>Server/Eco.Shared/Networking/EcoAttributes.cs:17-27</code> documents it as
+  <code>Serialized</code> + <code>SyncToView</code> + <code>AutoRPC</code> + <code>AutoGen</code>
+  + property scanning + explanation. Our binding contract treats it as an atom.
+  <code>[Serialized, SyncToView, Autogen]</code> <b>without</b> <code>AutoRPC</code> should generate no
+  setter RPC — which would make <code>LongString</code> and <code>StringDescription</code> genuinely
+  read-only instead of a crash waiting for a keystroke.
+  <span class="tag t-lead">source-verified, client effect untested</span>
+</div>
+
+<div class="note lead">
+  <b>Lead 2 — an entire attribute family we never probed.</b>
+  <code>Server/Eco.Core/Controller/AutoGenViews.cs:105-121</code>. Zero mentions across
+  <code>docs/</code> and <code>EcoServerMod/</code>.
+  <table style="margin-top:.6rem">
+    <tr><td><code>[Sort(float)]</code></td><td><b>Would break "declaration order is reading order."</b> If it works from a mod tab, layout stops being coupled to source order.</td></tr>
+    <tr><td><code>[PropReadOnly]</code></td><td>Vanilla: <code>PluginModulesComponent.cs:96</code>, <code>PlotsComponent.cs:55</code> — both on inventory refs with <code>private set</code>. Proven as "no setter", <b>not</b> as "render text non-editably". Different claim.</td></tr>
+    <tr><td><code>[LargeUI]</code></td><td>Vanilla: <code>[Eco, LargeUI] public string Speech</code> (<code>ElectionActions.cs:160</code>). A multi-line text surface without LongString's crash family.</td></tr>
+    <tr><td><code>[OwnerReadOnly]</code> <code>[GuestEditable]</code> <code>[GuestHidden]</code> <code>[OwnerHidden]</code></td><td>Per-viewer gating, versus our all-or-nothing <code>VisibilityParam</code> bool. Would let the owner see assignment controls and visitors see only findings.</td></tr>
+    <tr><td><code>[Locked]</code> <code>[AdminEdtiableOnly]</code> <code>[Advanced]</code> <code>[HideDescription]</code> <code>[AllowCopyPaste]</code> <code>[DynamicTitle]</code></td><td>Edit gating and presentation. <code>[DynamicTitle]</code> names a property to read a label from — the fixed-label problem below.</td></tr>
+  </table>
+  <span class="tag t-lead">attributes and vanilla usages verified; behaviour from a mod tab untested</span>
+</div>
+
+<div class="note lead">
+  <b>Lead 3 — <code>View_&lt;name&gt;</code> auto-glue could remove the stack constraint entirely.</b><br>
+  A hand-built Unity prefab whose child GameObjects are named <code>View_PropertyName</code> binds to
+  view properties with no glue code (<code>ViewExtensions.AutoSetupUI</code>). The wiki's own
+  screenshot shows vanilla's law UI doing this <b>under a horizontal layout group</b>. We already ship
+  a <code>.unity3d</code> bundle. Whether a mod can register into the client's
+  <code>UIPrefabs.ViewUIPrefabs</code> list is unknown.
+  <br><br>
+  If it can: the vertical stack is not a law of modding, it is a consequence of using autogen, and
+  every row-budget rule in this document becomes optional.
+  <span class="tag t-lead">entirely untested — highest upside, highest uncertainty</span>
+</div>
+
+<div class="note">
+  <b>Negative result — <code>Fast-UI-extensions.md</code> has nothing for us.</b>
+  It is client-side Unity performance work (<code>FastLayout</code>, <code>FastLayoutElement</code>,
+  <code>FastImage</code>) for hierarchies of 1000+ objects, such as inventories. Task&nbsp;#34's premise
+  about that page was wrong. One line matters only if Lead 3 is pursued: convert FastLayout to a
+  regular LayoutGroup when hosting AutoGen prefabs on a container.
+</div>
+
+<!-- ============================================================ -->
+<h2>5 · Redesign options</h2>
+<p>
+  All three are buildable <b>today</b>, from proven templates only, with no dependency on section 4.
+  Each is drawn at measured geometry. Judge the shape and the budget; ignore exact wording.
+</p>
+
+<!-- ---------- OPTION A ---------- -->
+<h3>Option A — steppers replace cursors</h3>
+<p>
+  The minimum change with the largest measured effect. A <code>Int32</code> stepper is a two-button
+  cursor in <b>one</b> unit; Prev/Next as BigButtons is the same job for 6.4 units. Applies to both
+  tabs independently, and does not touch any product decision.
+</p>
+
+<div class="eco">
+  <div class="eco-title">✎ ◉ Drone Dock</div>
+  <div class="eco-tabs">
+    <span class="eco-tab on">Areas</span><span class="eco-tab dim">Results</span>
+    <span class="eco-tab dim">Storage</span><span class="eco-tab dim">Authorization</span>
+    <span class="eco-tab dim">For Sale</span><span class="eco-tab dim">Status</span>
+  </div>
+  <div class="eco-view"><div class="eco-body">
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Manage Areas on Map</div></div>
+    <div class="sd">Assigned: 2 -- Iron Ridge
+Drone: Surveying Iron Ridge (43%)
+
+1. Coal Basin -- 18 plots, 100% surveyed, most Coal (~412 blocks)
+2. Iron Ridge -- 24 plots, 43% surveyed, most IronOre (~180 blocks)   [assigned]
+3. Limestone Flats -- 12 plots, not surveyed yet
+4. Gold Creek -- 9 plots, 67% surveyed, nothing matching
+5. Copper Hollow -- 15 plots, not surveyed yet</div>
+    <div class="h-lined">Selection</div>
+    <div class="r"><span class="r-lab">Area number</span><span class="stepper"><span class="pm">−</span><span class="field">3</span><span class="pm">+</span></span></div>
+    <div class="r"><span class="r-lab">Selected</span><span class="r-val">Limestone Flats — 12 plots, not surveyed</span></div>
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Assign Selected Area</div></div>
+    <div class="fold"></div>
+  </div></div>
+</div>
+<p class="caption">
+  <b>Areas: 652 → 344&nbsp;px.</b> The six assign buttons (420) become a stepper + an echo row +
+  one commit button (114). Half the panel is now free, and the pool cap disappears — a stepper with
+  <code>Range(1, N)</code> reaches <i>any</i> number of areas, so <code>/drone assignarea</code> stops
+  being an overflow path.
+</p>
+
+<div class="eco">
+  <div class="eco-title">✎ ◉ Drone Dock</div>
+  <div class="eco-tabs">
+    <span class="eco-tab dim">Areas</span><span class="eco-tab on">Results</span>
+    <span class="eco-tab dim">Storage</span><span class="eco-tab dim">Authorization</span>
+    <span class="eco-tab dim">For Sale</span><span class="eco-tab dim">Status</span>
+  </div>
+  <div class="eco-view"><div class="eco-body">
+    <div class="r"><span class="r-lab">Material Targets</span><span class="dd"><span class="v">None.</span><span class="caret">▼</span></span></div>
+    <div class="r"><span class="r-lab">Viewing area</span><span class="stepper"><span class="pm">−</span><span class="field">2</span><span class="pm">+</span></span></div>
+    <div class="r"><span class="r-lab">Iron Ridge</span><span class="r-val">2 of 5 · assigned · 43% surveyed</span></div>
+    <div class="sd">IronOre: ~180 blocks, shallowest at (412, 63, -88), depth 9-22
+Limestone: ~210 blocks, shallowest at (405, 61, -80), depth 2-14
+Coal: ~52 blocks, shallowest at (418, 55, -91), depth 12-19
+Sandstone: ~44 blocks, shallowest at (401, 60, -85), depth 3-9
+Clay: ~12 blocks, shallowest at (409, 62, -83), depth 1-4
+Coverage: 43%
+Scanned to 15 blocks below surface; median surface level 64.</div>
+    <div class="fold"></div>
+  </div></div>
+</div>
+<p class="caption">
+  <b>Results: 306 → 192&nbsp;px.</b> Prev/Next (140) becomes one stepper (22). The "Viewing" line
+  becomes a <code>String</code> two-column row, so the area name and its state read as one fact
+  instead of a centred sentence — and nothing now separates the cursor from the findings.
+</p>
+
+<h4>Cost of A</h4>
+<ul>
+  <li>Every stepper needs the <b>explicit backing field + <code>PropertyChanged</code></b> pattern, or the number will not move on screen when clicked. Per-member cost, already proven.</li>
+  <li><code>Range(1, N)</code> must be a <b>constant</b> at compile time. If <code>Range</code> cannot be driven by area count, the stepper's ceiling is fixed the same way the button pool was — <b>the one thing in A that needs verifying before building.</b></li>
+  <li>A stepper is a weaker affordance than a labelled button. The echo row exists to compensate; if it does not refresh live, the control is worse than what it replaced.</li>
+</ul>
+
+<!-- ---------- OPTION B ---------- -->
+<h3>Option B — checkbox roster</h3>
+<p>
+  Keeps the recorded principle "one control per <b>object</b>, not per operation", and pays 1 unit
+  for it instead of 3.2. Each area gets a <code>Boolean</code> row; checking one assigns it and
+  unchecks the rest. No commit button, no cursor, no indirection between the list and the control —
+  the list <i>is</i> the control.
+</p>
+
+<div class="eco">
+  <div class="eco-title">✎ ◉ Drone Dock</div>
+  <div class="eco-tabs">
+    <span class="eco-tab on">Areas</span><span class="eco-tab dim">Results</span>
+    <span class="eco-tab dim">Storage</span><span class="eco-tab dim">Authorization</span>
+    <span class="eco-tab dim">For Sale</span><span class="eco-tab dim">Status</span>
+  </div>
+  <div class="eco-view"><div class="eco-body">
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Manage Areas on Map</div></div>
+    <div class="sd">Drone: Surveying Iron Ridge (43%)</div>
+    <div class="h-lined">Assign an area</div>
+    <div class="r"><span class="r-lab">1 · Coal Basin — 18 plots, 100%, most Coal (~412)</span><span class="r-ctl"><span class="cbox off">✔</span></span></div>
+    <div class="r"><span class="r-lab">2 · Iron Ridge — 24 plots, 43%, most IronOre (~180)</span><span class="r-ctl"><span class="cbox">✔</span></span></div>
+    <div class="r"><span class="r-lab">3 · Limestone Flats — 12 plots, not surveyed yet</span><span class="r-ctl"><span class="cbox off">✔</span></span></div>
+    <div class="r"><span class="r-lab">4 · Gold Creek — 9 plots, 67%, nothing matching</span><span class="r-ctl"><span class="cbox off">✔</span></span></div>
+    <div class="r"><span class="r-lab">5 · Copper Hollow — 15 plots, not surveyed yet</span><span class="r-ctl"><span class="cbox off">✔</span></span></div>
+    <div class="r"><span class="r-lab">6 ·</span><span class="r-ctl"><span class="cbox off">✔</span></span></div>
+    <div class="fold"></div>
+  </div></div>
+</div>
+<p class="caption">
+  <b>Areas: 652 → 244&nbsp;px</b>, and the separate text list disappears — its content moved into the
+  checkbox labels, so one element does the work of two. Sixty percent of the panel is free.
+</p>
+
+<div class="note bad">
+  <b>The load-bearing unknown in B: can a row label be driven at runtime?</b>
+  Observed behaviour is that a member renders with its <b>member name</b>, humanised
+  (<code>T_Boolean</code> → "T_Boolean"). If the label is fixed at compile time, B's rows read
+  <i>"Area 1", "Area 2"…</i> and the list must come back as a separate <code>StringDisplay</code> —
+  which costs its 162&nbsp;px back and lands at ~406&nbsp;px, still well inside budget but no longer
+  the clean win drawn above.
+  <br><br>
+  Two candidate escapes, both from section 4 and both untested:
+  <code>[DynamicTitle("PropertyName")]</code> names another property to read the label from, and
+  <code>[LocDescription]</code> / <code>Description</code> may already override the humanised name.
+  <b>This is the single cheapest probe in the whole document</b> and it decides between B-clean and
+  B-degraded.
+</div>
+
+<h4>Cost of B</h4>
+<ul>
+  <li>Still a fixed pool — six <code>Boolean</code> members, same cap as six RPCs. B does not remove the ceiling, it makes each rung cheap. A only removes the ceiling if <code>Range</code> can be dynamic.</li>
+  <li>Radio semantics on checkboxes: checking area 3 must silently uncheck area 2, and all six must push <code>PropertyChanged</code> on every change or the client shows two ticked boxes.</li>
+  <li>Unassigning means unchecking the ticked box — same toggle affordance as today, preserved.</li>
+</ul>
+
+<!-- ---------- OPTION C ---------- -->
+<h3>Option C — one merged tab</h3>
+<p>
+  A and B both free more than half a panel. If that space exists on both tabs, the second tab
+  stops paying for itself: the split was made to halve two over-long panels, and neither is
+  over-long any more. One panel means no tab switch between "which area" and "what did it find".
+</p>
+
+<div class="eco">
+  <div class="eco-title">✎ ◉ Drone Dock</div>
+  <div class="eco-tabs">
+    <span class="eco-tab on">Survey</span><span class="eco-tab dim">Storage</span>
+    <span class="eco-tab dim">Authorization</span><span class="eco-tab dim">For Sale</span>
+    <span class="eco-tab dim">Status</span>
+  </div>
+  <div class="eco-view"><div class="eco-body">
+    <div class="bigbtn-wrap deadspace"><div class="bigbtn">Manage Areas on Map</div></div>
+    <div class="r"><span class="r-lab">Drone</span><span class="r-val">Surveying Iron Ridge (43%)</span></div>
+    <div class="h-lined">Assign an area</div>
+    <div class="r"><span class="r-lab">1 · Coal Basin — 100% · most Coal</span><span class="r-ctl"><span class="cbox off">✔</span></span></div>
+    <div class="r"><span class="r-lab">2 · Iron Ridge — 43% · most IronOre</span><span class="r-ctl"><span class="cbox">✔</span></span></div>
+    <div class="r"><span class="r-lab">3 · Limestone Flats — not surveyed</span><span class="r-ctl"><span class="cbox off">✔</span></span></div>
+    <div class="r"><span class="r-lab">4 · Gold Creek — 67% · nothing matching</span><span class="r-ctl"><span class="cbox off">✔</span></span></div>
+    <div class="r"><span class="r-lab">5 · Copper Hollow — not surveyed</span><span class="r-ctl"><span class="cbox off">✔</span></span></div>
+    <div class="h-lined">Findings</div>
+    <div class="r"><span class="r-lab">Viewing area</span><span class="stepper"><span class="pm">−</span><span class="field">2</span><span class="pm">+</span></span></div>
+    <div class="r"><span class="r-lab">Material Targets</span><span class="dd"><span class="v">None.</span><span class="caret">▼</span></span></div>
+    <div class="sd">Iron Ridge — 2 of 5 · assigned
+
+IronOre: ~180 blocks, shallowest at (412, 63, -88), depth 9-22
+Limestone: ~210 blocks, shallowest at (405, 61, -80), depth 2-14
+Coal: ~52 blocks, shallowest at (418, 55, -91), depth 12-19
+Sandstone: ~44 blocks, shallowest at (401, 60, -85), depth 3-9
+Clay: ~12 blocks, shallowest at (409, 62, -83), depth 1-4
+Coverage: 43%
+Scanned to 15 blocks below surface; median surface level 64.</div>
+    <div class="fold"></div>
+  </div></div>
+</div>
+<p class="caption">
+  <b>Both tabs, 888&nbsp;px across two panels → 448&nbsp;px in one.</b> Assignment (checkbox) and
+  viewing (stepper) stay <b>separate controls</b>, so the recorded decoupling survives the merge:
+  reading area 4's findings still does not dispatch the drone there.
+</p>
+
+<div class="note warn">
+  <b>What C costs.</b> Both cursors are now visible at once, which is exactly the confusion the
+  two-tab split was designed to prevent — a ticked box and a stepper pointing at different areas,
+  on one screen. The <code>LinedHeader</code> dividers are the whole defence, and they render the
+  member name, which is workable but blunt. C is also the option whose row budget is most sensitive
+  to area count: at eight areas the findings block starts crossing the fold.
+</div>
+
+<h3>Comparison</h3>
+<div class="bars">
+  <div class="bar-row"><span class="bar-name">today · Areas (6)</span>
+    <span class="bar-track"><span class="bar-fill over" style="width:100%"></span></span><span class="bar-num">652 px</span></div>
+  <div class="bar-row"><span class="bar-name">today · Results</span>
+    <span class="bar-track"><span class="bar-fill" style="width:51%"></span></span><span class="bar-num">306 px</span></div>
+  <div class="bar-row"><span class="bar-name">A · Areas</span>
+    <span class="bar-track"><span class="bar-fill" style="width:57%"></span></span><span class="bar-num">344 px</span></div>
+  <div class="bar-row"><span class="bar-name">A · Results</span>
+    <span class="bar-track"><span class="bar-fill" style="width:32%"></span></span><span class="bar-num">192 px</span></div>
+  <div class="bar-row"><span class="bar-name">B · Areas</span>
+    <span class="bar-track"><span class="bar-fill" style="width:40%"></span></span><span class="bar-num">244 px</span></div>
+  <div class="bar-row"><span class="bar-name">C · merged (single tab)</span>
+    <span class="bar-track"><span class="bar-fill" style="width:74%"></span></span><span class="bar-num">448 px</span></div>
+</div>
+
+<div class="scroll">
+<table>
+<thead><tr><th>&nbsp;</th><th>A · steppers</th><th>B · checkbox roster</th><th>C · merged</th></tr></thead>
+<tbody>
+<tr><td>Removes the pool ceiling</td><td>yes, <i>if</i> <code>Range</code> can be dynamic</td><td>no</td><td>no</td></tr>
+<tr><td>New templates needed</td><td><code>Int32</code>, <code>String</code></td><td><code>Boolean</code>, <code>LinedHeader</code></td><td>both</td></tr>
+<tr><td>Load-bearing unknown</td><td>dynamic <code>Range(1, N)</code></td><td>runtime row label</td><td>both</td></tr>
+<tr><td>Keeps view/assign decoupled</td><td>yes</td><td>yes</td><td>yes, but on one screen</td></tr>
+<tr><td>Directness</td><td>indirect — number, then commit</td><td><b>direct</b> — the list is the control</td><td>direct for assign, indirect for view</td></tr>
+<tr><td>Risk if the unknown fails</td><td>ceiling stays; still a large win</td><td>list returns as text; ~406 px</td><td>compounds both</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>Decided</h2>
+<div class="note">
+  <b>Option C — the merged tab.</b> Requirements are in
+  <code>docs/plans/2026-07-31-001-feat-merged-survey-tab-plan.md</code>. Also settled there:
+  placed docks are allowed to break (no migration until the mod has worlds worth preserving), and the
+  control pool stays at six — the row-cost argument for raising it holds, but the workflow that sized
+  it has not changed.
+  <br><br>
+  Still open, and answerable only from a live deploy: whether a row label can be set at runtime
+  (decides whether B's checkboxes carry area names or read "Area 3"), and whether a numeric range
+  bound can be non-constant. Section 4's <code>[Sort]</code> and <code>[PropReadOnly]</code> are one
+  attribute each and would ride along in the same restart.
+</div>
+
+<p class="sub" style="margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--rule)">
+  Sources: <code>SurveyAreasComponent.cs</code>, <code>SurveyResultsComponent.cs</code>,
+  <code>UIShowcaseComponent.cs</code>,
+  <code>docs/solutions/design-patterns/vertical-stack-only-ui-design.md</code>,
+  <code>docs/solutions/runtime-errors/autogen-template-binding-contract.md</code>,
+  <code>docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md</code>,
+  <code>Eco.wiki/UI-System.md</code>, <code>Eco.wiki/Fast-UI-extensions.md</code>,
+  <code>Server/Eco.Shared/Networking/EcoAttributes.cs</code>,
+  <code>Server/Eco.Core/Controller/AutoGenViews.cs</code>.
+</p>
+
+</div>
+</body>
+</html>

@@ -101,3 +101,23 @@ assigned area's geometry restarts the survey as if it had been unassigned and re
 ### Material Target
 A player-chosen filter over which materials the survey readout displays. It narrows what is shown,
 never what is recorded — an empty selection shows everything found.
+
+## Panel layout
+
+### Row Budget
+The visible height of a component tab, treated as the scarce resource the panel's design spends.
+Roughly 605 px, or about 27 standard rows.
+
+A tab renders one element per row in member declaration order, so length is the only axis a design
+controls, and every element added is subtracted from every other. The unit is the standard
+two-column row (22 px, label left and control right). Costs are quoted as multiples of it: a
+`BigButton` is 3.2 rows, a `StringPlaque` is 5. Judging a control on whether it works misses what it
+costs its neighbours.
+
+### Control Pool
+The fixed set of compile-time controls that stands in for a per-object list. A dynamically sized
+list does not render from a mod component, so N controls means N members written out by hand, each
+gated by a synced bool so unused positions do not occupy the Row Budget.
+
+The pool's size is a product decision, not a technical ceiling — it is chosen to fit a real workflow
+and carries an overflow path (a chat command) for anything past it.
