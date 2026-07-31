@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using AdvancedElectronics.Navigation;
 using Eco.Core.Items;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Objects;

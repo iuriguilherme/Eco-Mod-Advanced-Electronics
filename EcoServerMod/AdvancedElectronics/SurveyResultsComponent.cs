@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.ComponentModel;
+using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
 using Eco.Gameplay.Civics.GameValues;
 using Eco.Gameplay.Items;
