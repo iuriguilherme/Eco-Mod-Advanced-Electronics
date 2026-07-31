@@ -29,11 +29,56 @@ public static class AdvancedElectronicsBuildTools
 {
     private const string ArtFolder = "Assets/Art/AdvancedElectronics";
 
+    /// <summary>
+    /// Every server Item type that needs a placeholder icon, with the flat colour its
+    /// icon is filled with. The KEY IS THE SERVER CLASS NAME and it is what binds the
+    /// asset to the server -- the scene GameObject created for each entry is named from
+    /// this string and nothing else. Colours only need to be distinguishable from each
+    /// other at inventory-thumbnail size; that is the entire point of a placeholder.
+    ///
+    /// Adding a new item is a one-line change here plus a re-run of "Finish All Item
+    /// Icons" -- deliberately cheaper than the five hand-built copies this replaced.
+    /// </summary>
+    private static readonly (string TypeName, Color Fill)[] ItemIcons =
+    {
+        ("SurveyDroneItem",                      new Color(0.25f, 0.55f, 0.85f, 1f)), // teal-blue (pre-existing)
+        ("DroneDockItem",                        new Color(0.40f, 0.45f, 0.50f, 1f)), // steel grey -- shipped without an icon; see below
+        ("AdvancedElectronicsSkillBook",         new Color(0.45f, 0.20f, 0.55f, 1f)), // deep purple
+        ("AdvancedElectronicsSkillScroll",       new Color(0.85f, 0.75f, 0.50f, 1f)), // parchment
+        ("EngineeringResearchPaperPostModernItem", new Color(0.90f, 0.90f, 0.95f, 1f)), // near-white paper
+        ("AdvancedElectronicsAssemblyItem",      new Color(0.85f, 0.50f, 0.15f, 1f)), // orange
+        ("BatteryItem",                          new Color(0.20f, 0.70f, 0.35f, 1f)), // green
+    };
+
+    // Prefab finishers. The string passed here is the SERVER WORLDOBJECT CLASS NAME --
+    // it is both the scene GameObject looked up and the prefab filename written, so the
+    // two cannot drift apart. These previously read "DroneDock"/"SurveyDrone", which no
+    // longer matched either the server classes or the shipped
+    // DroneDockObject.prefab/SurveyDroneObject.prefab.
     [MenuItem("Eco Tools/Advanced Electronics/Finish Dock Prefab")]
-    public static void FinishDockPrefab() => FinishPrefab("DroneDock", isDock: true);
+    public static void FinishDockPrefab() => FinishPrefab("DroneDockObject", isDock: true);
 
     [MenuItem("Eco Tools/Advanced Electronics/Finish Drone Prefab")]
-    public static void FinishDronePrefab() => FinishPrefab("SurveyDrone", isDock: false);
+    public static void FinishDronePrefab() => FinishPrefab("SurveyDroneObject", isDock: false);
+
+    [MenuItem("Eco Tools/Advanced Electronics/Finish Assembly Prefab")]
+    public static void FinishAssemblyPrefab() => FinishPrefab("AdvancedElectronicsAssemblyObject", isDock: false);
+
+    /// <summary>
+    /// Runs the icon finisher for every entry in <see cref="ItemIcons"/>. Idempotent:
+    /// each entry reuses an existing scene GameObject and an existing PNG when present,
+    /// so re-running after adding one row only does the new work.
+    /// </summary>
+    [MenuItem("Eco Tools/Advanced Electronics/Finish All Item Icons")]
+    public static void FinishAllItemIcons()
+    {
+        var done = 0;
+        foreach (var (typeName, fill) in ItemIcons)
+            if (FinishItemIcon(typeName, fill)) done++;
+
+        Debug.Log($"[AdvancedElectronics] Finished {done}/{ItemIcons.Length} item icons. " +
+                  "SAVE THE SCENE, then rebuild the bundle (Eco Tools > Mod Kit).");
+    }
 
     /// <summary>
     /// Disables the root GameObject of every bundled mod object, in both the prefab assets and
@@ -98,24 +143,31 @@ public static class AdvancedElectronicsBuildTools
     /// U10's item-icon step (2b in the guide), fully scripted: instantiates
     /// Assets/EcoModKit/Prefabs/ItemTemplate.prefab under the scene's "Items"
     /// root, unpacks it completely (same effect as the README's manual
-    /// drag-and-unpack steps), renames it to the exact server Item class name
-    /// (SurveyDroneItem), and assigns a generated solid-color 64x64 PNG as its
-    /// ItemTemplate.foreground Image sprite -- no dragging a sprite asset into
-    /// an Inspector field required. Re-running this command is safe: it finds
-    /// and reuses an existing 'SurveyDroneItem' child instead of duplicating
-    /// it, and reuses the generated icon file if one already exists.
+    /// drag-and-unpack steps), renames it to <paramref name="itemName"/> -- which must
+    /// be the exact server Item class name -- and assigns a generated solid-colour
+    /// 64x64 PNG as its ItemTemplate.foreground Image sprite. No dragging a sprite
+    /// asset into an Inspector field required.
+    ///
+    /// THE NAME-MATCHED ARTIFACT IS THIS SCENE GameObject, NOT THE PNG. Items are never
+    /// saved as their own prefab files -- per the ModKit's item flow they are unpacked
+    /// GameObjects living inside the scene under "Items", and that GameObject's name is
+    /// the only thing the server binds to. The PNG filename carries no binding at all;
+    /// getting it right while the GameObject name is wrong is a silent missing-icon
+    /// failure that looks purely cosmetic.
+    ///
+    /// Re-running is safe: it reuses an existing child with that name instead of
+    /// duplicating it, and reuses the generated icon file if one already exists.
     /// </summary>
-    [MenuItem("Eco Tools/Advanced Electronics/Finish Item Icon")]
-    public static void FinishItemIcon()
+    /// <returns>True if the item now has an icon; false if it could not be finished.</returns>
+    public static bool FinishItemIcon(string itemName, Color fill)
     {
-        const string itemName = "SurveyDroneItem";
         const string itemsRootName = "Items";
 
         var itemsRoot = FindInLoadedScenes(itemsRootName);
         if (itemsRoot == null)
         {
             Debug.LogError($"[AdvancedElectronics] No GameObject named '{itemsRootName}' found in the open scene (searched inactive objects too). Open the scene with the mod's scene roots (Objects/Items/Emoji/BlockSets) first, or check it wasn't renamed/moved.");
-            return;
+            return false;
         }
 
         GameObject go;
@@ -131,7 +183,7 @@ public static class AdvancedElectronicsBuildTools
             if (templatePrefab == null)
             {
                 Debug.LogError("[AdvancedElectronics] Could not load Assets/EcoModKit/Prefabs/ItemTemplate.prefab.");
-                return;
+                return false;
             }
 
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(templatePrefab, itemsRoot.transform);
@@ -145,21 +197,27 @@ public static class AdvancedElectronicsBuildTools
         if (itemTemplate == null || itemTemplate.foreground == null)
         {
             Debug.LogError($"[AdvancedElectronics] '{go.name}' doesn't look like an unpacked ItemTemplate (missing the ItemTemplate component, or its 'foreground' Image reference is unset). Delete it and re-run this command to rebuild it from the template.");
-            return;
+            return false;
         }
 
-        var sprite = GetOrCreatePlaceholderIconSprite();
+        var sprite = GetOrCreatePlaceholderIconSprite(itemName, fill);
         itemTemplate.foreground.sprite = sprite;
         EditorUtility.SetDirty(itemTemplate.foreground);
         EditorUtility.SetDirty(go);
 
         AssetDatabase.SaveAssets();
         Debug.Log($"[AdvancedElectronics] '{go.name}' now has a placeholder foreground icon ({AssetDatabase.GetAssetPath(sprite)}). Swap in real art later by re-importing over that same PNG file, or by assigning a different Sprite to its ItemTemplate 'foreground' Image component.");
+        return true;
     }
 
-    private static Sprite GetOrCreatePlaceholderIconSprite()
+    /// <summary>
+    /// Generates (or reuses) the flat-colour placeholder PNG for one item. The filename
+    /// is derived from the server type name purely so a human can tell the files apart
+    /// in the project window -- nothing binds to it. See <see cref="FinishItemIcon"/>.
+    /// </summary>
+    private static Sprite GetOrCreatePlaceholderIconSprite(string itemName, Color fill)
     {
-        const string path = ArtFolder + "/SurveyDroneItem_icon.png";
+        var path = $"{ArtFolder}/{itemName}_icon.png";
 
         var existingSprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
         if (existingSprite != null)
@@ -169,7 +227,6 @@ public static class AdvancedElectronicsBuildTools
 
         const int size = 64;
         var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        var fill = new Color(0.25f, 0.55f, 0.85f, 1f); // placeholder teal-blue; swap for real art later
         var pixels = new Color[size * size];
         for (var i = 0; i < pixels.Length; i++) pixels[i] = fill;
         texture.SetPixels(pixels);
@@ -190,15 +247,23 @@ public static class AdvancedElectronicsBuildTools
         return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 
-    private static void FinishPrefab(string expectedName, bool isDock)
+    /// <param name="typeName">
+    /// The exact server WorldObject class name. This is both the scene GameObject looked
+    /// up AND the prefab filename written -- deliberately the same string, so the two
+    /// cannot drift apart. The prefab path is built from this parameter, never from
+    /// <c>go.name</c>: deriving the filename from whatever happened to be selected in the
+    /// scene is what previously wrote a duplicate prefab under the wrong name
+    /// (docs/solutions/logic-errors/prefab-finisher-writes-to-the-scene-object-name.md).
+    /// </param>
+    private static void FinishPrefab(string typeName, bool isDock)
     {
         var go = Selection.activeGameObject;
-        if (go == null || go.name != expectedName)
-            go = FindInLoadedScenes(expectedName);
+        if (go == null || go.name != typeName)
+            go = FindInLoadedScenes(typeName);
 
         if (go == null)
         {
-            Debug.LogError($"[AdvancedElectronics] No GameObject named '{expectedName}' found in the open scene (searched inactive objects too), and nothing matching is selected. Open the scene containing it (or select it in the Hierarchy) first, then re-run this command.");
+            Debug.LogError($"[AdvancedElectronics] No GameObject named '{typeName}' found in the open scene (searched inactive objects too), and nothing matching is selected. Open the scene containing it (or select it in the Hierarchy) first, then re-run this command.");
             return;
         }
 
@@ -271,7 +336,7 @@ public static class AdvancedElectronicsBuildTools
 
         EnsureArtFolder();
 
-        var path = $"{ArtFolder}/{go.name}.prefab";
+        var path = $"{ArtFolder}/{typeName}.prefab";
 
         // Save the prefab DISABLED. The client keeps a bundled object as an inactive template and
         // clones an enabled copy per world object; shipping it active makes placed objects
