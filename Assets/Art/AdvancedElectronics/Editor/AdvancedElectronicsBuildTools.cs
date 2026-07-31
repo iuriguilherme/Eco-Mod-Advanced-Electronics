@@ -30,6 +30,14 @@ public static class AdvancedElectronicsBuildTools
     private const string ArtFolder = "Assets/Art/AdvancedElectronics";
 
     /// <summary>
+    /// The shared placeholder material every mod primitive renders with. Eco's client
+    /// needs a curved-world shader; a primitive left on Unity's default HDRP material
+    /// renders visibly wrong in game
+    /// (docs/solutions/ui-bugs/modkit-prefab-materials-need-curved-shaders.md).
+    /// </summary>
+    private const string PlaceholderMaterial = ArtFolder + "/AdvancedElectronicsPlaceholder.mat";
+
+    /// <summary>
     /// Every server Item type that needs a placeholder icon, with the flat colour its
     /// icon is filled with. The KEY IS THE SERVER CLASS NAME and it is what binds the
     /// asset to the server -- the scene GameObject created for each entry is named from
@@ -50,19 +58,25 @@ public static class AdvancedElectronicsBuildTools
         ("BatteryItem",                          new Color(0.20f, 0.70f, 0.35f, 1f)), // green
     };
 
-    // Prefab finishers. The string passed here is the SERVER WORLDOBJECT CLASS NAME --
-    // it is both the scene GameObject looked up and the prefab filename written, so the
-    // two cannot drift apart. These previously read "DroneDock"/"SurveyDrone", which no
-    // longer matched either the server classes or the shipped
-    // DroneDockObject.prefab/SurveyDroneObject.prefab.
+    // Prefab finishers. The FIRST string is the server WorldObject class name and is what
+    // the prefab file is named -- that filename is the binding, and it comes from this
+    // parameter alone, never from whatever happens to be selected in the scene.
+    //
+    // The SECOND string is the scene GameObject to build from, which is a genuinely
+    // separate concern: the two existing objects are called "DroneDock" and "SurveyDrone"
+    // in the hierarchy while their prefabs are DroneDockObject.prefab and
+    // SurveyDroneObject.prefab. Collapsing these into one parameter reads tidier and
+    // silently stops finding the scene objects. New content should pass the same string
+    // twice, as the assembly does, so there is nothing to keep in sync.
     [MenuItem("Eco Tools/Advanced Electronics/Finish Dock Prefab")]
-    public static void FinishDockPrefab() => FinishPrefab("DroneDockObject", isDock: true);
+    public static void FinishDockPrefab() => FinishPrefab("DroneDockObject", "DroneDock", isDock: true);
 
     [MenuItem("Eco Tools/Advanced Electronics/Finish Drone Prefab")]
-    public static void FinishDronePrefab() => FinishPrefab("SurveyDroneObject", isDock: false);
+    public static void FinishDronePrefab() => FinishPrefab("SurveyDroneObject", "SurveyDrone", isDock: false);
 
     [MenuItem("Eco Tools/Advanced Electronics/Finish Assembly Prefab")]
-    public static void FinishAssemblyPrefab() => FinishPrefab("AdvancedElectronicsAssemblyObject", isDock: false);
+    public static void FinishAssemblyPrefab() =>
+        FinishPrefab("AdvancedElectronicsAssemblyObject", "AdvancedElectronicsAssemblyObject", isDock: false);
 
     /// <summary>
     /// Runs the icon finisher for every entry in <see cref="ItemIcons"/>. Idempotent:
@@ -248,26 +262,50 @@ public static class AdvancedElectronicsBuildTools
     }
 
     /// <param name="typeName">
-    /// The exact server WorldObject class name. This is both the scene GameObject looked
-    /// up AND the prefab filename written -- deliberately the same string, so the two
-    /// cannot drift apart. The prefab path is built from this parameter, never from
-    /// <c>go.name</c>: deriving the filename from whatever happened to be selected in the
-    /// scene is what previously wrote a duplicate prefab under the wrong name
+    /// The exact server WorldObject class name. The prefab path is built from this
+    /// parameter and nothing else -- deriving the filename from <c>go.name</c> is what
+    /// previously wrote a duplicate prefab under the wrong name
     /// (docs/solutions/logic-errors/prefab-finisher-writes-to-the-scene-object-name.md).
     /// </param>
-    private static void FinishPrefab(string typeName, bool isDock)
+    /// <param name="sceneObjectName">
+    /// The GameObject in the open scene to build the prefab from. Usually identical to
+    /// <paramref name="typeName"/>, but the pre-existing dock and drone are named without
+    /// the "Object" suffix in the hierarchy, so the two cannot be assumed equal.
+    /// </param>
+    private static void FinishPrefab(string typeName, string sceneObjectName, bool isDock)
     {
         var go = Selection.activeGameObject;
-        if (go == null || go.name != typeName)
-            go = FindInLoadedScenes(typeName);
+        if (go == null || go.name != sceneObjectName)
+            go = FindInLoadedScenes(sceneObjectName);
 
         if (go == null)
         {
-            Debug.LogError($"[AdvancedElectronics] No GameObject named '{typeName}' found in the open scene (searched inactive objects too), and nothing matching is selected. Open the scene containing it (or select it in the Hierarchy) first, then re-run this command.");
+            Debug.LogError($"[AdvancedElectronics] No GameObject named '{sceneObjectName}' found in the open scene (searched inactive objects too), and nothing matching is selected. Open the scene containing it (or select it in the Hierarchy) first, then re-run this command.");
             return;
         }
 
         go.tag = "ModObject";
+
+        // KTD4: put every child renderer on the shared placeholder material. Assign
+        // through sharedMaterial against the AssetDatabase asset -- assigning through
+        // renderer.material forks a scene-local "(Instance)" copy that gets serialized
+        // into the scene, ships duplicated in the bundle, and stops tracking the .mat
+        // asset, so later edits to the placeholder silently miss this object.
+        var placeholder = AssetDatabase.LoadAssetAtPath<Material>(PlaceholderMaterial);
+        if (placeholder == null)
+        {
+            Debug.LogWarning($"[AdvancedElectronics] {PlaceholderMaterial} not found -- '{go.name}' keeps whatever material it has. Eco needs a curved-world shader, so a default HDRP material will render wrong in game.");
+        }
+        else
+        {
+            foreach (var renderer in go.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (renderer.sharedMaterial == placeholder) continue;
+                renderer.sharedMaterial = placeholder;
+                EditorUtility.SetDirty(renderer);
+                Debug.Log($"[AdvancedElectronics] Set '{renderer.name}' to the shared placeholder material.");
+            }
+        }
 
         var worldObject = go.GetComponent<WorldObject>();
         if (worldObject == null)
