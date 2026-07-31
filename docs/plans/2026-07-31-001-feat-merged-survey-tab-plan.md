@@ -156,10 +156,15 @@ The dotted edge is the only influence assignment has on the readout: it labels t
 
 ### Outstanding Questions
 
+**Resolved during implementation**
+
+- A numeric range bound cannot be non-constant. `RangeAttribute` (`EcoAttributes.cs:77`) is a plain C# attribute, so its arguments must be compile-time constants, and the view system has no `RangeParam(nameof(...))` sibling. This is a language limit, not an Eco one, and no probe can move it — the findings cursor is capped at compile time exactly as the control pool is. Settled statically; U1 does not probe it.
+- Runtime row labels have a vanilla precedent on a `WorldObjectComponent`: `SettlementFoundationComponent.cs:213` pairs `DynamicTitle` with a `[SyncToView]` string method (`:101`), on the same member as the `VisibilityParam` this mod already uses successfully. That is the mechanism, and it downgrades OQ1 from unknown to confirmation.
+
 **Deferred to planning**
 
-- OQ1. Can a row's label be set at runtime rather than derived from the member name? This decides whether each checkbox carries its area's name and coverage, or reads "Area 3" with a separate text list restored below it. The second shape still fits the budget; it is not as clean. Needs a live probe.
-- OQ2. Can a numeric range bound be something other than a compile-time constant? Does not change the pool, which is fixed at six by KD8, but decides whether the findings cursor is capped by the same number or reaches every area.
+- OQ1. Does `DynamicTitle` cross the mod-component gap? Vanilla components have generated client views; a mod component's is rebuilt from names, which is what broke the list templates. If it holds, each checkbox carries its area's name and coverage. If not, rows read as member names and the text list comes back below them — still inside budget at roughly 406 px, just not as clean. U1 confirms it live.
+- OQ2. Does `[SyncToView, Autogen, AutoRPC]` without `[Serialized]` generate a reachable setter for a mod component? This is the load-bearing unknown: KTD1's derived checkbox needs it, and if it fails, clicking a row disconnects every player. U1 probes it on an isolated tab, and the fallback is in Risks.
 
 ### Sources and Research
 
@@ -236,15 +241,15 @@ The material picker is the exception and stays as it is: it genuinely owns its v
 
 ### U1. Probe the binding unknowns on the showcase tab
 
-- Goal: settle the three unknowns that decide U3's shape, in one restart.
+- Goal: settle the two remaining unknowns that decide U3's shape, in one restart. The third — a non-constant range bound — was answered statically and is not probed.
 - Requirements: none directly; unblocks R5, R6, R7, R11.
 - Dependencies: none.
 - Files: `EcoServerMod/AdvancedElectronics/UIShowcaseComponent.cs`, `EcoServerMod/AdvancedElectronics/DroneDock.cs`
-- Approach: re-attach the showcase component (one commented line). Add three probe members: a bool whose value derives from another property and whose setter has no backing field, declared with sync, autogen, and RPC generation but not serialization; a member carrying a runtime-label attribute against one carrying only the default humanised member name; and a numeric stepper whose bound comes from a non-constant expression. Keep every probe on the showcase component so a failure costs that tab alone.
+- Approach: re-attach the showcase component. Add three members that isolate two variables — a vanilla-identical button carrying only the runtime-label attribute, a stored bool carrying that attribute plus the known-good editable binding, and the target shape: a bool with no backing field whose value derives from another field, declared with sync, autogen, and RPC generation but not serialization. If the first two label correctly and only the third misbehaves, the attribute split is the culprit rather than the label. Keep every probe on the showcase component so a failure costs that tab alone.
 - Patterns to follow: the existing probe members in the same file, and the A/B shape it already uses to isolate one variable per pair.
 - Execution note: the probe is the proof. Deploy, click each control, and read the client log at `%USERPROFILE%\AppData\LocalLow\Strange Loop Games\Eco\Player.log` — the client's own crash dialog renders off-screen, so the trace on disk is the only readable evidence.
 - Test expectation: none — this unit produces knowledge, not behaviour. No code path survives into the shipped tab.
-- Verification: each probe member renders; clicking the derived bool changes the value it derives from and does not disconnect the client; the runtime-label member shows its intended text or demonstrably does not; the non-constant bound either compiles and renders or fails at compile time. Record all three outcomes in the plan before starting U3.
+- Verification: all three members render; each shows its runtime label rather than a humanised member name; clicking the derived bool moves the echoed source value on screen and does not disconnect the client. Record both outcomes in the plan before starting U3.
 
 ### U2. Move the readout formatter into the navigation core and grow it
 
@@ -334,4 +339,4 @@ No automated coverage exists for the survey components and none can be added wit
 - The panel does not scroll at six areas with findings on all of them.
 - `dotnet build EcoServerMod/AdvancedElectronics` and `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` both pass.
 - The packaged README states that docks placed by an earlier version will not load.
-- U1's three probe outcomes are recorded in this plan, and the probe members are removed from the shipped component.
+- U1's two probe outcomes are recorded in this plan, and the probe members and the showcase component are detached from the dock before release.
