@@ -84,7 +84,10 @@ namespace Eco.Mods.TechTree
     // The probe is temporary by its own comment and the UI brainstorm is deferred (task
     // #34), so detaching costs nothing now. The component itself is untouched -- restoring
     // is uncommenting one line.
-    //[RequireComponent(typeof(UIShowcaseComponent))]
+    // Re-attached for the merged-survey-tab probe (U1). The showcase owns its own tab, so a
+    // probe member with an unreachable setter costs that tab rather than this object's.
+    // Detach again once the probe has its answers.
+    [RequireComponent(typeof(UIShowcaseComponent))]
     [RequireComponent(typeof(PartsComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem

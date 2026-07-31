@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using Eco.Core.Controller;
 using Eco.Gameplay.Objects;
+using Eco.Gameplay.Players;
+using Eco.Shared.Items;
 using Eco.Shared.Networking;
 using Eco.Shared.Serialization;
 using Eco.Shared.Utils;
@@ -160,6 +162,86 @@ namespace Eco.Mods.TechTree
             }
         }
 
+        // =====================================================================================
+        // PROBE v6 -- the two questions U1 of the merged-survey-tab plan has to answer before
+        // the dock's own tab is touched. Both live HERE because a WorldObjectComponent owns its
+        // own tab: if the editable member below has no reachable setter, clicking it drops every
+        // connected player, and it costs this tab rather than the dock's.
+        //
+        // Question 1 (dangerous): can a checkbox be a VIEW of state that lives somewhere else?
+        //   The merged tab's roster wants exactly that -- each row reads and writes the dock's
+        //   assigned area and holds nothing of its own, so "only one row checked" is a property
+        //   of having one source of truth rather than bookkeeping. That needs [Eco] minus
+        //   [Serialized]: sync and RPC generation, but no persistence, because there is nothing
+        //   to persist. SLG's UI-System wiki page says [Eco] is a composite you may split, and
+        //   Server/Eco.Shared/Networking/EcoAttributes.cs:17-27 confirms the parts. Nothing in
+        //   this project has run the split.
+        //
+        // Question 2 (likely fine, cheap to confirm): can a row's label be set at RUNTIME?
+        //   Vanilla does it on a WorldObjectComponent -- SettlementFoundationComponent.cs:213
+        //   pairs DynamicTitle with a [SyncToView] string METHOD (:101), alongside the same
+        //   VisibilityParam our own assign buttons already use successfully from a mod tab.
+        //   If it holds, each roster checkbox carries its area's name and coverage; if not,
+        //   rows read "P_ Derived Bool"-style member names and the text list comes back.
+        //
+        // Two variables, isolated across three members:
+        //   P_DynamicButton  DynamicTitle only, vanilla-identical shape   -> isolates DynamicTitle
+        //   P_StoredBool     DynamicTitle + known-good [Serialized, Eco]  -> control
+        //   P_DerivedBool    DynamicTitle + [SyncToView, Autogen, AutoRPC], derived, no backing
+        //                    field                                        -> the target shape
+        //
+        // If the button and the stored bool title correctly and only the derived one misbehaves,
+        // the attribute split is the culprit, not DynamicTitle.
+        //
+        // NOT PROBED: a non-constant Range bound. That is a C# limitation, not an Eco one --
+        // RangeAttribute (EcoAttributes.cs:77) is a plain attribute, its arguments must be
+        // compile-time constants, and there is no RangeParam(nameof(...)) sibling anywhere in
+        // the view system. The findings cursor is capped at compile time, like the button pool.
+        // =====================================================================================
+
+        /// <summary>The state the checkbox below is a view of. Stands in for the dock's assigned area.</summary>
+        int p_derivedSource;
+
+        /// <summary>Label source, shaped exactly like vanilla's: a [SyncToView] method returning string.</summary>
+        [SyncToView]
+        public string P_TitleSource() => $"Runtime label -- source is {this.p_derivedSource}";
+
+        /// <summary>Vanilla-identical: DynamicTitle on an RPC BigButton. The safest of the three.</summary>
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), DynamicTitle(nameof(P_TitleSource))]
+        public void P_DynamicButton(Player player) => this.SetDerivedSource(this.p_derivedSource + 1);
+
+        /// <summary>Control: known-good editable binding, so a failure here indicts DynamicTitle itself.</summary>
+        [Serialized, Eco, UITypeName("Boolean"), DynamicTitle(nameof(P_TitleSource))]
+        public bool P_StoredBool { get; set; }
+
+        /// <summary>
+        /// The target shape. No backing field of its own — the value IS <see cref="p_derivedSource"/>.
+        /// Declared as [Eco] decomposed: sync + autogen + RPC generation, deliberately without
+        /// [Serialized], because persisting a computed value would put a stale copy beside the real one.
+        /// </summary>
+        [SyncToView, Autogen, AutoRPC, UITypeName("Boolean"), DynamicTitle(nameof(P_TitleSource))]
+        public bool P_DerivedBool
+        {
+            get => this.p_derivedSource > 0;
+            set => this.SetDerivedSource(value ? 1 : 0);
+        }
+
+        /// <summary>Echoes the source so a write is visible even if a control fails to redraw.</summary>
+        [SyncToView, Autogen, UITypeName("StringDisplay")]
+        public string P_DerivedEcho { get; private set; } = "source is 0";
+
+        void SetDerivedSource(int value)
+        {
+            this.p_derivedSource = value;
+            this.P_DerivedEcho = $"source is {value}";
+
+            this.Changed(nameof(this.P_DerivedBool));
+            this.Changed(nameof(this.P_DerivedEcho));
+            this.Changed(nameof(this.P_TitleSource));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.P_DerivedBool)));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.P_DerivedEcho)));
+        }
+
         public override void Initialize()
         {
             base.Initialize();
@@ -175,6 +257,7 @@ namespace Eco.Mods.TechTree
             this.Changed(nameof(this.T_StringDescription));
             this.Changed(nameof(this.T_StringPlaque));
             this.Changed(nameof(this.T_Deprecated));
+            this.Changed(nameof(this.P_DerivedEcho));
         }
     }
 }
