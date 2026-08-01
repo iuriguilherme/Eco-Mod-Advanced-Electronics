@@ -56,8 +56,7 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(PropertyAuthComponent))]
     [RequireComponent(typeof(PublicStorageComponent))]
     [RequireComponent(typeof(OccupancyRequirementComponent))]
-    [RequireComponent(typeof(SurveyAreasComponent))]
-    [RequireComponent(typeof(SurveyResultsComponent))]
+    [RequireComponent(typeof(SurveyComponent))]
     // TEMPORARY: UI vocabulary probes. Remove once the layout brainstorm has its screenshots.
     //
     // v8 brings the container probe back onto the dock. v7 quarantined it on the drone to keep a
@@ -597,11 +596,11 @@ namespace Eco.Mods.TechTree
             this.PersistAssignedAreaFindings();
 
             // A WorldObjectComponent's own Tick does not reliably fire on the dock, so the dock
-            // drives the tab's refresh from its own (proven) tick.
-            if (this.TryGetComponent<SurveyAreasComponent>(out var areasTab))
-                areasTab.RefreshAreas();
-            if (this.TryGetComponent<SurveyResultsComponent>(out var resultsTab))
-                resultsTab.RefreshAll();
+            // drives the tab's refresh from its own (proven) tick. This is not merely a convenience:
+            // a Changed() raised inside a setter does not reach the client on its own, so without
+            // this push the tab's controls look dead however much they update server-side.
+            if (this.TryGetComponent<SurveyComponent>(out var surveyTab))
+                surveyTab.RefreshAll();
 
             // Temporary, with the U1 probe: drives the showcase's server-state mirror so a write
             // can be observed without a restart. Goes when the showcase does.
