@@ -459,10 +459,16 @@ namespace Eco.Mods.TechTree
         // One-shot guard so the restart re-link runs once, on the first tick after load.
         private bool restartRelinkDone;
 
+        /// <summary>
+        /// Where this dock's drone stands when it is home: one cell to the side, since the dock
+        /// itself occupies its own column. Used both to spawn a fresh drone and, as the last rung
+        /// of the return ladder, to place a drone that could not walk back (R11).
+        /// </summary>
+        internal Vector3 DroneParkPosition => this.Position + new Vector3(1.5f, 0f, 0f);
+
         private void SpawnDrone(User user)
         {
-            var spawnPos = this.Position + new Vector3(1.5f, 0f, 0f);
-            var obj = WorldObjectManager.ForceAdd(typeof(SurveyDroneObject), user, spawnPos, Quaternion.Identity, false) as SurveyDroneObject;
+            var obj = WorldObjectManager.ForceAdd(typeof(SurveyDroneObject), user, this.DroneParkPosition, Quaternion.Identity, false) as SurveyDroneObject;
             if (obj == null)
                 return;
 

@@ -78,6 +78,11 @@ namespace Eco.Mods.TechTree
         private int sweepArrivalAttempts;
         private bool sweepInitialized;
 
+        // How far the return leg has escalated (R11). Only the dock-bound leg climbs this ladder;
+        // outbound failures still report Unreachable, because failing to reach a survey area is a
+        // normal outcome and failing to get home is not.
+        private ReturnTier returnTier = ReturnTier.Normal;
+
         /// <summary>Current lifecycle status (R15) -- Idle/EnRoute/Surveying/Unreachable.</summary>
         public DroneStatus Status => this.stateMachine.Status;
 
@@ -169,7 +174,10 @@ namespace Eco.Mods.TechTree
                     if (!mover.IsMoving)
                     {
                         if (this.IsAtHomeDock())
+                        {
                             this.stateMachine.OnReturnedToDock();
+                            this.ResetReturnLadder(mover);
+                        }
                         else
                             this.HandleNoPath(mover);
                     }
@@ -329,13 +337,55 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void AttemptReturnLegOnly(DroneMoverComponent mover)
         {
-            if (!mover.SetDestination(this.HomeDock.Position, destinationIsOccupiedObject: true))
+            if (this.TryReturnAt(ReturnEscalation.For(this.returnTier), mover)) return;
+
+            // This rung failed. Loosen by exactly one and leave the looser rung for the next
+            // retry: walking the whole ladder in a single pass would teleport the drone the
+            // first time a path lookup came back empty, which is not "progressively relax".
+            if (ReturnEscalation.TryNext(this.returnTier, out var next))
+                this.returnTier = next.Tier;
+
+            // OnNoPathFound() is idempotent while already Unreachable (see its doc) -- safe to
+            // call again; it does not re-signal a fresh return attempt.
+            this.stateMachine.OnNoPathFound();
+        }
+
+        /// <summary>
+        /// One rung of the return ladder (R11). Ordinary rungs re-path at a looser climb height;
+        /// the hover and clip rungs abandon pathing for a straight line; the last rung places the
+        /// drone at the dock. Returns false only when this rung found nothing to do.
+        /// </summary>
+        private bool TryReturnAt(ReturnAttempt attempt, DroneMoverComponent mover)
+        {
+            if (attempt.Teleports)
             {
-                // The return leg itself has no path either. OnNoPathFound() is
-                // idempotent while already Unreachable (see its doc) -- safe to call
-                // again; it does not re-signal a fresh return attempt.
-                this.stateMachine.OnNoPathFound();
+                mover.TeleportTo(this.HomeDock.DroneParkPosition);
+                this.stateMachine.OnReturnedToDock();
+                this.ResetReturnLadder(mover);
+                return true;
             }
+
+            if (attempt.IgnoresObstacles)
+            {
+                // No pathfinding left to fail: a straight line to the dock, through whatever is
+                // in the way. Only reached after routing has already failed at every tighter rung.
+                mover.SetDirectDestination(this.HomeDock.DroneParkPosition);
+                return true;
+            }
+
+            mover.SetClimbHeight(attempt.MaxStepHeight);
+            return mover.SetDestination(this.HomeDock.Position, destinationIsOccupiedObject: true);
+        }
+
+        /// <summary>
+        /// Puts the ladder and the mover's climb height back to ordinary. Called whenever the
+        /// drone is home or is sent out again, so a hard-won return never leaves the next
+        /// outbound leg pathing with relaxed constraints.
+        /// </summary>
+        private void ResetReturnLadder(DroneMoverComponent mover)
+        {
+            this.returnTier = ReturnTier.Normal;
+            mover.SetClimbHeight(ReturnEscalation.OrdinaryMaxStepHeight);
         }
 
         /// <summary>
@@ -348,7 +398,10 @@ namespace Eco.Mods.TechTree
             if (mover.IsMoving)
             {
                 if (this.IsAtHomeDock())
+                {
                     this.stateMachine.OnReturnedToDock();
+                    this.ResetReturnLadder(mover);
+                }
                 return;
             }
 

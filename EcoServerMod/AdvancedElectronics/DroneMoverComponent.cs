@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
@@ -43,7 +44,6 @@ namespace Eco.Mods.TechTree
         // Design constants (not unverified live APIs -- these are tunable
         // choices, not ASSUMPTIONs about Eco's behavior).
         private const float MoveSpeedMetersPerSecond = 3f;
-        private const float MaxStepHeight = 1f;
 
         // Fallback delta-time if IWorldObjectManager.TickDeltaTime ever reads
         // as 0 (e.g. an early tick before the manager has measured a real
@@ -69,10 +69,51 @@ namespace Eco.Mods.TechTree
         /// <summary>True while a path is active and the drone has not yet reached its final waypoint.</summary>
         public bool IsMoving => this.currentPath.Found && this.waypointIndex < this.currentPath.Waypoints.Count;
 
+        // Climb height is per-attempt rather than a constant (R11): the return-leg escalation
+        // rebuilds the pathfinder at a looser height when a dock-bound path cannot be found.
+        // Outbound legs never change it, so they behave exactly as before.
+        private float maxStepHeight = ReturnEscalation.OrdinaryMaxStepHeight;
+
         public override void Initialize()
         {
             base.Initialize();
-            this.pathfinder = new GridPathfinder(new EcoWorldSampler(), MaxStepHeight);
+            this.pathfinder = new GridPathfinder(new EcoWorldSampler(), this.maxStepHeight);
+        }
+
+        /// <summary>
+        /// Rebuilds the pathfinder at <paramref name="height"/> if it differs from the current
+        /// one. Cheap to call every attempt: an unchanged height is a no-op, so the ordinary
+        /// case never rebuilds.
+        /// </summary>
+        public void SetClimbHeight(float height)
+        {
+            if (Math.Abs(height - this.maxStepHeight) < 0.0001f) return;
+
+            this.maxStepHeight = height;
+            this.pathfinder    = new GridPathfinder(new EcoWorldSampler(), height);
+        }
+
+        /// <summary>
+        /// Heads straight for <paramref name="destination"/> with no pathfinding at all -- the
+        /// hover and clip rungs of the return ladder (R11). The drone crosses whatever is in the
+        /// way rather than routing around it, which is the point: these rungs only run when
+        /// routing has already failed.
+        /// </summary>
+        public void SetDirectDestination(Vector3 destination)
+        {
+            this.currentPath   = PathResult.Success(new[] { destination });
+            this.waypointIndex = 0;
+        }
+
+        /// <summary>
+        /// Places the drone at <paramref name="destination"/> immediately, stopping any movement.
+        /// The last rung of the return ladder, and the reason a return leg never fails.
+        /// </summary>
+        public void TeleportTo(Vector3 destination)
+        {
+            this.Stop();
+            this.Parent.Position = destination;
+            this.Parent.SyncPositionAndRotation();
         }
 
         /// <summary>
