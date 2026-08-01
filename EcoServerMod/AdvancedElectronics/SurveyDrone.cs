@@ -1,6 +1,11 @@
 using System.Collections.Generic;
 using Eco.Core.Items;
 using Eco.Gameplay.Components;
+// FuelSupplyComponent lives here, NOT in Eco.Gameplay.Components alongside
+// FuelConsumptionComponent -- the two fuel components sit in different namespaces, so
+// importing only the obvious one resolves the consumption half and silently fails on
+// the supply half.
+using Eco.Gameplay.Components.Storage;
 using Eco.Gameplay.DynamicValues;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Items.Recipes;
@@ -31,8 +36,61 @@ namespace Eco.Mods.TechTree
     [LocDisplayName("Survey Drone")]
     [LocDescription("A craftable ground survey drone. Insert into a Drone Dock to pair it for dispatch.")]
     [Ecopedia("Crafted Objects", "Advanced Electronics", true, true, null)]
-    public class SurveyDroneItem : Item
+    public class SurveyDroneItem : RepairableItem, IWorldObjectComponentSource
     {
+        private static readonly IDynamicValue skilledRepairCost = new ConstantValue(1);
+
+        public override IDynamicValue SkilledRepairCost => skilledRepairCost;
+
+        public override float OriginalMaxDurability => 1000f;
+
+        // IMPLEMENTATION-TIME CHOICE, not specified by the plan: the drone's signature
+        // component and one of its own craft ingredients. R10 makes a broken drone stop its
+        // dock until repaired, so leaving RepairItem null (the RepairableItem default) would
+        // make a worn-out drone permanently dead rather than serviceable.
+        public override Item RepairItem => Item.Get<AdvancedCircuitItem>();
+
+        // Liquid fuel (biodiesel, gasoline) -- the vanilla tag the AutoGen vehicles use. The
+        // mod's own Battery would have supplied an "Electric Fuel" tag, but the battery is
+        // deferred; a fuel tag no item carries leaves the dock unfuelable.
+        private static readonly string[] fuelTagList = { "Liquid Fuel" };
+
+        /// <summary>
+        /// The components this drone brings to whatever dock it is slotted into (R5, R7). The
+        /// dock installs them on slot and uninstalls them on removal; see DroneDockObject.
+        ///
+        /// Every installation is name-stamped with this item's type so the dock's own lookups
+        /// stay unambiguous: GetComponent matches on assignability AND name, and the dock's
+        /// pre-existing unnamed components must keep resolving to themselves.
+        ///
+        /// No cargo component is declared. R7 is satisfied by the mechanism existing, not by
+        /// shipping an unused hold.
+        /// </summary>
+        public IEnumerable<ComponentInstallation> ComponentsToInstall => new[]
+        {
+            ComponentInstallation.For<FuelSupplyComponent>(
+                name:         nameof(SurveyDroneItem),
+                configure:    c => c.Initialize(2, fuelTagList),
+                // R8: refuse removal while the tank still holds fuel, so uninstalling can
+                // never destroy items. RemoveComponent does not capture state.
+                canUninstall: c => c.Inventory.IsEmpty,
+                // Vehicles proxy an installed component's interactions onto the module the
+                // player can point at. A drone sits inside the dock's storage and has no such
+                // surface, so proxying would register interactions that cannot dispatch.
+                proxyInteractions: false),
+            ComponentInstallation.For<FuelConsumptionComponent>(
+                name:              nameof(SurveyDroneItem),
+                configure:         c => c.Initialize(FuelJoulesPerSecond),
+                proxyInteractions: false),
+        };
+
+        /// <summary>
+        /// Burn rate, starting at the generator band rather than the Excavator's 275 the drone
+        /// inherited by copying. Vanilla comparisons: Truck 250, Excavator 275, Industrial and
+        /// Combustion Generator 75. A drone creeps and idles rather than doing heavy work.
+        /// Tune after a long live session.
+        /// </summary>
+        private const float FuelJoulesPerSecond = 75f;
     }
 
     /// <summary>
