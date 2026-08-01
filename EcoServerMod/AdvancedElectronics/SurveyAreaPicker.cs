@@ -170,6 +170,17 @@ namespace Eco.Mods.TechTree
                     // A new entry. An entry drawn with no plots is not an area; skip it silently so a
                     // confirmed-but-untouched placeholder does not create an empty area.
                     if (plots.Count == 0) continue;
+
+                    // Hard cap at the control pool. The map editor will happily accept any number of
+                    // entries, and an area with no control is one a player cannot assign from the
+                    // panel -- so refusing here is kinder than creating something half-usable.
+                    if (dock.SurveyAreas.Count >= SurveyComponent.AssignButtonPool)
+                    {
+                        player.User?.MsgLocStr(
+                            $"'{name}' was not created: a dock holds at most {SurveyComponent.AssignButtonPool} survey areas. Delete one first.");
+                        continue;
+                    }
+
                     dock.CreateSurveyArea(ResolveNewAreaName(dock, name), plots);
                     continue;
                 }

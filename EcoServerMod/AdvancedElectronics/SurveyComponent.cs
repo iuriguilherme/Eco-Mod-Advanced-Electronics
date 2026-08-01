@@ -98,12 +98,35 @@ namespace Eco.Mods.TechTree
         // 2. Assign -- the numbered list, then one checkbox per position.
         // ---------------------------------------------------------------
 
-        [SyncToView, Autogen, UITypeName("LinedHeader")]
+        // StringTitle, not LinedHeader. LinedHeader and SectionHeader render the MEMBER NAME and
+        // discard the value -- the first build of this tab showed "Assign Header" and "Findings
+        // Header" on screen. StringTitle and GeneralHeader are the two that render what you assign.
+        [SyncToView, Autogen, UITypeName("StringTitle")]
         public string AssignHeader { get; private set; } = "Assign an area";
 
         /// <summary>The dock's numbered area list, and the overflow notice when the pool runs out.</summary>
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string AreasDisplay { get; private set; } = string.Empty;
+
+        // TEMPORARY -- delete once the checkboxes are confirmed writing.
+        //
+        // The checkboxes tick and then revert on the next push, which is consistent with two very
+        // different causes, and guessing between them has already cost two restarts:
+        //
+        //   the setter is never invoked   -> something blocks the write RPC (VisibilityParam on an
+        //                                    editable property is the open suspect; the shape proven
+        //                                    on the showcase probe did not carry one)
+        //   the setter runs and no-ops    -> the `ready` gate below never became true, i.e.
+        //                                    Initialize() does not run for this component
+        //
+        // A tick mark cannot tell these apart, because the client draws it either way. This line
+        // reports server-side truth on the dock's tick: the call counter increments BEFORE the gate,
+        // so an invoked-but-gated setter looks different from one that never ran.
+        [SyncToView, Autogen, UITypeName("StringDisplay")]
+        public string AssignDiagnostic { get; private set; } = string.Empty;
+
+        private int setterCalls;
+        private string lastSetter = "none";
 
         // Each checkbox is a VIEW of the dock's assigned area, holding nothing of its own: the getter
         // asks whether this position is the assigned one, the setter writes assignment through. So
@@ -112,12 +135,19 @@ namespace Eco.Mods.TechTree
         // starts returning false. Confirmed live: an external write to the dock ticked derived
         // checkboxes on screen with no window reopen.
         //
-        // [Eco(false)] and NOT its parts. [SyncToView, Autogen, AutoRPC] renders the control,
-        // displays derived state and refreshes live, then silently drops every click -- no
-        // exception, no log line, and the client still draws the tick. The composite is not
-        // interchangeable with its pieces for the write path. The (false) drops persistence, which
-        // is both correct (there is nothing to persist) and safer: a [Serialized] write-through
-        // setter would be invoked during deserialization and reassign the drone on world load.
+        // [Serialized, Eco], and NOT the attribute's parts. Three shapes were tried live:
+        //
+        //   [SyncToView, Autogen, AutoRPC]   renders, displays, refreshes -- drops every click
+        //   [Eco(false)]                     same: the box ticks, then the next tick unticks it
+        //   [Serialized, Eco]                writes land (proven on the showcase probe)
+        //
+        // The failure is silent in every direction: no exception, no log line, and the client draws
+        // the tick regardless. Whatever the write path keys off, it is not present unless [Eco]
+        // carries its default persistence.
+        //
+        // [Serialized] on a write-through setter is a hazard, not a preference -- deserialization
+        // sets [Serialized] members by INVOKING their setters, so loading a world would replay every
+        // persisted row as an assignment, in an order nothing controls. `ready` below is the gate.
         //
         // Visibility gating is the vanilla AreaBonusComponent shape ([SyncToView] bool method +
         // VisibilityParam), so a pool of six costs six rows only when six areas exist.
@@ -129,29 +159,29 @@ namespace Eco.Mods.TechTree
         [SyncToView] public bool AreaExists5() => this.AreaCount() >= 5;
         [SyncToView] public bool AreaExists6() => this.AreaCount() >= 6;
 
-        [Eco(false), UITypeName("Boolean"), VisibilityParam(nameof(AreaExists1))]
+        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists1))]
         public bool AssignArea1 { get => this.IsAssigned(1); set => this.SetAssigned(1, value); }
 
-        [Eco(false), UITypeName("Boolean"), VisibilityParam(nameof(AreaExists2))]
+        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists2))]
         public bool AssignArea2 { get => this.IsAssigned(2); set => this.SetAssigned(2, value); }
 
-        [Eco(false), UITypeName("Boolean"), VisibilityParam(nameof(AreaExists3))]
+        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists3))]
         public bool AssignArea3 { get => this.IsAssigned(3); set => this.SetAssigned(3, value); }
 
-        [Eco(false), UITypeName("Boolean"), VisibilityParam(nameof(AreaExists4))]
+        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists4))]
         public bool AssignArea4 { get => this.IsAssigned(4); set => this.SetAssigned(4, value); }
 
-        [Eco(false), UITypeName("Boolean"), VisibilityParam(nameof(AreaExists5))]
+        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists5))]
         public bool AssignArea5 { get => this.IsAssigned(5); set => this.SetAssigned(5, value); }
 
-        [Eco(false), UITypeName("Boolean"), VisibilityParam(nameof(AreaExists6))]
+        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists6))]
         public bool AssignArea6 { get => this.IsAssigned(6); set => this.SetAssigned(6, value); }
 
         // ---------------------------------------------------------------
         // 3. Findings -- cursor, what it points at, filter, results.
         // ---------------------------------------------------------------
 
-        [SyncToView, Autogen, UITypeName("LinedHeader")]
+        [SyncToView, Autogen, UITypeName("StringTitle")]
         public string FindingsHeader { get; private set; } = "Findings";
 
         /// <summary>
@@ -160,12 +190,13 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private int viewIndex;
 
-        [Eco(false), Range(1, ViewCursorMax), UITypeName("Int32")]
+        [Serialized, Eco, Range(1, ViewCursorMax), UITypeName("Int32")]
         public int ViewPosition
         {
             get => this.viewIndex + 1;
             set
             {
+                if (!this.ready) return;   // deserialization, not a player -- see `ready`
                 if (this.Parent is not DroneDockObject dock) return;
                 this.viewIndex = DockReadout.ClampCursor(value - 1, dock.SurveyAreas.Count);
                 this.RefreshAll();
@@ -210,9 +241,19 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string ResultsDisplay { get; private set; } = string.Empty;
 
+        /// <summary>
+        /// False until <see cref="Initialize"/> has run. Deserialization assigns `[Serialized]`
+        /// members by invoking their setters, and these setters write assignment through to the
+        /// dock — so without this gate, loading a world replays every persisted checkbox as a
+        /// drone assignment, in whatever order the serializer happens to use. Not `[Serialized]`
+        /// itself: it must start false on every load.
+        /// </summary>
+        private bool ready;
+
         public override void Initialize()
         {
             base.Initialize();
+            this.ready = true;
             this.RefreshAll();
         }
 
@@ -233,6 +274,12 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void SetAssigned(int position, bool value)
         {
+            // Counted BEFORE the gate on purpose: it is the only way to tell "never invoked" from
+            // "invoked and refused". Temporary, with AssignDiagnostic.
+            this.setterCalls++;
+            this.lastSetter = $"pos{position}={value}";
+
+            if (!this.ready) return;   // deserialization, not a player -- see `ready`
             if (this.Parent is not DroneDockObject dock) return;
             if (position < 1 || position > dock.SurveyAreas.Count) return;
 
@@ -257,11 +304,16 @@ namespace Eco.Mods.TechTree
 
             this.DroneStatus = BuildDroneStatus(dock);
             this.AreasDisplay = this.BuildAreasText(dock);
+            this.AssignDiagnostic =
+                $"[diag] setter calls: {this.setterCalls} | last: {this.lastSetter} | " +
+                $"ready: {this.ready} | dock assigned id: {dock.AssignedSurveyAreaId} | " +
+                $"box1 reads: {this.IsAssigned(1)}";
             this.ViewingDisplay = this.BuildViewingText(dock);
             this.ResultsDisplay = this.BuildResultsText(dock);
 
             this.Changed(nameof(this.DroneStatus));
             this.Changed(nameof(this.AreasDisplay));
+            this.Changed(nameof(this.AssignDiagnostic));
             this.Changed(nameof(this.ViewingDisplay));
             this.Changed(nameof(this.ResultsDisplay));
             this.Changed(nameof(this.ViewPosition));
