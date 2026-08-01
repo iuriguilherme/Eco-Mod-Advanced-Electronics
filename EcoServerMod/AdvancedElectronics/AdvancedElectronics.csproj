@@ -42,6 +42,19 @@
     </Reference>
   </ItemGroup>
 
+  <!--
+    Shelved, not deleted. The Advanced Electronics Assembly hosted every recipe this mod had
+    until the drone and dock moved to the Robotic Assembly Line and the upgrade module to the
+    Electronics Assembly, which left it with nothing to craft. The file is kept current with the
+    v14 table shape so it can come back the moment there is a recipe that wants its own bench.
+
+    Excluding it removes the item and its world object from the mod, so any already placed in a
+    world will not load. See the release notes' known-issues block.
+  -->
+  <ItemGroup>
+    <Compile Remove="AdvancedElectronicsAssembly.cs" />
+  </ItemGroup>
+
   <!-- U2: consumes GridPathfinder/PathResult/ArrivalDetector (U3) via EcoWorldSampler. -->
   <ItemGroup>
     <ProjectReference Include="..\AdvancedElectronics.Navigation\AdvancedElectronics.Navigation.csproj" />

@@ -124,7 +124,12 @@ namespace Eco.Mods.TechTree
     [IconGroup("World Object Minimap")]
     [Ecopedia("Work Stations", "Craft Tables", createAsSubPage: true)]
     [Weight(5000)] // Defines how heavy AdvancedElectronicsAssembly is.
-    [AllowPluginModules(Tags = new[] { "ModernUpgrade" }, ItemTypes = new[] { typeof(AdvancedElectronicsUpgradeItem) })] //noloc
+    [SalvageCost(typeof(CopperScrap), 10.0f, typeof(IronScrap), 10.0f)]
+    [IgnorePowerModules] // This object does not use power modules, so we ignore them in the tooltip.
+    // v14 tables list module item types outright rather than by tag: the shipped ElectronicsAssembly
+    // and RoboticAssemblyLine both enumerate ItemTypes only, and no vanilla table matches on
+    // "ModernUpgrade" any more.
+    [AllowPluginModules(ItemTypes = new[] { typeof(AdvancedElectronicsUpgradeItem), typeof(ElectronicsUpgradeItem), typeof(IndustryUpgradeItem), typeof(BasicUpgradeItem), typeof(AdvancedUpgradeItem), typeof(ModernUpgradeItem) })] //noloc
     public partial class AdvancedElectronicsAssemblyItem : WorldObjectItem<AdvancedElectronicsAssemblyObject>, IPersistentData
     {
         protected override OccupancyContext GetOccupancyContext => new SideAttachedContext( 0  | DirectionAxisFlags.Down , WorldObject.GetOccupancyInfo(this.WorldObjectType));

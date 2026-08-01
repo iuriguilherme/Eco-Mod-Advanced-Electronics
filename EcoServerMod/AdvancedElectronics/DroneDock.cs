@@ -784,7 +784,7 @@ namespace Eco.Mods.TechTree
             this.Initialize(displayText: Localizer.DoStr("Drone Dock"), recipeType: typeof(DroneDockRecipe));
             this.ModsPostInitialize();
 
-            CraftingComponent.AddRecipe(tableType: typeof(AdvancedElectronicsAssemblyObject), recipeFamily: this);
+            CraftingComponent.AddRecipe(tableType: typeof(RoboticAssemblyLineObject), recipeFamily: this);
         }
 
         partial void ModsPreInitialize();

@@ -296,7 +296,7 @@ namespace Eco.Mods.TechTree
             this.Initialize(displayText: Localizer.DoStr("Survey Drone"), recipeType: typeof(SurveyDroneRecipe));
             this.ModsPostInitialize();
 
-            CraftingComponent.AddRecipe(tableType: typeof(AdvancedElectronicsAssemblyObject), recipeFamily: this);
+            CraftingComponent.AddRecipe(tableType: typeof(RoboticAssemblyLineObject), recipeFamily: this);
         }
 
         /// <summary>Hook for mods to customize RecipeFamily before initialization. You can change recipes, xp, labor, time here.</summary>
