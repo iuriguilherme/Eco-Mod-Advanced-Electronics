@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using AdvancedElectronics.Navigation;
+using Eco.Core.Controller;
 using Eco.Core.Items;
 using Eco.Core.Utils;
 using Eco.Gameplay.Components;
@@ -655,10 +656,22 @@ namespace Eco.Mods.TechTree
     [LocDescription("Home point for a survey drone. Insert a Survey Drone to pair and dispatch it, then draw and assign a survey area from the dock's Survey tab.")]
     [Ecopedia("Crafted Objects", "Advanced Electronics", true, true, null)]
     [Weight(1000)]
-    public class DroneDockItem : WorldObjectItem<DroneDockObject>
+    public class DroneDockItem : WorldObjectItem<DroneDockObject>, IPersistentData
     {
         protected override OccupancyContext GetOccupancyContext =>
             new SideAttachedContext(0 | DirectionAxisFlags.Down, WorldObject.GetOccupancyInfo(this.WorldObjectType));
+
+        /// <summary>
+        /// Carries the dock's component state across pickup and replacement (R14). Declaring
+        /// IPersistentData is the entire opt-in: Eco's pickup path then sweeps every component's
+        /// state onto this item and pours it back when the item is placed again, so a worn dock
+        /// stays worn instead of returning to a fresh one.
+        ///
+        /// Side effect, and the correct one: an IPersistentData item stops stacking. Two docks of
+        /// different condition are genuinely different items and must not merge.
+        /// </summary>
+        [Serialized, SyncToView, NewTooltipChildren(CacheAs.Instance, flags: TTFlags.AllowNonControllerTypeForChildren)]
+        public object PersistentData { get; set; }
     }
 
     /// <summary>Recipe unlocking <see cref="DroneDockItem"/>.</summary>
