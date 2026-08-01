@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Eco.Core.Controller;
 using Eco.Core.Items;
 using Eco.Gameplay.Components;
 // FuelSupplyComponent lives here, NOT in Eco.Gameplay.Components alongside
@@ -13,7 +14,9 @@ using Eco.Gameplay.Objects;
 using Eco.Gameplay.Occupancy;
 using Eco.Gameplay.Players;
 using Eco.Gameplay.Skills;
+using Eco.Gameplay.Systems.NewTooltip;
 using Eco.Mods.TechTree;
+using Eco.Shared.Items;
 using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
@@ -36,8 +39,21 @@ namespace Eco.Mods.TechTree
     [LocDisplayName("Survey Drone")]
     [LocDescription("A craftable ground survey drone. Insert into a Drone Dock to pair it for dispatch.")]
     [Ecopedia("Crafted Objects", "Advanced Electronics", true, true, null)]
-    public class SurveyDroneItem : RepairableItem, IWorldObjectComponentSource
+    public class SurveyDroneItem : RepairableItem, IWorldObjectComponentSource, IPersistentData
     {
+        /// <summary>
+        /// Carries the state of the components this drone installed, across being pulled out of one
+        /// dock and put into another.
+        ///
+        /// Without it the drone's fuel supply is destroyed on removal along with the component
+        /// itself, so a partly-burned unit of biodiesel is lost and the dock charges a fresh one to
+        /// start up again. That is 0.13 behaviour; 0.14 keeps fuel across pickup, and
+        /// FuelSupplyComponent implements IPersistentData precisely so it can. DroneModuleComponent
+        /// captures into this on uninstall and restores from it on install.
+        /// </summary>
+        [Serialized, SyncToView, NewTooltipChildren(CacheAs.Instance, flags: TTFlags.AllowNonControllerTypeForChildren)]
+        public object PersistentData { get; set; }
+
         private static readonly IDynamicValue skilledRepairCost = new ConstantValue(1);
 
         public override IDynamicValue SkilledRepairCost => skilledRepairCost;
@@ -59,9 +75,21 @@ namespace Eco.Mods.TechTree
         /// The components this drone brings to whatever dock it is slotted into (R5, R7). The
         /// dock installs them on slot and uninstalls them on removal; see DroneDockObject.
         ///
-        /// Every installation is name-stamped with this item's type so the dock's own lookups
-        /// stay unambiguous: GetComponent matches on assignability AND name, and the dock's
-        /// pre-existing unnamed components must keep resolving to themselves.
+        /// BOTH INSTALLATIONS ARE DELIBERATELY UNNAMED, which reverses this plan's KTD7. Naming
+        /// them crashed the server on the first tick of real work: FuelConsumptionComponent
+        /// resolves its supply in its own Initialize with
+        ///
+        ///     this.fuelSupply = this.Parent.GetComponent&lt;FuelSupplyComponent&gt;();
+        ///
+        /// which passes no name, and GetComponent matches on assignability AND `component.Name
+        /// == name`. A named supply therefore cannot be found by the vanilla consumer at all --
+        /// fuelSupply stayed null and Tick dereferenced it the moment Parent.Operating went true.
+        /// The pairing is not name-aware, so it is not ours to name.
+        ///
+        /// Unnamed is safe here because the dock declares no fuel components of its own; the
+        /// ambiguity KTD7 guards against is a real hazard only for a type the dock already
+        /// carries unnamed, which today means PublicStorageComponent. A future cargo hold must
+        /// be named for exactly that reason.
         ///
         /// No cargo component is declared. R7 is satisfied by the mechanism existing, not by
         /// shipping an unused hold.
@@ -69,7 +97,6 @@ namespace Eco.Mods.TechTree
         public IEnumerable<ComponentInstallation> ComponentsToInstall => new[]
         {
             ComponentInstallation.For<FuelSupplyComponent>(
-                name:         nameof(SurveyDroneItem),
                 configure:    c => c.Initialize(2, fuelTagList),
                 // R8: refuse removal while the tank still holds fuel, so uninstalling can
                 // never destroy items. RemoveComponent does not capture state.
@@ -79,7 +106,6 @@ namespace Eco.Mods.TechTree
                 // surface, so proxying would register interactions that cannot dispatch.
                 proxyInteractions: false),
             ComponentInstallation.For<FuelConsumptionComponent>(
-                name:              nameof(SurveyDroneItem),
                 configure:         c => c.Initialize(FuelJoulesPerSecond),
                 proxyInteractions: false),
         };

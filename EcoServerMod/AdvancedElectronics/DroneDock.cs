@@ -588,10 +588,11 @@ namespace Eco.Mods.TechTree
         {
             get
             {
-                // The fuel supply is the drone's, installed under its name. An empty slot means no
-                // drone, which is a separate condition the panel already reports.
-                var fuel = this.GetComponent<FuelSupplyComponent>(nameof(SurveyDroneItem));
-                if (fuel != null && !fuel.Enabled) return DockStopReason.NoFuel;
+                // The fuel supply is the drone's, installed unnamed (see SurveyDroneItem's
+                // ComponentsToInstall for why it cannot be named). Absent means no drone slotted,
+                // which is a separate condition the panel already reports.
+                if (this.TryGetComponent<FuelSupplyComponent>(out var fuel) && !fuel.Enabled)
+                    return DockStopReason.NoFuel;
 
                 if (this.TryGetComponent<PartsComponent>(out var parts) && !parts.AllPartsWorking)
                     return DockStopReason.BrokenParts;

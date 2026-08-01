@@ -200,17 +200,64 @@ namespace Eco.Mods.TechTree
                 return false;
             }
 
+            this.RestoreState(source);
+
             Log.WriteLineLoc($"Drone Dock: installed {source.GetType().Name}'s components.");
             return true;
         }
 
         private void Uninstall(IWorldObjectComponentSource source)
         {
+            this.CaptureState(source);
+
             // Reverse order, so a component that depends on an earlier one is gone before it.
             foreach (var inst in source.ComponentsToInstall.Reverse())
                 this.Parent.RemoveComponent(this.Parent.GetComponent(inst.ComponentType, inst.Name) as WorldObjectComponent);
 
             Log.WriteLineLoc($"Drone Dock: uninstalled {source.GetType().Name}'s components.");
+        }
+
+        /// <summary>
+        /// Copies each installed component's persistent state onto the drone item before the
+        /// components are destroyed.
+        ///
+        /// RemoveComponent destroys a component outright and captures nothing, so without this the
+        /// fuel being actively burned dies with the fuel supply and the dock charges a fresh unit
+        /// on the next start-up. Eco 0.14 keeps fuel across pickup for ordinary objects by running
+        /// the same collect step over every IPersistentData component during the pickup path; a
+        /// module install is the same transition, so it does the same thing.
+        /// </summary>
+        private void CaptureState(IWorldObjectComponentSource source)
+        {
+            if (source is not IPersistentData item) return;
+
+            // A fresh store rather than reusing the old one: TryAddPersistentDataFromComponent will
+            // not overwrite an existing entry, so a stale capture would win over the live state.
+            var store = new ItemPersistentData();
+
+            foreach (var inst in source.ComponentsToInstall)
+                if (this.Parent.GetComponent(inst.ComponentType, inst.Name) is IPersistentData component)
+                    store.TryAddPersistentDataFromComponent(component);
+
+            item.PersistentData = store;
+        }
+
+        /// <summary>
+        /// Pours the drone item's saved component state back into the components just installed.
+        /// Runs after Configure and Initialize, so it overwrites a freshly initialized component
+        /// rather than being overwritten by one.
+        /// </summary>
+        private void RestoreState(IWorldObjectComponentSource source)
+        {
+            if (source is not IPersistentData item || item.PersistentData is not ItemPersistentData store) return;
+
+            foreach (var inst in source.ComponentsToInstall)
+                if (this.Parent.GetComponent(inst.ComponentType, inst.Name) is IPersistentData component)
+                    store.TryRestorePersistentDataToComponent(component);
+
+            // Drop it once spent, so a later capture starts clean and a drone sitting in a chest
+            // is not carrying a copy of state that now lives on a dock.
+            item.PersistentData = null;
         }
     }
 
