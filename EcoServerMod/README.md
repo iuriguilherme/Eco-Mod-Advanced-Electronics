@@ -27,19 +27,30 @@ assemblies and deploy to an Eco dedicated server.
 
 ## Version matching
 
-The `Eco.ReferenceAssemblies` NuGet version **must match the target server's game build**.
+The reference assemblies **must match the target server's game build**.
 
-- This repo's ModKit DLLs identify as Eco **0.13.0.4** (`Eco.Shared.dll` version string),
-  so both the mod and the spike pin `0.13.0.4-beta-release-1024`. (The planning research
-  assumed 0.11.x; the repo evidence superseded it.)
-- To re-pin: find your server's build number (server console banner or
-  `EcoServer.dll` version), list versions with
-  `https://www.nuget.org/packages/Eco.ReferenceAssemblies`, and set `EcoRefVersion`
-  in the `.csproj`.
+- The mod targets Eco **0.14**. There is no `Eco.ReferenceAssemblies` package for it, and the
+  shipped dedicated server is a single-file bundle with its managed assemblies embedded, so
+  neither is usable as a reference source. The assemblies are built from an Eco source checkout
+  instead, pinned by `EcoRefSha` in `AdvancedElectronics/AdvancedElectronics.csproj`:
+
+  ```bash
+  scripts/gather-eco-refs.sh <path-to-eco-checkout>
+  ```
+
+  Then set `EcoRefAssembliesDir` in `AdvancedElectronics/Local.props` (git-ignored) to the
+  directory it prints. The script refuses to run against a checkout that is not on the pinned
+  commit — `staging` moves daily, and a mod tracking a moving branch has no reproducible build.
+
+- The spike at `AdvancedElectronics.Spike/` still pins the `0.13.0.4-beta-release-1024` NuGet
+  package. It is reference-only and is not built against 0.14.
+
+- To re-pin: move the checkout to the commit you want, update `EcoRefSha`, and re-run the
+  gather script.
 
 ## Building
 
-Eco 0.13 reference assemblies target **net10.0**. If `dotnet --list-sdks` shows no 10.x
+Eco 0.14 reference assemblies target **net10.0**. If `dotnet --list-sdks` shows no 10.x
 SDK, install one user-locally (no admin) with the official script:
 
 ```powershell
@@ -71,16 +82,24 @@ Copy **both** DLLs from `AdvancedElectronics/bin/Debug/net10.0/` into the server
 - `AdvancedElectronics.dll`
 - `AdvancedElectronics.Navigation.dll` (project dependency — the mod fails to load without it)
 
-Or create `AdvancedElectronics/Local.props` (git-ignored) to auto-copy every DLL in the
-build output on every build:
+The target server must be running **Eco 0.14**. A 0.13 server will not load this build.
+
+`AdvancedElectronics/Local.props` (git-ignored) holds both machine-local paths: where the
+reference assemblies were gathered, and the server to auto-copy the build output into.
 
 ```xml
 <Project>
   <PropertyGroup>
-    <EcoModsDir>C:\path\to\EcoServer\Mods\AdvancedElectronics</EcoModsDir>
+    <EcoRefAssembliesDir>/path/to/eco-checkout/Build/EcoModkit/ReferenceAssemblies/</EcoRefAssembliesDir>
+    <EcoModsDir>/path/to/EcoServer/Mods/AdvancedElectronics/</EcoModsDir>
   </PropertyGroup>
 </Project>
 ```
+
+Point `EcoModsDir` at the tree the server actually runs from, and re-check it whenever you
+change game versions. Two installs of different versions have identical folder layouts and
+both accept a copy without complaint, so deploying to the wrong one fails silently — see
+`docs/solutions/conventions/document-the-path-you-actually-deploy-to.md`.
 
 The client asset bundle (`AssetBundles/AdvancedElectronics.unity3d`, built from the
 Unity project) deploys separately — see the root `README.md` for the full

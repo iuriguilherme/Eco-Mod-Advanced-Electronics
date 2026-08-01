@@ -39,7 +39,7 @@
 set -euo pipefail
 
 VERSION="0.0.3"
-GAME_VERSION="0.13.0.4"
+GAME_VERSION="0.14.0.0"
 FORCE=0
 
 while [ $# -gt 0 ]; do

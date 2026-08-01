@@ -4,23 +4,42 @@
     Advanced Electronics survey-drone mod (real project; the feasibility spike at
     ../AdvancedElectronics.Spike stays a reference-only sibling per KTD1, not a base
     class of this project).
-    EcoRefVersion must match the target Eco dedicated server's build. Pinned to the
-    same prerelease the spike proved compiles green against. See ../README.md.
+
+    EcoRefVersion must match the target Eco dedicated server's build. There is no
+    Eco.ReferenceAssemblies package for 0.14, and the shipped server is a single-file
+    bundle with its managed assemblies embedded, so the reference assemblies are built
+    from a source checkout instead. See ../../scripts/gather-eco-refs.sh.
+
+    EcoRefSha pins that checkout. It is the single source of truth for the pin: the
+    gather script reads it from here rather than carrying its own copy. `staging` moves
+    daily, and a mod tracking a moving branch has no reproducible build.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <EcoRefVersion>0.13.0.4-beta-release-1024</EcoRefVersion>
+    <EcoRefVersion>0.14.0.0</EcoRefVersion>
+    <EcoRefSha>07370cde2505f6b916d0476ddf5a1d12a51bdcbb</EcoRefSha>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
-  <!-- Machine-local overrides (EcoModsDir for auto-deploy). Git-ignored. -->
+  <!-- Machine-local paths (EcoRefAssembliesDir, EcoModsDir). Git-ignored. -->
   <Import Project="Local.props" Condition="Exists('Local.props')" />
 
+  <Target Name="RequireEcoRefAssembliesDir" BeforeTargets="BeforeBuild"
+          Condition="'$(EcoRefAssembliesDir)' == ''">
+    <Error Text="EcoRefAssembliesDir is not set. Run scripts/gather-eco-refs.sh against an Eco checkout at $(EcoRefSha), then set EcoRefAssembliesDir (trailing separator required) in Local.props to the directory it prints." />
+  </Target>
+
+  <!--
+    Private=false keeps Strange Loop Games' assemblies out of bin/, which the release
+    packaging script stages wholesale. Shipping them would redistribute their SDK.
+  -->
   <ItemGroup>
-    <PackageReference Include="Eco.ReferenceAssemblies" Version="$(EcoRefVersion)" />
+    <Reference Include="$(EcoRefAssembliesDir)*.dll">
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- U2: consumes GridPathfinder/PathResult/ArrivalDetector (U3) via EcoWorldSampler. -->
