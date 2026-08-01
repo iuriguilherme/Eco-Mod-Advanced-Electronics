@@ -83,10 +83,12 @@ namespace Eco.Mods.TechTree
     // The probe is temporary by its own comment and the UI brainstorm is deferred (task
     // #34), so detaching costs nothing now. The component itself is untouched -- restoring
     // is uncommenting one line.
-    // Re-attached for the merged-survey-tab probe (U1). The showcase owns its own tab, so a
-    // probe member with an unreachable setter costs that tab rather than this object's.
-    // Detach again once the probe has its answers.
-    [RequireComponent(typeof(UIShowcaseComponent))]
+    // DETACHED 2026-07-31 for the 0.0.3 release. The probe answered its questions -- which
+    // attribute shape delivers writes, that DynamicTitle resolves a label once and never again,
+    // and that a Changed() inside a setter needs the dock's tick to reach the client. Findings
+    // are in docs/solutions/runtime-errors/autogen-template-binding-contract.md. The component
+    // stays in the tree for the next binding question; re-attaching is uncommenting one line.
+    // [RequireComponent(typeof(UIShowcaseComponent))]
     [RequireComponent(typeof(PartsComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem

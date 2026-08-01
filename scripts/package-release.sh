@@ -38,7 +38,7 @@
 
 set -euo pipefail
 
-VERSION="0.0.2"
+VERSION="0.0.3"
 GAME_VERSION="0.13.0.4"
 FORCE=0
 
@@ -187,10 +187,13 @@ USAGE
   the Survey Drone, and the Advanced Electronics Upgrade module.
 
   Place the dock and open its Survey tab. Use "Manage Areas on Map" to draw survey
-  areas, then tick the one you want the drone to work on. Insert the Survey Drone
-  item to launch. Findings are shown one area at a time; the area you are reading
-  is chosen separately from the one the drone is working on, so you can check any
-  area without redirecting the drone.
+  areas -- up to ten per dock. The list numbers them; set "Assigned Position" to a
+  number to send the drone there, or 0 to stop it. Insert the Survey Drone item to
+  launch.
+
+  Findings are shown one area at a time. "View Position" chooses which area you are
+  reading and is separate from the assignment, so you can check any area without
+  redirecting the drone.
 
 KNOWN ISSUES IN THIS VERSION
   - Drone Docks placed by an earlier version do not load. This version removes a
@@ -200,6 +203,11 @@ KNOWN ISSUES IN THIS VERSION
     no ghost outline while you are holding them. They still place normally.
   - The Survey Drone's own window opens with no tabs, so it cannot be refuelled.
     Fuel consumption is not implemented yet; the drone runs regardless.
+  - A Survey Drone can be left orphaned in the world across a server restart --
+    alive with no dock owning it. Admins can list and remove them with
+    '/drone orphans' and '/drone orphans destroy'.
+  - An area the drone cannot reach only shows as the drone's status reading
+    "Unreachable"; the area itself is not marked.
   - Item and skill icons are flat-colour placeholders.
 
 LICENSE
