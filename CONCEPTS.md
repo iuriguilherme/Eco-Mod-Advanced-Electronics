@@ -58,6 +58,11 @@ supplies its model and any in-world visuals.
 
 Placing an item generally produces a *new* World Object rather than restoring the one that was
 picked up, which is why state living on a World Object does not automatically survive relocation.
+The exception is **component** state, and it is opt-in: when the item an object turns into declares
+itself as carrying persistent data, being picked up sweeps every component's state onto that item
+and placing it pours the state back. Nothing else transfers — fields on the object itself are still
+lost — and an object spawned and destroyed outside the pickup path never transfers anything at all,
+whatever its item declares.
 
 Its **component set is fixed when it is created** and stored with it. Changing which components the
 class declares affects only objects made afterwards, so two objects of the same class placed at
@@ -89,11 +94,34 @@ file that looks like the asset is the one that binds nothing.
 ## Dock and assignment
 
 ### Drone Dock
-The placed world object that owns Survey Areas, holds the drone item, and carries the player-facing
-survey interface.
+The placed world object that owns Survey Areas, holds the drone item, carries the player-facing
+survey interface, and bears the drone's running costs.
 
 The dock is the unit of persistence for the whole survey system — areas, findings, and assignment
 live on it. Picking the dock up therefore discards them.
+
+It is also the mod's only component host: fuel and cargo live on the dock, not the drone, because a
+dock is an ordinary placed object with an item behind it and a drone is not. The player is told these
+are the drone's stats.
+
+Condition splits in two, and the halves behave differently. The dock's own parts degrade with use and
+stay with the dock. A drone's condition rides the drone item itself, so it travels when the drone is
+moved to another dock — a worn drone stays worn, and the dock it left keeps its own wear.
+
+### Serviceable
+A dock that can currently support work: it has fuel to burn and none of its parts are broken.
+
+Serviceability gates dispatch rather than the drone itself, so an unserviceable dock is
+distinguishable from an unassigned one — a player who is out of fuel must be told that, not shown an
+area that looks like nobody asked for it.
+
+### Recall
+The drone's return to its dock because the dock stopped being Serviceable, as opposed to returning
+because the survey finished or the area was unassigned.
+
+A recall preserves the area's Coverage and Findings, so servicing the dock resumes the survey rather
+than restarting it. The return leg itself is treated as always possible: a drone is never stranded by
+the same shortage that recalled it.
 
 ### Assignment
 The single Survey Area a dock has directed its drone to work on. Assigning is distinct from viewing:
