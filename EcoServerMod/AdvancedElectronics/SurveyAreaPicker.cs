@@ -174,10 +174,10 @@ namespace Eco.Mods.TechTree
                     // Hard cap at the control pool. The map editor will happily accept any number of
                     // entries, and an area with no control is one a player cannot assign from the
                     // panel -- so refusing here is kinder than creating something half-usable.
-                    if (dock.SurveyAreas.Count >= SurveyComponent.AssignButtonPool)
+                    if (dock.SurveyAreas.Count >= SurveyComponent.MaxSurveyAreas)
                     {
                         player.User?.MsgLocStr(
-                            $"'{name}' was not created: a dock holds at most {SurveyComponent.AssignButtonPool} survey areas. Delete one first.");
+                            $"'{name}' was not created: a dock holds at most {SurveyComponent.MaxSurveyAreas} survey areas. Delete one first.");
                         continue;
                     }
 

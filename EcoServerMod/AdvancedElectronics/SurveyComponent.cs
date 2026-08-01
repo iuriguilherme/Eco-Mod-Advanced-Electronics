@@ -13,35 +13,38 @@ using Eco.Gameplay.Players;
 using Eco.Shared.Items;
 using Eco.Shared.Localization;
 using Eco.Shared.Networking;
-using Eco.Shared.SharedTypes;
 using Eco.Shared.Serialization;
+using Eco.Shared.SharedTypes;
 
 namespace Eco.Mods.TechTree
 {
     /// <summary>
     /// The dock's single "Survey" tab: manage areas, choose which one the drone works on, and read
-    /// any area's findings. Replaces the earlier Areas and Results tabs, which were split to halve
-    /// two over-long panels — a problem that goes away once assignment and navigation stop using
-    /// <c>BigButton</c>.
+    /// any area's findings.
     ///
-    /// BigButton is the panel's COMMIT control: fixed size, not groupable, meant to appear once. At
-    /// ~70px it costs 3.2 standard rows and leaves the horizontal axis empty, because that is what a
-    /// control designed to sit alone at the bottom of a panel does. Six of them for assignment was
-    /// 420px of a ~605px viewport. Boolean and Int32 are the vocabulary's repeatable controls and
-    /// cost 22px each. See docs/plans/2026-07-31-001-feat-merged-survey-tab-plan.md.
+    /// ONE button on the whole panel, and it is the map manager — a genuine commit action opening a
+    /// richer surface. Everything else is a value: assignment and the findings cursor are steppers.
+    /// That is the design constraint this panel is built around, and it is what collapses the layout
+    /// back to a single pane. An earlier split into Areas and Results existed only to host a second
+    /// button; with no second button there is nothing for the split to buy.
     ///
-    /// Members render one per row in declaration order, so the order below IS the reading order:
+    /// Two things about BigButton drive that. It is the panel's COMMIT control — fixed size, not
+    /// groupable, meant to appear once — so at ~70px it costs 3.2 standard rows and leaves the
+    /// horizontal axis empty. And RPC methods render AFTER all properties whatever the declaration
+    /// order, so a button cannot serve as a top anchor even when you want one.
     ///
-    ///   1. the map manager button -- FIRST so it never moves as content below it grows
-    ///   2. what the drone is doing
-    ///   3. "Assign an area": the numbered list, then one checkbox per position
-    ///   4. "Findings": the view cursor, what it points at, the filter, the findings
+    /// Assignment is a stepper rather than a control per area, for a reason beyond layout: N controls
+    /// cannot share one field. The client writes back EVERY editable member as a batch on any
+    /// interaction, in declaration order, so one click on a per-area checkbox arrived as pos1=true
+    /// followed by pos2..pos6=false and the trailing writes unassigned what the first one set —
+    /// measured as six setter calls per click, dock left at id 0. Comparing against derived state to
+    /// make the siblings no-ops did not save it. One member holding the value has no sibling to stomp
+    /// it, and costs one row whatever the area count.
     ///
-    /// The numbered list sits ABOVE the checkboxes because the checkbox labels are static position
-    /// numbers and mean nothing until the list that names them has been read. That is not a
-    /// preference — a row label cannot be generated at runtime. DynamicTitle resolves a label when
-    /// the window opens and never re-resolves, so a label carrying an area's name and coverage would
-    /// freeze at its open-time value and lie the moment anything changed.
+    /// Members render one per row in declaration order, so the order below IS the reading order. The
+    /// numbered list sits above the steppers because their values are positions and mean nothing
+    /// until the list that names them has been read — not a preference: a row label cannot be
+    /// generated at runtime, since DynamicTitle resolves once at window-open and never re-resolves.
     /// </summary>
     [Serialized, CreateComponentTabLoc("Survey", true), HasIcon]
     public class SurveyComponent : WorldObjectComponent
@@ -49,43 +52,40 @@ namespace Eco.Mods.TechTree
         private const int MaxAreaPlots = 40; // v1 tier cap (R1b); drone-tier-owned later.
 
         /// <summary>
-        /// Size of the compile-time assign-checkbox pool. RPCs and properties are both declared at
-        /// compile time, so SOME ceiling has to exist -- controls cannot be generated per area. Six
-        /// is a product choice, not a technical one: the motivating late-game setup is one area per
-        /// resource (coal, iron ore, limestone, gold ore, copper ore), each in a different biome,
-        /// which is five with one spare.
+        /// How many survey areas one dock may hold. A product number, not a layout budget: with both
+        /// assignment and viewing on steppers, nothing costs a row per area except the list text.
         ///
-        /// Cheaper rows are NOT a reason to raise this. A checkbox costs a third of what the old
-        /// button did, so the layout could afford ten -- but the number encodes how many areas a
-        /// player actually works, and that has not changed. Raise it when mod users ask. Areas past
-        /// it are assigned with /drone assignarea.
+        /// Ten fits: the panel measures roughly 552px against a ~605px viewport at ten areas. The
+        /// worst case — ten areas AND one fully surveyed area reporting every material the drone
+        /// detects — lands within a few pixels of the fold, so eight would buy headroom if scrolling
+        /// ever becomes a complaint.
+        ///
+        /// It must be a compile-time constant because the steppers' Range is a plain C# attribute and
+        /// the view system has no RangeParam(nameof(...)) sibling to track a live count.
         /// </summary>
-        public const int AssignButtonPool = 6;
-
-        /// <summary>
-        /// Ceiling on the findings cursor. Deliberately larger than <see cref="AssignButtonPool"/>:
-        /// READING an area costs no control, so the cursor should reach areas the checkbox pool
-        /// cannot. It has to be a compile-time constant because Range is a plain C# attribute and
-        /// there is no RangeParam(nameof(...)) sibling in the view system, so this cannot track the
-        /// real area count. The setter clamps to it instead.
-        /// </summary>
-        private const int ViewCursorMax = 24;
+        public const int MaxSurveyAreas = 10;
 
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
 
-        // ---------------------------------------------------------------
-        // 1. Manage -- the map is the area manager. Declared FIRST so it holds a fixed position
-        //    regardless of how long the content below it grows.
-        // ---------------------------------------------------------------
+        /// <summary>
+        /// False until <see cref="Initialize"/> has run. Deserialization assigns `[Serialized]`
+        /// members by invoking their setters, and the setters below write through to the dock — so
+        /// without this gate a world load replays persisted positions as drone assignments. Not
+        /// itself `[Serialized]`: it must start false on every load.
+        /// </summary>
+        private bool ready;
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Manage Areas on Map")]
-        public async Task ManageAreasOnMap(Player player)
-        {
-            if (this.Parent is not DroneDockObject dock) return;
-            await SurveyAreaPicker.ManageAreas(player, dock, MaxAreaPlots);
-            this.RefreshAll();
-        }
+        /// <summary>
+        /// Index into the dock's area list of the area whose findings are shown. Purely a VIEW
+        /// cursor: it never changes what the drone is assigned to, so reading area 4 does not
+        /// dispatch the drone there.
+        /// </summary>
+        private int viewIndex;
+
+        // ---------------------------------------------------------------
+        // Assign
+        // ---------------------------------------------------------------
 
         /// <summary>
         /// What the drone is DOING. Three states, not two: assignment does not require a drone to
@@ -94,110 +94,70 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("String")]
         public string DroneStatus { get; private set; } = "none docked";
 
-        // ---------------------------------------------------------------
-        // 2. Assign -- the numbered list, then one checkbox per position.
-        // ---------------------------------------------------------------
-
         // StringTitle, not LinedHeader. LinedHeader and SectionHeader render the MEMBER NAME and
-        // discard the value -- the first build of this tab showed "Assign Header" and "Findings
-        // Header" on screen. StringTitle and GeneralHeader are the two that render what you assign.
+        // discard the value -- an earlier build of this tab showed "Assign Header" on screen.
+        // StringTitle and GeneralHeader are the two that render what you assign.
         [SyncToView, Autogen, UITypeName("StringTitle")]
         public string AssignHeader { get; private set; } = "Assign an area";
 
-        /// <summary>The dock's numbered area list, and the overflow notice when the pool runs out.</summary>
+        /// <summary>The dock's numbered area list — what the position numbers below refer to.</summary>
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string AreasDisplay { get; private set; } = string.Empty;
 
-        // TEMPORARY -- delete once the checkboxes are confirmed writing.
-        //
-        // The checkboxes tick and then revert on the next push, which is consistent with two very
-        // different causes, and guessing between them has already cost two restarts:
-        //
-        //   the setter is never invoked   -> something blocks the write RPC (VisibilityParam on an
-        //                                    editable property is the open suspect; the shape proven
-        //                                    on the showcase probe did not carry one)
-        //   the setter runs and no-ops    -> the `ready` gate below never became true, i.e.
-        //                                    Initialize() does not run for this component
-        //
-        // A tick mark cannot tell these apart, because the client draws it either way. This line
-        // reports server-side truth on the dock's tick: the call counter increments BEFORE the gate,
-        // so an invoked-but-gated setter looks different from one that never ran.
-        [SyncToView, Autogen, UITypeName("StringDisplay")]
-        public string AssignDiagnostic { get; private set; } = string.Empty;
+        /// <summary>
+        /// The area the drone works on, by position in the list above. Zero means unassigned, which
+        /// is why the range starts there — without it the player could start the drone but never stop
+        /// it, and an unassign control would cost a row for the inverse of an action already here.
+        ///
+        /// Derived from the dock rather than stored: the getter asks where the assigned area sits, so
+        /// a reassignment from chat or the map editor shows up here without this class tracking it.
+        /// `[Serialized, Eco]` is required for the write path — the attribute's decomposed forms
+        /// (`[SyncToView, Autogen, AutoRPC]`, `[Eco(false)]`) render and refresh but drop every write.
+        /// </summary>
+        [Serialized, Eco, Range(0, MaxSurveyAreas), UITypeName("Int32")]
+        public int AssignedPosition
+        {
+            get
+            {
+                if (this.Parent is not DroneDockObject dock) return 0;
+                var area = dock.AssignedSurveyArea;
+                return area == null ? 0 : dock.SurveyAreas.IndexOf(area) + 1;
+            }
+            set
+            {
+                if (!this.ready) return;                       // deserialization, not a player
+                if (this.Parent is not DroneDockObject dock) return;
+                if (this.AssignedPosition == value) return;    // batch write-back of an unchanged value
 
-        private int setterCalls;
-        private string lastSetter = "none";
+                dock.AssignSurveyArea(
+                    value <= 0 || value > dock.SurveyAreas.Count ? 0 : dock.SurveyAreas[value - 1].Id);
 
-        // Each checkbox is a VIEW of the dock's assigned area, holding nothing of its own: the getter
-        // asks whether this position is the assigned one, the setter writes assignment through. So
-        // "at most one ticked" is a property of there being one source of truth, not bookkeeping
-        // this class maintains -- checking area 4 moves the assignment and area 2's getter simply
-        // starts returning false. Confirmed live: an external write to the dock ticked derived
-        // checkboxes on screen with no window reopen.
-        //
-        // [Serialized, Eco], and NOT the attribute's parts. Three shapes were tried live:
-        //
-        //   [SyncToView, Autogen, AutoRPC]   renders, displays, refreshes -- drops every click
-        //   [Eco(false)]                     same: the box ticks, then the next tick unticks it
-        //   [Serialized, Eco]                writes land (proven on the showcase probe)
-        //
-        // The failure is silent in every direction: no exception, no log line, and the client draws
-        // the tick regardless. Whatever the write path keys off, it is not present unless [Eco]
-        // carries its default persistence.
-        //
-        // [Serialized] on a write-through setter is a hazard, not a preference -- deserialization
-        // sets [Serialized] members by INVOKING their setters, so loading a world would replay every
-        // persisted row as an assignment, in an order nothing controls. `ready` below is the gate.
-        //
-        // Visibility gating is the vanilla AreaBonusComponent shape ([SyncToView] bool method +
-        // VisibilityParam), so a pool of six costs six rows only when six areas exist.
+                this.RefreshAll();
+            }
+        }
 
-        [SyncToView] public bool AreaExists1() => this.AreaCount() >= 1;
-        [SyncToView] public bool AreaExists2() => this.AreaCount() >= 2;
-        [SyncToView] public bool AreaExists3() => this.AreaCount() >= 3;
-        [SyncToView] public bool AreaExists4() => this.AreaCount() >= 4;
-        [SyncToView] public bool AreaExists5() => this.AreaCount() >= 5;
-        [SyncToView] public bool AreaExists6() => this.AreaCount() >= 6;
-
-        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists1))]
-        public bool AssignArea1 { get => this.IsAssigned(1); set => this.SetAssigned(1, value); }
-
-        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists2))]
-        public bool AssignArea2 { get => this.IsAssigned(2); set => this.SetAssigned(2, value); }
-
-        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists3))]
-        public bool AssignArea3 { get => this.IsAssigned(3); set => this.SetAssigned(3, value); }
-
-        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists4))]
-        public bool AssignArea4 { get => this.IsAssigned(4); set => this.SetAssigned(4, value); }
-
-        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists5))]
-        public bool AssignArea5 { get => this.IsAssigned(5); set => this.SetAssigned(5, value); }
-
-        [Serialized, Eco, UITypeName("Boolean"), VisibilityParam(nameof(AreaExists6))]
-        public bool AssignArea6 { get => this.IsAssigned(6); set => this.SetAssigned(6, value); }
+        /// <summary>Names the assigned area, so the position number above is not read on its own.</summary>
+        [SyncToView, Autogen, UITypeName("String")]
+        public string AssignedDisplay { get; private set; } = string.Empty;
 
         // ---------------------------------------------------------------
-        // 3. Findings -- cursor, what it points at, filter, results.
+        // Findings
         // ---------------------------------------------------------------
 
         [SyncToView, Autogen, UITypeName("StringTitle")]
         public string FindingsHeader { get; private set; } = "Findings";
 
-        /// <summary>
-        /// Which area's findings are shown. Purely a VIEW cursor: it never changes what the drone is
-        /// assigned to, so reading area 4 does not dispatch the drone there.
-        /// </summary>
-        private int viewIndex;
-
-        [Serialized, Eco, Range(1, ViewCursorMax), UITypeName("Int32")]
+        /// <summary>Which area's findings are shown, by position. Independent of assignment.</summary>
+        [Serialized, Eco, Range(1, MaxSurveyAreas), UITypeName("Int32")]
         public int ViewPosition
         {
             get => this.viewIndex + 1;
             set
             {
-                if (!this.ready) return;   // deserialization, not a player -- see `ready`
+                if (!this.ready) return;                    // deserialization, not a player
                 if (this.Parent is not DroneDockObject dock) return;
+                if (this.viewIndex == value - 1) return;    // batch write-back of an unchanged value
+
                 this.viewIndex = DockReadout.ClampCursor(value - 1, dock.SurveyAreas.Count);
                 this.RefreshAll();
             }
@@ -241,14 +201,17 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string ResultsDisplay { get; private set; } = string.Empty;
 
-        /// <summary>
-        /// False until <see cref="Initialize"/> has run. Deserialization assigns `[Serialized]`
-        /// members by invoking their setters, and these setters write assignment through to the
-        /// dock — so without this gate, loading a world replays every persisted checkbox as a
-        /// drone assignment, in whatever order the serializer happens to use. Not `[Serialized]`
-        /// itself: it must start false on every load.
-        /// </summary>
-        private bool ready;
+        // ---------------------------------------------------------------
+        // The one button. Declared last because that is where it renders anyway.
+        // ---------------------------------------------------------------
+
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Manage Areas on Map")]
+        public async Task ManageAreasOnMap(Player player)
+        {
+            if (this.Parent is not DroneDockObject dock) return;
+            await SurveyAreaPicker.ManageAreas(player, dock, MaxAreaPlots);
+            this.RefreshAll();
+        }
 
         public override void Initialize()
         {
@@ -257,44 +220,13 @@ namespace Eco.Mods.TechTree
             this.RefreshAll();
         }
 
-        // --- Assignment ---
-
-        private int AreaCount() => this.Parent is DroneDockObject dock ? dock.SurveyAreas.Count : 0;
-
-        private bool IsAssigned(int position)
-        {
-            if (this.Parent is not DroneDockObject dock) return false;
-            if (position < 1 || position > dock.SurveyAreas.Count) return false;
-            return dock.SurveyAreas[position - 1].Id == dock.AssignedSurveyAreaId;
-        }
-
-        /// <summary>
-        /// Writes assignment through. Checking assigns; unchecking the checked row clears; checking a
-        /// different row moves the assignment, and every other row's getter follows on its own.
-        /// </summary>
-        private void SetAssigned(int position, bool value)
-        {
-            // Counted BEFORE the gate on purpose: it is the only way to tell "never invoked" from
-            // "invoked and refused". Temporary, with AssignDiagnostic.
-            this.setterCalls++;
-            this.lastSetter = $"pos{position}={value}";
-
-            if (!this.ready) return;   // deserialization, not a player -- see `ready`
-            if (this.Parent is not DroneDockObject dock) return;
-            if (position < 1 || position > dock.SurveyAreas.Count) return;
-
-            var area = dock.SurveyAreas[position - 1];
-            dock.AssignSurveyArea(value ? area.Id : 0);
-            this.RefreshAll();
-        }
-
         // --- Refresh ---
 
         /// <summary>
-        /// Rebuilds every synced member and pushes it. Called from the dock's one-second tick, which
-        /// is what actually makes a change appear: a Changed() raised inside a setter does not reach
-        /// the client on its own. Nothing here WRITES a member the player owns, so a push landing in
-        /// the same second as a click cannot fight it.
+        /// Rebuilds every synced member and pushes it. Driven by the dock's one-second tick, which is
+        /// what actually makes a change appear: a Changed() raised inside a setter does not reach the
+        /// client on its own. Nothing here writes a member the player owns, so a push landing in the
+        /// same second as a click cannot fight it.
         /// </summary>
         public void RefreshAll()
         {
@@ -302,39 +234,19 @@ namespace Eco.Mods.TechTree
 
             this.viewIndex = DockReadout.ClampCursor(this.viewIndex, dock.SurveyAreas.Count);
 
-            this.DroneStatus = BuildDroneStatus(dock);
-            this.AreasDisplay = this.BuildAreasText(dock);
-            this.AssignDiagnostic =
-                $"[diag] setter calls: {this.setterCalls} | last: {this.lastSetter} | " +
-                $"ready: {this.ready} | dock assigned id: {dock.AssignedSurveyAreaId} | " +
-                $"box1 reads: {this.IsAssigned(1)}";
-            this.ViewingDisplay = this.BuildViewingText(dock);
-            this.ResultsDisplay = this.BuildResultsText(dock);
+            this.DroneStatus     = BuildDroneStatus(dock);
+            this.AreasDisplay    = this.BuildAreasText(dock);
+            this.AssignedDisplay = BuildAssignedText(dock);
+            this.ViewingDisplay  = this.BuildViewingText(dock);
+            this.ResultsDisplay  = this.BuildResultsText(dock);
 
             this.Changed(nameof(this.DroneStatus));
             this.Changed(nameof(this.AreasDisplay));
-            this.Changed(nameof(this.AssignDiagnostic));
+            this.Changed(nameof(this.AssignedDisplay));
+            this.Changed(nameof(this.AssignedPosition));
             this.Changed(nameof(this.ViewingDisplay));
             this.Changed(nameof(this.ResultsDisplay));
             this.Changed(nameof(this.ViewPosition));
-
-            // Without these the client never re-evaluates row visibility, so a newly drawn area
-            // gains no checkbox and a deleted one keeps its own until the dock is reopened.
-            this.Changed(nameof(this.AreaExists1));
-            this.Changed(nameof(this.AreaExists2));
-            this.Changed(nameof(this.AreaExists3));
-            this.Changed(nameof(this.AreaExists4));
-            this.Changed(nameof(this.AreaExists5));
-            this.Changed(nameof(this.AreaExists6));
-
-            // The checkboxes derive from the dock, so a reassignment from anywhere -- another player,
-            // a chat command, the map editor -- has to be pushed or the ticks go stale.
-            this.Changed(nameof(this.AssignArea1));
-            this.Changed(nameof(this.AssignArea2));
-            this.Changed(nameof(this.AssignArea3));
-            this.Changed(nameof(this.AssignArea4));
-            this.Changed(nameof(this.AssignArea5));
-            this.Changed(nameof(this.AssignArea6));
         }
 
         // --- Text ---
@@ -360,26 +272,28 @@ namespace Eco.Mods.TechTree
                 return "No survey areas yet. Use Manage Areas on Map to draw your first one.";
 
             var sb = new StringBuilder();
-
             var position = 1;
             foreach (var area in dock.SurveyAreas)
-                sb.Append(DockReadout.FormatAreaLine(this.Snapshot(area, position++, dock))).Append('\n');
-
-            var overflow = DockReadout.FormatOverflowNotice(
-                dock.SurveyAreas.Count, AssignButtonPool, "/drone assignarea <id>");
-            if (overflow.Length > 0)
-                sb.Append('\n').Append(overflow);
+                sb.Append(DockReadout.FormatAreaLine(Snapshot(area, position++, dock))).Append('\n');
 
             return sb.ToString();
+        }
+
+        private static string BuildAssignedText(DroneDockObject dock)
+        {
+            var area = dock.AssignedSurveyArea;
+            return area == null
+                ? "none -- set the number above to pick an area, 0 to stop"
+                : $"{dock.SurveyAreas.IndexOf(area) + 1} -- {area.Name}";
         }
 
         private string BuildViewingText(DroneDockObject dock)
         {
             var area = this.ViewedArea(dock);
-            if (area == null) return "no areas yet -- draw one from the map";
+            if (area == null) return "no areas yet -- draw one on the map";
 
             return DockReadout.FormatViewingLine(
-                this.Snapshot(area, this.viewIndex + 1, dock), dock.SurveyAreas.Count);
+                Snapshot(area, this.viewIndex + 1, dock), dock.SurveyAreas.Count);
         }
 
         private string BuildResultsText(DroneDockObject dock)
@@ -388,7 +302,7 @@ namespace Eco.Mods.TechTree
 
             var entry = this.ViewedArea(dock);
             if (entry == null)
-                return "Draw an area on the map, then tick it above to survey it.";
+                return "Draw an area on the map, then set the assign number to survey it.";
 
             var sb = new StringBuilder();
 
@@ -434,7 +348,7 @@ namespace Eco.Mods.TechTree
         private static string EmptyFindingsMessage(SurveyAreaEntry entry)
         {
             if (entry.CoveragePercent <= 0f)
-                return "Not surveyed yet. Tick this area above to survey it.";
+                return "Not surveyed yet. Set the assign number above to this area's position.";
             if (entry.CoveragePercent >= 99.5f)
                 return "Survey complete -- nothing found in this area.";
             return $"Surveyed {entry.CoveragePercent:F0}% so far -- nothing found yet.";
@@ -448,7 +362,7 @@ namespace Eco.Mods.TechTree
         /// filter is applied HERE, not there: the formatter is handed the top finding the player can
         /// actually see, which is why "nothing matching" and "nothing found" collapse to one case.
         /// </summary>
-        private AreaSnapshot Snapshot(SurveyAreaEntry area, int position, DroneDockObject dock)
+        private static AreaSnapshot Snapshot(SurveyAreaEntry area, int position, DroneDockObject dock)
         {
             var top = area.ReadFindings()
                 .Where(f => f.Found && dock.IsMaterialShown(f.OreType))
