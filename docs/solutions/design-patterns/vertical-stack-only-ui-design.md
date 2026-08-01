@@ -1,7 +1,7 @@
 ---
 title: Designing a usable panel when the only primitive is a vertical stack
 date: 2026-07-27
-last_updated: 2026-07-28
+last_updated: 2026-07-31
 category: design-patterns
 module: EcoServerMod
 problem_type: design_pattern
@@ -11,6 +11,7 @@ applies_when:
   - "Building a player-facing panel on a surface that renders one element per row, in declaration order, with no dynamically sized lists"
   - "A feature would add one control per object, or per operation, to an already-crowded panel"
   - "Choosing the size of a fixed pool of compile-time controls that stands in for a dynamic list"
+  - "Deciding between one editable control per object and a single cursor over them"
   - "Drawing a mockup for a target whose layout primitives are more restrictive than the mockup medium"
 tags: [eco-modding, ui-design, worldobjectcomponent, tab, layout, mockup-fidelity, product-thinking]
 related_components: [EcoServerMod/AdvancedElectronics]
@@ -78,15 +79,32 @@ multi-entry manager, where naming, redrawing and deleting are native interaction
 what four rows did, on a surface that already has real UI. When a stack is over budget, look for an
 existing rich surface to delegate to before optimising the stack itself.
 
-**3. Prefer one control per object over one control per operation.**
-`N` objects × `M` operations is the row count that kills these panels. Collapsing to one control per
-object turns `4N` into `N`. Make the single control a **toggle** where the inverse operation is
-obvious — clicking the assigned area's button unassigns it, so "Unassign" needs no row of its own.
+**3. Prefer ONE control over one control per object — corrected 2026-07-31.**
+This rule originally said "one control per object, not one per operation", turning `N × M` into `N`.
+That is still the right direction and it does not go far enough, because **`N` editable controls over
+one field do not work at all.** An interaction writes every editable member back as a batch, in
+declaration order, so one click on a per-object control produces N writes and the field ends at
+whatever the last member says — for a one-of-N control, always "not me". Six checkboxes over one
+assigned-area field measured six setter calls per click and left the field cleared. Full mechanism:
+`docs/solutions/runtime-errors/n-editable-members-cannot-share-one-field.md`.
 
-**4. Split into tabs before you accept scrolling.**
-A second mod component on the same object registers its own tab. Splitting assignment (Areas) from
-findings (Results) halved each panel instead of making one panel twice as long. Two short panels beat
-one scrolling panel; the tab strip costs nothing in the column.
+So collapse to **one** control holding the value — a cursor (`Int32` stepper), a picker, or a single
+commit action. It costs one row whatever the object count, which removes the row-budget pressure that
+motivated a pool in the first place, and reserving one end of its range for "none" makes the inverse
+operation free. The toggle advice above survives only in that narrower form: a value control whose
+zero position is the inverse, not N toggles.
+
+**4. Split into tabs when you have a second COMMIT action, not when rows accumulate.**
+Originally this read "split before you accept scrolling", which is the wrong trigger. Once rule 3 is
+applied, rows stop scaling with object count and length rarely forces a split. What forces one is
+`BigButton`: it is the panel's commit control, so a panel wants at most one, and a second genuine
+action needs its own pane to live in. This panel split into Areas and Results, then collapsed back to
+a single tab the moment assignment stopped needing a button of its own — the split's only remaining
+job had been hosting one.
+
+Note also that **RPC methods render after all properties**, whatever the declaration order, so a
+button always lands at the bottom of its pane. That is why rule 1's "put fixed anchors first" cannot
+be satisfied with a button.
 
 **5. Show one item at a time with prev/next, not all items at once.**
 Rendering every area's findings makes panel length proportional to area count. A cursor — one line
@@ -211,6 +229,8 @@ after:   1 "Manage Areas on Map" + 1 text block + 5 toggles    ->   7 rows
 - `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` — what actually
   renders on these surfaces; this doc is how to arrange it once you know. That doc's own history is
   the cautionary tail: two of the limits assumed here were later found to be untested, not real.
+- `docs/solutions/runtime-errors/n-editable-members-cannot-share-one-field.md` — why rules 3 and 4
+  above were corrected: N editable controls over one field destroy each other's writes.
 - `docs/solutions/best-practices/ship-the-readout-not-just-the-data.md` — why the readout is part of
   the feature at all; this doc is the layout budget that readout has to fit inside.
 - `docs/solutions/workflow-issues/eco-mod-batched-live-testing.md` — every judgement above came from

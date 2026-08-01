@@ -119,5 +119,10 @@ The fixed set of compile-time controls that stands in for a per-object list. A d
 list does not render from a mod component, so N controls means N members written out by hand, each
 gated by a synced bool so unused positions do not occupy the Row Budget.
 
-The pool's size is a product decision, not a technical ceiling — it is chosen to fit a real workflow
-and carries an overflow path (a chat command) for anything past it.
+**Display-only.** An editable pool over a single shared field does not work: an interaction writes
+every editable member back at once, so the field ends at whatever the last member says. A player
+choosing one of N gets a single cursor instead, which also costs one row regardless of N. The pool
+remains the right shape only where each control owns its own value.
+
+Where a pool does apply, its size is a product decision rather than a technical ceiling — chosen to
+fit a real workflow, with an overflow path (a chat command) for anything past it.
