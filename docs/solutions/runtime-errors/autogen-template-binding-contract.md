@@ -1,7 +1,7 @@
 ---
 title: "Autogen UI templates fail three different ways: blank, missing, or a server-killing Missing RPC call Set<Prop>"
 date: 2026-07-27
-last_updated: 2026-07-28
+last_updated: 2026-07-31
 category: runtime-errors
 module: EcoServerMod
 problem_type: runtime_error
@@ -19,6 +19,7 @@ applies_when:
   - "Choosing a UITypeName for a property on a mod WorldObjectComponent tab"
   - "Trying to render a list, table or button grid from a mod component"
   - "A template name is known to exist in the client but produces nothing on screen"
+  - "A control renders and responds to clicks but nothing downstream changes"
 tags: [eco-modding, autogen, uitypename, uilisttypename, worldobjectcomponent, client-rendering]
 related_components: [EcoServerMod/AdvancedElectronics]
 ---
@@ -104,10 +105,26 @@ are store prices and law values, which agree.)*
 auto-property `[Serialized, Eco]` member persists a write and survives a restart, but the on-screen
 value never moves until the window is reopened: the stepper clicks, the number does not change, and
 the new value only appears after the next restart. `[Eco]` change tracking alone does not refresh a
-mod component's view. Declaring `INotifyPropertyChanged` on the component is likewise not enough —
-the notification has to be **raised**.
+mod component's view.
 
-This was settled by an A/B in one deploy: two adjacent `Int32` members, identical but for the setter.
+> **Corrected 2026-07-31.** The rest of the original conclusion — that `INotifyPropertyChanged` must
+> be *raised* — is wrong, and the A/B below is why: the live member gained **two** things at once, an
+> explicit backing field *and* a `PropertyChanged` invoke. A later probe separated them. Two facts
+> settle it. First, `UIShowcaseComponent` re-declares `PropertyChanged`, **hiding**
+> `WorldObjectComponent`'s (compiler warning `CS0108`), so its invoke never reaches a base-class
+> subscriber at all — yet the member still refreshed. Second, the two shipped survey components
+> declare no `PropertyChanged` and do not implement the interface, and their `Changed()` pushes
+> refresh fine.
+>
+> **What drives a refresh is a push arriving from outside the setter's own call.** In this mod that is
+> `DroneDock.RefreshReadout()`, on a one-second tick. A `Changed()` raised *inside* a setter does not
+> reach the client on its own: probe counters incremented server-side while their `StringDisplay` sat
+> at zero, and only moved once the tick pushed them. So the requirement is an explicit backing field
+> (an auto-property gives no setter body to write from) plus something outside the setter driving the
+> push. A component with no tick behind it looks dead however many notifications its setter raises.
+
+The A/B that produced the original, over-attributed reading — two adjacent `Int32` members, identical
+but for the setter:
 
 ```csharp
 // Control -- persists, never refreshes on screen.
@@ -134,6 +151,33 @@ public int T_Int32Live
 Live updated on screen; the control did not. Both persisted. **So any editable member a player is
 meant to watch needs an explicit backing field and a push in the setter** — this is what makes a mod
 tab's controls feel alive rather than dead, and it is a per-member cost, not a one-line component fix.
+
+**`[Eco]` is a composite you may split for DISPLAY, and must not split for INPUT — PROVEN 2026-07-31.**
+SLG's `UI-System` wiki page describes `[Eco]` as `Serialized` + `SyncToView` + `AutoRPC` + `AutoGen`
+and invites picking and choosing, and `Server/Eco.Shared/Networking/EcoAttributes.cs:17-27` confirms
+the parts. From a mod component the split works for everything except the write path:
+
+```csharp
+// Renders, displays derived state, refreshes live -- and SILENTLY DROPS EVERY CLICK.
+[SyncToView, Autogen, AutoRPC, UITypeName("Boolean")] public bool Probe { get; set; }
+
+// Delivers writes.
+[Eco, UITypeName("Boolean")] public bool Probe { get; set; }
+```
+
+The failure has no signal at all: no exception, no client or server log line, and the client still
+draws the tick. The two attributes' differing default access levels (`EcoAttribute` documents Consumer
+Access, `AutoRPCAttribute` Full Access) are *not* the cause — spelling `[AutoRPC(AccessType.ConsumerAccess)]`
+changed nothing. Use `[Eco]` whole for anything a player edits; `[Eco(false)]` is the way to keep the
+composite while dropping persistence.
+
+**`DynamicTitle` sets a label once and never re-resolves — PROVEN 2026-07-31.**
+`[DynamicTitle(nameof(SomeMethod))]` names a `[SyncToView]` string method and does work from a mod
+component, on both a `BigButton` caption and a two-column row's left label — vanilla's shape is
+`Server/Eco.Gameplay/Settlements/Components/SettlementFoundationComponent.cs:101,213`. But the string
+is resolved when the window opens and never again: captions sat at their open-time text while the
+state they named advanced, across three members, with `Changed()` pushed on the title method every
+time. It is usable for a name that does not change, and unusable for anything carrying live state.
 
 **Two templates LOOK like display and are actually EDITABLE: `LongString` and `StringDescription`.**
 Both render as bordered, high-contrast text areas that read as readouts, and both crash on the first
@@ -236,5 +280,8 @@ differently:
   whitelist and the 68-template vocabulary this contract applies to.
 - `docs/ideation/2026-07-27-mod-ui-vocabulary.md` — the ranked list of what the vocabulary unlocks,
   and the probe these findings came from.
+- `docs/solutions/workflow-issues/the-control-under-test-is-not-a-readout-of-it.md` — how the
+  2026-07-31 findings above were measured, and why five rounds were spent before one of them read
+  server state instead of the client's drawing.
 - `docs/solutions/workflow-issues/eco-mod-batched-live-testing.md` — batching thirteen templates
   into one restart is what made three distinct failure modes visible in a single pass.
