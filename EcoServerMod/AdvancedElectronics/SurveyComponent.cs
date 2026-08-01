@@ -47,7 +47,7 @@ namespace Eco.Mods.TechTree
     /// generated at runtime, since DynamicTitle resolves once at window-open and never re-resolves.
     /// </summary>
     [Serialized, CreateComponentTabLoc("Survey", true), HasIcon]
-    public class SurveyComponent : WorldObjectComponent
+    public class SurveyComponent : WorldObjectComponent, IOperatingWorldObjectComponent
     {
         private const int MaxAreaPlots = 40; // v1 tier cap (R1b); drone-tier-owned later.
 
@@ -67,6 +67,13 @@ namespace Eco.Mods.TechTree
 
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
+
+        /// <summary>
+        /// True exactly while the drone is working (R9). This is what makes the dock Operating, and
+        /// FuelConsumptionComponent burns only while its parent is Operating -- so the fuel half of
+        /// R9 needs no code of its own, including the return-leg exemption.
+        /// </summary>
+        public bool Operating => this.Parent is DroneDockObject dock && dock.DroneIsWorking;
 
         /// <summary>
         /// False until <see cref="Initialize"/> has run. Deserialization assigns `[Serialized]`
@@ -258,6 +265,16 @@ namespace Eco.Mods.TechTree
                 return dock.AssignedSurveyAreaId != 0
                     ? "none docked -- build and dock one to start surveying"
                     : "none docked";
+
+            // R12: a stopped dock names the reason, and each reason is distinct from "nobody
+            // assigned an area". Without this the three shortages and an idle dock all read the
+            // same, and the player has no way to tell which one to go fix.
+            switch (dock.StopReason)
+            {
+                case DockStopReason.NoFuel:      return "stopped -- out of fuel";
+                case DockStopReason.BrokenParts: return "stopped -- a dock part is broken";
+                case DockStopReason.BrokenDrone: return "stopped -- the drone needs repair";
+            }
 
             // ToString(), not interpolation: Status is an AdvancedElectronics.Navigation.DroneStatus
             // enum, which this component's own DroneStatus property shadows by name.

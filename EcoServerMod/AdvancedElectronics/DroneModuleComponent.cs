@@ -19,6 +19,26 @@ using Eco.Shared.Utils;
 namespace Eco.Mods.TechTree
 {
     /// <summary>
+    /// Why a dock is not dispatching (R10, R12). Distinct reasons rather than a bare bool: a
+    /// player who is out of fuel must be told that, not shown an area that looks like nobody
+    /// asked for it.
+    /// </summary>
+    public enum DockStopReason
+    {
+        /// <summary>Serviceable.</summary>
+        None,
+
+        /// <summary>The drone's fuel tank is empty.</summary>
+        NoFuel,
+
+        /// <summary>One of the dock's own parts has worn out.</summary>
+        BrokenParts,
+
+        /// <summary>The docked drone itself has worn out.</summary>
+        BrokenDrone,
+    }
+
+    /// <summary>
     /// Installs the slotted drone item's declared components onto this dock, and removes them
     /// again when the drone leaves (R5, R8, R19).
     ///
@@ -63,11 +83,25 @@ namespace Eco.Mods.TechTree
             }
         }
 
-        /// <summary>The drone item currently in the dock's slot, as a component source, or null.</summary>
-        private IWorldObjectComponentSource SlottedSource =>
+        /// <summary>
+        /// A broken drone disables its dock, alongside an empty tank and broken parts (R10).
+        ///
+        /// This lives here rather than in a component of its own, which was the plan's open
+        /// question: the driver already resolves the slotted item every tick, so a separate type
+        /// would exist only to repeat that lookup. Enabled and Operating answer different
+        /// questions -- Enabled is "can this dock work at all", Operating is "is it working right
+        /// now" -- so nothing is being overloaded by putting this one here.
+        /// </summary>
+        public override bool Enabled => this.SlottedItem is not RepairableItem { Broken: true };
+
+        /// <summary>The drone item currently in the dock's slot, or null.</summary>
+        private Item SlottedItem =>
             this.Parent.TryGetComponent<PublicStorageComponent>(out var storage)
-                ? storage.Storage.NonEmptyStacks.FirstOrDefault()?.Item as IWorldObjectComponentSource
+                ? storage.Storage.NonEmptyStacks.FirstOrDefault()?.Item
                 : null;
+
+        /// <summary>The drone item currently in the dock's slot, as a component source, or null.</summary>
+        private IWorldObjectComponentSource SlottedSource => this.SlottedItem as IWorldObjectComponentSource;
 
         /// <summary>
         /// Wires this driver to the dock's storage slot. Called from DroneDockObject.Initialize

@@ -87,6 +87,17 @@ namespace Eco.Mods.TechTree
         public DroneStatus Status => this.stateMachine.Status;
 
         /// <summary>
+        /// True while the drone is doing work that costs fuel, dock parts, and its own condition
+        /// (R9): travelling to the assigned area, or surveying it. The dock-bound leg is
+        /// deliberately excluded, so a shortage can never strand the drone that same shortage
+        /// recalled.
+        /// </summary>
+        public bool IsWorking =>
+            this.stateMachine.Status == DroneStatus.Surveying
+            || (this.stateMachine.Status == DroneStatus.EnRoute
+                && this.stateMachine.TravelTarget == DroneTravelTarget.District);
+
+        /// <summary>
         /// True only while Surveying -- U5's per-tick ore-sampling work (not built by
         /// this unit) should gate on this rather than duplicating the Idle/EnRoute/
         /// Unreachable exclusion itself (R6).
@@ -129,6 +140,24 @@ namespace Eco.Mods.TechTree
             // re-dispatches the drone (fresh pathfinding + sweep of the new shape) exactly like an
             // unassign+reassign.
             var assignedToken = this.HomeDock.AssignedAreaToken;
+
+            // Serviceability gates dispatch, not assignment (R10, R12). An unserviceable dock keeps
+            // its assignment -- so the panel can say "out of fuel" rather than looking unassigned --
+            // and recalls a drone that is already out. Refuelling or repairing resumes the same area
+            // with its coverage intact (R13), because nothing about the assignment was discarded.
+            //
+            // This runs before the change-detection below on purpose: becoming unserviceable is not
+            // an assignment change, so it would otherwise not be noticed until the player touched
+            // the assignment.
+            if (!this.HomeDock.IsServiceable)
+            {
+                if (this.IsWorking) this.BeginReturnToDock(mover, viaDistrictCleared: true);
+
+                // Remember the token anyway, so regaining service re-dispatches through the normal
+                // change path rather than needing the player to reassign.
+                this.lastKnownAssignedArea = null;
+                return;
+            }
 
             if (!string.Equals(assignedToken, this.lastKnownAssignedArea, StringComparison.Ordinal))
             {

@@ -23,6 +23,7 @@ using Eco.Shared.Items;
 using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
+using Eco.Shared.Time;
 using Eco.Shared.Voxel;
 using Eco.World.Blocks;
 using static Eco.Gameplay.Components.PartsComponent;
@@ -578,6 +579,42 @@ namespace Eco.Mods.TechTree
 
         private bool? lastPushedWorking;
 
+        /// <summary>
+        /// Why this dock is not dispatching, or None when it is fine (R10, R12). Distinct reasons
+        /// rather than a bare bool, because a player who is out of fuel must be told that -- not
+        /// shown an area that looks like nobody asked for it.
+        /// </summary>
+        internal DockStopReason StopReason
+        {
+            get
+            {
+                // The fuel supply is the drone's, installed under its name. An empty slot means no
+                // drone, which is a separate condition the panel already reports.
+                var fuel = this.GetComponent<FuelSupplyComponent>(nameof(SurveyDroneItem));
+                if (fuel != null && !fuel.Enabled) return DockStopReason.NoFuel;
+
+                if (this.TryGetComponent<PartsComponent>(out var parts) && !parts.AllPartsWorking)
+                    return DockStopReason.BrokenParts;
+
+                if (this.PairedDrone is RepairableItem { Broken: true }) return DockStopReason.BrokenDrone;
+
+                return DockStopReason.None;
+            }
+        }
+
+        /// <summary>True when the dock can currently support work: fuel to burn, parts unbroken, drone intact.</summary>
+        internal bool IsServiceable => this.StopReason == DockStopReason.None;
+
+        /// <summary>
+        /// True while the paired drone is doing work that costs fuel, dock parts, and its own
+        /// condition (R9). False on the return leg, so a shortage never strands the drone.
+        /// </summary>
+        internal bool DroneIsWorking =>
+            this.SpawnedDrone != null
+            && !this.SpawnedDrone.IsDestroyed
+            && this.SpawnedDrone.TryGetComponent<DroneLifecycle>(out var lifecycle)
+            && lifecycle.IsWorking;
+
         public override void Tick()
         {
             base.Tick();
@@ -590,12 +627,49 @@ namespace Eco.Mods.TechTree
                 ? manager.TickDeltaTime
                 : FallbackTickDeltaSeconds;
 
+            this.DriveWear(deltaTime);
+
             this.secondsSinceLastReadoutRefresh += deltaTime;
             if (this.secondsSinceLastReadoutRefresh < ReadoutRefreshIntervalSeconds)
                 return;
 
             this.secondsSinceLastReadoutRefresh = 0f;
             this.RefreshReadout();
+        }
+
+        // Wear rates, in condition points per hour of work. No vanilla analogue is close enough to
+        // copy -- no vanilla attachment wears passively -- so these are starting points, not
+        // decisions: low enough that a full survey costs a visible but small fraction of condition.
+        // Named constants so a live session can move them without hunting (plan U5 execution note).
+        private const float DockPartsWearPerHour = 4f;
+        private const float DroneWearPerHour     = 8f;
+
+        /// <summary>
+        /// Wears the dock's parts and the docked drone's own condition while the drone works (R9,
+        /// R18). Fuel needs nothing here: FuelConsumptionComponent burns whenever its parent is
+        /// Operating, and SurveyComponent.Operating is already exactly "the drone is working".
+        ///
+        /// All three channels therefore share one definition of working, which excludes the return
+        /// leg -- so a dock that recalled its drone for want of fuel cannot then run it out of the
+        /// condition it needs to get home.
+        ///
+        /// The dock's parts stay with the dock; the drone's condition rides the drone item, so it
+        /// travels when the drone is moved to another dock.
+        /// </summary>
+        private void DriveWear(float deltaTime)
+        {
+            if (!this.DroneIsWorking) return;
+
+            var hours = TimeUtil.SecondsToHours(deltaTime);
+
+            if (this.TryGetComponent<PartsComponent>(out var parts))
+                parts.ConsumeDurabilityAccumulated(null, hours * DockPartsWearPerHour);
+
+            // No player is present for a drone working unattended, and UseDurability only needs one
+            // to send the "your item broke" message. The drone still breaks; nobody is told at the
+            // moment it happens, which is what the panel's stopped-reason line is for (R12).
+            if (this.PairedDrone is RepairableItem drone)
+                drone.UseDurability((float)(hours * DroneWearPerHour), player: null);
         }
 
         /// <summary>
