@@ -118,6 +118,12 @@ Version ${VERSION}, built for Eco ${GAME_VERSION}.
   Source:   https://github.com/iuriguilherme/Eco-Mod-Advanced-Electronics
   Devlog:   https://www.youtube.com/watch?v=xqkzmVZ5kcM&list=PLHZA8oVAgAd4
 
+*** REQUIRES ECO ${GAME_VERSION}. IT DOES NOT LOAD ON 0.13. ***
+
+  This is a game-version requirement, not a migration note. Earlier releases ran
+  on Eco 0.13; this one is built against ${GAME_VERSION} and will not load on a
+  0.13 server at all. Update your server first, or stay on the previous release.
+
 *** ALPHA -- DO NOT USE ON A WORLD YOU CARE ABOUT ***
 
   This mod ships NO SAVE MIGRATIONS. Objects placed by an earlier version can
@@ -134,6 +140,17 @@ Version ${VERSION}, built for Eco ${GAME_VERSION}.
 
   The safe update path is a fresh world, or removing every Drone Dock and Survey
   Drone with admin tools BEFORE installing the new version.
+
+  *** Drone Docks and Survey Drones from earlier versions must be re-crafted. ***
+
+  The drone's fuel now lives on the dock, installed there by the drone itself
+  while it is slotted. An object's component set is fixed when it is created, so
+  a dock placed before this version never gains the new components and a drone
+  crafted before it declares none -- neither one starts working again on its own.
+
+  A Survey Drone now also carries its own condition, which wears while it works
+  and travels with the drone when you move it to another dock. Drones in
+  different condition no longer stack together.
 
   This version is also known to leave orphaned objects in the world --
   drones that outlive their dock, or objects an update no longer
