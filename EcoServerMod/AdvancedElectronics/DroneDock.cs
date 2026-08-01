@@ -90,6 +90,9 @@ namespace Eco.Mods.TechTree
     // stays in the tree for the next binding question; re-attaching is uncommenting one line.
     // [RequireComponent(typeof(UIShowcaseComponent))]
     [RequireComponent(typeof(PartsComponent))]
+    // Installs whatever the slotted drone declares -- fuel supply and fuel consumption today,
+    // a cargo hold when some future drone brings one. The dock declares none of them itself.
+    [RequireComponent(typeof(DroneModuleComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
@@ -375,6 +378,13 @@ namespace Eco.Mods.TechTree
                 storage.Storage.AddInvRestriction(new SpecificItemTypesRestriction(new[] { typeof(SurveyDroneItem) }));
                 storage.Storage.AddInvRestriction(new StackLimitRestriction(1));
                 storage.Storage.OnChanged.Add(this.OnDockStorageChanged);
+
+                // The module driver attaches here rather than from its own Initialize: component
+                // initialization order is not guaranteed, and its restrictions have to attach to a
+                // storage that already exists. Both this handler and the driver subscribe to the
+                // same event without an ordering hazard, because the case they would have raced on
+                // -- removal while the drone is out -- is refused outright (R19).
+                this.GetComponent<DroneModuleComponent>().AttachTo(storage);
             }
             this.ModsPostInitialize();
             {
@@ -504,9 +514,17 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// Destroys the spawned drone WorldObject when the item is removed from the dock, resetting
-        /// state so a fresh drone spawns on re-insert. Removing the item is always allowed (never
-        /// blocked): a drone that is out roaming can glitch, strand, or fail to path home, so removal
-        /// is treated as "reset" rather than "recall". The <see cref="SpawnedDrone"/> reference can be
+        /// state so a fresh drone spawns on re-insert.
+        ///
+        /// Removal now requires the drone to be docked (R19, enforced by
+        /// <see cref="DroneDockedRestriction"/>). That reverses an earlier rule here that removal was
+        /// always allowed, which existed because a roaming drone could strand and needed an escape
+        /// hatch; the return-leg escalation (relax climb height, then hover, then clip, then
+        /// teleport) means a return can no longer fail, so the escape hatch is obsolete rather than
+        /// merely inconvenient -- and blocking it is what keeps a live drone from having its
+        /// components torn off underneath it.
+        ///
+        /// The <see cref="SpawnedDrone"/> reference can be
         /// stale or null (e.g. the item is pulled before the post-restart re-link runs), which would
         /// otherwise leave the persisted drone orphaned and still ticking — so resolve it by its
         /// serialized id as a fallback and destroy that.
