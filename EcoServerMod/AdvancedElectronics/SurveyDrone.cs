@@ -54,7 +54,18 @@ namespace Eco.Mods.TechTree
         [Serialized, SyncToView, NewTooltipChildren(CacheAs.Instance, flags: TTFlags.AllowNonControllerTypeForChildren)]
         public object PersistentData { get; set; }
 
-        private static readonly IDynamicValue skilledRepairCost = new ConstantValue(1);
+        /// <summary>
+        /// Repair cost, scaled by the repairer's Advanced Electronics skill: a specialist spends
+        /// fewer ingredients to restore more condition. Mirrors the AutoGen tools, e.g.
+        /// ModernPickaxeItem, which scales its repair cost by Blacksmith the same way.
+        /// </summary>
+        private static readonly SkillModifiedValue skilledRepairCost = new SkillModifiedValue(
+            2,
+            AdvancedElectronicsSkill.MultiplicativeStrategy,
+            typeof(AdvancedElectronicsSkill),
+            typeof(SurveyDroneItem),
+            Localizer.DoStr("repair cost"),
+            DynamicValueType.Efficiency);
 
         public override IDynamicValue SkilledRepairCost => skilledRepairCost;
 
