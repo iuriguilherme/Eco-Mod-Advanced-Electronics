@@ -230,15 +230,153 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string P_DerivedEcho { get; private set; } = "source is 0";
 
+        // ---- Round 2, 2026-07-31 -------------------------------------------------------------
+        // Round 1 answered the label question and, in doing so, invalidated its own answer to the
+        // other one. DynamicTitle on a property row does not fall back to the member name -- it
+        // blanks the label AND kills the row's input path. P_StoredBool proved that on its own:
+        // known-good [Serialized, Eco] binding, dead the moment DynamicTitle was on it.
+        //
+        // So P_DerivedBool being dead says nothing about the attribute split; DynamicTitle alone
+        // accounts for it. These two members carry ONE variable each, no titles:
+        //
+        //   P_StoredNoTitle   [Serialized, Eco]                     -> baseline: does Boolean
+        //                                                              input still work at all?
+        //   P_DerivedNoTitle  [SyncToView, Autogen, AutoRPC], no
+        //                     [Serialized], no backing field        -> the real KTD1 question
+        //
+        // If the baseline ticks and the derived one does not, the split is the problem and KTD1's
+        // fallback applies. If both tick, the merged roster gets its derived checkboxes.
+        // -------------------------------------------------------------------------------------
+
+        /// <summary>Baseline: the binding already proven to work, with nothing else on it.</summary>
+        [Serialized, Eco, UITypeName("Boolean")]
+        public bool P_StoredNoTitle { get; set; }
+
+        // ---- Round 3, 2026-07-31: the WRITE path, per member ---------------------------------
+        // Rounds 1 and 2 both failed to answer this, for the same structural reason: every derived
+        // checkbox read the SAME source, and the button could move that source too. So no
+        // observation identified which control caused what, and the read path masked the write
+        // path -- a box can tick because the player clicked it, or because something else wrote
+        // the field it derives from. Round 2's second screenshot was the button, not a click.
+        //
+        // Fix: one counter per member, nothing shared, and a COUNTER rather than a bool so even a
+        // toggle the client reverts leaves a trace. A and B differ in exactly one thing.
+        //
+        //   P_WriteA  [Serialized, Eco]                      -> baseline write path
+        //   P_WriteB  [SyncToView, Autogen, AutoRPC]         -> the decomposed attribute
+        //
+        // Read P_WriteProof, not the checkboxes: a tick mark only says the client drew one.
+        // -------------------------------------------------------------------------------------
+
+        int p_writeA;
+        int p_writeB;
+
+        /// <summary>The only trustworthy readout in this experiment: server-side call counts.</summary>
+        [SyncToView, Autogen, UITypeName("StringDisplay")]
+        public string P_WriteProof { get; private set; } = "setter calls -- A: 0   B: 0";
+
+        [Serialized, Eco, UITypeName("Boolean")]
+        public bool P_WriteA
+        {
+            get => this.p_writeA % 2 == 1;
+            set { this.p_writeA++; this.PushWriteProof(); }
+        }
+
+        [SyncToView, Autogen, AutoRPC, UITypeName("Boolean")]
+        public bool P_WriteB
+        {
+            get => this.p_writeB % 2 == 1;
+            set { this.p_writeB++; this.PushWriteProof(); }
+        }
+
+        // Round 5: B never fired, and the likely reason is authorization rather than the split.
+        // The two attributes default differently -- EcoAttribute:30 says the RPC requires Consumer
+        // Access when unspecified, AutoRPCAttribute:62 says Full Access. A player without full
+        // access on the dock has their write rejected silently, with no exception and no effect,
+        // which is exactly what B did. Every working control in this mod names ConsumerAccess.
+        //
+        // C is B with that one token. If C fires and B does not, the decomposed attribute is fine
+        // and the default access level was the whole problem.
+        int p_writeC;
+
+        [SyncToView, Autogen, AutoRPC(AccessType.ConsumerAccess), UITypeName("Boolean")]
+        public bool P_WriteC
+        {
+            get => this.p_writeC % 2 == 1;
+            set { this.p_writeC++; this.PushWriteProof(); }
+        }
+
+        // ---- Round 4, 2026-07-31: stop reading the client ------------------------------------
+        // Rounds 1-3 all read the CLIENT's drawing, and the client draws a tick whether or not the
+        // server ever hears about it. Round 3's counters were meant to fix that but confounded the
+        // baseline: to get an observable side effect, P_WriteA was given a COMPUTED getter, so it
+        // no longer matches T_Boolean's proven auto-property shape. "A did not fire" may therefore
+        // mean "computed getters cannot receive input", not "Boolean input is dead".
+        //
+        // This mirror is driven by DroneDock's existing one-second readout tick and prints the
+        // values the SERVER holds. Tick a box, wait a second, read this line -- if the value moved,
+        // the write landed, whatever the checkbox is drawing.
+        //
+        // P_StoredNoTitle is the member that matters here: a plain [Serialized, Eco] auto-property,
+        // byte-for-byte the T_Boolean shape, with nothing else on it.
+        //
+        // It doubles as the KTD2 race test: the tick writes nothing, it only pushes, so a click and
+        // a tick landing in the same second must not fight.
+        // -------------------------------------------------------------------------------------
+
+        [SyncToView, Autogen, UITypeName("StringDisplay")]
+        public string P_ServerMirror { get; private set; } = "server state -- waiting for first tick";
+
+        /// <summary>Called from the dock's tick. Reports server-side truth; never writes a member.</summary>
+        public void RefreshMirror()
+        {
+            this.P_ServerMirror =
+                $"server state -- StoredNoTitle: {this.P_StoredNoTitle} | " +
+                $"calls A:{this.p_writeA} B:{this.p_writeB} C:{this.p_writeC} | " +
+                $"source:{this.p_derivedSource}";
+
+            this.Changed(nameof(this.P_ServerMirror));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.P_ServerMirror)));
+        }
+
+        void PushWriteProof()
+        {
+            this.P_WriteProof = $"setter calls -- A: {this.p_writeA}   B: {this.p_writeB}   C: {this.p_writeC}";
+
+            this.Changed(nameof(this.P_WriteProof));
+            this.Changed(nameof(this.P_WriteA));
+            this.Changed(nameof(this.P_WriteB));
+            this.Changed(nameof(this.P_WriteC));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.P_WriteProof)));
+        }
+
+        /// <summary>The real question: [Eco] decomposed, derived, no backing field, no label attribute.</summary>
+        [SyncToView, Autogen, AutoRPC, UITypeName("Boolean")]
+        public bool P_DerivedNoTitle
+        {
+            get => this.p_derivedSource > 0;
+            set => this.SetDerivedSource(value ? 1 : 0);
+        }
+
         void SetDerivedSource(int value)
         {
             this.p_derivedSource = value;
             this.P_DerivedEcho = $"source is {value}";
 
             this.Changed(nameof(this.P_DerivedBool));
+            this.Changed(nameof(this.P_DerivedNoTitle));
             this.Changed(nameof(this.P_DerivedEcho));
+
+            // Pushed, and observed NOT to take: the button's caption stayed at "source is 0" while
+            // the echo reached 4. A DynamicTitle caption is resolved when the window opens and does
+            // not re-resolve, so a runtime label cannot carry changing state.
             this.Changed(nameof(this.P_TitleSource));
+
+            // Held constant on purpose. Round 1 refreshed live with both this and Changed() firing,
+            // so either could be responsible. Dropping it here would put a second variable in a
+            // round whose job is the attribute split -- which is the confound that cost round 1.
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.P_DerivedBool)));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.P_DerivedNoTitle)));
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.P_DerivedEcho)));
         }
 

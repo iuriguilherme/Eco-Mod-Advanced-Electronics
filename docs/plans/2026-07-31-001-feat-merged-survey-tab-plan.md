@@ -156,6 +156,15 @@ The dotted edge is the only influence assignment has on the readout: it labels t
 
 ### Outstanding Questions
 
+**U1 outcomes, settled live on 2026-07-31 across five probe rounds**
+
+- A derived checkbox reads and refreshes correctly. An external write to the source ticked two derived checkboxes on screen without the window being reopened — the roster's radio behaviour, confirmed.
+- The write path needs `[Eco]` whole. The decomposed form drops clicks silently at any access level.
+- **`Changed()` inside a setter does not reach the client on its own.** Probe counters were incrementing while the readout showed zero; only the dock's one-second tick made anything appear. This supersedes the earlier reading that `INotifyPropertyChanged` had to be raised — the merged tab must keep the tick, and KTD6's per-member cost is smaller than it looked.
+- **A checkbox's tick mark is not server state.** One round drew a box unticked while the server held `true`. Any future editable member is verified against a server-side readout, never against the control.
+- `DynamicTitle` sets a row label or a button caption from a `[SyncToView]` string method, and **never re-resolves** — captions stayed at their open-time value while the state they named advanced. Usable for a static name, not for anything that changes. Roster rows therefore cannot carry live coverage in their labels.
+- Unresolved and not needed: whether a plain `[Serialized, Eco]` auto-property bool delivers writes. The shipped shape is the computed-getter form, which is proven.
+
 **Resolved during implementation**
 
 - A numeric range bound cannot be non-constant. `RangeAttribute` (`EcoAttributes.cs:77`) is a plain C# attribute, so its arguments must be compile-time constants, and the view system has no `RangeParam(nameof(...))` sibling. This is a language limit, not an Eco one, and no probe can move it — the findings cursor is capped at compile time exactly as the control pool is. Settled statically; U1 does not probe it.
@@ -185,7 +194,11 @@ Product Contract changed: the tab-name Outstanding Question was removed, because
 
 ### Key Technical Decisions
 
-- KTD1. Checkbox state is derived from the dock's assigned-area id, not stored per row. The getter reads whether that row's area is the assigned one; the setter toggles assignment. R7's "at most one checked" stops being bookkeeping the code has to maintain and becomes a property of having one source of truth. It also means the member must not be `[Serialized]` — there is nothing to persist, and persisting a computed value would put a stale copy beside `DroneDockObject.AssignedSurveyAreaId`.
+- KTD1. Checkbox state is derived from the dock's assigned-area id, not stored per row. The getter reads whether that row's area is the assigned one; the setter writes assignment through. R7's "at most one checked" stops being bookkeeping the code has to maintain and becomes a property of having one source of truth. Confirmed live: an external write to the source ticked two derived checkboxes on screen with no window reopen.
+
+- KTD1a. The member carries `[Eco]` as a single attribute, not its parts. U1 settled this: `[SyncToView, Autogen, AutoRPC]` renders the control, displays derived state, and refreshes live — then silently drops every click. Adding `AccessType.ConsumerAccess` did not help, so it is not the access-level difference between the two attributes' defaults. The composite is not interchangeable with its pieces for the write path, and the failure is silent in both directions: no exception, no log line, and the client still draws the tick.
+
+- KTD1b. Try `[Eco(false)]` before `[Serialized, Eco]`. `EcoAttribute` has a `(bool serialized = true)` constructor, so `[Eco(false)]` keeps the composite intact while dropping persistence — which is what KTD1 wants, since there is nothing to persist. Untested. The proven fallback is `[Serialized, Eco]`, which brings the hazard in the Risks table below and needs the guard described there.
 
 - KTD2. The one-second readout tick reconciles the view; it never assigns member values. `DroneDock.RefreshReadout()` calls into both tabs every second, so any member the tick writes is in a race with the player clicking it. The tick pushes change notifications only. This is the same hazard `SurveyResultsComponent.ApplyPickerSelection` already guards, and KTD1 removes most of it by leaving nothing for the tick to write.
 
@@ -213,6 +226,8 @@ Product Contract changed: the tab-name Outstanding Question was removed, because
 | Row labels cannot be set at runtime | Rows read "Area 3"; the text list returns below them, costing about 162 px | Still inside budget at roughly 406 px. U1 settles it before U3 commits to a shape |
 | The tick races the player's click | A checkbox flickers or reverts | KTD2. U5 watches for it specifically, since it is invisible in a build and obvious in play |
 | Placed docks fail to load after the update | A world with docks in it breaks | Accepted by KTD6. U4 makes it a stated consequence rather than a surprise |
+| `[Serialized]` on a write-through checkbox invokes its setter during load | Deserializing a persisted row bool reassigns the drone on world load, in an order nothing controls | Prefer `[Eco(false)]` per KTD1b. If `[Serialized, Eco]` is required, gate the setter so it does nothing before `Initialize()` completes, and make the write idempotent against the dock's current assignment |
+| A control silently drops input | The tab looks alive and does nothing; no exception, no log line, and the client still draws the tick | Never accept a client tick as evidence. Any new editable member is verified against a server-side readout — the U1 mirror pattern — before it ships |
 
 ---
 

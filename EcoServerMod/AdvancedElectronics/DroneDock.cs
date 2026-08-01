@@ -602,6 +602,11 @@ namespace Eco.Mods.TechTree
                 areasTab.RefreshAreas();
             if (this.TryGetComponent<SurveyResultsComponent>(out var resultsTab))
                 resultsTab.RefreshAll();
+
+            // Temporary, with the U1 probe: drives the showcase's server-state mirror so a write
+            // can be observed without a restart. Goes when the showcase does.
+            if (this.TryGetComponent<UIShowcaseComponent>(out var showcase))
+                showcase.RefreshMirror();
         }
     }
 
