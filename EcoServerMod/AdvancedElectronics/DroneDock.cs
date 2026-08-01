@@ -437,6 +437,13 @@ namespace Eco.Mods.TechTree
         // that does not survive serialization.
         [Serialized] private Guid spawnedDroneObjectId;
 
+        /// <summary>
+        /// Diagnostic only: the drone WorldObject id this dock believes it owns, whether or not the
+        /// live reference survived a restart. Exposed for <c>/drone orphans</c>, which cross-checks
+        /// every drone in the world against every dock's claim.
+        /// </summary>
+        internal Guid ClaimedDroneObjectId => this.spawnedDroneObjectId;
+
         // One-shot guard so the restart re-link runs once, on the first tick after load.
         private bool restartRelinkDone;
 

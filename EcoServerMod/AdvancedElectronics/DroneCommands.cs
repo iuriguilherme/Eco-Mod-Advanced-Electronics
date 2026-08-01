@@ -318,5 +318,65 @@ namespace Eco.Mods.TechTree
 
             return nearest;
         }
+
+        /// <summary>
+        /// Cross-checks every survey drone in the world against every dock's recorded claim, then
+        /// optionally destroys the ones nothing claims.
+        ///
+        /// Exists because a drone was found orphaned and three plausible explanations were each
+        /// falsified by reading code: DespawnDrone is reached on dock pickup (removing the item fires
+        /// first), the claim id is [Serialized], and WorldObject.ObjectID persists. Rather than guess
+        /// a fourth time, this reports the actual linkage — which dock claims which id, and whether
+        /// that id resolves — so the next orphan is diagnosed from evidence instead of inference.
+        ///
+        /// Admin-gated because 'destroy' removes world objects permanently.
+        /// </summary>
+        [ChatSubCommand("Drone", "Cross-check survey drones against dock claims. Pass 'destroy' to remove unclaimed ones. Usage: /drone orphans [destroy]", ChatAuthorizationLevel.Admin)]
+        public static void Orphans(User user, string action = "")
+        {
+            var all    = ServiceHolder<IWorldObjectManager>.Obj.All.ToList();
+            var drones = all.OfType<SurveyDroneObject>().Where(d => !d.IsDestroyed).ToList();
+            var docks  = all.OfType<DroneDockObject>().Where(d => !d.IsDestroyed).ToList();
+
+            user.MsgLocStr($"Survey drones in world: {drones.Count}. Drone docks: {docks.Count}.");
+
+            // What each dock believes it owns. Reported even when the id resolves to nothing, because
+            // a dangling claim and a missing claim are different bugs.
+            var claims = new Dictionary<Guid, DroneDockObject>();
+            foreach (var dock in docks)
+            {
+                var id = dock.ClaimedDroneObjectId;
+                var live = dock.SpawnedDrone != null && !dock.SpawnedDrone.IsDestroyed;
+                user.MsgLocStr(
+                    $"  dock at {dock.Position3i}: claims {(id == Guid.Empty ? "nothing" : id.ToString())}, "
+                    + $"live reference {(live ? "yes" : "no")}");
+
+                if (id != Guid.Empty) claims[id] = dock;
+            }
+
+            var orphans = new List<SurveyDroneObject>();
+            foreach (var drone in drones)
+            {
+                var claimed = claims.TryGetValue(drone.ObjectID, out var owner);
+                user.MsgLocStr(
+                    $"  drone {drone.ObjectID} at {drone.Position3i}: "
+                    + (claimed ? $"claimed by dock at {owner.Position3i}" : "ORPHAN -- no dock claims it"));
+
+                if (!claimed) orphans.Add(drone);
+            }
+
+            if (orphans.Count == 0) { user.MsgLocStr("No orphans."); return; }
+
+            if (!string.Equals(action, "destroy", StringComparison.OrdinalIgnoreCase))
+            {
+                user.MsgLocStr($"{orphans.Count} orphan(s). Run '/drone orphans destroy' to remove them.");
+                return;
+            }
+
+            foreach (var drone in orphans)
+                WorldObjectManager.DestroyPermanently(drone);
+
+            user.MsgLocStr($"Destroyed {orphans.Count} orphaned drone(s).");
+        }
     }
 }
