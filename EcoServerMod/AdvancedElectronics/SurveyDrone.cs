@@ -1,12 +1,6 @@
 using System.Collections.Generic;
 using Eco.Core.Items;
 using Eco.Gameplay.Components;
-using Eco.Gameplay.Components.Auth;
-// FuelSupplyComponent lives here, NOT in Eco.Gameplay.Components alongside
-// FuelConsumptionComponent -- the two fuel components sit in different namespaces, so
-// importing only the obvious one resolves the consumption half and silently fails on
-// the supply half.
-using Eco.Gameplay.Components.Storage;
 using Eco.Gameplay.DynamicValues;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Items.Recipes;
@@ -18,7 +12,6 @@ using Eco.Mods.TechTree;
 using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
-using static Eco.Gameplay.Components.PartsComponent;
 
 namespace Eco.Mods.TechTree
 {
@@ -99,41 +92,15 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(DroneMoverComponent))]
     [RequireComponent(typeof(OreSensorComponent))]
     [RequireComponent(typeof(DroneLifecycle))]
-    // The drone's window opens with no tabs at all, so neither the fuel nor the parts tab
-    // can be reached and fuel cannot be added. Two other explanations were checked first
-    // and ruled out against the tree and the logs:
+    // The drone carries no fuel, parts, storage, or auth components, and is not interactable
+    // (R1, R2). All three of those moved to the dock, which is an ordinary placed object with
+    // an item behind it; a drone is not, and its window opened with no tabs at all no matter
+    // what was attached. The drone is a mover now, nothing more.
     //
-    //   - Missing [Serialized]/[NoIcon] on a custom component blanks the whole window
-    //     (docs/solutions/runtime-errors/worldobjectcomponent-missing-attributes-empty-window.md).
-    //     All three of this object's custom components carry both, and no server log
-    //     contains "has to explicitly define" or "Can't encode instance".
-    //   - The custom components contributing no tabs is correct, not a defect: only
-    //     components with CreateComponentTabLoc render one, and mover/sensor/lifecycle
-    //     are internal. The Fuel and Parts tabs should still come from vanilla components,
-    //     and PartsComponent demonstrably renders on AdvancedElectronicsAssemblyObject.
-    //
-    // What remains: every object in this mod that renders tabs carries an auth component
-    // (DroneDockObject and the assembly both have PropertyAuthComponent), the AutoGen
-    // vehicles this drone is modelled on carry StandaloneAuthComponent, and the drone had
-    // neither. Standalone rather than Property, since a drone is not bound to a deed.
-    // Still unconfirmed in game. If the pane is empty after this, do not stack a second
-    // guess -- diff against a vanilla vehicle that works.
-    [RequireComponent(typeof(StandaloneAuthComponent))]
-    // Fuel and parts, mirroring the AutoGen vehicles (Mods/__core__/AutoGen/Vehicle/
-    // Excavator.cs on the dedicated server ships this shape). Initialize() calls
-    // GetComponent on all three, and GetComponent returns null unless the component is
-    // declared here -- the [RequireComponent] attributes are what attach them.
-    [RequireComponent(typeof(FuelSupplyComponent))]
-    [RequireComponent(typeof(FuelConsumptionComponent))]
-    [RequireComponent(typeof(PartsComponent))]
-    // v7 put the container probe here to quarantine it. That failed: the drone is not a usable
-    // probe host. Its window opens with NO tabs and no content at all -- adding a
-    // [RequireComponent] does not retroactively attach to world objects that were already
-    // persisted, and every drone in the test world is a pre-existing orphan (Task #25). The probe
-    // produced no render and no log line, so it never ran. Moved to DroneDockObject in v8.
-    //
-    // Also visible in that screenshot: this class has no [LocDisplayName], so its window titles
-    // itself "Editable Title". The [LocDisplayName("Survey Drone")] above is on the ITEM.
+    // WorldObject itself carries [Tag("Usable")] and the interact key is gated on that tag,
+    // so unsetting it is what removes the affordance -- there is no "not interactable" flag.
+    // BaseRampObject in Mods/__core__/Items/Roads.cs is the vanilla precedent.
+    [Tag("Usable", Unset = true)]
     public partial class SurveyDroneObject : WorldObject
     {
         /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
@@ -160,14 +127,6 @@ namespace Eco.Mods.TechTree
 
         public override LocString DisplayName => Localizer.DoStr("Survey Drone");
 
-        // Liquid fuel (biodiesel, gasoline) -- the vanilla tag the AutoGen vehicles use.
-        // The mod's own Battery would have supplied an "Electric Fuel" tag, but the battery
-        // is deferred (Battery.cs.deferred); a fuel tag no item carries leaves the drone
-        // unfuelable.
-        private static string[] fuelTagList = new string[]
-        {
-            "Liquid Fuel",
-        };
         /// <summary>Display name of the owner this drone acts on behalf of, or null if never stamped.</summary>
         [Serialized]
         public string OwnerName { get; private set; }
@@ -196,20 +155,7 @@ namespace Eco.Mods.TechTree
         {
             this.ModsPreInitialize();
             base.Initialize();
-            this.GetComponent<FuelSupplyComponent>().Initialize(2, fuelTagList);
-            this.GetComponent<FuelConsumptionComponent>().Initialize(275);
             this.ModsPostInitialize();
-            {
-                this.GetComponent<PartsComponent>().Config(() => LocString.Empty, new PartInfo[]
-                {
-                    new() { TypeName = nameof(AdvancedCircuitItem), Quantity = 1},
-                    new() { TypeName = nameof(ElectricMotorItem), Quantity = 1},
-                    new() { TypeName = nameof(RubberWheelItem), Quantity = 1},
-                    new() { TypeName = nameof(SteelGearItem), Quantity = 1},
-                    new() { TypeName = nameof(LightBulbItem), Quantity = 1},
-                    new() { TypeName = nameof(LubricantItem), Quantity = 2}
-                });
-            }
         }
     }
 
