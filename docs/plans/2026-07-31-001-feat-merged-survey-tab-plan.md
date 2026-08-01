@@ -11,6 +11,34 @@ execution: code
 
 # Merged Survey Tab - Plan
 
+## What shipped — 2026-07-31
+
+The design below was overtaken during implementation, on the same day it was written. It is kept as
+the decision record it was; **it is not a description of the code.** What exists:
+
+- **Assignment is one radial (`Int32` stepper), not a checkbox per area.** A control per area cannot
+  work: the client writes every editable member back as a batch on any interaction, so six
+  checkboxes over one assigned-area field produced six setter calls per click and left the field
+  cleared. `docs/solutions/runtime-errors/n-editable-members-cannot-share-one-field.md`.
+- **Ten survey areas, and no control pool.** With assignment on one radial nothing costs a row per
+  area, so the pool concept disappeared and the cap became a plain product number.
+- **One merged tab, but for a different reason than KD1 gives.** The driver is that a panel wants at
+  most one `BigButton`; two commit actions force two panes, one permits one. Panel length barely
+  matters once no control is per-area. The panel was split into two panes and collapsed back within
+  the hour on exactly that reasoning.
+  `docs/solutions/design-patterns/vertical-stack-only-ui-design.md` rules 3 and 4.
+- **The dock's one-second tick is what refreshes the panel**, not a notification raised inside a
+  setter. KD6 attributes it to the wrong thing;
+  `docs/solutions/runtime-errors/autogen-template-binding-contract.md` carries the correction.
+
+Superseded below: **KD1** (rationale only — the outcome stands), **KD2**, **KD1b**, **KD6**, **KD8**,
+requirements **R5–R9**, unit **U3**, the derived-checkbox risk row, and the Definition of Done's
+"only one row is ever checked". **KD3, KD4, KD5, KD7 and KD9 held.**
+
+Everything from here down is what was decided before implementation started.
+
+---
+
 ## Goal Capsule
 
 - **Objective.** Replace the drone dock's Areas and Results tabs with one Survey tab, using controls that cost a third of the vertical space the current buttons do.
