@@ -53,18 +53,33 @@ namespace Eco.Mods.TechTree
     /// produces a dock with no fuel tab, which reads as a rendering bug rather than an
     /// initialization failure. Install and uninstall therefore log at info level.
     /// </summary>
-    // The tab name is NOT "Modules". The client picks a tab's view by its NAME, and "Modules" is
-    // already bound to the vehicle one -- declaring it rendered "Vehicle Segments / Accepts ???"
-    // and "Vehicle Attachments / Accepts Plough, SeedThing, Combine" on the dock, with no slot for
-    // the drone, because that view reads ModularVehicleComponent and the dock has none.
+    // THE TAB NAME IS LOAD-BEARING, and getting it wrong does not fail politely.
     //
-    // Nor can a mod component autogen an inventory view: autogen renders scalar members, and this
-    // mod already established that list-shaped members do not render from a mod component. The only
-    // inventories that draw are the ones the client already knows how to draw -- storage. Hence
-    // deriving StorageComponent rather than holding a bare inventory: FuelSupplyComponent does
-    // exactly this and renders its slots under a "Power" tab, which is the proof that a
-    // StorageComponent subclass draws under whatever tab name it declares.
-    [Serialized, CreateComponentTabLoc("Drone Bay"), HasIcon]
+    // The client picks a tab's view by NAME. Two ways to get one:
+    //   - pass createView: true, and the client generates a view from the component's scalar
+    //     members. That is what SurveyComponent and UIShowcaseComponent do, and it is why they
+    //     render under names vanilla has never heard of.
+    //   - omit it and use a name the client ALREADY has a view for. Every vanilla component that
+    //     omits it does exactly this: "Modules", "Power", "Storage", "Civics", "Parts".
+    //
+    // Doing neither -- a novel name with no generated view -- is what "Drone Bay" was, and it made
+    // the whole dock invisible, non-interactable, and unremovable, matching the symptom this mod
+    // already recorded once: a component whose view fails to decode client-side takes the object's
+    // entire rendering with it, with nothing in the server log.
+    //
+    // "Modules" is not available either: it is bound to the VEHICLE view, which reads a
+    // ModularVehicleComponent the dock does not have, and rendered "Vehicle Segments / Accepts ???"
+    // with no slot for the drone.
+    //
+    // So: "Storage", whose view can draw an inventory -- and this component is a StorageComponent
+    // precisely so that view has something it understands. A generated view is not an option here:
+    // autogen renders scalars, and an inventory is not one.
+    //
+    // The tab therefore reads "Storage" even though this is the drone bay. The component split is
+    // still real -- this is DroneModuleComponent, not the dock's own PublicStorageComponent, which
+    // no longer exists -- so a drone that declares cargo adds a second section to this same tab,
+    // exactly as a Steam Truck shows STORAGE and FUEL SUPPLY together.
+    [Serialized, CreateComponentTabLoc("Storage"), HasIcon]
     [LocDescription("The drone docked here.")]
     public class DroneModuleComponent : StorageComponent, IDeclaresMayHaveComponents
     {
