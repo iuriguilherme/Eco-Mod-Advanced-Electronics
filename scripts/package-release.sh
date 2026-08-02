@@ -166,6 +166,22 @@ WHAT IS NEW IN 0.1.0
   - A dock keeps its parts wear when picked up and placed again.
   - Survey Drone and Drone Dock are now crafted at the Robotic Assembly Line, and
     the Advanced Electronics Upgrade at the Electronics Assembly.
+  - NEW ITEM: the Battery. Crafted at the Electronics Assembly from nitric acid,
+    copper concentrate and plastic at Advanced Electronics 1. One battery runs a
+    drone for about an hour, weighs 1 kg, and stacks to five -- so a dock's two
+    fuel slots hold about ten hours of surveying and a full load fits in your
+    pack alongside everything else.
+  - THE DRONE NOW BURNS BATTERIES, NOT LIQUID FUEL. A dock with a Survey Drone
+    slotted accepts only Batteries; biodiesel and gasoline are refused. Nothing
+    else about fuelling changes -- burn rate, slot count, and the recall-when-
+    empty behaviour are the same.
+  - NEW TALENT: Sulfuric Battery, one star at Advanced Electronics 3. It unlocks
+    a second Battery recipe that halves the copper by spending sulfuric acid
+    instead. The recipe is listed at the Electronics Assembly before you learn
+    the talent, marked with the talent it needs, and the original recipe stays
+    available whether you learn it or not.
+  - The Electronics Assembly now accepts the Advanced Electronics Upgrade, which
+    reduces what both Battery recipes cost. See INSTALL step 3.
 
   This version is also known to leave orphaned objects in the world --
   drones that outlive their dock, or objects an update no longer
@@ -184,20 +200,28 @@ INSTALL
                                             load without it
         AdvancedElectronics.unity3d         client assets, sent to players
                                             automatically -- players install nothing
-  3. OPTIONAL, for the Advanced Electronics Upgrade module: the Robotic Assembly
-     Line only accepts modules it names, and a mod cannot add itself to that list.
-     Install the UserCode override from a clone of this mod's source:
+  3. OPTIONAL, for the Advanced Electronics Upgrade module: a vanilla crafting
+     table only accepts modules it names, and a mod cannot add itself to that
+     list. Install the UserCode overrides from a clone of this mod's source:
 
         scripts/deploy-usercode-overrides.sh /path/to/Eco_Data/Server
 
-     Without it everything works except slotting the upgrade module into the
-     Robotic Assembly Line.
+     That one command installs both overrides -- the Robotic Assembly Line and
+     the Electronics Assembly. Without them everything works except slotting the
+     upgrade module into those two tables.
   4. If you are UPDATING, read the UPDATING section below first.
-  4. Start the server. The mods listing should show "Advanced Electronics".
+  5. Start the server. The mods listing should show "Advanced Electronics".
 
 UPDATING -- READ THIS
   Read the save-migration warning above first. The file side of an update is
   easy; the world side is not.
+
+  NO ACTION IS NEEDED FOR FUEL. You do not have to drain your docks before
+  updating. A dock still holding biodiesel keeps burning it after the update
+  until it is spent, then reports itself out of fuel and waits for Batteries.
+  The Battery-only restriction filters what may be ADDED to a fuel tank, never
+  what may be burned from it, so leftover fuel is used rather than stranded --
+  and you can still pull it out by hand at any time.
 
   Overwriting the AdvancedElectronics folder in place is fine -- the file names
   do not change between versions, so a copy-over replaces every shipped file.
