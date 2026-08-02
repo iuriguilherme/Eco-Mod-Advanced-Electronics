@@ -33,15 +33,11 @@ using Vector3 = System.Numerics.Vector3;
 namespace Eco.Mods.TechTree
 {
     /// <summary>
-    /// The survey drone's home point (R10): a craftable WorldObject with a single module bay
-    /// restricted to <see cref="SurveyDroneItem"/>, owned by <see cref="DroneModuleComponent"/>.
-    /// Inserting a drone item there pairs it to this dock and spawns its physical
-    /// <see cref="SurveyDroneObject"/> WorldObject (R11) -- see <see cref="OnModuleSlotChanged"/>.
-    /// Removing it despawns that WorldObject.
-    ///
-    /// The dock has no storage component of its own. Whatever the slotted drone declares is what
-    /// the dock gains: fuel today, a cargo hold when a drone brings one. Vanilla keeps modules and
-    /// storage in separate components and so does this.
+    /// The survey drone's home point (R10): a craftable WorldObject with a single
+    /// storage slot restricted to <see cref="SurveyDroneItem"/>. Inserting a drone item
+    /// there pairs it to this dock and spawns its physical <see cref="SurveyDroneObject"/>
+    /// WorldObject (R11) -- see <see cref="OnDockStorageChanged"/>. Removing it despawns
+    /// that WorldObject.
     ///
     /// The spawn/despawn wiring below is an orchestrator-level integration pass, not a
     /// single plan unit's Files: list -- U1 built the pairing/slot scaffold, U2/U5/U7/U8
@@ -60,6 +56,7 @@ namespace Eco.Mods.TechTree
     /// </summary>
     [Serialized]
     [RequireComponent(typeof(PropertyAuthComponent))]
+    [RequireComponent(typeof(PublicStorageComponent))]
     [RequireComponent(typeof(OccupancyRequirementComponent))]
     [RequireComponent(typeof(SurveyComponent))]
     // TEMPORARY: UI vocabulary probes. Remove once the layout brainstorm has its screenshots.
@@ -101,6 +98,13 @@ namespace Eco.Mods.TechTree
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
+        // Single storage slot, drone item only (see Initialize). Slot count is a
+        // vanilla-proven Initialize(int) arg; the item-type and stack-limit
+        // restrictions are applied per the vanilla AddInvRestriction pattern
+        // (Mods/__core__/AutoGen/WorldObject/StorageChest.cs on the dedicated server
+        // ships this exact shape in source).
+        private const int DockSlotCount = 1;
+
         public override LocString DisplayName => Localizer.DoStr("Drone Dock");
 
         /// <summary>
@@ -365,18 +369,25 @@ namespace Eco.Mods.TechTree
             // An earlier comment here claimed vanilla objects never call base from their
             // Initialize override; the generated sources do, so the call above is correct
             // and that claim has been removed rather than left contradicting the code.
-            // The drone sits in the module component's own bay, not in a storage component. The
-            // dock therefore has no storage of its own at all: a Storage tab appears only if a
-            // slotted drone declares one, installed exactly the way its fuel is. The survey drone
-            // declares none, so today the dock shows Modules and no Storage.
-            //
-            // Driven from here rather than from the component's own Initialize because component
-            // initialization order is not guaranteed. Both this handler and the driver's own
-            // subscribe to the same event without an ordering hazard, because the case they would
-            // have raced on -- removal while the drone is out -- is refused outright (R19).
-            // The bay builds itself in its own Initialize (it has to, for StorageComponent's owner
-            // wiring); base.Initialize() above has already run it, so the inventory exists here.
-            this.GetComponent<DroneModuleComponent>().Slot.OnChanged.Add(this.OnModuleSlotChanged);
+            if (this.TryGetComponent<PublicStorageComponent>(out var storage))
+            {
+                // Vanilla storage-init shape (verified against the dedicated server's
+                // shipped source, e.g. Mods/__core__/AutoGen/WorldObject/StorageChest.cs):
+                // Initialize(slotCount), then restrictions via AddInvRestriction. The
+                // previously-used 3-arg Initialize overload is never used by any vanilla
+                // object and its parameter semantics were unproven.
+                storage.Initialize(DockSlotCount);
+                storage.Storage.AddInvRestriction(new SpecificItemTypesRestriction(new[] { typeof(SurveyDroneItem) }));
+                storage.Storage.AddInvRestriction(new StackLimitRestriction(1));
+                storage.Storage.OnChanged.Add(this.OnDockStorageChanged);
+
+                // The module driver attaches here rather than from its own Initialize: component
+                // initialization order is not guaranteed, and its restrictions have to attach to a
+                // storage that already exists. Both this handler and the driver subscribe to the
+                // same event without an ordering hazard, because the case they would have raced on
+                // -- removal while the drone is out -- is refused outright (R19).
+                this.GetComponent<DroneModuleComponent>().AttachTo(storage);
+            }
             this.ModsPostInitialize();
             {
                 this.GetComponent<PartsComponent>().Config(() => LocString.Empty, new PartInfo[]
@@ -398,18 +409,19 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Fires on any change to the dock's module bay. Single-slot dock, so the
+        /// Fires on any change to the dock's storage slot. Single-slot dock, so the
         /// first non-empty stack (if any) is the paired drone. Spawns the physical
         /// <see cref="SurveyDroneObject"/> WorldObject on a null-to-paired transition and
         /// despawns it on a paired-to-null transition (R10/R11).
         /// </summary>
-        private void OnModuleSlotChanged(User user)
+        private void OnDockStorageChanged(User user)
         {
-            if (!this.TryGetComponent<DroneModuleComponent>(out var bay))
+            if (!this.TryGetComponent<PublicStorageComponent>(out var storage))
                 return;
 
             var wasPaired = this.HasDrone;
-            this.PairedDrone = bay.SlottedItem;
+            var stack = storage.Storage.NonEmptyStacks.FirstOrDefault();
+            this.PairedDrone = stack?.Item;
             var isPaired = this.HasDrone;
 
             if (!wasPaired && isPaired)
@@ -497,10 +509,14 @@ namespace Eco.Mods.TechTree
             }
 
             // Drone WorldObject is gone but the item is still docked: respawn and re-pair.
-            if (this.TryGetComponent<DroneModuleComponent>(out var bay) && bay.SlottedItem != null)
+            if (this.TryGetComponent<PublicStorageComponent>(out var storage))
             {
-                this.PairedDrone = bay.SlottedItem;
-                this.SpawnDrone(null);
+                var stack = storage.Storage.NonEmptyStacks.FirstOrDefault();
+                if (stack?.Item != null)
+                {
+                    this.PairedDrone = stack.Item;
+                    this.SpawnDrone(null);
+                }
             }
         }
 

@@ -53,56 +53,9 @@ namespace Eco.Mods.TechTree
     /// produces a dock with no fuel tab, which reads as a rendering bug rather than an
     /// initialization failure. Install and uninstall therefore log at info level.
     /// </summary>
-    // THE TAB NAME IS LOAD-BEARING, and getting it wrong does not fail politely.
-    //
-    // The client picks a tab's view by NAME. Two ways to get one:
-    //   - pass createView: true, and the client generates a view from the component's scalar
-    //     members. That is what SurveyComponent and UIShowcaseComponent do, and it is why they
-    //     render under names vanilla has never heard of.
-    //   - omit it and use a name the client ALREADY has a view for. Every vanilla component that
-    //     omits it does exactly this: "Modules", "Power", "Storage", "Civics", "Parts".
-    //
-    // Doing neither -- a novel name with no generated view -- is what "Drone Bay" was, and it made
-    // the whole dock invisible, non-interactable, and unremovable, matching the symptom this mod
-    // already recorded once: a component whose view fails to decode client-side takes the object's
-    // entire rendering with it, with nothing in the server log.
-    //
-    // "Modules" is not available either: it is bound to the VEHICLE view, which reads a
-    // ModularVehicleComponent the dock does not have, and rendered "Vehicle Segments / Accepts ???"
-    // with no slot for the drone.
-    //
-    // So: "Storage", whose view can draw an inventory -- and this component is a StorageComponent
-    // precisely so that view has something it understands. A generated view is not an option here:
-    // autogen renders scalars, and an inventory is not one.
-    //
-    // The tab therefore reads "Storage" even though this is the drone bay. The component split is
-    // still real -- this is DroneModuleComponent, not the dock's own PublicStorageComponent, which
-    // no longer exists -- so a drone that declares cargo adds a second section to this same tab,
-    // exactly as a Steam Truck shows STORAGE and FUEL SUPPLY together.
-    [Serialized, CreateComponentTabLoc("Storage"), HasIcon]
-    [LocDescription("The drone docked here.")]
-    public class DroneModuleComponent : StorageComponent, IDeclaresMayHaveComponents
+    [Serialized, NoIcon]
+    public class DroneModuleComponent : WorldObjectComponent, IDeclaresMayHaveComponents
     {
-        /// <summary>One slot: a dock holds one drone.</summary>
-        private const int SlotCount = 1;
-
-        /// <summary>
-        /// The dock's module bay: one slot, drones only.
-        ///
-        /// Its own inventory rather than the dock's PublicStorageComponent, which is what this
-        /// used to borrow. Vanilla keeps the two apart -- a Steam Truck has a Modules tab and a
-        /// Storage tab, and they are different components -- and conflating them meant the dock
-        /// advertised a storage it did not really have. It also made the drone bay subject to
-        /// whatever a storage tab does.
-        ///
-        /// The consequence the mod actually wanted: the dock now has NO storage component of its
-        /// own. A Storage tab appears only when a slotted drone declares one, installed the same
-        /// way its fuel is. The survey drone declares none, so today there is no Storage tab.
-        /// </summary>
-        [Serialized, SyncToView] public AuthorizationInventory Slot { get; set; }
-
-        public override Inventory Inventory => this.Slot;
-
         // The source whose components are currently attached to the dock. Not serialized: it is
         // re-derived from the storage slot on the first tick after load, and the components
         // themselves persist on their own (that is what IDeclaresMayHaveComponents buys).
@@ -142,39 +95,34 @@ namespace Eco.Mods.TechTree
         public override bool Enabled => this.SlottedItem is not RepairableItem { Broken: true };
 
         /// <summary>The drone item currently in the dock's slot, or null.</summary>
-        public Item SlottedItem => this.Slot?.NonEmptyStacks.FirstOrDefault()?.Item;
+        private Item SlottedItem =>
+            this.Parent.TryGetComponent<PublicStorageComponent>(out var storage)
+                ? storage.Storage.NonEmptyStacks.FirstOrDefault()?.Item
+                : null;
 
         /// <summary>The drone item currently in the dock's slot, as a component source, or null.</summary>
         private IWorldObjectComponentSource SlottedSource => this.SlottedItem as IWorldObjectComponentSource;
 
         /// <summary>
-        /// Builds the bay here rather than from the dock: StorageComponent.PostInitialize sets the
-        /// inventory's owner, so the inventory has to exist by then, and a component's own
-        /// Initialize is the only place guaranteed to run first.
+        /// Wires this driver to the dock's storage slot. Called from DroneDockObject.Initialize
+        /// after the storage component has been initialized, rather than from this component's own
+        /// Initialize, because component initialization order is not guaranteed and the
+        /// restrictions below have to attach to a storage that already exists.
         /// </summary>
-        public override void Initialize()
+        public void AttachTo(PublicStorageComponent storage)
         {
-            base.Initialize();
-
-            this.Slot ??= new AuthorizationInventory(SlotCount,
-                AuthorizationInventory.AuthorizationFlags.AuthedMayAdd
-                | AuthorizationInventory.AuthorizationFlags.AuthedMayRemove);
-
-            this.Slot.AddInvRestriction(new SpecificItemTypesRestriction(new[] { typeof(SurveyDroneItem) }));
-            this.Slot.AddInvRestriction(new StackLimitRestriction(1));
-
             // R8: vanilla restriction, honours each installation's canUninstall -- refuses to let
             // the drone out while the fuel it installed still holds fuel. RemoveComponent destroys
             // a component without capturing its state, so this is what keeps uninstall from
             // eating items.
-            this.Slot.AddInvRestriction(new ComponentSourceRestriction(this.Parent));
+            storage.Storage.AddInvRestriction(new ComponentSourceRestriction(this.Parent));
 
             // R19: refuse removal unless the drone is home. Per KTD8 this is also what makes the
             // uninstall path safe -- no live drone world object can exist while its components are
             // being torn off, so the despawn/uninstall race cannot occur rather than being ordered.
-            this.Slot.AddInvRestriction(new DroneDockedRestriction(this.Parent));
+            storage.Storage.AddInvRestriction(new DroneDockedRestriction(this.Parent));
 
-            this.Slot.OnChanged.Add(this.OnSlotChanged);
+            storage.Storage.OnChanged.Add(this.OnSlotChanged);
 
             // Placement and world load both land here with a slot that may already hold a drone.
             this.syncPending = true;
