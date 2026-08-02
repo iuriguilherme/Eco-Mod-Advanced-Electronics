@@ -38,7 +38,7 @@
 
 set -euo pipefail
 
-VERSION="0.0.3"
+VERSION="0.1.0"
 GAME_VERSION="0.14.0.0"
 FORCE=0
 
@@ -131,26 +131,41 @@ Version ${VERSION}, built for Eco ${GAME_VERSION}.
   the whole world's load with it. Updating on a world that already contains
   Drone Docks or Survey Drones is the single most likely way to lose that world.
 
-  *** THIS VERSION SPECIFICALLY: placed Drone Docks WILL NOT LOAD. ***
+  *** THIS VERSION SPECIFICALLY: placed Drone Docks WILL NOT LOAD, and every ***
+  *** Drone Dock and Survey Drone must be re-crafted.                        ***
 
-  This version merges the dock's Areas and Results tabs into a single Survey
-  tab, which removes a stored component from every Drone Dock. That is not a
-  "can fail" -- a dock placed by an earlier version does not survive the
-  update, and no migration ships to rescue it.
+  The drone's fuel now lives on the dock, installed there by the drone itself
+  while it is slotted, and the dock's component set changed to match. An object's
+  component set is fixed when it is created, so a dock placed by an earlier
+  version never gains the new components and a drone crafted by one declares
+  none -- neither starts working again on its own, and no migration ships to
+  rescue them.
 
   The safe update path is a fresh world, or removing every Drone Dock and Survey
   Drone with admin tools BEFORE installing the new version.
 
-  *** Drone Docks and Survey Drones from earlier versions must be re-crafted. ***
+  A Survey Drone now also carries its own condition, which wears while it works,
+  travels with the drone when you move it between docks, and can be repaired at a
+  Tool Bench. Drones in different condition no longer stack together.
 
-  The drone's fuel now lives on the dock, installed there by the drone itself
-  while it is slotted. An object's component set is fixed when it is created, so
-  a dock placed before this version never gains the new components and a drone
-  crafted before it declares none -- neither one starts working again on its own.
+WHAT IS NEW IN 0.1.0
 
-  A Survey Drone now also carries its own condition, which wears while it works
-  and travels with the drone when you move it to another dock. Drones in
-  different condition no longer stack together.
+  - Requires Eco 0.14 (see above).
+  - The drone is a module: slotting it into a dock installs its fuel supply on
+    the dock, and removing it takes them away again. Partly-burned fuel survives
+    the move.
+  - A dock stops working and recalls its drone when it runs out of fuel, breaks a
+    part, or its drone wears out -- and the Survey tab names which one it is.
+  - Fuel, dock parts, and drone condition are only consumed while the drone is
+    actually working. The trip home is always free, so a shortage cannot strand
+    the drone it just recalled.
+  - A drone that cannot find a path home escalates -- climbing higher, then
+    ignoring obstacles, then teleporting -- rather than getting stuck.
+  - A drone cannot be removed while it is away, or while its fuel tank still has
+    fuel in it.
+  - A dock keeps its parts wear when picked up and placed again.
+  - Survey Drone and Drone Dock are now crafted at the Robotic Assembly Line, and
+    the Advanced Electronics Upgrade at the Electronics Assembly.
 
   This version is also known to leave orphaned objects in the world --
   drones that outlive their dock, or objects an update no longer
