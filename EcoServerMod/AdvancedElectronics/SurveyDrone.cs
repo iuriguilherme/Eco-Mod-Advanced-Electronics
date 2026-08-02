@@ -270,8 +270,7 @@ namespace Eco.Mods.TechTree
                 ingredients: new List<IngredientElement>
                 {
                     new IngredientElement(typeof(AdvancedCircuitItem), 6, typeof(AdvancedElectronicsSkill)),
-                    // TODO: v14 item
-                    //new IngredientElement(typeof(InsulatedCopperWiringItem), 4, typeof(AdvancedElectronicsSkill)),
+                    new IngredientElement(typeof(InsulatedCopperWiringItem), 4, typeof(AdvancedElectronicsSkill)),
                     new IngredientElement(typeof(GearboxItem), 4, typeof(AdvancedElectronicsSkill)),
                     new IngredientElement(typeof(PlasticItem), 20, typeof(AdvancedElectronicsSkill)),
                     new IngredientElement(typeof(FiberglassItem), 20, typeof(AdvancedElectronicsSkill)),

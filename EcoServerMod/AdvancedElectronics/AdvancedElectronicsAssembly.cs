@@ -1,4 +1,4 @@
-﻿
+
 namespace Eco.Mods.TechTree
 {
     using System;
@@ -165,8 +165,7 @@ namespace Eco.Mods.TechTree
                     // Tag ingredient, not a type: "AshlarStone" is the tag carried by
                     // AshlarSandstoneItem and its siblings, so any ashlar stone satisfies it.
                     new IngredientElement("AshlarStone", 20, typeof(IndustrySkill)), //noloc
-                    // TODO: v14 item
-                    //new IngredientElement(typeof(InsulatedCopperWiringItem), 25, typeof(IndustrySkill)),
+                    new IngredientElement(typeof(InsulatedCopperWiringItem), 25, typeof(IndustrySkill)),
                 },
                 // Define our recipe output items.
                 // For every output item there needs to be one CraftingElement entry with the type of the final item and the amount
