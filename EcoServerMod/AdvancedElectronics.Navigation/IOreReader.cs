@@ -1,7 +1,7 @@
 namespace AdvancedElectronics.Navigation
 {
     /// <summary>
-    /// Read-only view of ore-bearing blocks that <see cref="SurveyGrid"/> (via
+    /// Read-only view of ore-bearing blocks that <see cref="SurveyRecord"/> (via
     /// the Eco-side ore-sensing component) queries. Positions are the same
     /// plain integer block coordinates <see cref="IWorldSampler"/> uses -
     /// this project has zero dependency on any Eco.* namespace, so a real
