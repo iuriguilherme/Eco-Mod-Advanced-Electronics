@@ -39,9 +39,8 @@ fi
 # Declarations are matched against a NORMALIZED view of the sources rather than
 # line by line, because a base list legitimately spans several lines:
 #
-#     public partial class BatteryBlock :
-#         PickupableBlock
-#         , IRepresentsItem
+#     public partial class AdvancedElectronicsUpgradeItem :
+#         EfficiencyModule
 #
 # normalize_sources strips // comments first (so commented-out template code is
 # never discovered as a real type), then joins everything and collapses runs of
@@ -81,10 +80,16 @@ mapfile -t WORLD_OBJECT_TYPES < <(
 # block, the skill book/scroll pair, and the plugin modules that slot into a
 # crafting table (EfficiencyModule and friends, matched by the Module suffix).
 #
-# PickupableBlock is deliberately NOT listed. A placed block binds through a
-# BlockSet rather than an Items-root GameObject, and this mod ships no BlockSet
-# yet (the battery's placed block is explicitly deferred), so demanding an asset
-# for one would fail the gate on work that was consciously left undone.
+# PickupableBlock is deliberately NOT listed, and the reason is the binding
+# route, not any one absent block. A placed block binds through a BlockSet, never
+# through an Items-root GameObject, so an Items-root asset is not the thing a
+# PickupableBlock needs and demanding one would fail the gate on an asset that
+# could not satisfy it anyway. This mod ships no BlockSet and declares no
+# PickupableBlock; if it ever does, the gate for it belongs in the BlockSet
+# check, not here.
+#
+# (This used to be justified by the battery's placed block being deferred. That
+# block was dropped outright when the Battery shipped as an inventory item.)
 mapfile -t ITEM_TYPES < <(
   printf '%s' "$DECLS" \
     | grep -oE 'class [A-Za-z0-9_]+ : (Item[ ,{]|WorldObjectItem<|BlockItem<|SkillBook<|SkillScroll<|[A-Za-z]*Module[ ,{])' \

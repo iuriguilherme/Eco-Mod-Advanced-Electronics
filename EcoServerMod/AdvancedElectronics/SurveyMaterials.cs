@@ -13,11 +13,28 @@ namespace Eco.Mods.TechTree
     /// probe vanilla uses (PickaxeItem tests <c>Block.Get&lt;Minable&gt;(blockitem.OriginType)</c>).
     ///
     /// This deliberately does NOT drive the dock's material picker. Scoping that picker to exactly
-    /// this set needs a tag, and a mod-registered tag never reaches the client: the server registry
-    /// was verifiably correct (30 of 113 block items tagged) while the picker stayed empty, because
-    /// TagManager.Initialize does its one-time naming pass and calls SetupDone() before mods can
-    /// register. The picker therefore uses the closest stock tag, "Excavatable", which live
-    /// diagnostics showed covers every material this classifier accepts.
+    /// this set needs a tag the client already knows, and the mod's RUNTIME tag registration never
+    /// reached it: the server registry was verifiably correct (30 of 113 block items tagged) while
+    /// the picker stayed empty.
+    ///
+    /// CORRECTED ATTRIBUTION (2026-08-01). This comment used to blame the emptiness on a
+    /// mod-registered tag never reaching the client, via TagManager.Initialize calling SetupDone()
+    /// before mods can register. Both halves were wrong, and the wrong cause matters: it rules out
+    /// the very route BatteryItem's "Electric Fuel" tag depends on.
+    ///   - A [Tag("X")] ATTRIBUTE on a mod type -- or on a vanilla type replaced through a
+    ///     .override file -- DOES reach the client. Mod DLLs load and InitMods() runs before
+    ///     TagManager.Initialize, and the attribute pass enumerates every loaded assembly.
+    ///   - What is frozen is the client's ViewClassInfo snapshot, built once while the
+    ///     ControllerManager plugin is constructed. A type->tag association added at runtime
+    ///     (TagManager.AddTypeToTag from an IModKitPlugin.Initialize) runs after that build and is
+    ///     never in the snapshot. SetupDone() is only a WhenReady gate with no observed consumer.
+    /// The symptom was reported accurately; the cause was not. See
+    /// docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md.
+    ///
+    /// The picker therefore uses the closest stock tag, "Excavatable", which live diagnostics
+    /// showed covers every material this classifier accepts. Attribute-tagging this exact set
+    /// would mean carrying a .override of every vanilla block item it names, which is a much
+    /// larger cost than the scoping buys.
     /// </summary>
     public static class SurveyMaterials
     {
