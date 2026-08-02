@@ -1,4 +1,4 @@
-﻿
+
 namespace Eco.Mods.TechTree
 {
     using System;
@@ -17,19 +17,14 @@ namespace Eco.Mods.TechTree
     using Eco.Shared.Localization;
     using Eco.Shared.Serialization;
     using Eco.Shared.Utils;
-    using Eco.Shared.SharedTypes;
     using Eco.World;
     using Eco.World.Blocks;
-    using Eco.World.Water;
     using Eco.Gameplay.Pipes;
-    using Eco.Gameplay.Pipes.LiquidComponents;
     using Eco.Core.Controller;
     using Eco.Gameplay.Items.Recipes;
-    using Eco.Shared.Graphics;
-    using Eco.World.Color;
 
     [RequiresSkill(typeof(AdvancedElectronicsSkill), 1)]
-    [Ecopedia("Blocks", "Electronics", subPageName: "Battery Item")]
+    [Ecopedia("Items", "Electronics", subPageName: "Battery Item")]
     public partial class BatteryRecipe : RecipeFamily
     {
         public BatteryRecipe()
@@ -41,12 +36,13 @@ namespace Eco.Mods.TechTree
 
                 // Defines the ingredients needed to craft this recipe. An ingredient items takes the following inputs
                 // type of the item, the amount of the item, the skill required, and the talent used.
+                // Every ingredient keeps the (Type, float, Type skill) overload: it builds a ModuleModifiedValue,
+                // which is what lets the Advanced Electronics Upgrade reduce these quantities. The (Type, float, bool)
+                // overload would build a ConstantValue no module can touch.
                 ingredients: new List<IngredientElement>
                 {
                     new IngredientElement(typeof(NitricAcidItem), 4, typeof(AdvancedElectronicsSkill)),
-                    new IngredientElement(typeof(IronConcentrateItem), 2, typeof(AdvancedElectronicsSkill)),
-                    // TODO: v14 item
-                    //new IngredientElement(typeof(SulfuricAcidItem), 2, typeof(AdvancedElectronicsSkill)),
+                    new IngredientElement(typeof(CopperConcentrateItem), 2, typeof(AdvancedElectronicsSkill)),
                     new IngredientElement(typeof(PlasticItem), 10, typeof(AdvancedElectronicsSkill)),
                 },
                 // Define our recipe output items.
@@ -72,7 +68,7 @@ namespace Eco.Mods.TechTree
             this.ModsPostInitialize();
 
             // Register our RecipeFamily instance with the crafting system so it can be crafted.
-            CraftingComponent.AddRecipe(tableType: typeof(AdvancedElectronicsAssemblyObject), recipeFamily: this);
+            CraftingComponent.AddRecipe(tableType: typeof(ElectronicsAssemblyObject), recipeFamily: this);
         }
 
         /// <summary>Hook for mods to customize RecipeFamily before initialization. You can change recipes, xp, labor, time here.</summary>
@@ -135,33 +131,36 @@ namespace Eco.Mods.TechTree
     //     partial void ModsPostInitialize();
     // }
 
-    [Serialized]
-    [Solid]
-    [RequiresSkill(typeof(AdvancedElectronicsSkill), 1)]
-    public partial class BatteryBlock :
-        PickupableBlock
-        , IRepresentsItem
-    {
-        public virtual Type RepresentedItemType { get { return typeof(BatteryItem); } }
-    }
-
+    /// <summary>
+    /// The survey drone's fuel. An inventory item with no placeable form: the mod ships an empty
+    /// BlockSetContainer, so a placed battery block would draw nothing. Modelled on vanilla's
+    /// Charcoal (AutoGen/Item/Charcoal.cs), which is a non-block fuel item of the same shape.
+    ///
+    /// Fuel(270000) is one hour of continuous drone operation at the dock's current burn rate. With a
+    /// stack of five, the dock's two fuel slots hold about ten hours of surveying. Weight is sized to
+    /// the player's 30 kg default pack rather than to the liquid-fuel barrel this file was derived
+    /// from, so a full dock load of ten batteries is a third of a pack.
+    ///
+    /// The "Electric Fuel" tag is what DroneDock's FuelSupplyComponent filters on, and no other item
+    /// carries it. Both tags are attributes rather than runtime registrations because only the
+    /// attribute form reaches the client -- see
+    /// docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md.
+    ///
+    /// No [SalvageCost]: adding one would change the derived garbage of every recipe that consumes a
+    /// battery, which is not an effect this item is meant to have.
+    /// </summary>
     [Serialized]
     [LocDisplayName("Battery")]
     [LocDescription("A portable electric energy container.")]
-    [MaxStackSize(10)]
-    [Weight(30000)]
-    [Fuel(80000)][Tag("Fuel")]
-    // TODO: Create Ecopedia page
-    //[Ecopedia("Blocks", "Electronics", createAsSubPage: true)]
-    // TODO: Create this tag
+    [MaxStackSize(5)]
+    [Weight(1000)]
+    [Fuel(270000)][Tag("Fuel")]
     [Tag("Electric Fuel")]
-    public partial class BatteryItem :
- 
-    BlockItem<BatteryBlock>
+    // TODO: Create Ecopedia page
+    //[Ecopedia("Items", "Electronics", createAsSubPage: true)]
+    public partial class BatteryItem : Item
     {
         public override LocString DisplayNamePlural { get { return Localizer.DoStr("Batteries"); } }
-
-        public override bool CanStickToWalls { get { return false; } }
     }
 
 }
