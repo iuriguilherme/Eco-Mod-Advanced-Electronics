@@ -171,14 +171,12 @@ INSTALL
                                             automatically -- players install nothing
   3. OPTIONAL, for the Advanced Electronics Upgrade module: the Robotic Assembly
      Line only accepts modules it names, and a mod cannot add itself to that list.
-     Generate a UserCode override from your own server files:
+     Install the UserCode override from a clone of this mod's source:
 
-        scripts/make-usercode-overrides.sh /path/to/Eco_Data/Server
+        scripts/deploy-usercode-overrides.sh /path/to/Eco_Data/Server
 
-     (from a clone of this mod's source). Without it everything works except
-     slotting the upgrade module into the Robotic Assembly Line. The override is
-     generated rather than shipped because it must reproduce Strange Loop Games'
-     own source file, which is not ours to redistribute.
+     Without it everything works except slotting the upgrade module into the
+     Robotic Assembly Line.
   4. If you are UPDATING, read the UPDATING section below first.
   4. Start the server. The mods listing should show "Advanced Electronics".
 

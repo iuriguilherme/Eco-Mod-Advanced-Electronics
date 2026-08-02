@@ -101,6 +101,13 @@ namespace Eco.Mods.TechTree
     [Ecopedia("Upgrade Modules", "Specialty Upgrades", createAsSubPage: true)]
     [Tag("Upgrade")]
     [Tag("SpecialtyModule")] //noloc
+    // The tag the Robotic Assembly Line's UserCode override matches on. It has to be a tag rather
+    // than this item's type: Eco compiles Mods/ source into one assembly whose references are a
+    // fixed list of engine DLLs (Eco.ModKit/RoslynCompiler.cs), never the mod DLLs, so an override
+    // naming AdvancedElectronicsUpgradeItem fails with CS0246 and takes the server down at boot.
+    // AllowPluginModules.Tags is string[], which needs no reference at all. Its own tag rather than
+    // "SpecialtyModule", so the override admits this module and not every specialty upgrade.
+    [Tag("AdvancedElectronicsUpgrade")] //noloc
     public partial class AdvancedElectronicsUpgradeItem :
         EfficiencyModule
     {
@@ -116,18 +123,17 @@ namespace Eco.Mods.TechTree
         public override float MaterialTierBump => 0f;
 
         /// <summary>
-        /// Stated outright rather than derived, which is what "modern" buys: each effect names the
-        /// action it changes and the skill it applies to. The numbers preserve what the old
-        /// multipliers bought for Advanced Electronics recipes -- a quarter off both ingredients
-        /// and craft time -- rather than copying the vanilla Electronics Upgrade's weaker figures.
-        /// Balance is a product call; these are the previous values carried across, not a new bet.
+        /// The vanilla specialty-upgrade numbers, unchanged. Industry, Composites, Advanced
+        /// Masonry, Electronics and Cutting Edge Cooking all declare exactly this pair, and
+        /// Cutting Edge Cooking is itself a tier 5 skill -- so tier does not buy a stronger
+        /// module, and there is no reason for ours to be the odd one out.
         /// </summary>
         public override IEnumerable<Bonus> Bonuses => new[]
         {
             new Bonus
             {
                 Causes  = new List<BonusCause>  { new CraftBonusCause { Action = BonusAction.ResourceCost, SkillTypes = new HashSet<Type> { typeof(AdvancedElectronicsSkill) } } },
-                Effects = new List<BonusEffect> { new BonusEffectMultiplicative { Value = 0.75f, LowerIsBetter = true } },
+                Effects = new List<BonusEffect> { new BonusEffectAdditivePercent { Percent = -0.05f, LowerIsBetter = true } },
             },
             new Bonus
             {

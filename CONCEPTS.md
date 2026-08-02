@@ -12,6 +12,29 @@ exists exactly as long as the dock that created it does. Each Survey Area owns i
 and Coverage; those belong to the area, not to the drone that gathered them and not to the dock's
 current Assignment. A dock has at most one Assignment at a time, naming one of its own areas.
 
+## Progression
+
+### The Mechanics-to-Electronics Yardstick
+The rule for how hard this mod's content should be to reach: **the jump from Industry to Advanced
+Electronics should feel like the jump from Mechanics to Electronics.** One step up a tier, not a
+wall.
+
+This is a design intent, not something the code states, and nothing enforces it — it only shows up
+in the accumulated choices about which table hosts a recipe, which skill gates it, and how much a
+recipe consumes. It is written down because those choices are made one at a time and each looks
+locally reasonable; the yardstick is what keeps them pointing the same way. Reach for it whenever
+a recipe's cost, its skill level, or its bench is being picked.
+
+Two consequences already in force:
+
+- **Tier does not buy a stronger upgrade module.** Every vanilla specialty upgrade — Industry,
+  Composites, Advanced Masonry, Electronics, and the tier 5 Cutting Edge Cooking — declares the
+  same pair of bonuses. The Advanced Electronics Upgrade matches them rather than scaling with its
+  own tier.
+- **The bench is part of the cost.** Moving the drone and dock recipes to the Robotic Assembly Line
+  raised their real cost more than any ingredient change would: that table is Industry-gated and
+  draws 6000 W. A relocation is a progression decision.
+
 ## Survey
 
 ### Survey Area
