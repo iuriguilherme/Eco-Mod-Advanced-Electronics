@@ -17,18 +17,22 @@
 #   server down at boot. AllowPluginModules.Tags is string[], which needs no reference, so the
 #   override matches the tag the module carries instead.
 #
+# WHICH OVERRIDES IT HANDLES
+#   Every *.override.cs under EcoServerMod/UserCode/, discovered rather than listed. Each one's
+#   __core__ counterpart is its own path with `.override` dropped, so adding a table needs no
+#   edit here. All of them carry the same module tag, because the mod ships one plugin module.
+#
 # Usage:
-#   scripts/deploy-usercode-overrides.sh <path-to-eco-server>            # install
+#   scripts/deploy-usercode-overrides.sh <path-to-eco-server>            # install all
 #   scripts/deploy-usercode-overrides.sh <path-to-eco-server> --refresh  # re-derive from __core__
 #
-# --refresh regenerates the tracked override from the server's current __core__ file, for after an
-# Eco update changes the vanilla table. Review the diff before committing it.
+# --refresh regenerates every tracked override from the server's current __core__ files, for
+# after an Eco update changes a vanilla table. Review the diff before committing it.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REL="AutoGen/WorldObject/RoboticAssemblyLine.override.cs"
-TRACKED="$REPO_ROOT/EcoServerMod/UserCode/$REL"
+USERCODE_ROOT="$REPO_ROOT/EcoServerMod/UserCode"
 
 MODULE_TAG="AdvancedElectronicsUpgrade"
 
@@ -41,35 +45,49 @@ SERVER="$1"
 REFRESH=0
 [ "${2:-}" = "--refresh" ] && REFRESH=1
 
-CORE="$SERVER/Mods/__core__/AutoGen/WorldObject/RoboticAssemblyLine.cs"
-DEST="$SERVER/Mods/UserCode/$REL"
-
 [ -d "$SERVER/Mods/__core__" ] || { echo "not an Eco server directory (no Mods/__core__): $SERVER" >&2; exit 1; }
+[ -d "$USERCODE_ROOT" ] || { echo "no UserCode tree to deploy: $USERCODE_ROOT" >&2; exit 1; }
 
-if [ "$REFRESH" -eq 1 ]; then
-    [ -f "$CORE" ] || { echo "core file not found: $CORE" >&2; exit 1; }
+# Relative paths, so one name drives the tracked copy, the __core__ source, and the destination.
+RELS=()
+while IFS= read -r rel; do
+    RELS+=("$rel")
+done < <(cd "$USERCODE_ROOT" && find . -type f -name '*.override.cs' | sed 's|^\./||' | sort)
 
-    grep -q "AllowPluginModules(ItemTypes = new\[\] {" "$CORE" || {
-        echo "the vanilla [AllowPluginModules] no longer has the expected shape." >&2
-        echo "read $CORE and update this script rather than writing a silently useless override." >&2
-        exit 1
-    }
+[ "${#RELS[@]}" -gt 0 ] || { echo "no *.override.cs files found under $USERCODE_ROOT" >&2; exit 1; }
 
-    sed "s/AllowPluginModules(ItemTypes = new\[\] { /AllowPluginModules(Tags = new[] { \"$MODULE_TAG\" }, ItemTypes = new[] { /" \
-        "$CORE" > "$TRACKED"
+for REL in "${RELS[@]}"; do
+    TRACKED="$USERCODE_ROOT/$REL"
+    CORE="$SERVER/Mods/__core__/${REL%.override.cs}.cs"
+    DEST="$SERVER/Mods/UserCode/$REL"
 
-    # The override replaces the whole core file, so a truncated copy would delete the table.
-    CORE_LINES=$(wc -l < "$CORE")
-    NEW_LINES=$(wc -l < "$TRACKED")
-    [ "$CORE_LINES" -eq "$NEW_LINES" ] || {
-        echo "refreshed override is $NEW_LINES lines against the core file's $CORE_LINES -- rejecting." >&2
-        exit 1
-    }
-    echo "refreshed $TRACKED from $CORE ($NEW_LINES lines); review the diff before committing."
-fi
+    if [ "$REFRESH" -eq 1 ]; then
+        [ -f "$CORE" ] || { echo "core file not found: $CORE" >&2; exit 1; }
 
-grep -q "$MODULE_TAG" "$TRACKED" || { echo "tracked override does not carry the $MODULE_TAG tag: $TRACKED" >&2; exit 1; }
+        grep -q "AllowPluginModules(ItemTypes = new\[\] {" "$CORE" || {
+            echo "the vanilla [AllowPluginModules] in $CORE no longer has the expected shape." >&2
+            echo "read it and update this script rather than writing a silently useless override." >&2
+            exit 1
+        }
 
-mkdir -p "$(dirname "$DEST")"
-cp "$TRACKED" "$DEST"
-echo "installed $DEST"
+        sed "s/AllowPluginModules(ItemTypes = new\[\] { /AllowPluginModules(Tags = new[] { \"$MODULE_TAG\" }, ItemTypes = new[] { /" \
+            "$CORE" > "$TRACKED"
+
+        # The override replaces the whole core file, so a truncated copy would delete the table.
+        CORE_LINES=$(wc -l < "$CORE")
+        NEW_LINES=$(wc -l < "$TRACKED")
+        [ "$CORE_LINES" -eq "$NEW_LINES" ] || {
+            echo "refreshed $REL is $NEW_LINES lines against the core file's $CORE_LINES -- rejecting." >&2
+            exit 1
+        }
+        echo "refreshed $TRACKED from $CORE ($NEW_LINES lines); review the diff before committing."
+    fi
+
+    grep -q "$MODULE_TAG" "$TRACKED" || { echo "tracked override does not carry the $MODULE_TAG tag: $TRACKED" >&2; exit 1; }
+
+    mkdir -p "$(dirname "$DEST")"
+    cp "$TRACKED" "$DEST"
+    echo "installed $DEST"
+done
+
+echo "${#RELS[@]} override(s) deployed to $SERVER"
