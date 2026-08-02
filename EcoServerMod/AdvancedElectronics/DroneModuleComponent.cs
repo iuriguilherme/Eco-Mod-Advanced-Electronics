@@ -53,11 +53,24 @@ namespace Eco.Mods.TechTree
     /// produces a dock with no fuel tab, which reads as a rendering bug rather than an
     /// initialization failure. Install and uninstall therefore log at info level.
     /// </summary>
-    [Serialized]
-    [CreateComponentTabLoc("Modules"), HasIcon("ModulesComponent")]
-    [LocDescription("View and set the drone docked here.")]
-    public class DroneModuleComponent : WorldObjectComponent, IInventoryWorldObjectComponent, IDeclaresMayHaveComponents
+    // The tab name is NOT "Modules". The client picks a tab's view by its NAME, and "Modules" is
+    // already bound to the vehicle one -- declaring it rendered "Vehicle Segments / Accepts ???"
+    // and "Vehicle Attachments / Accepts Plough, SeedThing, Combine" on the dock, with no slot for
+    // the drone, because that view reads ModularVehicleComponent and the dock has none.
+    //
+    // Nor can a mod component autogen an inventory view: autogen renders scalar members, and this
+    // mod already established that list-shaped members do not render from a mod component. The only
+    // inventories that draw are the ones the client already knows how to draw -- storage. Hence
+    // deriving StorageComponent rather than holding a bare inventory: FuelSupplyComponent does
+    // exactly this and renders its slots under a "Power" tab, which is the proof that a
+    // StorageComponent subclass draws under whatever tab name it declares.
+    [Serialized, CreateComponentTabLoc("Drone Bay"), HasIcon]
+    [LocDescription("The drone docked here.")]
+    public class DroneModuleComponent : StorageComponent, IDeclaresMayHaveComponents
     {
+        /// <summary>One slot: a dock holds one drone.</summary>
+        private const int SlotCount = 1;
+
         /// <summary>
         /// The dock's module bay: one slot, drones only.
         ///
@@ -73,7 +86,7 @@ namespace Eco.Mods.TechTree
         /// </summary>
         [Serialized, SyncToView] public AuthorizationInventory Slot { get; set; }
 
-        public Inventory Inventory => this.Slot;
+        public override Inventory Inventory => this.Slot;
 
         // The source whose components are currently attached to the dock. Not serialized: it is
         // re-derived from the storage slot on the first tick after load, and the components
@@ -120,15 +133,17 @@ namespace Eco.Mods.TechTree
         private IWorldObjectComponentSource SlottedSource => this.SlottedItem as IWorldObjectComponentSource;
 
         /// <summary>
-        /// Builds the module bay. Called from DroneDockObject.Initialize, mirroring how
-        /// ModularVehicleComponent.Initialize is driven from its vehicle.
+        /// Builds the bay here rather than from the dock: StorageComponent.PostInitialize sets the
+        /// inventory's owner, so the inventory has to exist by then, and a component's own
+        /// Initialize is the only place guaranteed to run first.
         /// </summary>
-        public void Initialize(int slots, Action<User> onSlotChanged)
+        public override void Initialize()
         {
-            this.Slot ??= new AuthorizationInventory(slots,
+            base.Initialize();
+
+            this.Slot ??= new AuthorizationInventory(SlotCount,
                 AuthorizationInventory.AuthorizationFlags.AuthedMayAdd
                 | AuthorizationInventory.AuthorizationFlags.AuthedMayRemove);
-            this.Slot.SetOwner(this.Parent);
 
             this.Slot.AddInvRestriction(new SpecificItemTypesRestriction(new[] { typeof(SurveyDroneItem) }));
             this.Slot.AddInvRestriction(new StackLimitRestriction(1));
@@ -145,16 +160,9 @@ namespace Eco.Mods.TechTree
             this.Slot.AddInvRestriction(new DroneDockedRestriction(this.Parent));
 
             this.Slot.OnChanged.Add(this.OnSlotChanged);
-            if (onSlotChanged != null) this.Slot.OnChanged.Add(onSlotChanged);
 
             // Placement and world load both land here with a slot that may already hold a drone.
             this.syncPending = true;
-        }
-
-        public override void Destroy()
-        {
-            this.Slot?.Destroy();
-            base.Destroy();
         }
 
         private void OnSlotChanged(User user)

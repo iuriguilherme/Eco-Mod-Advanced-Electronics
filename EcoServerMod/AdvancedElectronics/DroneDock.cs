@@ -101,10 +101,6 @@ namespace Eco.Mods.TechTree
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
-        // One module bay slot, drone item only. The restrictions that enforce that live with the
-        // bay in DroneModuleComponent.Initialize, mirroring ModularVehicleComponent.
-        private const int DockSlotCount = 1;
-
         public override LocString DisplayName => Localizer.DoStr("Drone Dock");
 
         /// <summary>
@@ -378,7 +374,9 @@ namespace Eco.Mods.TechTree
             // initialization order is not guaranteed. Both this handler and the driver's own
             // subscribe to the same event without an ordering hazard, because the case they would
             // have raced on -- removal while the drone is out -- is refused outright (R19).
-            this.GetComponent<DroneModuleComponent>().Initialize(DockSlotCount, this.OnModuleSlotChanged);
+            // The bay builds itself in its own Initialize (it has to, for StorageComponent's owner
+            // wiring); base.Initialize() above has already run it, so the inventory exists here.
+            this.GetComponent<DroneModuleComponent>().Slot.OnChanged.Add(this.OnModuleSlotChanged);
             this.ModsPostInitialize();
             {
                 this.GetComponent<PartsComponent>().Config(() => LocString.Empty, new PartInfo[]
