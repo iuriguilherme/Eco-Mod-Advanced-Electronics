@@ -1,144 +1,137 @@
 ---
-title: "AllowPluginModules does not gate module admission — find the consumer before vendoring a table"
+title: "Source shows what the code does, not what it is meant to do — the 0.14 module-admission gap"
 date: 2026-08-02
+last_updated: 2026-08-02
 category: conventions
 module: EcoServerMod
 problem_type: convention
 component: plugin_modules
 severity: high
 applies_when:
+  - "Deciding whether a workaround for a vanilla limitation can be removed"
   - "Making a vanilla crafting table accept a mod's upgrade module"
-  - "Considering a UserCode override of an AutoGen WorldObject file"
-  - "Reading an attribute name as evidence of what it controls"
-  - "Re-deriving an existing override on an Eco update"
-tags: [eco-modding, plugin-modules, allowpluginmodules, usercode-override, attributes, verification, maintenance-cost]
+  - "A source read shows a restriction is gone and a workaround looks redundant"
+  - "Weighing a maintenance cost against behavior observed in the current build"
+tags: [eco-modding, plugin-modules, allowpluginmodules, usercode-override, upstream-intent, transient-behavior, verification]
 related_components: [EcoServerMod/AdvancedElectronics, EcoServerMod/UserCode]
 ---
 
-# AllowPluginModules does not gate module admission — find the consumer before vendoring a table
+# Source shows what the code does, not what it is meant to do — the 0.14 module-admission gap
 
 Paths beginning `Server/` and `Mods/__core__/` below are Eco's own trees — the engine source
 checkout and the dedicated server's shipped core mod — not files in this repository.
 
 ## Context
 
-Every vanilla crafting table declares which modules it accepts, and the declaration reads like a
-gate:
+This mod ships a UserCode override of a vanilla crafting table so the table's
+`[AllowPluginModules]` names the mod's upgrade module. That override is a real cost: a byte-complete
+copy of upstream source, re-derived on every Eco update, plus a script to install it.
 
-```csharp
-[AllowPluginModules(ItemTypes = new[] { typeof(ElectronicsUpgradeItem), typeof(IndustryUpgradeItem),
-                                        typeof(BasicUpgradeItem), typeof(AdvancedUpgradeItem),
-                                        typeof(ModernUpgradeItem) })] //noloc
-public partial class ElectronicsAssemblyItem : WorldObjectItem<ElectronicsAssemblyObject>
-```
+A source read appeared to show the cost bought nothing. In Eco 0.14 as it currently stands, the
+attribute's `Tags` and `ItemTypes` feed exactly one consumer — an item tooltip — and slot admission
+is decided elsewhere, by the module's own tag. That reading is correct and reproducible.
 
-A mod's own upgrade module is not in that list. The obvious conclusion — and the one this repo
-acted on — is that the table will refuse it, so the table must be overridden. That conclusion
-produced a vendored whole-file copy of upstream source under `EcoServerMod/UserCode/`, a deploy
-script to install it, an install step in the release notes, and a re-derivation obligation on every
-Eco update.
+**It is also a description of a bug.** Strange Loop Games considers the permissiveness undesired;
+it is reported and slated to be fixed before launch. The per-station gate is coming back.
 
-Nobody ever tested a module against an unmodified table. The attribute's *name* was the evidence.
+So the override is not redundant. It is a workaround that currently appears redundant because the
+thing it works around is temporarily broken.
 
 ## Guidance
 
-**Grep for the attribute's consumers before treating it as a gate.** In Eco 0.14 the attribute is
-read in exactly three places, and each reads a different property for a different purpose:
+**Keep the override.** A mod that removes it on the strength of current behavior breaks when the fix
+lands — silently, at someone else's server, after release.
+
+**The mechanism finding is still true, and still worth knowing** — it is what makes the current
+behavior explicable rather than mysterious. In 0.14 today:
 
 | Read | Where | What it does |
 |---|---|---|
 | `.Slots` | `Server/Eco.Gameplay/Modules/ModuleSlotRegistry.cs:83` | picks the table's slot set; `null` falls back to the four core slots |
-| `Has<AllowPluginModulesAttribute>` | `Server/Eco.Gameplay/Modules/PluginModule.cs:109` | builds each module's "Plugs Into" tooltip — presence only, never the contents |
+| `Has<AllowPluginModulesAttribute>` | `Server/Eco.Gameplay/Modules/PluginModule.cs:109` | builds each module's "Plugs Into" tooltip — presence only |
 | `.GetStackables()` | `Server/Eco.Gameplay/Systems/NewTooltip/TooltipLibraryFiles/ItemTooltipLibrary.cs:494` | renders the table's accepted-modules tooltip |
 
-`.Tags` and `.ItemTypes` feed `GetStackables()` and nothing else. The single consumer is a tooltip.
-
-**Admission is decided by the slot, matching the module's own tags**
-(`Server/Eco.Gameplay/Items/InventoryRelated/InventoryRestrictions.cs:495`):
+Each slot is wired with three restrictions and none consults the table's allowed list
+(`Server/Eco.Gameplay/Items/PluginModulesInventory.cs:69-74`):
 
 ```csharp
-public override int MaxAccepted(Item item) =>
-    item != null && item.Tags().Any(t => t.Name == this.SlotTagName) ? -1 : 0;
+void WireSlot(AuthorizationInventory leaf, string slotTagName)
+{
+    leaf.RemoveAllRestrictions(r => r is ModuleSlotRestriction or StackLimitRestriction or PermanentModuleRestriction);
+    leaf.AddInvRestriction(new StackLimitRestriction(1, staticLimit: true));
+    leaf.AddInvRestriction(new ModuleSlotRestriction(slotTagName));   // matches the ITEM's tag
+    leaf.AddInvRestriction(new PermanentModuleRestriction());
+}
 ```
 
-So a module carrying `[Tag("SpecialtyModule")]` is admitted by any table exposing a Specialty slot —
-which is every vanilla table, because none of them declare `.Slots` and the fallback includes it.
-`PluginModulesComponent` states the change outright: the legacy per-station restriction is gone,
-and every craft station accepts every module of the right slot type.
+The mechanism that implements per-station gating, `StackableRestriction`, still exists as a class
+but is never instantiated anywhere in the tree. `PluginModulesComponent.cs:398-399` calls it "the
+legacy per-station StackableRestriction" and says every craft station now accepts every module of
+the right slot type. That comment reads as a settled design change. It is describing the state the
+bug report is against.
 
-**The mechanism above is verified from source, and partly observed in game.** A mod upgrade module
-was slotted into the Robotic Assembly Line during live testing and landed in the **Specialty**
-slot — which is `ModuleSlotRestriction` matching the module's own `SpecialtyModule` tag, since
-`AllowPluginModules.Tags` has no path to slot routing at all. So slot-based admission is confirmed
-operating, not merely inferred.
-
-**What is still unverified is the conclusion, not the mechanism.** That test ran with the table's
-override already deployed, so it is not an A/B: nobody has slotted a mod module into a table with
-no override in place. Treat "the override is unnecessary" as strongly indicated and cheap to
-confirm — one placement on a stock table settles it — rather than as established.
+**Treat "the restriction is gone" as a question, not an answer.** A removed guard has two possible
+explanations that look identical in source: deliberate simplification, or a regression nobody has
+fixed yet. The tree cannot distinguish them. Ask the maintainer, check the issue tracker, or read
+release notes before hardening a decision on the gap.
 
 ## Why This Matters
 
-The wrong belief is expensive in a way that compounds quietly. Each table you "need" to override
-costs a byte-complete copy of upstream source that must be re-derived on every Eco update, plus
-whatever install plumbing carries it to a server. That cost lands on every future maintainer, and
-it lands *per table* — the pattern scales with content, not with the mistake.
+The failure this prevents is a workaround deleted for good reasons that stop being good.
 
-It is also self-concealing. A vendored override works: the module slots, the tooltip lists it,
-everything looks correct. Nothing ever fails, so nothing prompts anyone to ask whether the override
-was load-bearing. The only way the question comes up is by reading the engine.
+The evidence for removal was strong by every standard available inside the repository: three
+consumers found by grep, a wiring function read in full, an unused restriction class, and an
+upstream comment stating the change in upstream's own words. Two independently dispatched reviewers
+reached the same conclusion from the same source. Nothing in that chain was wrong, and the
+conclusion still did not follow.
 
-And the belief propagates into writing. Before this was checked, three separate places in this repo
-asserted it as fact — a solutions doc's opening premise, a deploy script's header comment, and a
-class comment on the module itself. Each one was written in good faith by someone who had read the
-previous one.
+What none of it could see is that the behavior is unintended and scheduled for removal. Intent lives
+in a bug tracker, a roadmap, and a maintainer's head — never in the tree. A source read answers
+"what does this do today," and quietly presents itself as an answer to "what can I rely on."
+
+The asymmetry decides the call. Keeping an unnecessary override costs a re-derivation per Eco
+update. Removing a necessary one costs a broken mod on every server after a patch nobody in this
+repo controls, discovered by players rather than by a test.
 
 ## When to Apply
 
-- Before writing any UserCode override to make a vanilla object accept mod content. Find the
-  consumer of the field you think is blocking you.
-- When an attribute's name states a policy. `AllowX` reads as enforcement; here it is presentation.
-  The name is a claim about intent, not about behavior — behavior is whatever reads the field.
-- When re-deriving an existing override on an Eco update, before paying that cost again.
-- When a comment in this repo says a table "needs" an override to accept a module. That claim is
-  the one this doc corrects.
+- Before deleting any workaround because current behavior makes it look redundant — especially a
+  workaround for a limitation in someone else's code.
+- When a source read contradicts a maintainer's expectation. The maintainer may know about a fix in
+  flight; the tree never does.
+- When a comment in upstream source describes a removal as intentional. It documents what changed,
+  not whether the change survives.
+- When weighing a recurring maintenance cost against a one-time correctness risk on a dependency
+  you do not control. The recurring cost is visible and bounded; the risk is neither.
 
 ## Examples
 
-The check that settles it, and the shape of a trustworthy answer:
+The check that produced the wrong conclusion — sound method, incomplete inputs:
 
 ```bash
-# 1. Who reads the property you believe is a gate?
+# Who reads the property that looks like a gate?
 grep -rn "GetStackables()" Server/ --include=*.cs
-#    -> the definition, plus ItemTooltipLibrary.cs:494. One consumer. A tooltip.
+#   -> the definition, plus ItemTooltipLibrary.cs:494. One consumer. A tooltip.
 
-# 2. Who reads the attribute at all?
-grep -rn "AllowPluginModulesAttribute" Server/ --include=*.cs
-#    -> three sites, three different properties, three different purposes.
-
-# 3. What actually decides admission, then?
-grep -rn "class ModuleSlotRestriction" -A 10 Server/ --include=*.cs
-#    -> MaxAccepted matches the ITEM's tags against the SLOT's tag name.
+# Is the per-station restriction still applied anywhere?
+grep -rn "new StackableRestriction" Server/ --include=*.cs
+#   -> no output. The class exists; nothing instantiates it.
 ```
 
-Two consumers reading two properties of one attribute is what makes the name misleading. The
-property that sounds like the gate (`ItemTypes`) is display; the property that shapes real behavior
-(`Slots`) is unrelated to the module list and usually null.
+Both results are accurate. Neither can tell you the state is a defect.
 
-The corollary worth carrying: a module already advertises itself from its own side.
-`PluginModule.Initialize` maps every module to every station carrying the attribute, so the
-module's "Plugs Into" tooltip names the table regardless. An override adds a second listing from
-the table side, not the only one.
+The question that resolves it costs one message: *"is this deliberate, or a bug you know about?"*
+Here the answer was that it is reported and will be fixed before launch, which turned a
+recommended deletion into a recommended keep.
 
 ## Related
 
-- `docs/solutions/conventions/usercode-cannot-name-a-mod-dll-type.md` — opens on the premise this
-  doc corrects. Its actual lesson, about the UserCode compile boundary, still holds: an override
-  cannot name a mod DLL type, which is why the tag form exists. Only its framing of *why* an
-  override is needed is wrong.
-- `docs/solutions/conventions/auditing-content-derived-from-autogen-templates.md` — the same
-  reflex applied to generated content: a field is present because the generator emits it, not
-  because it carries information for your case.
+- `docs/solutions/conventions/usercode-cannot-name-a-mod-dll-type.md` — the override this doc is
+  about, and why it matches on a tag rather than naming the module's type. Its compile-boundary
+  lesson is independent of any of this and holds regardless.
+- `docs/solutions/workflow-issues/the-compile-target-decides-what-exists.md` — the adjacent trap:
+  there, reading the wrong version of a dependency; here, reading the right version at the wrong
+  moment in its life.
 - `docs/solutions/conventions/a-talent-that-does-not-inherit-unlocks-nothing.md` — from the same
-  session, the mirror image: there a declaration reads as sufficient and is skipped by its
-  consumer; here a declaration reads as load-bearing and is only rendered.
+  session, the inverse: there the source told the whole truth and the intuitive reading was wrong;
+  here the source read was right and still produced the wrong decision.

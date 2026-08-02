@@ -16,7 +16,7 @@ execution: code
 - **Objective:** Give the survey drone its own fuel. The mod ships a craftable Battery, the drone stops burning liquid fuel and burns batteries instead, and the Electronics Assembly — where both Battery recipes are made — lists the Advanced Electronics Upgrade among the modules it accepts.
 - **Product authority:** This plan owns the Battery item, the Electric Fuel tag, the talent that unlocks the metal-saving recipe, the Electronics Assembly override, the release plumbing that override needs, and the correction of comments and learnings this plan's findings falsify. It does not own the drone's burn rate, the dock's fuel slot count, or any Unity asset work.
 - **Execution profile:** Live-verified, not unit-tested. Items, recipes, tags, and talents all need the Eco engine, which `EcoServerMod/AdvancedElectronics.Navigation.Tests` cannot reference. Each unit's test scenarios are live-server checks, and they are written to be run in one server session rather than one restart per unit.
-- **Stop conditions:** Stop and ask if the module refuses to slot into a stock Electronics Assembly (U4's premise fails), or if the talent group does not appear for a character already past Advanced Electronics 3 (U3's retroactivity assumption fails).
+- **Stop conditions:** Stop and ask if the talent group does not appear for a character already past Advanced Electronics 3 (U3's retroactivity assumption fails).
 - **Tail ownership:** `ce-work` owns build, live verification, and commits. Packaging a release is out of scope for this plan beyond editing the release text in U7.
 
 ---
@@ -53,7 +53,7 @@ A Battery item already exists in `EcoServerMod/AdvancedElectronics/Battery.cs.de
 
 - **Learning the talent costs one star.** (session-settled: user-directed — chosen over overriding `StarCost` to 0: every vanilla talent costs a star, and the same pool buys specialties.) Governs R18.
 
-- **The Electronics Assembly gets a UserCode override even though slot admission does not need one.** (session-settled: user-directed — chosen over dropping the override or verifying live first: the user reaffirmed it after the finding was surfaced.) Governs R14, R15. Module admission is by slot tag against the item's own tags, which the module already satisfies; the override's effect is that the module appears in the table's accepted-modules tooltip. The cost is a second verbatim copy of upstream source to re-derive on every Eco update.
+- **The Electronics Assembly gets a UserCode override.** (session-settled: user-directed — reaffirmed after a source read appeared to show it was unnecessary.) Governs R14, R15. In Eco 0.14 as it currently ships, a module slots on its own tag and the table's list gates nothing — but that permissiveness is a reported upstream bug slated for fix before launch, so the per-station gate returns and the override is what keeps the module admissible. The cost is a second verbatim copy of upstream source to re-derive on every Eco update, and it buys correctness across that fix rather than a tooltip line.
 
 - **No code migrates fuel left in a dock across the update.** (session-settled: user-approved — chosen over moving or refunding it: the mod is alpha and the engine handles the case gracefully on its own.) Governs R16. A tag restriction filters what may be *added* to a tank, not what may be burned from it, so a dock carries on burning its leftover biodiesel until it is spent.
 
@@ -147,7 +147,7 @@ A Battery item already exists in `EcoServerMod/AdvancedElectronics/Battery.cs.de
 - No change to the drone's burn rate, the dock's fuel slot count, or its serviceability and recall behaviour.
 - No Ecopedia pages for the Battery. U1 corrects the category the recipe points at; creating the page itself stays out.
 - No second talent to pair with the sulfuric unlock. Vanilla skills offer two talents per level; this one offers one, and that is accepted for now.
-- Comment and learning corrections are limited to the six files U6 names. No broader `docs/solutions/` sweep.
+- Comment and learning corrections are limited to the three files U6 names. No broader `docs/solutions/` sweep.
 - `EcoServerMod/AdvancedElectronics/HarvestDrone.cs` is out of scope. It is an untracked test copy of the survey drone used to exercise the new drone assets, and it keeps its own `"Liquid Fuel"` list.
 
 #### Deferred to Follow-Up Work
@@ -162,7 +162,7 @@ A Battery item already exists in `EcoServerMod/AdvancedElectronics/Battery.cs.de
 
 ### Product Contract preservation
 
-Changed: R6 narrowed to "a dock fitted with the survey drone" (the fuel tag lives on the drone item, and the out-of-scope harvest drone carries its own); R11 and R16 corrected against engine behaviour; R14 and R15 reframed from granting access to producing a tooltip listing; R17, R18, R19 added — R17 user-directed during planning, R18 and R19 forced by engine findings. R19 is split out of R11's original wording and R11 keeps the core intent.
+Changed: R6 narrowed to "a dock fitted with the survey drone" (the fuel tag lives on the drone item, and the out-of-scope harvest drone carries its own); R11 and R16 corrected against engine behaviour; R14 and R15 restated so the override's purpose survives the pending upstream fix rather than describing today's build; R17, R18, R19 added — R17 user-directed during planning, R18 and R19 forced by engine findings. R19 is split out of R11's original wording and R11 keeps the core intent.
 
 ### Key Technical Decisions
 
@@ -172,7 +172,7 @@ Changed: R6 narrowed to "a dock fitted with the survey drone" (the fuel tag live
 
 - KTD3. **Model the talent on Etching Techniques: three types plus one recipe flag.** A base `Talent` subclass carrying the unlock `Bonus`, a `TalentGroup` binding skill and level, and a skill-bound subclass **of that base talent** naming the group. The inheritance is load-bearing: `BonusManager.FindUnlockingTalents` skips `Base == true`, so a skill-bound type deriving straight from `Talent` would be learnable and unlock nothing. `RequiresTalentUnlock = true` on the recipe hides nothing by itself — it gates labor contribution; the talent's `Recipes` set is what ungates it. Governs R11, R19. Vanilla splits the bonus half into a hand-written partial; this mod is one assembly, so both halves live in one file.
 
-- KTD4. **Write the Electronics Assembly override even though slot admission does not need it.** (session-settled: user-directed — chosen over dropping it or gating it on a live check: the user reaffirmed after the finding was surfaced.) Governs R14, R15. `AllowPluginModulesAttribute.Tags` and `.ItemTypes` reach one consumer in the engine, an item tooltip; slot admission matches the item's own tags. The module already advertises the table from its side — `PluginModule.Initialize` maps every module to every station carrying the attribute, so its "Plugs Into" tooltip names the Electronics Assembly today. The override adds a second listing from the table side rather than the only one. The override therefore buys the tooltip listing. Its cost is not only the per-Eco-update re-derivation of upstream source: it also pulls in the vendored whole-file override (U4), the deploy script's generalization (U5, which exists for no other reason), the install-text extension in U7, and the override-integrity gate. Whoever re-derives it next should know that is the whole trade for a tooltip listing.
+- KTD4. **Write the Electronics Assembly override.** (session-settled: user-directed — reaffirmed after a source read appeared to show it was unnecessary.) Governs R14, R15. In 0.14 today `AllowPluginModulesAttribute.Tags` and `.ItemTypes` reach one consumer, an item tooltip, and slot admission matches the item's own tags — so the override looks redundant on a source read. It is not: that permissiveness is a reported upstream bug slated for fix before launch, after which the table's list gates admission again and a mod without an override stops being slottable. The override is what carries the module across that fix. Its cost is the vendored whole-file copy (U4), the deploy script's generalization (U5), the install-text extension in U7, the override-integrity gate, and a re-derivation per Eco update. See `docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md` before concluding from source alone that any of it can be dropped.
 
 - KTD5. **Generalize `scripts/deploy-usercode-overrides.sh` to a list before adding the second override.** It hardcodes one path today, so a second tracked override would never install and the failure would be silent. Follows from KTD4; without it R15 cannot hold.
 
@@ -210,7 +210,7 @@ flowchart TB
 
 ### Risks & Dependencies
 
-- **U4's premise is unverified.** The module is expected to slot into a stock Electronics Assembly with or without the override. If it refuses, the override is doing more than the tooltip and KTD4's framing is wrong — stop and re-plan rather than assuming.
+- **The module-admission gap is transient.** On the current build a module slots with or without an override; upstream has this reported and intends to restore per-station gating before launch. Plan for the gate, not the gap — and do not let a passing live check on today's build become an argument for dropping the override.
 - **Talent retroactivity is assumed, not proven.** A character already past Advanced Electronics 3 should see the new group offered. Nothing in the engine's learn path checks current level, so this depends on the skill page listing groups at or below the player's level. AE3's live check covers it.
 - **Adding `[SalvageCost]` to `BatteryItem` would change every recipe that consumes it.** The deferred file declares none; leave it that way unless the effect on downstream garbage is intended.
 - **A truncated override deletes the table it overrides.** The whole-file copy is load-bearing, and `deploy-usercode-overrides.sh` guards it with a line-count check. U5 must keep that guard when it generalizes the script.
@@ -236,7 +236,7 @@ Eco 0.14 engine and vanilla content (outside this repo, under the Eco source che
 - `Server/Eco.Gameplay/Components/Storage/FuelSupplyComponent.cs` — `Initialize` builds the tag restriction; `LoadFuel` burns the first non-empty stack with no tag check.
 - `Server/Eco.Gameplay/Items/InventoryRelated/InventoryRestrictions.cs` — `FuelRestriction` reads the `[Fuel]` attribute; `ModuleSlotRestriction` matches the item's own tags; `PermanentModuleRestriction` makes a slotted module unremovable.
 - `Server/Eco.Gameplay/Items/Recipes/IngredientElement.cs` — the two constructor families behind KTD2.
-- `Server/Eco.Gameplay/Modules/AllowPluginModulesAttribute.cs` and `Server/Eco.Gameplay/Systems/NewTooltip/TooltipLibraryFiles/ItemTooltipLibrary.cs` — the attribute and its single consumer.
+- `Server/Eco.Gameplay/Modules/AllowPluginModulesAttribute.cs`, `Server/Eco.Gameplay/Items/PluginModulesInventory.cs`, and `Server/Eco.Gameplay/Systems/NewTooltip/TooltipLibraryFiles/ItemTooltipLibrary.cs` — the attribute, the slot wiring that currently ignores it, and its single present-day consumer. The gap between them is the reported upstream bug.
 - `Server/Eco.Gameplay/Skills/Talent.cs` — `TalentGroup.StarCost` defaults to 1 and is virtual.
 - `Server/Eco.Gameplay/Items/WorkOrder.Labor.cs` — the only functional consumer of `RequiresTalentUnlock`.
 - `Mods/__core__/AutoGen/Item/Charcoal.cs` — a vanilla non-block fuel item, the template for the Battery.
@@ -342,30 +342,22 @@ Eco 0.14 engine and vanilla content (outside this repo, under the Eco source che
 
 - **Goal:** No comment or learning left in the tree argues for the behaviour this plan removes.
 - **Requirements:** none directly — this protects R6 and R14 from being undone by a future reader.
-- **Dependencies:** U1, U2 — and U4 for steps 4 to 6 only, which rest on a premise U4's live check could disprove.
+- **Dependencies:** U1, U2.
 - **Files:**
   - `EcoServerMod/AdvancedElectronics/SurveyDrone.cs`
   - `EcoServerMod/AdvancedElectronics/SurveyMaterials.cs`
-  - `EcoServerMod/AdvancedElectronics/AdvancedElectronicsUpgrade.cs`
   - `scripts/validate-name-match.sh`
-  - `scripts/deploy-usercode-overrides.sh`
-  - `docs/solutions/conventions/usercode-cannot-name-a-mod-dll-type.md`
 - **Approach:**
   1. `SurveyDrone.cs:80-83` argues for liquid fuel on the grounds that the battery is deferred. Replace it with what the tag is now and why.
   2. `SurveyMaterials.cs:15-20` attributes an empty material picker to mod tags never reaching the client. That attribution was retracted on 2026-08-01 — an attribute-form tag does reach the client — and believing it would rule out the route the Battery depends on. Correct the attribution; the observed symptom was real.
   3. `scripts/validate-name-match.sh` justifies excluding `PickupableBlock` on the grounds that the battery's placed block is deferred. The block is gone; restate the exclusion on its own terms.
-  4. `docs/solutions/conventions/usercode-cannot-name-a-mod-dll-type.md` opens on the premise that a table only accepts modules its own `[AllowPluginModules]` names. That is not true in 0.14. Correct the premise without weakening the doc's actual lesson, which is about the UserCode compile boundary and still holds.
-  5. `scripts/deploy-usercode-overrides.sh`'s header comment makes the same claim about why an override exists. Correct it to say admission is by the module's own slot tag and the override buys the table's accepted-modules tooltip listing.
-  6. `EcoServerMod/AdvancedElectronics/AdvancedElectronicsUpgrade.cs:36-39` says accepting the module "needs a UserCode override of that AutoGen file". Correct it the same way.
-
-  Steps 4 to 6 are contingent on U4's live check: if the module refuses to slot into a stock Electronics Assembly, the original premise stands and none of these three corrections may land. Steps 1 to 3 are unblocked.
+  Steps 4 to 6 below were dropped after the module-admission gap turned out to be a reported upstream bug rather than a design change. `scripts/deploy-usercode-overrides.sh`'s header and `EcoServerMod/AdvancedElectronics/AdvancedElectronicsUpgrade.cs:36-39` describe why the override exists, and that reason holds once upstream restores per-station gating. Leave both as written. `docs/solutions/conventions/usercode-cannot-name-a-mod-dll-type.md` already carries a caveat naming the current gap, added outside this plan.
 - **Execution note:** These are corrections to arguments, not deletions. Each replaced comment should say what changed, or the next reader restores the old behaviour on the comment's authority.
 - **Test scenarios:**
   - A grep for `Liquid Fuel` across `EcoServerMod/AdvancedElectronics/` returns only `HarvestDrone.cs`, which is out of scope.
-  - No file in the tree still claims a table accepts only the modules its `[AllowPluginModules]` names.
   - No remaining comment in the tree claims a mod-registered tag cannot reach the client without distinguishing attribute form from runtime registration.
   - `docs/solutions/` frontmatter validation still passes on the edited doc.
-- **Verification:** Each of the six files states the current behaviour, and none argues for the removed one.
+- **Verification:** Each of the three files states the current behaviour, and none argues for the removed one.
 
 ### U7. Update the release text
 
@@ -425,5 +417,5 @@ The name-match gate currently reports `FAIL` on `HarvestDroneObject`, which is u
 | U3 | Both recipes exist; the sulfuric one is listed but unworkable until a one-star talent is learned at level 3 |
 | U4 | The server boots and the Electronics Assembly's tooltip names the module |
 | U5 | Both overrides install from one script run, with the line-count guard intact |
-| U6 | All six files state current behaviour |
+| U6 | All three files state current behaviour |
 | U7 | The release text describes the fuel change and requires no pre-update action for fuel |

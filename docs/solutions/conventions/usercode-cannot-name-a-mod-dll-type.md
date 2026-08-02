@@ -26,11 +26,13 @@ assembly cannot add to that attribute — attributes merge across partial declar
 single assembly. Eco's escape hatch is a whole-file override: a file under `Mods/UserCode/` whose
 path matches a `__core__` file, with `.override` before the extension, replaces it.
 
-**That attribute does not actually gate admission** — see
-`docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md`, which corrects the belief
-this doc was originally written under. The override buys the table's accepted-modules tooltip
-listing, not the ability to slot. What follows still holds regardless: any UserCode file that names
-a mod type fails the same way, whatever the file is for.
+**A caveat on the current build, not on this guidance.** In Eco 0.14 as it currently ships, that
+attribute does not in fact gate admission — a module slots on its own tag, so the override appears
+redundant. That permissiveness is a reported bug and is slated to be fixed before launch, so the
+gate is coming back and the override stays. See
+`docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md` for why a source read alone
+gets this wrong. Everything below is unaffected either way: any UserCode file that names a mod type
+fails the same way, whatever the file is for.
 
 The obvious override named the module by type, exactly as vanilla does:
 
@@ -83,10 +85,11 @@ is the pattern to copy.
 
 **Do not reach for a runtime append.** An earlier version of this doc recommended mutating the
 cached attribute at startup — `ItemAttribute.Get<T>` does return the cached instance rather than a
-copy, and `ItemTypes` does have a public setter, so the mechanism works. It buys nothing. The
-properties it would append to are read by one consumer, an item tooltip; there is no later gate in
-`PluginModulesComponent` or `ModuleSlotRegistry` for the append to reach. A runtime append and a
-whole-file override produce the same tooltip line at different costs.
+copy, and `ItemTypes` does have a public setter, so the mechanism works. Prefer the override
+anyway. A runtime append depends on the mod's `Initialize` landing between the attribute cache
+being built and the gate reading it, and that ordering is exactly what the pending upstream fix
+will move. The override needs no ordering assumption: it is the table's own declaration, whenever
+anything reads it.
 
 ## Why This Matters
 
