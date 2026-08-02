@@ -140,11 +140,25 @@ live on it. Picking the dock up therefore discards them.
 
 It is also the mod's only component host: fuel and cargo live on the dock, not the drone, because a
 dock is an ordinary placed object with an item behind it and a drone is not. The player is told these
-are the drone's stats.
+are the drone's stats. The drone is a [[Module]] of the dock, and the dock has only the capabilities
+its current drone lends it.
 
 Condition splits in two, and the halves behave differently. The dock's own parts degrade with use and
 stay with the dock. A drone's condition rides the drone item itself, so it travels when the drone is
 moved to another dock — a worn drone stays worn, and the dock it left keeps its own wear.
+
+### Module
+An item that, while slotted into a host object, lends that host a set of components it would not
+otherwise have — and takes them away again when removed.
+
+The host owns none of it. What the host can do depends entirely on what is slotted into it, so two
+otherwise identical hosts differ by their module. Component state survives the move: a module pulled
+from one host and put into another carries its contents and condition with it, rather than being
+reset.
+
+A module is the mod's answer to a host that cannot itself be the thing players interact with. It
+lets the player be told the capability belongs to the module, while the engine sees a host that
+borrowed it.
 
 ### Serviceable
 A dock that can currently support work: it has fuel to burn and none of its parts are broken.
