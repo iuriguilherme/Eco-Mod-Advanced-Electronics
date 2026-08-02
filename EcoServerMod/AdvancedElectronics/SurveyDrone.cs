@@ -77,10 +77,17 @@ namespace Eco.Mods.TechTree
         // make a worn-out drone permanently dead rather than serviceable.
         public override Item RepairItem => Item.Get<AdvancedCircuitItem>();
 
-        // Liquid fuel (biodiesel, gasoline) -- the vanilla tag the AutoGen vehicles use. The
-        // mod's own Battery would have supplied an "Electric Fuel" tag, but the battery is
-        // deferred; a fuel tag no item carries leaves the dock unfuelable.
-        private static readonly string[] fuelTagList = { "Liquid Fuel" };
+        // The mod's own fuel tag, carried by BatteryItem and by nothing else. This read
+        // "Liquid Fuel" -- the vanilla tag on biodiesel and gasoline -- for as long as the Battery
+        // was deferred, because a fuel tag no item carries leaves the dock unfuelable. The Battery
+        // now ships, so that constraint is gone and the drone no longer runs on a mid-game
+        // commodity out of a different tech branch.
+        //
+        // FuelSupplyComponent.Initialize rebuilds its TagRestriction from this list on every
+        // install, so this line is the whole switch. The restriction filters what may be ADDED to
+        // a tank, never what may be burned from it, so a dock still holding biodiesel across the
+        // update burns it off and only then reports itself out of fuel.
+        private static readonly string[] fuelTagList = { "Electric Fuel" };
 
         /// <summary>
         /// The components this drone brings to whatever dock it is slotted into (R5, R7). The
