@@ -1,6 +1,7 @@
 ---
 title: "UserCode cannot name a type from a mod DLL, so a table override matches on a tag"
 date: 2026-08-01
+last_updated: 2026-08-02
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -20,11 +21,16 @@ related_components: [EcoServerMod/AdvancedElectronics, EcoServerMod/UserCode]
 ## Context
 
 The Advanced Electronics Upgrade is a plugin module meant to slot into the Robotic Assembly Line,
-which is a vanilla table. A table only accepts modules its own `[AllowPluginModules]` names, and a
-mod assembly cannot add to that attribute — attributes merge across partial declarations only
-within a single assembly. Eco's escape hatch is a whole-file override: a file under
-`Mods/UserCode/` whose path matches a `__core__` file, with `.override` before the extension,
-replaces it.
+which is a vanilla table. The table's `[AllowPluginModules]` does not list the module, and a mod
+assembly cannot add to that attribute — attributes merge across partial declarations only within a
+single assembly. Eco's escape hatch is a whole-file override: a file under `Mods/UserCode/` whose
+path matches a `__core__` file, with `.override` before the extension, replaces it.
+
+**That attribute does not actually gate admission** — see
+`docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md`, which corrects the belief
+this doc was originally written under. The override buys the table's accepted-modules tooltip
+listing, not the ability to slot. What follows still holds regardless: any UserCode file that names
+a mod type fails the same way, whatever the file is for.
 
 The obvious override named the module by type, exactly as vanilla does:
 
@@ -75,23 +81,12 @@ enumerates `ItemTypes`. `Tags` is a real, supported property, but using it is a 
 compilation boundary, not the house style. Say so where it lives, or the next reader will assume it
 is the pattern to copy.
 
-**Prefer a runtime append, once its ordering is proven.** `ItemAttribute.Get<T>` returns the
-**cached** attribute instance, not a copy, and `ItemTypes` has a public setter. So the mod can
-append itself and match by type like everything else, with no override file at all:
-
-```csharp
-public static new void Initialize()   // the same hook PluginModule itself uses
-{
-    var attr = ItemAttribute.Get<AllowPluginModulesAttribute>(typeof(RoboticAssemblyLineItem));
-    attr.ItemTypes = attr.ItemTypes.Append(typeof(AdvancedElectronicsUpgradeItem)).ToArray();
-}
-```
-
-This is unverified: it depends on the mod's `Initialize` running after the attribute cache is built
-(certain — the cache is built from item types) and before the consumers read it.
-`PluginModule.Initialize` only builds the "Plugs Into" tooltip map; the gating that matters happens
-later in `PluginModulesComponent` and `ModuleSlotRegistry`. Try it on a restart that was happening
-anyway, and keep the tag as the fallback.
+**Do not reach for a runtime append.** An earlier version of this doc recommended mutating the
+cached attribute at startup — `ItemAttribute.Get<T>` does return the cached instance rather than a
+copy, and `ItemTypes` does have a public setter, so the mechanism works. It buys nothing. The
+properties it would append to are read by one consumer, an item tooltip; there is no later gate in
+`PluginModulesComponent` or `ModuleSlotRegistry` for the append to reach. A runtime append and a
+whole-file override produce the same tooltip line at different costs.
 
 ## Why This Matters
 
@@ -144,6 +139,10 @@ CORE_LINES=$(wc -l < "$CORE"); NEW_LINES=$(wc -l < "$TRACKED")
 
 ## Related
 
+- `docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md` — corrects this doc's
+  original premise. `[AllowPluginModules]` is presentation, not admission; a table admits a module
+  by matching the module's own slot tag. Read that one to decide whether you need an override at
+  all; read this one for what happens when you write one.
 - `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` — the same shape on
   the client side: what a mod may and may not extend without shipping into the game's own build.
 - `docs/solutions/workflow-issues/the-compile-target-decides-what-exists.md` — also about assuming a

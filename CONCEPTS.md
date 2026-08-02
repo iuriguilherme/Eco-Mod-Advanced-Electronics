@@ -160,6 +160,25 @@ A module is the mod's answer to a host that cannot itself be the thing players i
 lets the player be told the capability belongs to the module, while the engine sees a host that
 borrowed it.
 
+Not to be confused with the base game's **upgrade modules**, which slot into crafting tables to
+grant crafting bonuses. Those are a separate mechanism that happens to share the word: an upgrade
+module changes what a table *costs*, never what it *can do*, and a table admits one by matching the
+module's own slot tag rather than by naming it. When both senses are in play, say "upgrade module"
+for the base-game kind and leave "module" for this one.
+
+### Electric Fuel
+The mod's own fuel class, and the only one a dock accepts. Nothing in the base game carries it —
+the mod defines the tag and the Battery is its sole holder, so a dock runs on fuel this mod makes
+or it does not run.
+
+The exclusivity is the point: the drone's operating cost belongs to the mod rather than to a
+commodity from another tech branch, which is what makes it something the mod can tune or gate.
+
+Switching a world onto it is gentler than it sounds, because a fuel class filters what may be
+*added* to a tank and nothing else. A dock holding fuel of the older kind keeps burning it until it
+is spent, then empties itself and asks for the new kind; the old fuel can also be taken out by hand
+at any point. Nothing is stranded and nothing is destroyed.
+
 ### Serviceable
 A dock that can currently support work: it has fuel to burn and none of its parts are broken.
 
