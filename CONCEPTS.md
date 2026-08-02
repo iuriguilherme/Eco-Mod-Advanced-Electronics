@@ -96,7 +96,8 @@ The client-side half is a **template**, not a per-object asset: the client holds
 and instantiates an enabled clone for each World Object the server reports. A template shipped
 active breaks that cloning, and the failure looks like a rendering glitch rather than a packaging
 one — the object is listed and located correctly by the server while nothing is drawn, appearing
-only once the area is re-loaded.
+only once the area is re-loaded. That symptom is shared with an [[Unrendered Object]] and the two
+are worth telling apart: a bad template recovers on reload, a failed view never does.
 
 ### Name Match
 The rule that binds a World Object's two halves: the client prefab and the server class are linked
@@ -113,6 +114,20 @@ may be named differently without consequence. An item binds through the name of 
 the scene, not the name of the sprite supplying its icon. Naming the image correctly while the bound
 artifact is named wrong fails exactly like any other mismatch, and is easier to miss because the
 file that looks like the asset is the one that binds nothing.
+
+### Unrendered Object
+A placed object the server has, ticks, and reports correctly, but which the client cannot build — so
+it has no model, cannot be interacted with, and cannot be targeted by admin tools.
+
+Distinct from a [[Name Match]] failure, which draws a placeholder: an unrendered object draws
+nothing at all. Its floating name label and map marker still appear, which is the tell — the server
+knows exactly where it is. The server log stays clean, because nothing failed on the server.
+
+The consequence that makes this worse than a visual bug: the tool that exists to remove
+unremovable objects also cannot see it, so there is no in-game recovery. It is caused by declaration
+shape rather than logic — a component tab the client has no view for, or a component deriving a
+client-drawn base the client cannot resolve — which is why it appears the moment an object is
+placed, on every instance, rather than intermittently.
 
 ## Dock and assignment
 

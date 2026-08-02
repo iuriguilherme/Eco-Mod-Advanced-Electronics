@@ -1,7 +1,7 @@
 ---
 title: "What a server-only Eco mod can and cannot render on the stock client"
 date: 2026-07-24
-last_updated: 2026-07-27
+last_updated: 2026-08-01
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -11,7 +11,7 @@ applies_when:
   - "Designing any player-facing UI for an Eco mod that ships server C# plus a ModKit asset bundle but no custom client code"
   - "Deciding whether a readout belongs in a component tab, a map overlay, a tooltip, or world-space text"
   - "A mod-defined tab, overlay, or synced member renders blank, or crashes the client on view reception"
-tags: [eco-modding, client-rendering, worldobjectcomponent, tab, overlay, synctoview, editmap, server-only, modkit, gamepickerlist, tags, visibilityparam]
+tags: [eco-modding, client-rendering, worldobjectcomponent, tab, overlay, synctoview, editmap, server-only, modkit, gamepickerlist, tags, visibilityparam, createcomponenttabloc, invisible-object, storagecomponent, devtool]
 related_components: [EcoServerMod/AdvancedElectronics, EcoServerMod/AdvancedElectronics.Spike]
 ---
 
@@ -45,9 +45,16 @@ Treat client rendering as a **whitelist of proven surfaces**, not an open contra
 server-only Eco mod on 0.13.0.4, the surfaces are:
 
 **1. A mod-defined `WorldObjectComponent` tab renders — use it, with constraints.**
-A component with `[Serialized, CreateComponentTabLoc("Tab"), HasIcon]` and
+A component with `[Serialized, CreateComponentTabLoc("Tab", true), HasIcon]` and
 `Availability => WorldObjectComponentClientAvailability.UI` gets its own tab on the object's
-window (verified live on the Drone Dock). Inside it:
+window (verified live on the Drone Dock).
+
+**The second argument is not optional for a custom name, and omitting it is not a soft failure.**
+It asks the client to GENERATE a view from the component's members. Without it, the client must
+already ship a hand-written view for that exact tab name — every vanilla component that omits it
+uses one it knows (`Modules`, `Power`, `Storage`, `Civics`, `Parts`). A novel name with no
+generated view fails to decode, and the failure takes the whole object with it: see
+*A tab name with no view makes the object vanish* below. Inside a tab that does render:
 - **Actions work.** A method with `[RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton")]`
   renders a button and fires, with the `AccessType` enforced by the engine. This is the way to
   offer create/assign/delete without chat commands.
@@ -284,6 +291,43 @@ when that data was registered** was the blocker. "Absence of vanilla precedent" 
 distinct thing, and the weakest evidence of the four: the working `GamePickerList` on a
 `WorldObjectComponent` has no vanilla precedent at all.
 
+## A tab name with no view makes the object vanish
+
+A client view that fails to decode does not degrade to a blank tab. It takes the object's entire
+client-side presence with it: **no mesh, no interaction, and — the part that turns a bug into a
+data-loss event — no Dev Tool targeting.** The object still exists server-side and still ticks. The
+server log stays completely clean. There is no in-game way to remove it.
+
+Observed twice on the Drone Dock, on 2026-07-31 and again on 2026-08-01. Both times the floating
+name label and the map marker still rendered, which is the tell: the server knows exactly where the
+object is, and the client has simply failed to build it. On 2026-08-01 the label read
+`Drone Dock(1,2m)` over empty ground while the Dev Tool offered only its generic Smite/Copy.
+
+Two distinct causes have produced it, and both are declaration-shaped rather than logic-shaped:
+
+- **A custom tab name with no generated view** — `CreateComponentTabLoc("Drone Bay")` with no
+  second argument.
+- **A mod component deriving a client-rendered base the client cannot resolve** — deriving
+  `StorageComponent` so an inventory would draw. The client has hand-written views for the storage
+  components it ships; a mod subclass is not one of them, so naming the tab `"Storage"` did not
+  help. The base class was the variable, not the tab name.
+
+That second cause is the practical ceiling on mod inventories: **only a vanilla storage component
+renders a slot a player can drag into.** `FuelSupplyComponent` draws slots under a `"Power"` tab
+because it is vanilla, not because the tab name is special. A generated view is no escape either —
+it renders scalars, and an inventory is not one. Vanilla itself routes around this: `SortingComponent`
+uses a generated view and syncs item *type IDs* and progress rather than an inventory.
+
+**Isolate by timeline, not by theory.** Both fixes attempted here targeted the wrong variable
+because the symptom is identical whatever caused it, and there is no error text to read. What
+settled it was a screenshot showing the dock rendering *with* a visibly broken tab in an earlier
+build — proof the tab name was survivable and the base class was not. Compare the last build that
+rendered against the first that did not, and change one declaration at a time.
+
+**Never deploy a new component shape to a world you care about.** The usual escape hatch does not
+exist here: an object whose view fails cannot be removed by the tool that exists to remove
+unremovable objects. Test component-shape changes on a scratch world first.
+
 ## Why This Matters
 
 Three of this mod's interaction surfaces were ruled out one at a time — the tooltip (never
@@ -327,6 +371,11 @@ interaction design shaped around a constraint that was not real.
   hardest case, or on absence of vanilla precedent, mark it *untested* rather than *impossible* —
   and say what a cheap retest would look like.
 
+- Before changing a mod component's base class, tab name, or tab-declaration arguments — those are
+  the declarations that make an object vanish.
+- Before deploying any component-shape change to a world whose objects matter.
+- When an object shows its name label and map marker but no mesh, and the server log is clean.
+
 ## Examples
 
 The client-side hardcoding that blocks a mod overlay layer, from the game client source at
@@ -348,7 +397,9 @@ overlay renders only via a client-side `IClientOverlay` partial on a codegen'd v
 The tab shape that DOES render (verified live), modelled on the vanilla `AreaBonusComponent`:
 
 ```csharp
-[Serialized, CreateComponentTabLoc("Survey Areas"), HasIcon]
+// The `true` is load-bearing -- it generates the client view. A custom name without it is the
+// vanishing-object failure documented above.
+[Serialized, CreateComponentTabLoc("Survey Areas", true), HasIcon]
 public class SurveyAreasComponent : WorldObjectComponent
 {
     public override WorldObjectComponentClientAvailability Availability =>
@@ -431,8 +482,9 @@ public void AssignArea1(Player player) => this.ToggleAssign(1);
 this.Changed(nameof(this.AreaExists1));
 ```
 
-Live in this repo as `EcoServerMod/AdvancedElectronics/SurveyResultsComponent.cs` (picker) and
-`SurveyAreasComponent.cs` (gated buttons), on the two-tab `DroneDockObject`.
+Both shapes now live in the single `EcoServerMod/AdvancedElectronics/SurveyComponent.cs`. The
+two-tab `DroneDockObject` this was written against was merged into one Survey tab; the earlier
+`SurveyResultsComponent.cs` and `SurveyAreasComponent.cs` no longer exist.
 
 The startup ordering that decides whether a tag reaches the client, from the game source:
 
