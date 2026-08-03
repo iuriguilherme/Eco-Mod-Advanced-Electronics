@@ -77,8 +77,21 @@ mapfile -t WORLD_OBJECT_TYPES < <(
 # Item types need a name-matching GameObject under the scene's "Items" root.
 # Every base listed here is something a player can hold: a plain Item, the
 # world-object item that places a WorldObject, the block item that places a
-# block, the skill book/scroll pair, and the plugin modules that slot into a
-# crafting table (EfficiencyModule and friends, matched by the Module suffix).
+# block, the skill book/scroll pair, the plugin modules that slot into a
+# crafting table (EfficiencyModule and friends, matched by the Module suffix),
+# and RepairableItem.
+#
+# RepairableItem was added after both drone items silently vanished from this
+# list. They had been plain Items and were rebased onto RepairableItem when the
+# drones gained durability; nothing failed, because an undiscovered type is
+# simply never checked. SurveyDroneItem kept its icon and its GameObject
+# throughout, so the only visible trace was its icon turning up in the
+# reverse-direction NOTEs as an asset matching no known server type.
+#
+# That is the same failure this gate was rewritten to remove, arriving by a new
+# route: the base-class list is a hardcoded allowlist, so every rebase onto a
+# base not named here removes a type from the gate silently. Treat a server type
+# disappearing from these two lines as a regression, not as noise.
 #
 # PickupableBlock is deliberately NOT listed, and the reason is the binding
 # route, not any one absent block. A placed block binds through a BlockSet, never
@@ -92,7 +105,7 @@ mapfile -t WORLD_OBJECT_TYPES < <(
 # block was dropped outright when the Battery shipped as an inventory item.)
 mapfile -t ITEM_TYPES < <(
   printf '%s' "$DECLS" \
-    | grep -oE 'class [A-Za-z0-9_]+ : (Item[ ,{]|WorldObjectItem<|BlockItem<|SkillBook<|SkillScroll<|[A-Za-z]*Module[ ,{])' \
+    | grep -oE 'class [A-Za-z0-9_]+ : (Item[ ,{]|RepairableItem[ ,{]|WorldObjectItem<|BlockItem<|SkillBook<|SkillScroll<|[A-Za-z]*Module[ ,{])' \
     | sed -E 's/class ([A-Za-z0-9_]+) : .*/\1/' \
     | sort -u
 )
