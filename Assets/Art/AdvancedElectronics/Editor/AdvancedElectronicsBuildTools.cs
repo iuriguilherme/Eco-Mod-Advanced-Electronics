@@ -60,9 +60,37 @@ public static class AdvancedElectronicsBuildTools
         ("HarvestDroneItem",                     new Color(0.90f, 0.65f, 0.15f, 1f)), // amber -- distinct from SurveyDrone's teal-blue
     };
 
-    /// <summary>The harvest drone's imported model and the controller its seven bool states drive.</summary>
-    private const string HarvestDroneModel      = ArtFolder + "/HRVSTR-01.fbx";
-    private const string HarvestDroneController = ArtFolder + "/HRVSTR_Animator_Controller.controller";
+    /// <summary>
+    /// The shared drone chassis: one model and one controller behind EVERY drone type.
+    ///
+    /// HRVSTR-01 was modelled and animated as a multi-purpose machine, so survey, harvest,
+    /// mining and whatever comes next are the same physical robot doing different jobs --
+    /// not different robots. Its controller's parameters are named for activities
+    /// (Drone_Mining, Drone_Harvest) rather than for any one drone type, which is what
+    /// makes that sharing work.
+    /// </summary>
+    private const string DroneChassisModel      = ArtFolder + "/HRVSTR-01.fbx";
+    private const string DroneChassisController = ArtFolder + "/HRVSTR_Animator_Controller.controller";
+
+    /// <summary>
+    /// Every server WorldObject class that renders as the shared chassis. ADDING A DRONE IS
+    /// ONE LINE HERE plus a re-run of "Finish All Drone Prefabs" -- the same deliberately
+    /// cheap shape as <see cref="ItemIcons"/>.
+    ///
+    /// Each entry becomes its OWN prefab asset named exactly for its server class, because
+    /// the filename is the binding (Assets/EcoModKit/Docs/README.md) -- there is no way to
+    /// point three server classes at one prefab file. What is actually shared is everything
+    /// underneath: mesh, materials, textures and controller are referenced by GUID, so the
+    /// bundle carries one copy no matter how many drones list themselves here.
+    ///
+    /// SurveyDroneObject is deliberately ABSENT. It ships today as a hand-built capsule and
+    /// is live on deployed servers; re-running this over it would silently replace shipped
+    /// art. Add it when you actually want the survey drone to become the HRVSTR chassis.
+    /// </summary>
+    private static readonly string[] SharedChassisDrones =
+    {
+        "HarvestDroneObject",
+    };
 
     // Prefab finishers. The FIRST string is the server WorldObject class name and is what
     // the prefab file is named -- that filename is the binding, and it comes from this
@@ -85,16 +113,28 @@ public static class AdvancedElectronicsBuildTools
         FinishPrefab("AdvancedElectronicsAssemblyObject", "AdvancedElectronicsAssemblyObject", isDock: false);
 
     /// <summary>
-    /// The only finisher whose source object does not have to exist in the scene first:
-    /// the harvest drone is a real imported model rather than a hand-assembled primitive,
-    /// so there is nothing for an author to build by hand and the command instantiates
-    /// <see cref="HarvestDroneModel"/> itself. Everything else is the shared path.
+    /// Builds one prefab per entry in <see cref="SharedChassisDrones"/>, each from the same
+    /// chassis model and controller.
+    ///
+    /// The only finishers whose source object does not have to exist in the scene first: a
+    /// drone is a real imported model rather than a hand-assembled primitive, so there is
+    /// nothing for an author to build by hand and the command instantiates the chassis
+    /// itself. Everything past that is the shared <see cref="FinishPrefab"/> path.
+    ///
+    /// Idempotent: a re-run reuses the scene GameObject and prefab a previous run left
+    /// behind, so adding a drone to the table and re-running only does the new work.
     /// </summary>
-    [MenuItem("Eco Tools/Advanced Electronics/Finish Harvest Drone Prefab")]
-    public static void FinishHarvestDronePrefab() =>
-        FinishPrefab("HarvestDroneObject", "HarvestDroneObject", isDock: false,
-                     sourceModel: HarvestDroneModel,
-                     animatorController: HarvestDroneController);
+    [MenuItem("Eco Tools/Advanced Electronics/Finish All Drone Prefabs")]
+    public static void FinishAllDronePrefabs()
+    {
+        foreach (var typeName in SharedChassisDrones)
+            FinishPrefab(typeName, typeName, isDock: false,
+                         sourceModel: DroneChassisModel,
+                         animatorController: DroneChassisController);
+
+        Debug.Log($"[AdvancedElectronics] Finished {SharedChassisDrones.Length} drone prefab(s) on the shared chassis. " +
+                  "SAVE THE SCENE, then rebuild the bundle (Eco Tools > Mod Kit).");
+    }
 
     /// <summary>
     /// Runs the icon finisher for every entry in <see cref="ItemIcons"/>. Idempotent:
@@ -473,7 +513,9 @@ public static class AdvancedElectronicsBuildTools
             return null;
         }
 
-        PrefabUtility.UnpackPrefabInstanceCompletely(instance, PrefabUnpackMode.OutermostRoot, InteractionMode.AutomatedAction);
+        // PrefabUnpackMode.Completely, not OutermostRoot: an FBX instance nests its own
+        // sub-prefabs, and unpacking only the outermost root would leave those linked.
+        PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
         instance.name = sceneObjectName;
         Undo.RegisterCreatedObjectUndo(instance, $"Instantiate {sceneObjectName}");
         EditorSceneManager.MarkSceneDirty(instance.scene);
