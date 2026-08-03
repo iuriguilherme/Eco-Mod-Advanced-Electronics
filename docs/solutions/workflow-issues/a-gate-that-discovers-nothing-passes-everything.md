@@ -1,6 +1,7 @@
 ---
 title: "A gate that discovers nothing passes everything"
 date: 2026-07-30
+last_updated: 2026-08-03
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -11,7 +12,8 @@ applies_when:
   - "A validation script has passed for a long time without anyone reading its output"
   - "A plan cites an existing gate as evidence that new work is correct"
   - "Narrowing a pattern to exclude false positives, where over-narrowing is silent"
-tags: [validation, verification, false-confidence, grep, regex, tooling, eco-modding, name-match]
+  - "Refactoring a type onto a new base class, interface, directory, or naming convention"
+tags: [validation, verification, false-confidence, grep, regex, tooling, eco-modding, name-match, coverage-regression]
 related_components: [scripts, EcoServerMod/AdvancedElectronics]
 ---
 
@@ -67,6 +69,26 @@ code, a failed assertion, a diff — reliably gets read.
 asset you know is required and confirm the gate goes red. If it stays green, discovery is broken, and
 that takes seconds to learn. Nobody had ever made this gate fail on purpose.
 
+**Coverage regresses; it does not only fail to arrive.** The first two failures here were about types
+the gate had *never* covered — a pattern that was wrong from the start, then a new item written onto
+an unlisted base. The third was different in kind: `SurveyDroneItem` was covered, was passing
+honestly, and then **left** the gate. Nothing was written; an existing type was rebased from `Item` to
+`RepairableItem`, a base the discovery allowlist did not name, and its coverage ended silently.
+
+This is the more dangerous shape, because every instinct says the opposite. A refactor that keeps the
+build green, keeps the tests green, and keeps the gate green reads as safe. But a discovery allowlist
+is coupled to the very thing refactors change — base classes, interfaces, directory layout, naming
+conventions — so the ordinary act of restructuring code is also the act that can silently narrow what
+gets checked. **A gate keyed on how code is shaped is invalidated by reshaping the code**, and the
+invalidation looks exactly like success.
+
+**Diff the denominator, don't just print it.** The rule above says assert how many things were
+examined. That is necessary and, on its own, insufficient — a count nobody compares against last
+week's count is still chrome. What distinguishes a live signal is *change*: the discovered-type list
+shrinking between two runs is a regression, and it is the only cheap, automatic way to catch coverage
+walking out the door. Treat a type disappearing from a discovery list the way you would treat a test
+disappearing from a suite.
+
 **Treat "this gate passes" in a plan as a claim to verify, not a fact to build on.** A plan for new
 work cited this script as an acceptance criterion — "the name-match gate passes with the new types
 present." Because discovery could not see any of the new types, that criterion would have been
@@ -103,6 +125,10 @@ base type nobody inherits from any more validates an empty set. In all of them t
   Ask what that check actually inspects before treating it as independent confirmation.
 - When a check's output includes a list, a count, or a "found N items" line that nobody has looked at
   in months.
+- When refactoring a type onto a new base class or interface, moving it between directories, or
+  renaming it to a new convention. Ask which checks discover their inputs by the property being
+  changed — that is the moment coverage silently leaves, and the build staying green is not evidence
+  against it.
 
 ## Examples
 
@@ -183,6 +209,49 @@ A later addition in the same session repeated the lesson at smaller scale. `Adva
 derives from `EfficiencyModule`, which was not in the list of item base classes, so a newly written
 item sailed through a gate that had just been fixed. Discovery lists are not written once; every new
 base class is a new chance for the same silence.
+
+### The third occurrence: coverage that left
+
+Two days later the same gate lost a type it had been checking correctly; the loss was not noticed for
+another two. `SurveyDroneItem` was `: Item` — visible in the post-fix output above — and the commit
+*"feat(drone): make the drone item a repairable module"* (2026-08-01, unmerged into `main` as of this
+writing) rebased it:
+
+```csharp
+-    public class SurveyDroneItem : Item
++    public class SurveyDroneItem : RepairableItem, IWorldObjectComponentSource
+```
+
+`RepairableItem` was not in the allowlist, so the type dropped out of discovery. The gate stayed
+green, because it had genuinely stopped having anything to say about it. Thirty-seven commits and the
+`v0.1.0` release shipped in that state, and `HarvestDroneItem` — written later against the same base —
+was never covered at all.
+
+The signal was on screen the whole time, but it had moved. The gate reports assets matching no known
+server type as a courtesy note, so the orphaned icon surfaced as:
+
+```
+NOTE: asset 'SurveyDroneItem_icon' ... doesn't match any known server WorldObject/Item name
+```
+
+That line is the gate stating it no longer knows what `SurveyDroneItem` is. It sits in a block of
+identical notes about materials and editor scripts, which are all benign and always present, so it
+reads as noise — the same "output that is always present becomes chrome" failure as before, arriving
+in a *different output line* than the one that had been learned to distrust.
+
+The fix is one alternation, and the guard against a fourth occurrence is the comment beside it:
+
+```bash
+grep -oE 'class [A-Za-z0-9_]+ : (Item[ ,{]|RepairableItem[ ,{]|WorldObjectItem<|BlockItem<|...)'
+```
+
+> That is the same failure this gate was rewritten to remove, arriving by a new route: the base-class
+> list is a hardcoded allowlist, so every rebase onto a base not named here removes a type from the
+> gate silently. Treat a server type disappearing from these two lines as a regression, not as noise.
+
+Discovery went from 7 item types to 9. Three occurrences in five days, on one script, is the honest
+measure of how weak an allowlist is as a coverage mechanism: it is correct only for the corpus that
+existed when it was last edited.
 
 ## Related
 
