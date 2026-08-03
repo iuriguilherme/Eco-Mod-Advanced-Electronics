@@ -57,7 +57,12 @@ public static class AdvancedElectronicsBuildTools
         ("AdvancedElectronicsAssemblyItem",      new Color(0.85f, 0.50f, 0.15f, 1f)), // orange
         ("BatteryItem",                          new Color(0.20f, 0.70f, 0.35f, 1f)), // green
         ("AdvancedElectronicsUpgradeItem",       new Color(0.80f, 0.20f, 0.30f, 1f)), // red -- plugin module
+        ("HarvestDroneItem",                     new Color(0.90f, 0.65f, 0.15f, 1f)), // amber -- distinct from SurveyDrone's teal-blue
     };
+
+    /// <summary>The harvest drone's imported model and the controller its seven bool states drive.</summary>
+    private const string HarvestDroneModel      = ArtFolder + "/HRVSTR-01.fbx";
+    private const string HarvestDroneController = ArtFolder + "/HRVSTR_Animator_Controller.controller";
 
     // Prefab finishers. The FIRST string is the server WorldObject class name and is what
     // the prefab file is named -- that filename is the binding, and it comes from this
@@ -78,6 +83,18 @@ public static class AdvancedElectronicsBuildTools
     [MenuItem("Eco Tools/Advanced Electronics/Finish Assembly Prefab")]
     public static void FinishAssemblyPrefab() =>
         FinishPrefab("AdvancedElectronicsAssemblyObject", "AdvancedElectronicsAssemblyObject", isDock: false);
+
+    /// <summary>
+    /// The only finisher whose source object does not have to exist in the scene first:
+    /// the harvest drone is a real imported model rather than a hand-assembled primitive,
+    /// so there is nothing for an author to build by hand and the command instantiates
+    /// <see cref="HarvestDroneModel"/> itself. Everything else is the shared path.
+    /// </summary>
+    [MenuItem("Eco Tools/Advanced Electronics/Finish Harvest Drone Prefab")]
+    public static void FinishHarvestDronePrefab() =>
+        FinishPrefab("HarvestDroneObject", "HarvestDroneObject", isDock: false,
+                     sourceModel: HarvestDroneModel,
+                     animatorController: HarvestDroneController);
 
     /// <summary>
     /// Runs the icon finisher for every entry in <see cref="ItemIcons"/>. Idempotent:
@@ -273,11 +290,32 @@ public static class AdvancedElectronicsBuildTools
     /// <paramref name="typeName"/>, but the pre-existing dock and drone are named without
     /// the "Object" suffix in the hierarchy, so the two cannot be assumed equal.
     /// </param>
-    private static void FinishPrefab(string typeName, string sceneObjectName, bool isDock)
+    /// <param name="sourceModel">
+    /// Asset path of an imported model to instantiate when no scene GameObject named
+    /// <paramref name="sceneObjectName"/> exists yet, or null to require one (the
+    /// original behaviour, correct for the hand-assembled primitives).
+    ///
+    /// Passing a model ALSO suppresses the placeholder-material substitution below.
+    /// The two travel together on purpose rather than as separate flags: the
+    /// substitution exists because a Unity primitive ships on a default HDRP material
+    /// that renders wrong under Eco's curved world, and an imported model always
+    /// brings its own authored materials instead. Rather than trust that, the shaders
+    /// are checked against the placeholder's and any mismatch is reported.
+    /// </param>
+    /// <param name="animatorController">
+    /// Asset path of an AnimatorController to drive the object's bool states, or null
+    /// for a static object. Non-null also attaches <c>DroneAnimatorStates</c>, which is
+    /// the only thing that turns server state pushes into Animator parameter writes.
+    /// </param>
+    private static void FinishPrefab(string typeName, string sceneObjectName, bool isDock,
+                                     string sourceModel = null, string animatorController = null)
     {
         var go = Selection.activeGameObject;
         if (go == null || go.name != sceneObjectName)
             go = FindInLoadedScenes(sceneObjectName);
+
+        if (go == null && sourceModel != null)
+            go = InstantiateSourceModel(sourceModel, sceneObjectName);
 
         if (go == null)
         {
@@ -287,24 +325,31 @@ public static class AdvancedElectronicsBuildTools
 
         go.tag = "ModObject";
 
-        // KTD4: put every child renderer on the shared placeholder material. Assign
-        // through sharedMaterial against the AssetDatabase asset -- assigning through
-        // renderer.material forks a scene-local "(Instance)" copy that gets serialized
-        // into the scene, ships duplicated in the bundle, and stops tracking the .mat
-        // asset, so later edits to the placeholder silently miss this object.
-        var placeholder = AssetDatabase.LoadAssetAtPath<Material>(PlaceholderMaterial);
-        if (placeholder == null)
+        if (sourceModel != null)
         {
-            Debug.LogWarning($"[AdvancedElectronics] {PlaceholderMaterial} not found -- '{go.name}' keeps whatever material it has. Eco needs a curved-world shader, so a default HDRP material will render wrong in game.");
+            VerifyModelShaders(go);
         }
         else
         {
-            foreach (var renderer in go.GetComponentsInChildren<MeshRenderer>(true))
+            // KTD4: put every child renderer on the shared placeholder material. Assign
+            // through sharedMaterial against the AssetDatabase asset -- assigning through
+            // renderer.material forks a scene-local "(Instance)" copy that gets serialized
+            // into the scene, ships duplicated in the bundle, and stops tracking the .mat
+            // asset, so later edits to the placeholder silently miss this object.
+            var placeholder = AssetDatabase.LoadAssetAtPath<Material>(PlaceholderMaterial);
+            if (placeholder == null)
             {
-                if (renderer.sharedMaterial == placeholder) continue;
-                renderer.sharedMaterial = placeholder;
-                EditorUtility.SetDirty(renderer);
-                Debug.Log($"[AdvancedElectronics] Set '{renderer.name}' to the shared placeholder material.");
+                Debug.LogWarning($"[AdvancedElectronics] {PlaceholderMaterial} not found -- '{go.name}' keeps whatever material it has. Eco needs a curved-world shader, so a default HDRP material will render wrong in game.");
+            }
+            else
+            {
+                foreach (var renderer in go.GetComponentsInChildren<MeshRenderer>(true))
+                {
+                    if (renderer.sharedMaterial == placeholder) continue;
+                    renderer.sharedMaterial = placeholder;
+                    EditorUtility.SetDirty(renderer);
+                    Debug.Log($"[AdvancedElectronics] Set '{renderer.name}' to the shared placeholder material.");
+                }
             }
         }
 
@@ -373,6 +418,9 @@ public static class AdvancedElectronicsBuildTools
                 Debug.LogWarning($"[AdvancedElectronics] No TMP_Text found under '{go.name}' -- the readout has nothing to write to yet. Add a Canvas (Render Mode: World Space) + a Text (TMP) child before this matters at runtime; the prefab will still save fine without it.");
         }
 
+        if (animatorController != null)
+            AttachAnimatorStates(go, worldObject, animatorController);
+
         EnsureArtFolder();
 
         var path = $"{ArtFolder}/{typeName}.prefab";
@@ -396,6 +444,125 @@ public static class AdvancedElectronicsBuildTools
 
         AssetDatabase.SaveAssets();
         Debug.Log($"[AdvancedElectronics] Saved and registered: {path}. The original scene GameObject '{go.name}' was left as-is (not deleted) -- delete it by hand if you want to avoid a duplicate loose copy sitting in the scene; only the prefab asset is what gets bundled.");
+    }
+
+    /// <summary>
+    /// Drops an imported model into the active scene under the name the finisher expects.
+    ///
+    /// The instance is UNPACKED COMPLETELY rather than left linked to the model asset. A
+    /// linked instance would save as a prefab with the model nested inside it, which keeps
+    /// mesh reimports propagating but puts a nested prefab through Eco's asset-bundle
+    /// pipeline -- a path nothing in this project has exercised. Unpacking produces the
+    /// same flat hierarchy as the hand-built dock and survey-drone prefabs, so the bundle
+    /// sees nothing new. The cost is that re-importing the FBX no longer updates an
+    /// already-built prefab: delete the scene object and re-run this command instead.
+    /// </summary>
+    private static GameObject InstantiateSourceModel(string modelPath, string sceneObjectName)
+    {
+        var model = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
+        if (model == null)
+        {
+            Debug.LogError($"[AdvancedElectronics] Source model '{modelPath}' not found, so there is nothing to build '{sceneObjectName}' from. Check the file exists and that Unity has imported it.");
+            return null;
+        }
+
+        var instance = (GameObject)PrefabUtility.InstantiatePrefab(model);
+        if (instance == null)
+        {
+            Debug.LogError($"[AdvancedElectronics] Unity refused to instantiate '{modelPath}'.");
+            return null;
+        }
+
+        PrefabUtility.UnpackPrefabInstanceCompletely(instance, PrefabUnpackMode.OutermostRoot, InteractionMode.AutomatedAction);
+        instance.name = sceneObjectName;
+        Undo.RegisterCreatedObjectUndo(instance, $"Instantiate {sceneObjectName}");
+        EditorSceneManager.MarkSceneDirty(instance.scene);
+
+        Debug.Log($"[AdvancedElectronics] No '{sceneObjectName}' in the scene, so instantiated one from {modelPath} and unpacked it.");
+        return instance;
+    }
+
+    /// <summary>
+    /// Reports any renderer material whose shader differs from the placeholder's. An
+    /// imported model keeps its own authored materials, which is the point -- but Eco
+    /// needs a curved-world shader and a model exported with a stock Standard/HDRP Lit
+    /// material renders visibly wrong in game
+    /// (docs/solutions/ui-bugs/modkit-prefab-materials-need-curved-shaders.md). This only
+    /// warns; substituting the placeholder here would throw the art away.
+    /// </summary>
+    private static void VerifyModelShaders(GameObject go)
+    {
+        var placeholder = AssetDatabase.LoadAssetAtPath<Material>(PlaceholderMaterial);
+        var expected = placeholder != null ? placeholder.shader : null;
+        if (expected == null)
+        {
+            Debug.LogWarning($"[AdvancedElectronics] {PlaceholderMaterial} not found, so '{go.name}''s materials could not be checked against Eco's curved-world shader. Verify them by hand.");
+            return;
+        }
+
+        var checkedCount = 0;
+        foreach (var renderer in go.GetComponentsInChildren<Renderer>(true))
+        {
+            foreach (var material in renderer.sharedMaterials)
+            {
+                if (material == null)
+                {
+                    Debug.LogWarning($"[AdvancedElectronics] '{renderer.name}' has an empty material slot -- that submesh renders magenta in game.");
+                    continue;
+                }
+
+                checkedCount++;
+                if (material.shader != expected)
+                    Debug.LogWarning($"[AdvancedElectronics] '{renderer.name}' uses material '{material.name}' on shader '{material.shader.name}', not the curved-world shader '{expected.name}' that {PlaceholderMaterial} uses. Eco's world is curved in the vertex shader, so this will render straight and detach from the terrain. Re-author the material on the curved shader.");
+            }
+        }
+
+        Debug.Log($"[AdvancedElectronics] Kept '{go.name}''s own materials (imported model) and checked {checkedCount} of them against the curved-world shader.");
+    }
+
+    /// <summary>
+    /// Gives the object an Animator on <paramref name="controllerPath"/> plus the
+    /// <c>DroneAnimatorStates</c> relay, and stamps the WorldObject's bool state names
+    /// from that relay's own list.
+    ///
+    /// The relay is what makes any of this move: the server pushes named booleans via
+    /// SetAnimatedState and the ModKit's WorldObject only re-broadcasts them as
+    /// UnityEvents. Nothing in the ModKit talks to an Animator, so without the relay the
+    /// controller sits on its default state forever and the failure is silent.
+    /// </summary>
+    private static void AttachAnimatorStates(GameObject go, WorldObject worldObject, string controllerPath)
+    {
+        var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(controllerPath);
+        if (controller == null)
+        {
+            Debug.LogError($"[AdvancedElectronics] Animator controller '{controllerPath}' not found -- '{go.name}' will render but never animate.");
+            return;
+        }
+
+        // The FBX importer already puts an Animator on a rigged model's root; reuse it
+        // rather than adding a second one, which would leave two competing state machines.
+        //
+        // Written as an explicit null check rather than `?? go.AddComponent<Animator>()`:
+        // UnityEngine.Object overloads == to report a DESTROYED object as null, but ?? uses
+        // real CLR null and bypasses that overload. It happens not to bite here (a missed
+        // GetComponentInChildren returns true null), but the pattern is worth not copying.
+        var animator = go.GetComponentInChildren<Animator>(true);
+        if (animator == null) animator = go.AddComponent<Animator>();
+        if (animator.runtimeAnimatorController != controller)
+        {
+            animator.runtimeAnimatorController = controller;
+            EditorUtility.SetDirty(animator);
+            Debug.Log($"[AdvancedElectronics] Set '{animator.name}''s controller to {controllerPath}.");
+        }
+
+        if (go.GetComponent<DroneAnimatorStates>() == null)
+        {
+            go.AddComponent<DroneAnimatorStates>();
+            Debug.Log($"[AdvancedElectronics] Added DroneAnimatorStates to '{go.name}'.");
+        }
+
+        DroneAnimatorStates.EnsureStateArrays(worldObject);
+        EditorUtility.SetDirty(worldObject);
     }
 
     private static void EnsureArtFolder()

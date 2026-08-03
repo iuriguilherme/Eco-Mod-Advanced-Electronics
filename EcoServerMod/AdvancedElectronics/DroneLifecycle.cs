@@ -134,6 +134,14 @@ namespace Eco.Mods.TechTree
             if (!this.Parent.TryGetComponent<DroneMoverComponent>(out var mover))
                 return;
 
+            // Before every early return below, not after the switch. The unserviceable gate and
+            // the assignment-change branch both return, and those are exactly the transitions the
+            // art most needs to show -- a drone recalled for lack of fuel that kept playing its
+            // survey animation would be the most confusing possible readout. Pushing here costs
+            // one tick of latency (the states describe the situation as of the start of this
+            // tick), which is the same trade DroneMoverComponent already makes for MoveSpeed.
+            this.RefreshAnimationStates(mover);
+
             // The drone surveys the dock's assigned survey area (KTD9). The token is opaque to the
             // state machine — it only drives change-detection and the target label. It encodes the
             // area id AND an edit epoch, so editing the assigned area's plots changes the token and
@@ -227,6 +235,48 @@ namespace Eco.Mods.TechTree
                 default:
                     // Idle: nothing to drive (R6 -- no district, no work).
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Last value pushed per animation state name, so a state is only written when it
+        /// actually changes. <c>SetAnimatedState</c> is a synced write and this runs every tick;
+        /// pushing seven unchanged booleans per tick per drone is pure network churn with no
+        /// consumer. Mirrors DroneDockObject's <c>lastPushedWorking</c>, widened to a map because
+        /// there are seven of them.
+        ///
+        /// Not serialized on purpose: an empty map after a restart means the first tick re-pushes
+        /// everything, which is what a freshly-connected client needs anyway.
+        /// </summary>
+        private readonly Dictionary<string, bool> lastPushedAnimationStates = new Dictionary<string, bool>();
+
+        /// <summary>
+        /// Projects the current lifecycle situation onto the drone's seven animation booleans and
+        /// pushes the ones that changed.
+        ///
+        /// The mapping itself lives in <see cref="DroneAnimationState.From"/> over in the
+        /// dependency-free navigation project, so it is unit-testable without a server; this
+        /// method is only the Eco-side plumbing -- gather inputs, push deltas.
+        /// </summary>
+        private void RefreshAnimationStates(DroneMoverComponent mover)
+        {
+            var hasAssignment = this.HomeDock != null
+                                && !this.HomeDock.IsDestroyed
+                                && !string.IsNullOrWhiteSpace(this.HomeDock.AssignedAreaToken);
+
+            var state = DroneAnimationState.From(
+                this.stateMachine.Status,
+                this.stateMachine.TravelTarget,
+                mover.IsMoving,
+                hasAssignment);
+
+            foreach (var (name, value) in state.AsNamedValues())
+            {
+                if (this.lastPushedAnimationStates.TryGetValue(name, out var last) && last == value)
+                    continue;
+
+                this.lastPushedAnimationStates[name] = value;
+                this.Parent.SetAnimatedState(name, value);
             }
         }
 
