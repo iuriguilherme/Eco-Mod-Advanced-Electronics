@@ -243,7 +243,8 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
-            user.MsgLocStr($"  Spawned drone at {drone.Position3i} (owner: {(drone.HasOwner ? drone.OwnerName : "unstamped")})");
+            var owner = drone is IDroneOwnable ownable && ownable.HasOwner ? ownable.OwnerName : "unstamped";
+            user.MsgLocStr($"  Spawned drone at {drone.Position3i} (owner: {owner})");
             user.MsgLocStr($"  Anim state MoveSpeed: {FormatAnimState(drone, DroneMoverComponent.MoveSpeedStateName)}");
 
             if (drone.TryGetComponent<DroneLifecycle>(out var lifecycle))

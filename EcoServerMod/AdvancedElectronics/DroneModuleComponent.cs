@@ -284,7 +284,10 @@ namespace Eco.Mods.TechTree
 
         public override int MaxPickup(RestrictionCheckData checkData, Item item, int currentQuantity)
         {
-            if (item is not SurveyDroneItem)               return -1;
+            // Any drone item, not just the survey drone: this restriction exists to stop a drone
+            // being pulled out while it is still flying, and that is true of every drone type the
+            // dock accepts. IWorldObjectComponentSource is what every drone item implements.
+            if (item is not IWorldObjectComponentSource)   return -1;
             if (this.parent is not DroneDockObject dock)   return -1;
 
             var drone = dock.SpawnedDrone;

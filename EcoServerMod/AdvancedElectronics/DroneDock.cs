@@ -140,11 +140,34 @@ namespace Eco.Mods.TechTree
         public bool HasDrone => this.PairedDrone != null;
 
         /// <summary>
-        /// The physical <see cref="SurveyDroneObject"/> WorldObject spawned for the currently
-        /// paired drone item, or null when no drone is paired. See the KNOWN LIMITATION
-        /// on this class's doc comment -- not serialized.
+        /// Every drone item this dock accepts, mapped to the WorldObject it dispatches for that
+        /// item. The dock used to name <see cref="SurveyDroneItem"/> and
+        /// <see cref="SurveyDroneObject"/> directly in five places, so it had no concept of "a
+        /// drone" at all -- only of the survey drone. This table is the whole concept for now.
+        ///
+        /// DELIBERATELY MINIMAL, NOT THE END STATE. The drones share a chassis and will grow a
+        /// mining variant, so the honest model is a common drone item/object abstraction that
+        /// carries its own WorldObject type and owner-stamping. That reshapes the pairing and
+        /// lifecycle path, which is the part of this mod least worth breaking casually, so it is
+        /// planned work rather than a late-night edit. Adding a drone here in the meantime is one
+        /// line plus a SetOwner case in <see cref="SpawnDrone"/>.
         /// </summary>
-        public SurveyDroneObject SpawnedDrone { get; private set; }
+        private static readonly Dictionary<Type, Type> DroneObjectForItem = new Dictionary<Type, Type>
+        {
+            [typeof(SurveyDroneItem)]  = typeof(SurveyDroneObject),
+            [typeof(HarvestDroneItem)] = typeof(HarvestDroneObject),
+        };
+
+        /// <summary>
+        /// The physical drone WorldObject spawned for the currently paired drone item, or null
+        /// when no drone is paired. See the KNOWN LIMITATION on this class's doc comment -- not
+        /// serialized.
+        ///
+        /// Typed as <c>WorldObject</c> rather than a concrete drone: every consumer reaches
+        /// through <c>TryGetComponent</c> or <c>IsDestroyed</c>, both of which live on
+        /// <c>WorldObject</c>, so nothing needed the narrower type.
+        /// </summary>
+        public WorldObject SpawnedDrone { get; private set; }
 
         // ---------------------------------------------------------------
         // U4: dock-owned survey areas (R1a/R2a/R3, KTD9). Areas are the dock's
@@ -377,7 +400,7 @@ namespace Eco.Mods.TechTree
                 // previously-used 3-arg Initialize overload is never used by any vanilla
                 // object and its parameter semantics were unproven.
                 storage.Initialize(DockSlotCount);
-                storage.Storage.AddInvRestriction(new SpecificItemTypesRestriction(new[] { typeof(SurveyDroneItem) }));
+                storage.Storage.AddInvRestriction(new SpecificItemTypesRestriction(DroneObjectForItem.Keys.ToArray()));
                 storage.Storage.AddInvRestriction(new StackLimitRestriction(1));
                 storage.Storage.OnChanged.Add(this.OnDockStorageChanged);
 
@@ -470,12 +493,21 @@ namespace Eco.Mods.TechTree
 
         private void SpawnDrone(User user)
         {
-            var obj = WorldObjectManager.ForceAdd(typeof(SurveyDroneObject), user, this.DroneParkPosition, Quaternion.Identity, false) as SurveyDroneObject;
+            // Which drone to dispatch follows from which drone item is docked. The storage
+            // restriction only admits keys of the table, so a paired item with no entry means the
+            // table and the restriction have drifted apart -- bail rather than spawn the wrong
+            // drone, which would look like a working dock dispatching someone else's robot.
+            if (this.PairedDrone == null
+                || !DroneObjectForItem.TryGetValue(this.PairedDrone.GetType(), out var droneObjectType))
+                return;
+
+            var obj = WorldObjectManager.ForceAdd(droneObjectType, user, this.DroneParkPosition, Quaternion.Identity, false) as WorldObject;
             if (obj == null)
                 return;
 
-            if (user != null)
-                obj.SetOwner(user);
+            if (user != null && obj is IDroneOwnable ownable)
+                ownable.SetOwner(user);
+
             if (obj.TryGetComponent<DroneLifecycle>(out var lifecycle))
                 lifecycle.HomeDock = this;
 
@@ -498,8 +530,12 @@ namespace Eco.Mods.TechTree
             if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed)
                 return; // already linked this session.
 
+            // "Is this a drone?" is asked as "does it carry a DroneLifecycle?" rather than by
+            // listing drone types: the component is what makes an object a drone here, and the
+            // test then covers a new drone type without being updated.
             if (this.spawnedDroneObjectId != Guid.Empty
-                && ServiceHolder<IWorldObjectManager>.Obj.GetFromID(this.spawnedDroneObjectId) is SurveyDroneObject existing
+                && ServiceHolder<IWorldObjectManager>.Obj.GetFromID(this.spawnedDroneObjectId) is WorldObject existing
+                && existing.HasComponent<DroneLifecycle>()
                 && !existing.IsDestroyed)
             {
                 this.SpawnedDrone = existing;
@@ -541,7 +577,7 @@ namespace Eco.Mods.TechTree
         {
             var drone = this.SpawnedDrone;
             if ((drone == null || drone.IsDestroyed) && this.spawnedDroneObjectId != Guid.Empty)
-                drone = ServiceHolder<IWorldObjectManager>.Obj.GetFromID(this.spawnedDroneObjectId) as SurveyDroneObject;
+                drone = ServiceHolder<IWorldObjectManager>.Obj.GetFromID(this.spawnedDroneObjectId) as WorldObject;
 
             if (drone != null && !drone.IsDestroyed)
                 WorldObjectManager.DestroyPermanently(drone);

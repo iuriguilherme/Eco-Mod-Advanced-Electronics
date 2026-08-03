@@ -3,6 +3,36 @@ using Eco.Gameplay.Players;
 namespace Eco.Mods.TechTree
 {
     /// <summary>
+    /// The owner-attribution surface every drone WorldObject carries.
+    ///
+    /// Purely declarative -- SurveyDroneObject and HarvestDroneObject already had all four
+    /// members with identical signatures; this only states that they are the same surface. It
+    /// exists because the dock now holds its drone as a <c>WorldObject</c> (it dispatches more
+    /// than one drone type), and these members are declared per-class, so without a shared
+    /// interface every consumer would have to pattern-match each concrete drone in turn --
+    /// once in the dock's spawn path, again in the status command, and again for each drone
+    /// added later.
+    ///
+    /// This is NOT the drone abstraction that is still owed. That one covers pairing,
+    /// lifecycle, and the item/object correspondence, and reshapes code worth changing
+    /// carefully. This interface adds no behaviour and can be absorbed by it unchanged.
+    /// </summary>
+    public interface IDroneOwnable
+    {
+        /// <summary>Display name of the owner this drone acts on behalf of, or null if never stamped.</summary>
+        string OwnerName { get; }
+
+        /// <summary>Eco user ID of the owner, or 0 if never stamped.</summary>
+        int OwnerId { get; }
+
+        /// <summary>True once <see cref="SetOwner"/> has stamped a real user.</summary>
+        bool HasOwner { get; }
+
+        /// <summary>Stamps this drone's owner from the acting user.</summary>
+        void SetOwner(User user);
+    }
+
+    /// <summary>
     /// Owner-attribution helper for the survey drone (U7, R5). Computes the
     /// (OwnerName, OwnerId) pair that <see cref="SurveyDroneObject.SetOwner"/> stamps onto the
     /// entity -- see that method for where/when it gets called.
