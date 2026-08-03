@@ -36,7 +36,20 @@ public static class AdvancedElectronicsBuildTools
     /// renders visibly wrong in game
     /// (docs/solutions/ui-bugs/modkit-prefab-materials-need-curved-shaders.md).
     /// </summary>
-    private const string PlaceholderMaterial = ArtFolder + "/AdvancedElectronicsPlaceholder.mat";
+    private const string PlaceholderMaterial = MaterialFolder + "/AdvancedElectronicsPlaceholder.mat";
+
+    /// <summary>
+    /// Where generated assets are written. The art folder is organised by asset kind, so the
+    /// finishers have to write into those subfolders -- otherwise every run drops a stray copy
+    /// at the folder root next to the properly-filed one, and the two drift apart silently.
+    ///
+    /// Paths carry NO binding: the server matches on the prefab's name and the item
+    /// GameObject's name, never on location. Moving assets between these folders is safe;
+    /// renaming them is not.
+    /// </summary>
+    private const string PrefabFolder   = ArtFolder + "/Prefabs";
+    private const string IconFolder     = ArtFolder + "/Icons";
+    private const string MaterialFolder = ArtFolder + "/Materials";
 
     /// <summary>
     /// Every server Item type that needs a placeholder icon, with the flat colour its
@@ -290,7 +303,7 @@ public static class AdvancedElectronicsBuildTools
     /// </summary>
     private static Sprite GetOrCreatePlaceholderIconSprite(string itemName, Color fill)
     {
-        var path = $"{ArtFolder}/{itemName}_icon.png";
+        var path = $"{IconFolder}/{itemName}_icon.png";
 
         var existingSprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
         if (existingSprite != null)
@@ -464,7 +477,7 @@ public static class AdvancedElectronicsBuildTools
 
         EnsureArtFolder();
 
-        var path = $"{ArtFolder}/{typeName}.prefab";
+        var path = $"{PrefabFolder}/{typeName}.prefab";
 
         // Save the prefab DISABLED. The client keeps a bundled object as an inactive template and
         // clones an enabled copy per world object; shipping it active makes placed objects
@@ -701,14 +714,21 @@ public static class AdvancedElectronicsBuildTools
             Debug.LogError($"[AdvancedElectronics] '{name}' would appear {origins.Count} times in the bundle: {string.Join("; ", origins)}. Every client will hang on \"Preparing your citizen...\" with \"An item with the same key has already been added. Key: {name}\". Keep ONE -- normally the registered prefab -- and delete or rename the others.");
     }
 
+    /// <summary>
+    /// Creates the art folder and its per-kind subfolders if missing. Every generated asset
+    /// is written into one of these; AssetDatabase writes fail outright on a folder that does
+    /// not exist yet, rather than creating it on demand.
+    /// </summary>
     private static void EnsureArtFolder()
     {
-        if (AssetDatabase.IsValidFolder(ArtFolder))
-            return;
-
         if (!AssetDatabase.IsValidFolder("Assets/Art"))
             AssetDatabase.CreateFolder("Assets", "Art");
-        AssetDatabase.CreateFolder("Assets/Art", "AdvancedElectronics");
+        if (!AssetDatabase.IsValidFolder(ArtFolder))
+            AssetDatabase.CreateFolder("Assets/Art", "AdvancedElectronics");
+
+        foreach (var sub in new[] { PrefabFolder, IconFolder, MaterialFolder })
+            if (!AssetDatabase.IsValidFolder(sub))
+                AssetDatabase.CreateFolder(ArtFolder, sub.Substring(sub.LastIndexOf('/') + 1));
     }
 
     /// <summary>
