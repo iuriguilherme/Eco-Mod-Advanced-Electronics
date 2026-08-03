@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -482,8 +483,39 @@ public static class AdvancedElectronicsBuildTools
 
         RegisterInModkitContainer(prefab);
 
+        // Remove the scene copy the tool itself created. THIS IS NOT TIDYING -- leaving it
+        // crashes every client that loads the bundle.
+        //
+        // "Build Current Bundle" tags the SCENE as the asset bundle
+        // (ModKitTools.cs: AssetImporter.GetAtPath(scene.path).SetAssetBundleNameAndVariant),
+        // so the whole scene ships AND the ModkitPrefabContainer's prefabs ship as
+        // dependencies. A scene GameObject named the same as its prefab is therefore two
+        // objects with one name in the bundle, and the client builds its object map with
+        // Dictionary.Add -- the second insert throws ArgumentException inside the
+        // ReceiveModData coroutine, which then silently stops. The player sits on
+        // "Preparing your citizen..." forever while the packet backlog grows without bound.
+        //
+        // The pre-existing dock and survey drone dodge this only because their scene objects
+        // are named DroneDock/SurveyDrone while their prefabs are DroneDockObject/
+        // SurveyDroneObject. That naming difference is load-bearing, not cosmetic.
+        //
+        // Only tool-created objects are destroyed: it built this one from the model and can
+        // rebuild it on the next run, so nothing hand-authored is at risk. Undo-able anyway.
+        if (sourceModel != null)
+        {
+            Undo.DestroyObjectImmediate(go);
+            EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+            Debug.Log($"[AdvancedElectronics] Removed the temporary scene copy of '{typeName}' -- the prefab is what ships, and a same-named scene object would collide with it in the bundle.");
+        }
+        else if (sceneObjectName == typeName)
+        {
+            Debug.LogError($"[AdvancedElectronics] The scene GameObject '{sceneObjectName}' has the SAME NAME as the prefab just saved, so the bundle will contain that name twice and every client will fail to finish loading with \"An item with the same key has already been added. Key: {typeName}\". Rename the scene object (the dock uses 'DroneDock' for 'DroneDockObject') or delete it -- the prefab is what ships.");
+        }
+
         AssetDatabase.SaveAssets();
-        Debug.Log($"[AdvancedElectronics] Saved and registered: {path}. The original scene GameObject '{go.name}' was left as-is (not deleted) -- delete it by hand if you want to avoid a duplicate loose copy sitting in the scene; only the prefab asset is what gets bundled.");
+        Debug.Log($"[AdvancedElectronics] Saved and registered: {path}.");
+
+        ReportDuplicateBundleNames();
     }
 
     /// <summary>
@@ -605,6 +637,68 @@ public static class AdvancedElectronicsBuildTools
 
         DroneAnimatorStates.EnsureStateArrays(worldObject);
         EditorUtility.SetDirty(worldObject);
+    }
+
+    /// <summary>
+    /// Reports every object name that would appear more than once in the bundle.
+    ///
+    /// Worth a dedicated check because the client's failure gives you nothing to work with:
+    /// the duplicate insert throws inside a coroutine, the coroutine stops, and the only
+    /// visible symptom is a player stuck on "Preparing your citizen..." while the pending
+    /// packet count climbs forever. Nothing says "duplicate", nothing says "bundle", and the
+    /// server log stays clean because the server is fine. Catching it here turns a
+    /// build-deploy-connect-wait-give-up loop into a line in the Console.
+    ///
+    /// Runs automatically after every finisher, and available on its own from the menu to
+    /// check before a bundle build.
+    /// </summary>
+    [MenuItem("Eco Tools/Advanced Electronics/Report Duplicate Bundle Object Names")]
+    public static void ReportDuplicateBundleNames()
+    {
+        // name -> where each occurrence came from, for a message that says what to delete.
+        var occurrences = new Dictionary<string, List<string>>();
+
+        void Record(string name, string origin)
+        {
+            if (string.IsNullOrEmpty(name)) return;
+            if (!occurrences.TryGetValue(name, out var origins))
+                occurrences[name] = origins = new List<string>();
+            origins.Add(origin);
+        }
+
+        for (var s = 0; s < SceneManager.sceneCount; s++)
+        {
+            var scene = SceneManager.GetSceneAt(s);
+            if (!scene.isLoaded) continue;
+
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                // Direct children of a scene root are the bundle's addressable entries --
+                // "Items/SurveyDroneItem" in the client's own error wording.
+                foreach (Transform child in root.transform)
+                    Record(child.name, $"scene object {root.name}/{child.name}");
+
+                // ModObject-tagged objects anywhere, which is how world objects are picked up.
+                foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    if (t.CompareTag("ModObject") && t.parent != root.transform)
+                        Record(t.name, $"scene ModObject {t.name}");
+            }
+        }
+
+        var container = Object.FindFirstObjectByType<ModkitPrefabContainer>(FindObjectsInactive.Include);
+        foreach (var prefab in container?.Prefabs ?? System.Array.Empty<GameObject>())
+            if (prefab != null)
+                Record(prefab.name, $"registered prefab {AssetDatabase.GetAssetPath(prefab)}");
+
+        var clashes = occurrences.Where(pair => pair.Value.Count > 1).ToArray();
+        if (clashes.Length == 0)
+        {
+            Debug.Log("[AdvancedElectronics] No duplicate bundle object names. Clients will be able to finish loading this bundle.");
+            return;
+        }
+
+        foreach (var (name, origins) in clashes.Select(pair => (pair.Key, pair.Value)))
+            Debug.LogError($"[AdvancedElectronics] '{name}' would appear {origins.Count} times in the bundle: {string.Join("; ", origins)}. Every client will hang on \"Preparing your citizen...\" with \"An item with the same key has already been added. Key: {name}\". Keep ONE -- normally the registered prefab -- and delete or rename the others.");
     }
 
     private static void EnsureArtFolder()
