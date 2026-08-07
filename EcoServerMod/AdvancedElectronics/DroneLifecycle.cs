@@ -398,9 +398,14 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void BeginReturnToDock(DroneMoverComponent mover, bool viaDistrictCleared)
         {
+            // The park point, not the dock's placement point: with a 4x4 pad the two are the
+            // same column but the park point is the surface the drone lands on, and it is
+            // what the spawn and teleport rungs already use. Routing the walking leg
+            // somewhere else is how R13 ends up observable only when a drone is teleported.
+            //
             // The dock occupies its own columns by design, so the drone has to be allowed
             // through them to dock at all.
-            var found = mover.SetDestination(this.HomeDock.Position, this.HomeDock.OccupiedColumns);
+            var found = mover.SetDestination(this.HomeDock.DroneParkPosition, this.HomeDock.OccupiedColumns);
             if (found)
             {
                 if (viaDistrictCleared)
@@ -473,7 +478,7 @@ namespace Eco.Mods.TechTree
             }
 
             mover.SetClimbHeight(attempt.MaxStepHeight);
-            return mover.SetDestination(this.HomeDock.Position, this.HomeDock.OccupiedColumns);
+            return mover.SetDestination(this.HomeDock.DroneParkPosition, this.HomeDock.OccupiedColumns);
         }
 
         /// <summary>
@@ -539,11 +544,16 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Horizontal distance within which the drone counts as docked. Sized so the
-        /// drone standing in an adjacent column (the dock occupies its own) still
-        /// registers as home.
+        /// Horizontal distance within which the drone counts as docked, measured from the
+        /// dock's own position.
+        ///
+        /// Must clear the pad's half-diagonal, not just its edge. The pad is 4x4 centred on
+        /// the dock, so its far corners are about 2.83 away -- a drone that settled on one
+        /// of them under the old 2.0 radius would have walked all the way home, failed the
+        /// arrival test, and been routed into Unreachable at its own dock. The extra margin
+        /// past 2.83 covers a drone stopping a cell short of the exact park point.
         /// </summary>
-        private const float DockArrivalRadius = 2f;
+        private const float DockArrivalRadius = 4f;
 
         /// <summary>
         /// Park-and-sweep survey pass (F2/R6). Instead of roaming random points and sampling only

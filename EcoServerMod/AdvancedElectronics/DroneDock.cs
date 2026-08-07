@@ -137,10 +137,30 @@ namespace Eco.Mods.TechTree
         /// apart -- a dock that reserved cells its own drone treated as another player's
         /// object would be unreachable at its own doorstep.
         /// </summary>
-        private static readonly Vector3i[] FootprintOffsets =
+        /// <remarks>
+        /// A 4x4 pad, centred on the dock's own position: the mesh is a cube scaled
+        /// 4 x 0.5 x 4 about its local origin, so it spans -2..+2 on both horizontal axes
+        /// and these cells describe exactly the volume a player sees. Four cells across
+        /// puts the dock's own block at the corner junction of the middle four rather than
+        /// at a cell centre -- which is what makes the pad's centre, and so the park point,
+        /// the dock's position itself.
+        ///
+        /// Sized from the drone, not from a round number (KD4): the HRVSTR chassis measures
+        /// 3.5 x 1 x 2.75, so a 4x4 pad contains it with about half a block of margin on its
+        /// long axis. That margin is thin, and a later dock model with less of it breaks the
+        /// rule silently.
+        /// </remarks>
+        private static readonly Vector3i[] FootprintOffsets = BuildPadOffsets();
+
+        private static Vector3i[] BuildPadOffsets()
         {
-            new Vector3i(0, 0, 0),
-        };
+            var offsets = new Vector3i[16];
+            var index = 0;
+            for (var x = -2; x <= 1; x++)
+                for (var z = -2; z <= 1; z++)
+                    offsets[index++] = new Vector3i(x, 0, z);
+            return offsets;
+        }
 
         /// <summary>
         /// The world columns this dock's footprint covers, in world space.
@@ -523,11 +543,22 @@ namespace Eco.Mods.TechTree
         private bool restartRelinkDone;
 
         /// <summary>
-        /// Where this dock's drone stands when it is home: one cell to the side, since the dock
-        /// itself occupies its own column. Used both to spawn a fresh drone and, as the last rung
-        /// of the return ladder, to place a drone that could not walk back (R11).
+        /// Where this dock's drone stands when it is home: the centre of the pad, on its top
+        /// surface. Used to spawn a fresh drone, as the target of the ordinary return leg, and
+        /// as the last rung of the return ladder for a drone that could not walk back (R11).
+        ///
+        /// It used to sit one cell to the side, because the dock occupied a single column and
+        /// standing on it meant standing inside it. A pad is something to land on, so the drone
+        /// belongs in the middle of it -- and with the pad centred on this position, the middle
+        /// is here. The quarter-block lift clears the mesh, which is half a block tall about its
+        /// own origin.
+        ///
+        /// Provisional, per KTD5: a real dock model may want the drone somewhere else on it.
         /// </summary>
-        internal Vector3 DroneParkPosition => this.Position + new Vector3(1.5f, 0f, 0f);
+        internal Vector3 DroneParkPosition => this.Position + new Vector3(0f, PadSurfaceHeight, 0f);
+
+        /// <summary>Height of the pad's top surface above the dock's placement point.</summary>
+        private const float PadSurfaceHeight = 0.25f;
 
         private void SpawnDrone(User user)
         {

@@ -272,8 +272,8 @@ MonoBehaviour:
   defaultBlueColor: {r: 0, g: 0, b: 0, a: 0}
   hasOccupancy: 1
   overrideOccupancy: 0
-  size: {x: 50, y: 1, z: 50}
-  occupancyOffset: {x: 0, y: 0, z: 0}
+  size: {x: 4, y: 1, z: 4}
+  occupancyOffset: {x: -2, y: 0, z: -2}
   interactable: 1
 --- !u!114 &3445637808049236089
 MonoBehaviour:
