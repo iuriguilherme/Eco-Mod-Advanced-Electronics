@@ -121,10 +121,47 @@ namespace Eco.Mods.TechTree
         /// </summary>
         static DroneDockObject()
         {
-            AddOccupancy<DroneDockObject>(new List<BlockOccupancy>
+            var occupancy = new List<BlockOccupancy>(FootprintOffsets.Length);
+            foreach (var offset in FootprintOffsets)
+                occupancy.Add(new BlockOccupancy(offset));
+            AddOccupancy<DroneDockObject>(occupancy);
+        }
+
+        /// <summary>
+        /// The dock's block footprint, as offsets from its own position.
+        ///
+        /// Declared once and read twice: the static constructor registers it as the
+        /// engine's occupancy, and <see cref="OccupiedColumns"/> hands the same cells to
+        /// the drone's pathfinder as columns it may cross. Two consumers of one list, so
+        /// the pad the world reserves and the pad the drone can walk on cannot drift
+        /// apart -- a dock that reserved cells its own drone treated as another player's
+        /// object would be unreachable at its own doorstep.
+        /// </summary>
+        private static readonly Vector3i[] FootprintOffsets =
+        {
+            new Vector3i(0, 0, 0),
+        };
+
+        /// <summary>
+        /// The world columns this dock's footprint covers, in world space.
+        ///
+        /// Every placed WorldObject writes <c>Occupied</c> blocks across its footprint,
+        /// and the pathfinder treats an occupied column as impassable. The drone's own
+        /// dock is the one object it must be able to path into and out of, so these
+        /// columns are passed to <see cref="DroneMoverComponent.SetDestination"/> as the
+        /// exempt set on every leg -- outbound as much as homebound, since a drone parked
+        /// on the pad has to cross the pad to leave it.
+        /// </summary>
+        internal IReadOnlyCollection<Vector3> OccupiedColumns
+        {
+            get
             {
-                new BlockOccupancy(new Vector3i(0, 0, 0)),
-            });
+                var origin = this.Position;
+                var columns = new List<Vector3>(FootprintOffsets.Length);
+                foreach (var offset in FootprintOffsets)
+                    columns.Add(new Vector3(origin.X + offset.X, origin.Y + offset.Y, origin.Z + offset.Z));
+                return columns;
+            }
         }
 
         /// <summary>

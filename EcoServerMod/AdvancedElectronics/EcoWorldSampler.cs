@@ -64,8 +64,12 @@ namespace Eco.Mods.TechTree
         /// to us.
         ///
         /// Object occupancy is deliberately NOT considered here -- it belongs to
-        /// <see cref="IsObstacleAt"/> so the pathfinder's endpoint exemption can let the
-        /// drone leave its own column and enter the dock's.
+        /// <see cref="IsObstacleAt"/> so the pathfinder's exemption set can let the drone
+        /// cross the columns of its own dock, in both directions. That exemption used to
+        /// be a single column, written when the dock was one; it now covers the dock's
+        /// whole registered footprint, because a multi-cell pad walls its drone in
+        /// otherwise. Solidity is never exempt -- a column with no room to stand stays
+        /// impassable however the object that owns it is registered.
         /// </summary>
         public bool IsSolidAt(int x, int z)
         {

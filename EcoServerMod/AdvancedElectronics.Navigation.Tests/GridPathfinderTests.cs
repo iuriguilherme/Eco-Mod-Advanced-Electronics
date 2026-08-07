@@ -102,7 +102,7 @@ namespace AdvancedElectronics.Navigation.Tests
             sampler.SetObstacle(4, 0); // the home dock occupying the return target
 
             var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
-            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0), exemptGoalObstacle: true);
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0), new[] { new Vector3(4, 0, 0) });
 
             Assert.True(result.Found);
             Assert.Equal(4f, result.Waypoints[^1].X);
@@ -131,9 +131,104 @@ namespace AdvancedElectronics.Navigation.Tests
             sampler.SetObstacle(4, 0); // the dock it is returning to
 
             var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
-            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0), exemptGoalObstacle: true);
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0), new[] { new Vector3(4, 0, 0) });
 
             Assert.True(result.Found);
+        }
+
+        // --- Multi-cell footprint exemption: a dock that occupies a 4x4 pad walls its
+        // own drone in. Every pad cell reports Occupied, so exempting one column leaves
+        // the interior unreachable on the way home and un-leavable on the way out. These
+        // pin the whole footprint being exempt, in both directions.
+
+        /// <summary>A 4x4 pad at x 4..7, z -1..2 -- the dock's registered occupancy.</summary>
+        private static List<Vector3> Pad4x4(FakeWorldSampler sampler)
+        {
+            var columns = new List<Vector3>();
+            for (int x = 4; x <= 7; x++)
+            {
+                for (int z = -1; z <= 2; z++)
+                {
+                    sampler.SetObstacle(x, z);
+                    columns.Add(new Vector3(x, 0, z));
+                }
+            }
+            return columns;
+        }
+
+        [Fact]
+        public void GoalInsideMultiCellFootprint_WholeFootprintExempt_FindsPath()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            var pad = Pad4x4(sampler);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(5, 0, 0), pad);
+
+            Assert.True(result.Found);
+            Assert.Equal(5f, result.Waypoints[^1].X);
+        }
+
+        [Fact]
+        public void StartInsideMultiCellFootprint_WholeFootprintExempt_FindsPathOut()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            var pad = Pad4x4(sampler);
+
+            // Parked on the pad, dispatched to open ground. The first step off the pad
+            // crosses another pad cell, which the goal-only exemption never covered.
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(5, 0, 0), new Vector3(0, 0, 0), pad);
+
+            Assert.True(result.Found);
+            Assert.Equal(0f, result.Waypoints[^1].X);
+        }
+
+        [Fact]
+        public void BothEndsInsideSameFootprint_FindsPathBetweenInteriorCells()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            var pad = Pad4x4(sampler);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(4, 0, -1), new Vector3(7, 0, 2), pad);
+
+            Assert.True(result.Found);
+            Assert.Equal(new Vector3(7, 1, 2), result.Waypoints[^1]);
+        }
+
+        // The widening must not turn into a licence to walk through anything: a column
+        // that belongs to no named footprint still blocks, footprint exemption or not.
+        [Fact]
+        public void OccupiedColumnOutsideExemptFootprint_StillBlocks()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            var pad = Pad4x4(sampler);
+            // Another player's object walling off the pad from the start position. It
+            // spans the whole bounded search area, so no detour exists -- the pad's
+            // exemption is the only thing that could let the drone through, and must not.
+            for (int z = -30; z <= 30; z++)
+                sampler.SetObstacle(2, z);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(5, 0, 0), pad);
+
+            Assert.False(result.Found);
+        }
+
+        // Regression guard for every one-block object -- the assembly, and the dock as it
+        // was. A single-cell exempt set must behave exactly like the old bool did.
+        [Fact]
+        public void SingleCellExemptFootprint_BehavesLikeTheOldGoalExemption()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            sampler.SetObstacle(4, 0);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var exempt = new[] { new Vector3(4, 0, 0) };
+
+            Assert.True(pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0), exempt).Found);
+            Assert.False(pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(4, 0, 0)).Found);
         }
 
         [Fact]

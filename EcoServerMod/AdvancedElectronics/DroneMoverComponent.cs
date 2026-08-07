@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
@@ -124,15 +125,17 @@ namespace Eco.Mods.TechTree
         /// this rather than assume dispatch always succeeds (mirrors
         /// GridPathfinder.FindPath's own Found-checking contract).
         /// </summary>
-        /// <param name="destinationIsOccupiedObject">
-        /// True when the caller knows the destination column is legitimately occupied by
-        /// a WorldObject it intends to path into — i.e. the return-to-dock leg targeting
-        /// the dock itself. Roam and district-dispatch destinations pass false so the
-        /// drone never parks inside another player's object (it could not roam back out).
+        /// <param name="exemptOccupiedColumns">
+        /// The world columns of an object the caller knows the drone may legitimately
+        /// stand on and cross — in practice its own dock's footprint. Passed on every
+        /// leg, not only the homebound one: a drone parked on a multi-cell pad has to
+        /// cross the rest of the pad to leave it, and every pad cell reports occupied.
+        /// Null for a destination that belongs to nobody, so the drone never parks inside
+        /// another player's object (it could not roam back out).
         /// </param>
-        public bool SetDestination(Vector3 destination, bool destinationIsOccupiedObject = false)
+        public bool SetDestination(Vector3 destination, IReadOnlyCollection<Vector3> exemptOccupiedColumns = null)
         {
-            var result = this.pathfinder.FindPath(this.Parent.Position, destination, destinationIsOccupiedObject);
+            var result = this.pathfinder.FindPath(this.Parent.Position, destination, exemptOccupiedColumns);
             this.currentPath = result;
             this.waypointIndex = 0;
             return result.Found;

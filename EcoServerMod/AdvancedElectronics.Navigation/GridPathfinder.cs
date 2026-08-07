@@ -82,7 +82,13 @@ namespace AdvancedElectronics.Navigation
         /// are used to locate grid columns; returned waypoints carry the
         /// sampler's actual ground height for each column.
         /// </summary>
-        public PathResult FindPath(Vector3 start, Vector3 goal, bool exemptGoalObstacle = false)
+        /// <param name="exemptOccupiedColumns">
+        /// World positions whose columns are exempt from the OBSTACLE predicate — the
+        /// footprint of an object the caller legitimately intends to path into and out
+        /// of. Only X/Z matter. Null or empty means no exemption. Solidity is never
+        /// exempt.
+        /// </param>
+        public PathResult FindPath(Vector3 start, Vector3 goal, IReadOnlyCollection<Vector3> exemptOccupiedColumns = null)
         {
             GridColumn startColumn = ToColumn(start);
             GridColumn goalColumn = ToColumn(goal);
@@ -92,17 +98,29 @@ namespace AdvancedElectronics.Navigation
             // column always reports true — without the exemption every dispatch fails
             // immediately with no-path.
             //
-            // The GOAL column is exempt only when the caller declares it
-            // (exemptGoalObstacle), because the caller is the only party that knows the
-            // destination is a legitimately-occupied one. The return-to-dock leg targets
-            // the dock's own column and must path into it (that is what "docking" is);
-            // a roam hop must NOT, or the drone parks inside another player's object and
-            // then cannot pick a way back out. Solidity remains a hard failure for both
-            // endpoints regardless.
+            // Other columns are exempt only when the caller names them, because the
+            // caller is the only party that knows a given occupied column belongs to an
+            // object it may stand on. The return-to-dock leg targets the dock and must
+            // path into it (that is what "docking" is); a roam hop must NOT, or the drone
+            // parks inside another player's object and then cannot pick a way back out.
+            //
+            // The set, rather than the single goal column this used to take: a dock that
+            // occupies a 4x4 pad blocks its own drone twice over. Every cell of the pad
+            // reports Occupied, so exempting only the goal cell leaves it walled in by
+            // its own footprint — unreachable on the way home, and un-leavable on the way
+            // out, since the drone's first step off the pad crosses another pad cell.
+            // Solidity remains a hard failure for both endpoints regardless.
+            var exempt = new HashSet<GridColumn> { startColumn };
+            if (exemptOccupiedColumns != null)
+            {
+                foreach (Vector3 column in exemptOccupiedColumns)
+                    exempt.Add(ToColumn(column));
+            }
+
             if (_sampler.IsSolidAt(startColumn.X, startColumn.Z) || _sampler.IsSolidAt(goalColumn.X, goalColumn.Z))
                 return PathResult.NotFound;
 
-            if (!exemptGoalObstacle && !startColumn.Equals(goalColumn) && _sampler.IsObstacleAt(goalColumn.X, goalColumn.Z))
+            if (!exempt.Contains(goalColumn) && _sampler.IsObstacleAt(goalColumn.X, goalColumn.Z))
                 return PathResult.NotFound;
 
             if (startColumn.Equals(goalColumn))
@@ -135,9 +153,9 @@ namespace AdvancedElectronics.Navigation
                         continue;
                     if (closed.Contains(neighbor))
                         continue;
-                    // Goal column: obstacle-exempt only when the caller declared it (see
-                    // the endpoint exemption above). Solidity is always enforced.
-                    if (exemptGoalObstacle && neighbor.Equals(goalColumn))
+                    // An exempt column is obstacle-exempt but never solidity-exempt (see
+                    // the endpoint exemption above). Every other column must be walkable.
+                    if (exempt.Contains(neighbor))
                     {
                         if (_sampler.IsSolidAt(neighbor.X, neighbor.Z))
                             continue;

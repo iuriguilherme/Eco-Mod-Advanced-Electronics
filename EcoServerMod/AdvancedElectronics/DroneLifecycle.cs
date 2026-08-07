@@ -321,7 +321,12 @@ namespace Eco.Mods.TechTree
             }
 
             var target = destination.Value;
-            if (!mover.SetDestination(target))
+            // The dock's columns are exempt on the way OUT as well as the way home: the
+            // drone starts parked on the pad, and every pad cell reports occupied, so
+            // without this its first step off the dock has nowhere legal to go. The
+            // target itself is not in the set, so this cannot make an occupied
+            // destination legal -- a survey point inside someone's building still fails.
+            if (!mover.SetDestination(target, this.HomeDock.OccupiedColumns))
             {
                 this.LastDispatchNote = $"no path from {this.Parent.Position.X:F0},{this.Parent.Position.Z:F0} to area point {target.X:F0},{target.Z:F0}";
                 this.HandleNoPath(mover);
@@ -383,8 +388,9 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void BeginReturnToDock(DroneMoverComponent mover, bool viaDistrictCleared)
         {
-            // destinationIsOccupiedObject: the dock occupies its own column by design.
-            var found = mover.SetDestination(this.HomeDock.Position, destinationIsOccupiedObject: true);
+            // The dock occupies its own columns by design, so the drone has to be allowed
+            // through them to dock at all.
+            var found = mover.SetDestination(this.HomeDock.Position, this.HomeDock.OccupiedColumns);
             if (found)
             {
                 if (viaDistrictCleared)
@@ -457,7 +463,7 @@ namespace Eco.Mods.TechTree
             }
 
             mover.SetClimbHeight(attempt.MaxStepHeight);
-            return mover.SetDestination(this.HomeDock.Position, destinationIsOccupiedObject: true);
+            return mover.SetDestination(this.HomeDock.Position, this.HomeDock.OccupiedColumns);
         }
 
         /// <summary>
@@ -584,7 +590,7 @@ namespace Eco.Mods.TechTree
                     return;
 
                 var center = new PlotPos(plot.X, plot.Z).CenterWorldPos;
-                var reachable = mover.SetDestination(new Vector3(center.x, pos.Y, center.y));
+                var reachable = mover.SetDestination(new Vector3(center.x, pos.Y, center.y), this.HomeDock.OccupiedColumns);
                 this.sweepArrivalAttempts++;
 
                 if (!reachable || this.sweepArrivalAttempts > MaxPlotArrivalAttempts)
