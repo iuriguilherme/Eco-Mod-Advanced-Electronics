@@ -203,9 +203,11 @@ namespace Eco.Mods.TechTree
     // so unsetting it is what removes the affordance -- there is no "not interactable" flag.
     // BaseRampObject in Mods/__core__/Items/Roads.cs is the vanilla precedent.
     [Tag("Usable", Unset = true)]
-    public partial class SurveyDroneObject : WorldObject, IDroneOwnable
+    public partial class SurveyDroneObject : WorldObject, IDroneOwnable, IDroneToolbearer
     {
-        [Serialized] public bool ModeHarvest = true;
+        /// <summary>The survey drone scans with the mining arm. A class constant, never stored.</summary>
+        public DroneTool Tool => DroneTool.Mining;
+
         /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
         partial void ModsPreInitialize();
         /// <summary>Hook for mods to customize WorldObject after initialization.</summary>

@@ -121,6 +121,62 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.False(state.IsAtHomeDock);
         }
 
+        // --- ModeMining / ModeHarvest: decided by the tool, and nothing else ---
+
+        [Fact]
+        public void MiningArm_SelectsMiningModeOnly()
+        {
+            var state = State(DroneStatus.Surveying, isMoving: false, isAtHomeDock: false,
+                              usesHarvestTool: false);
+
+            Assert.True(state.ModeMining);
+            Assert.False(state.ModeHarvest);
+        }
+
+        [Fact]
+        public void HarvestArm_SelectsHarvestModeOnly()
+        {
+            var state = State(DroneStatus.Surveying, isMoving: false, isAtHomeDock: false,
+                              usesHarvestTool: true);
+
+            Assert.True(state.ModeHarvest);
+            Assert.False(state.ModeMining);
+        }
+
+        // The controller's mode-select has no third branch and no neither-branch: both true
+        // or both false is a state the art cannot render.
+        [Theory]
+        [InlineData(DroneStatus.Idle, false)]
+        [InlineData(DroneStatus.Idle, true)]
+        [InlineData(DroneStatus.EnRoute, false)]
+        [InlineData(DroneStatus.EnRoute, true)]
+        [InlineData(DroneStatus.Surveying, false)]
+        [InlineData(DroneStatus.Surveying, true)]
+        [InlineData(DroneStatus.Unreachable, false)]
+        [InlineData(DroneStatus.Unreachable, true)]
+        public void ModeBooleans_AreNeverEqual_WhateverTheStatus(DroneStatus status, bool usesHarvestTool)
+        {
+            var state = State(status, isMoving: false, isAtHomeDock: false, usesHarvestTool);
+
+            Assert.NotEqual(state.ModeMining, state.ModeHarvest);
+        }
+
+        // The tool is a fact about the drone, not about what it is doing. A drone that
+        // switched arms on arrival would be a behaviour nobody asked for.
+        [Theory]
+        [InlineData(DroneStatus.Idle)]
+        [InlineData(DroneStatus.EnRoute)]
+        [InlineData(DroneStatus.Surveying)]
+        [InlineData(DroneStatus.Unreachable)]
+        public void ModeBooleans_DoNotVaryWithLifecycleStatus(DroneStatus status)
+        {
+            var mining = State(status, isMoving: false, isAtHomeDock: false, usesHarvestTool: false);
+            var harvest = State(status, isMoving: true, isAtHomeDock: false, usesHarvestTool: true);
+
+            Assert.True(mining.ModeMining);
+            Assert.True(harvest.ModeHarvest);
+        }
+
         // --- Operating: the propeller layer's only way out of stopped ---
 
         [Theory]

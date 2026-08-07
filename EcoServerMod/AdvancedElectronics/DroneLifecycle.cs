@@ -272,11 +272,17 @@ namespace Eco.Mods.TechTree
                              && !this.HomeDock.IsDestroyed
                              && this.IsAtHomeDock();
 
+            // A drone that does not declare a tool animates with the mining arm rather than
+            // freezing at mode-select, so a drone class added later that forgets the
+            // interface still moves -- visibly wrong beats visibly broken.
+            var usesHarvestTool = this.Parent is IDroneToolbearer toolbearer
+                                  && toolbearer.Tool == DroneTool.Harvest;
+
             var state = DroneAnimationState.From(
                 this.stateMachine.Status,
                 mover.IsMoving,
                 atHomeDock,
-                usesHarvestTool: false);
+                usesHarvestTool);
 
             foreach (var (name, value) in state.AsNamedValues())
             {

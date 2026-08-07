@@ -33,6 +33,39 @@ namespace Eco.Mods.TechTree
     }
 
     /// <summary>
+    /// Which arm a drone carries. The HRVSTR chassis models both and the animator's
+    /// mode-select branches on exactly one of them, so there is no third arm and no
+    /// armless drone -- an enum rather than a pair of booleans, because "neither" and
+    /// "both" are states the art cannot render and this shape cannot express.
+    /// </summary>
+    public enum DroneTool
+    {
+        /// <summary>The mining arm. What the survey drone scans with.</summary>
+        Mining,
+
+        /// <summary>The harvest arm.</summary>
+        Harvest,
+    }
+
+    /// <summary>
+    /// The tool-identity surface every drone WorldObject carries.
+    ///
+    /// Exists for the same reason as <see cref="IDroneOwnable"/>: <c>DroneLifecycle</c>
+    /// reaches its drone through <c>this.Parent</c>, which is typed as a WorldObject, so a
+    /// per-class member is unreachable without a shared surface to read it through.
+    ///
+    /// A drone's tool is a fact about what it IS, so implementations return a constant and
+    /// nothing persists it. Three earlier attempts stored it as a serialized field on each
+    /// drone class instead; a saved value can disagree with the class that owns it, and
+    /// there is no answer to which one wins.
+    /// </summary>
+    public interface IDroneToolbearer
+    {
+        /// <summary>The arm this drone's class carries. Constant for the class.</summary>
+        DroneTool Tool { get; }
+    }
+
+    /// <summary>
     /// Owner-attribution helper for the survey drone (U7, R5). Computes the
     /// (OwnerName, OwnerId) pair that <see cref="SurveyDroneObject.SetOwner"/> stamps onto the
     /// entity -- see that method for where/when it gets called.
