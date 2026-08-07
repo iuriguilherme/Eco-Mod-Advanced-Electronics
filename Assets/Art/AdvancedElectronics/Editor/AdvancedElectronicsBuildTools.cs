@@ -444,16 +444,26 @@ public static class AdvancedElectronicsBuildTools
         // cannot be placed with no server-side error. Neither this tool nor the ModKit's
         // WorldObjectSetup used to set it, so it stayed at Unity's default of zero.
         // Derive it from the encapsulating renderer bounds, ceil to whole blocks, min 1.
-        if (worldObject.size == Vector3.zero)
+        //
+        // Recomputed on every run, deliberately. This used to derive the size only when it
+        // was still zero, which made it a one-time initialization rather than a derivation:
+        // the dock's footprint was taken from a Unity Plane primitive (10 units square,
+        // scaled five times) and survived unchanged at 50 x 1 x 50 when the mesh was later
+        // replaced with a platform-shaped cube. Re-running the finisher could not correct it
+        // because the value was no longer zero. Deriving unconditionally is what keeps the
+        // ghost honest across future mesh edits instead of only the first time.
+        var sizeBounds = new Bounds(go.transform.position, Vector3.zero);
+        foreach (var renderer in go.GetComponentsInChildren<Renderer>())
+            sizeBounds.Encapsulate(renderer.bounds);
+        var derivedSize = new Vector3(
+            Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.x)),
+            Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.y)),
+            Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.z)));
+
+        if (worldObject.size != derivedSize)
         {
-            var sizeBounds = new Bounds(go.transform.position, Vector3.zero);
-            foreach (var renderer in go.GetComponentsInChildren<Renderer>())
-                sizeBounds.Encapsulate(renderer.bounds);
-            worldObject.size = new Vector3(
-                Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.x)),
-                Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.y)),
-                Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.z)));
-            Debug.Log($"[AdvancedElectronics] Set WorldObject.size on '{go.name}' to {worldObject.size} (block footprint).");
+            Debug.Log($"[AdvancedElectronics] WorldObject.size on '{go.name}': {worldObject.size} -> {derivedSize} (block footprint, re-derived from renderer bounds).");
+            worldObject.size = derivedSize;
         }
 
         if (isDock)
