@@ -21,6 +21,7 @@ using Eco.Mods.TechTree;
 using Eco.Shared.IoC;
 using Eco.Shared.Items;
 using Eco.Shared.Localization;
+using Eco.Shared.Logging;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 using Eco.Shared.Time;
@@ -171,15 +172,26 @@ namespace Eco.Mods.TechTree
         /// columns are passed to <see cref="DroneMoverComponent.SetDestination"/> as the
         /// exempt set on every leg -- outbound as much as homebound, since a drone parked
         /// on the pad has to cross the pad to leave it.
+        ///
+        /// Read from the engine's own placed footprint rather than recomputed from
+        /// <see cref="FootprintOffsets"/>. The offsets are declared in the object's
+        /// unrotated frame, and the engine rotates them when the object is placed; adding
+        /// raw offsets to Position therefore describes the wrong cells for any dock the
+        /// player turned. The consequence is not a cosmetic one -- the drone would find a
+        /// row of its own pad reserved but unexempt, which is an impassable wall built out
+        /// of its own dock. Asking the engine what it actually reserved cannot drift.
         /// </summary>
         internal IReadOnlyCollection<Vector3> OccupiedColumns
         {
             get
             {
-                var origin = this.Position;
-                var columns = new List<Vector3>(FootprintOffsets.Length);
-                foreach (var offset in FootprintOffsets)
-                    columns.Add(new Vector3(origin.X + offset.X, origin.Y + offset.Y, origin.Z + offset.Z));
+                var placed = this.WorldOccupancy;
+                if (placed == null)
+                    return Array.Empty<Vector3>();
+
+                var columns = new List<Vector3>(placed.Count);
+                foreach (var cell in placed)
+                    columns.Add(new Vector3(cell.X, cell.Y, cell.Z));
                 return columns;
             }
         }
@@ -572,7 +584,16 @@ namespace Eco.Mods.TechTree
 
             var obj = WorldObjectManager.ForceAdd(droneObjectType, user, this.DroneParkPosition, Quaternion.Identity, false) as WorldObject;
             if (obj == null)
+            {
+                // Say so. The park point sits inside the dock's own reserved footprint, and
+                // whether the engine refuses to place an object there could not be settled
+                // offline -- the reference assemblies ship with method bodies stripped. A
+                // silent return here means inserting a drone into a dock appears to do
+                // nothing at all, with no server log to search for.
+                Log.WriteErrorLineLoc(
+                    $"Drone Dock at {this.Position} could not spawn {droneObjectType.Name} at its park position {this.DroneParkPosition} -- placement was refused, possibly because the park point lies inside the dock's own registered occupancy.");
                 return;
+            }
 
             if (user != null && obj is IDroneOwnable ownable)
                 ownable.SetOwner(user);

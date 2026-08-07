@@ -216,6 +216,27 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.False(result.Found);
         }
 
+        // The invariant the exemption comments promise most loudly, tested where it is
+        // newly reachable: a MID-PATH exempt cell. Exempting a column waives the obstacle
+        // test, never the solidity test -- occupancy says "something of mine stands here",
+        // solidity says "there is no room to stand", and only the first is the caller's to
+        // waive. Without this, a dock buried in terrain would route a drone through rock.
+        [Fact]
+        public void SolidColumnInsideExemptFootprint_StillBlocks()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            var pad = Pad4x4(sampler);
+            // Wall off the pad's interior with solid terrain across its whole width, so the
+            // only route from the west edge to the east edge runs through solid columns.
+            for (int z = -30; z <= 30; z++)
+                sampler.SetSolid(5, z);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(4, 0, 0), new Vector3(7, 0, 0), pad);
+
+            Assert.False(result.Found);
+        }
+
         // Regression guard for every one-block object -- the assembly, and the dock as it
         // was. A single-cell exempt set must behave exactly like the old bool did.
         [Fact]

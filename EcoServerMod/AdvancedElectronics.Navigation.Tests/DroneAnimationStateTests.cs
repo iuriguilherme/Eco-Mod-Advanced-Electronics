@@ -48,26 +48,26 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.False(state.IsAtHomeDock);
         }
 
-        // The case an assignment-derived flag gets wrong, and the reason KD3 reads
-        // position instead. An assignment outlives the survey that completes it, so a
-        // drone that finished its area and flew home is still assigned -- a flag meaning
-        // "not dispatched" would never go true again and the drone would sit in its dock
-        // running the flying loop.
+        // The reason KD3 reads position rather than assignment. An assignment outlives the
+        // survey that completes it, so a drone that finished its area and flew home is still
+        // assigned; so is one recalled for lack of fuel. A flag meaning "not dispatched"
+        // would never go true again for either, and the drone would sit in its dock running
+        // the flying loop.
+        //
+        // What pins that here is the SIGNATURE, not a scenario: assignment is not a
+        // parameter of From, so no combination of inputs can make it matter. Separate
+        // completed-survey and fuel-recall test cases would be three copies of the case
+        // above wearing different names -- coverage theatre, since the dimension that
+        // distinguished them is gone. The real geometric predicate lives in
+        // DroneLifecycle.IsAtHomeDock(), outside this project's reach.
         [Fact]
-        public void HomeAfterACompletedSurvey_StillAssigned_IsAtHomeDock()
+        public void IsAtHomeDock_DependsOnlyOnPositionAndMotion_NotOnLifecycleStatus()
         {
-            var state = State(DroneStatus.Idle, isMoving: false, isAtHomeDock: true);
-
-            Assert.True(state.IsAtHomeDock);
-        }
-
-        // Recall for lack of fuel keeps the assignment too, for the same reason.
-        [Fact]
-        public void RecalledForFuelAndHomeAgain_IsAtHomeDock()
-        {
-            var state = State(DroneStatus.Idle, isMoving: false, isAtHomeDock: true);
-
-            Assert.True(state.IsAtHomeDock);
+            foreach (var status in new[] { DroneStatus.Idle, DroneStatus.EnRoute, DroneStatus.Unreachable })
+            {
+                Assert.True(State(status, isMoving: false, isAtHomeDock: true).IsAtHomeDock);
+                Assert.False(State(status, isMoving: false, isAtHomeDock: false).IsAtHomeDock);
+            }
         }
 
         // --- IsWorking: on station, across the whole pass ---
@@ -91,17 +91,11 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.True(state.IsWorking);
         }
 
+        // One case, not two. Outbound and homebound legs are indistinguishable here by
+        // construction -- DroneTravelTarget stopped being an input -- so a second test naming
+        // the return leg would assert nothing the first does not.
         [Fact]
-        public void EnRouteToTheArea_IsNeitherWorkingNorHome()
-        {
-            var state = State(DroneStatus.EnRoute, isMoving: true, isAtHomeDock: false);
-
-            Assert.False(state.IsWorking);
-            Assert.False(state.IsAtHomeDock);
-        }
-
-        [Fact]
-        public void EnRouteBackToTheDock_IsNeitherWorkingNorHome()
+        public void EnRouteInEitherDirection_IsNeitherWorkingNorHome()
         {
             var state = State(DroneStatus.EnRoute, isMoving: true, isAtHomeDock: false);
 
@@ -175,6 +169,37 @@ namespace AdvancedElectronics.Navigation.Tests
 
             Assert.True(mining.ModeMining);
             Assert.True(harvest.ModeHarvest);
+        }
+
+        // --- IsAtHomeDock and IsWorking are mutually exclusive ---
+
+        // The caller's "at the dock" test is a radius sized to clear the pad's diagonal, so
+        // it also contains a survey plot next to the dock. Without this rule such a drone
+        // reports home and working at once: blades stop, take-off replays, once per plot hop.
+        [Fact]
+        public void SurveyingInsideTheDocksOwnRadius_IsWorkingNotHome()
+        {
+            var state = State(DroneStatus.Surveying, isMoving: false, isAtHomeDock: true);
+
+            Assert.True(state.IsWorking);
+            Assert.False(state.IsAtHomeDock);
+            Assert.True(state.Operating);
+        }
+
+        [Theory]
+        [InlineData(DroneStatus.Idle, false, true)]
+        [InlineData(DroneStatus.Idle, true, true)]
+        [InlineData(DroneStatus.EnRoute, true, false)]
+        [InlineData(DroneStatus.Surveying, false, true)]
+        [InlineData(DroneStatus.Surveying, true, true)]
+        [InlineData(DroneStatus.Surveying, false, false)]
+        [InlineData(DroneStatus.Unreachable, false, true)]
+        public void IsAtHomeDockAndIsWorking_AreNeverBothTrue(
+            DroneStatus status, bool isMoving, bool isAtHomeDock)
+        {
+            var state = State(status, isMoving, isAtHomeDock);
+
+            Assert.False(state.IsAtHomeDock && state.IsWorking);
         }
 
         // --- Operating: the propeller layer's only way out of stopped ---

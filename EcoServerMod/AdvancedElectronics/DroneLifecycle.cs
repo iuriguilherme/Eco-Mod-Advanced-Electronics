@@ -133,18 +133,22 @@ namespace Eco.Mods.TechTree
             // IsDestroyed as well as null: a dock demolished while its drone is out
             // leaves the reference dangling, and every leg below paths to a dead dock's
             // coordinates. An orphaned drone goes inert instead of pathing forever.
-            if (this.HomeDock == null || this.HomeDock.IsDestroyed)
-                return;
             if (!this.Parent.TryGetComponent<DroneMoverComponent>(out var mover))
                 return;
 
-            // Before every early return below, not after the switch. The unserviceable gate and
-            // the assignment-change branch both return, and those are exactly the transitions the
-            // art most needs to show -- a drone recalled for lack of fuel that kept playing its
-            // survey animation would be the most confusing possible readout. Pushing here costs
-            // one tick of latency (the states describe the situation as of the start of this
-            // tick), which is the same trade DroneMoverComponent already makes for MoveSpeed.
+            // Above the dock guard, not below it. An orphaned drone still has an animator,
+            // and leaving it frozen on whatever it was last doing -- with both mode booleans
+            // false, which the controller's mode-select has no branch for -- is worse than
+            // showing it hovering. RefreshAnimationStates handles a missing dock itself.
             this.RefreshAnimationStates(mover);
+
+            // The push above sits before every early return below, not after the switch. The
+            // unserviceable gate and the assignment-change branch both return, and those are
+            // exactly the transitions the art most needs to show -- a drone recalled for lack
+            // of fuel that kept playing its survey animation would be the most confusing
+            // possible readout. Pushing there costs one tick of latency (the states describe
+            // the situation as of the start of this tick), which is the same trade
+            // DroneMoverComponent already makes for MoveSpeed.
 
             // The drone surveys the dock's assigned survey area (KTD9). The token is opaque to the
             // state machine — it only drives change-detection and the target label. It encodes the
@@ -268,9 +272,11 @@ namespace Eco.Mods.TechTree
             // its area and flew back is still assigned, so an assignment-derived flag would
             // never read as home again. A drone with no dock at all is treated as not home --
             // it is stranded, and the flying loop is the honest animation for that.
-            var atHomeDock = this.HomeDock != null
-                             && !this.HomeDock.IsDestroyed
-                             && this.IsAtHomeDock();
+            //
+            // Raw position only. The projection is what resolves "home AND working" -- a
+            // survey plot beside the dock falls inside the arrival radius -- and it owns that
+            // rule because it can be tested there.
+            var atHomeDock = this.IsAtHomeDock();
 
             // A drone that does not declare a tool animates with the mining arm rather than
             // freezing at mode-select, so a drone class added later that forgets the
@@ -536,6 +542,12 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public bool IsAtHomeDock()
         {
+            // Guarded, unlike its callers inside Tick(): this is public now, and a caller
+            // that has not already passed Tick()'s dock guard would otherwise dereference a
+            // null or destroyed dock. A drone with no dock is not home -- it is stranded.
+            if (this.HomeDock == null || this.HomeDock.IsDestroyed)
+                return false;
+
             var drone = this.Parent.Position;
             var dock = this.HomeDock.Position;
             var dx = drone.X - dock.X;
@@ -550,10 +562,14 @@ namespace Eco.Mods.TechTree
         /// Must clear the pad's half-diagonal, not just its edge. The pad is 4x4 centred on
         /// the dock, so its far corners are about 2.83 away -- a drone that settled on one
         /// of them under the old 2.0 radius would have walked all the way home, failed the
-        /// arrival test, and been routed into Unreachable at its own dock. The extra margin
-        /// past 2.83 covers a drone stopping a cell short of the exact park point.
+        /// arrival test, and been routed into Unreachable at its own dock.
+        ///
+        /// Sized to the geometry with a small margin, not generously. This radius is also
+        /// what the Unreachable retry uses to decide a drone has arrived while it is still
+        /// moving, so every unit of slack past the pad is a window where the drone is called
+        /// home before it is home.
         /// </summary>
-        private const float DockArrivalRadius = 4f;
+        private const float DockArrivalRadius = 3f;
 
         /// <summary>
         /// Park-and-sweep survey pass (F2/R6). Instead of roaming random points and sampling only

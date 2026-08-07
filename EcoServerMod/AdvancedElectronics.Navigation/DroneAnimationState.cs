@@ -105,14 +105,23 @@ namespace AdvancedElectronics.Navigation
         public static DroneAnimationState From(DroneStatus status, bool isMoving,
                                                bool isAtHomeDock, bool usesHarvestTool)
         {
+            var working = status == DroneStatus.Surveying;
+
             // Settled, not merely nearby: the status machine flips to Idle on arrival while
             // the mover can still be closing the last metre, and playing the fully-stopped
             // animation over a drone that is visibly drifting is the artifact this avoids.
-            var home = isAtHomeDock && !isMoving;
+            //
+            // And not working: the caller's "at the dock" test is a radius wide enough to
+            // clear the pad's diagonal, which also contains any survey plot next to the dock.
+            // A drone sweeping that plot is physically home and busy at the same time, and
+            // reporting both would stop the blades and replay the take-off on every plot hop.
+            // Working wins, because it is the more specific claim about what the drone is
+            // doing. The rule lives here rather than in the caller so it can be tested.
+            var home = isAtHomeDock && !isMoving && !working;
 
             return new DroneAnimationState(
                 isAtHomeDock: home,
-                isWorking:    status == DroneStatus.Surveying,
+                isWorking:    working,
                 modeMining:   !usesHarvestTool,
                 modeHarvest:  usesHarvestTool,
                 operating:    !home);

@@ -24,7 +24,7 @@ using Eco.Shared.Serialization;
 namespace Eco.Mods.TechTree
 {
     /// <summary>
-    /// Craftable harvest drone item. Not a placeable WorldObject: it lives in a player's or a
+    /// Craftable mining drone item. Not a placeable WorldObject: it lives in a player's or a
     /// <see cref="DroneDockObject"/>'s inventory until inserted into a dock's storage slot,
     /// which pairs it (see DroneDockObject.OnDockStorageChanged). See
     /// <see cref="MiningDroneObject"/> below for the physical roaming WorldObject a dock
