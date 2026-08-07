@@ -92,6 +92,10 @@ namespace Eco.Mods.TechTree
         /// deliberately excluded, so a shortage can never strand the drone that same shortage
         /// recalled.
         /// </summary>
+        // NOT [Serialized]: this is derived from the state machine every time it is read, so
+        // there is nothing to write back into on load. Eco's serializer needs a settable member.
+        // Animator-facing booleans like this one are pushed live via SetAnimatedState (see
+        // DroneAnimationState) -- they are signals, not saved state.
         public bool IsWorking =>
             this.stateMachine.Status == DroneStatus.Surveying
             || (this.stateMachine.Status == DroneStatus.EnRoute
@@ -509,7 +513,7 @@ namespace Eco.Mods.TechTree
         /// Unreachable instead of docking (R6/R15). Horizontal proximity is the honest
         /// test for "arrived at the dock".
         /// </summary>
-        private bool IsAtHomeDock()
+        public bool IsAtHomeDock()
         {
             var drone = this.Parent.Position;
             var dock = this.HomeDock.Position;

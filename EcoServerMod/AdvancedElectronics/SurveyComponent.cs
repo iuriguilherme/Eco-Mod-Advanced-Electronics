@@ -73,6 +73,8 @@ namespace Eco.Mods.TechTree
         /// FuelConsumptionComponent burns only while its parent is Operating -- so the fuel half of
         /// R9 needs no code of its own, including the return-leg exemption.
         /// </summary>
+        // NOT [Serialized] -- derived on every read, so there is no member to load a saved value
+        // back into. It answers "is the dock working right now", which is recomputed, never stored.
         public bool Operating => this.Parent is DroneDockObject dock && dock.DroneIsWorking;
 
         /// <summary>
