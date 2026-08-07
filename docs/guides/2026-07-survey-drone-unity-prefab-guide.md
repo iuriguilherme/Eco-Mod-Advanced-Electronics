@@ -1,5 +1,16 @@
 # Survey Drone — Manual Unity Prefab Guide (U9/U10/U11)
 
+> **SUPERSEDED — kept for history. Do not follow.**
+> Replaced by `docs/guides/2026-08-unity-working-guide.md`.
+>
+> This guide names the prefabs `DroneDock.prefab` and `SurveyDrone.prefab`. That is wrong and
+> it broke the client binding when followed: the prefab asset must carry the `Object` suffix
+> and match the server class (`DroneDockObject`, `SurveyDroneObject`). Only the *scene*
+> GameObject is named without it. The ModKit's own `WorldObjectSetup.cs` appends the suffix
+> for you; this guide collapsed the two names into one.
+>
+> Its folder paths and menu commands are also out of date.
+
 Unity MCP is unavailable in this environment (subscription-gated), so U9 (dock
 prefab), U10 (drone prefab + item icon), and U11 (bundle build + name-match gate)
 from `docs/plans/2026-07-11-001-feat-survey-drone-plan.md` need to be done by hand

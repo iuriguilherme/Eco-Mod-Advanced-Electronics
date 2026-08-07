@@ -48,7 +48,7 @@ public static class AdvancedElectronicsBuildTools
     /// renaming them is not.
     /// </summary>
     private const string PrefabFolder   = ArtFolder + "/Prefabs";
-    private const string IconFolder     = ArtFolder + "/Icons";
+    private const string IconFolder     = ArtFolder + "/Sprites/Icons";
     private const string MaterialFolder = ArtFolder + "/Materials";
 
     /// <summary>
@@ -83,7 +83,7 @@ public static class AdvancedElectronicsBuildTools
     /// (Drone_Mining, Drone_Harvest) rather than for any one drone type, which is what
     /// makes that sharing work.
     /// </summary>
-    private const string DroneChassisModel      = ArtFolder + "/Models/HRVSTR/HRVSTR-01.fbx";
+    private const string DroneChassisModel      = ArtFolder + "/Sprites/HRVSTR/HRVSTR-01.fbx";
     private const string DroneChassisController = ArtFolder + "/Animators/HRVSTR_Animator_Controller.controller";
 
     /// <summary>
