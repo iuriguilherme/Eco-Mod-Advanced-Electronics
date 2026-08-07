@@ -9,29 +9,29 @@ namespace AdvancedElectronics.Navigation
     /// <item><description><c>DroneAnimatorStates.BoolStateNames</c> on the Unity side,
     /// which stamps them into the prefab's <c>WorldObject.States</c> array;</description></item>
     /// <item><description>the parameter names in
-    /// Assets/Art/AdvancedElectronics/HRVSTR_Animator_Controller.controller.</description></item>
+    /// Assets/Art/AdvancedElectronics/Animators/HRVSTR_Animator_Controller.controller.</description></item>
     /// </list>
     /// A mismatch in any one of them is silent: the state syncs, the event fires, and the
     /// Animator parameter that was supposed to receive it simply never exists. Renaming
     /// means renaming in all three at once, which is why they are frozen constants rather
     /// than inline literals.
     ///
-    /// The names come from the art, not from this code -- the controller was authored
-    /// first and these mirror it.
+    /// These names come from the art. An earlier set was invented here instead
+    /// (State_Docked, State_Flying, Drone_Mining and four more) and did not overlap the
+    /// controller's parameters by a single string, so every push landed nowhere and the
+    /// drone rendered and moved correctly while animating nothing at all.
     /// </summary>
     public static class DroneAnimationStateNames
     {
-        public const string Docked     = "State_Docked";
-        public const string Unassigned = "State_Unassigned";
-        public const string Assigned   = "State_Assigned";
-        public const string Flying     = "State_Flying";
-        public const string Working    = "State_Working";
-        public const string Mining     = "Drone_Mining";
-        public const string Harvesting = "Drone_Harvest";
+        public const string IsAtHomeDock = "IsAtHomeDock";
+        public const string IsWorking    = "IsWorking";
+        public const string ModeMining   = "ModeMining";
+        public const string ModeHarvest  = "ModeHarvest";
+        public const string Operating    = "Operating";
     }
 
     /// <summary>
-    /// The seven animation booleans the drone's Animator consumes, derived from lifecycle
+    /// The five animation booleans the drone's Animator consumes, derived from lifecycle
     /// status rather than stored. Pure and Eco-free (KTD2, the same reason
     /// <see cref="DroneStateMachine"/> is), so the whole animation contract is exercised by
     /// DroneAnimationStateTests without a running server -- which matters more here than
@@ -39,98 +39,96 @@ namespace AdvancedElectronics.Navigation
     /// drone in game and judge an animation by eye.
     ///
     /// Deliberately a projection, not a second state machine. Everything below is computed
-    /// from <see cref="DroneStatus"/>, <see cref="DroneTravelTarget"/>, and two booleans the
-    /// caller already has; there is no transition logic and no memory. If these could drift
-    /// from the real status, the drone would animate one thing while doing another.
+    /// from <see cref="DroneStatus"/> and three booleans the caller already has; there is no
+    /// transition logic and no memory. If these could drift from the real status, the drone
+    /// would animate one thing while doing another.
     /// </summary>
     public readonly struct DroneAnimationState
     {
-        /// <summary>Parked at the dock with nothing to do -- Idle and not moving.</summary>
-        public bool Docked { get; }
-
-        /// <summary>No survey area assigned. Always the exact negation of <see cref="Assigned"/>.</summary>
-        public bool Unassigned { get; }
-
-        /// <summary>A survey area is assigned, whether or not the drone has reached it.</summary>
-        public bool Assigned { get; }
+        /// <summary>
+        /// The drone is physically home and settled. The controller's entry state is fully
+        /// stopped, and this going false is what starts mode-select and take-off.
+        ///
+        /// Position, not assignment. An assignment outlives the survey that completes it --
+        /// a drone that finishes its area and flies home is still assigned -- so a flag
+        /// derived from "has an area" would go false on dispatch and never come back, and
+        /// the drone would sit in its dock running the flying loop forever.
+        /// </summary>
+        public bool IsAtHomeDock { get; }
 
         /// <summary>
-        /// Moving under its own power. Carries the same fact as the pre-existing "MoveSpeed"
-        /// float the mover pushes; the HRVSTR controller declares no float parameters, so the
-        /// bool is the shape the art can actually consume.
+        /// On station within the assigned area, for the whole time it is there.
+        ///
+        /// Stays true while the drone repositions between plots. Park-and-sweep alternates
+        /// between hopping and standing still, and flicking the work loop off for every hop
+        /// would read as a stutter rather than as travel.
         /// </summary>
-        public bool Flying { get; }
+        public bool IsWorking { get; }
 
         /// <summary>
-        /// On station in the assigned area. Narrower than
-        /// <see cref="DroneLifecycle.IsWorking"/>, which also counts the outbound leg because
-        /// it is deciding what to charge fuel for; the art means "deployed and doing the job",
-        /// and a drone still flying out is flying, not working.
+        /// The drone carries the mining arm. Exactly one of this and
+        /// <see cref="ModeHarvest"/> is true; the controller's mode-select has no third
+        /// branch and no neither-branch.
         /// </summary>
-        public bool Working { get; }
+        public bool ModeMining { get; }
+
+        /// <summary>The drone carries the harvest arm. The exact negation of <see cref="ModeMining"/>.</summary>
+        public bool ModeHarvest { get; }
 
         /// <summary>
-        /// Actively sampling: on station AND stationary. The drone's park-and-sweep pass
-        /// alternates between hopping to the next plot and standing still while it reads the
-        /// columns beneath it, so this goes false during each hop and true again on arrival.
+        /// Drives the propeller layer, which is a separate layer with its own two states.
+        /// Its stopped state has exactly one exit, gated on this being true; leaving it
+        /// unpushed freezes the blades permanently however the body animates.
+        ///
+        /// The negation of <see cref="IsAtHomeDock"/>: the blades turn whenever the drone
+        /// is anywhere but settled in its dock, including when it is stranded.
         /// </summary>
-        public bool Mining { get; }
+        public bool Operating { get; }
 
-        /// <summary>
-        /// Reserved. The harvest drone surveys today -- it carries an OreSensorComponent and no
-        /// harvesting behaviour exists on the server -- so nothing can truthfully drive this yet
-        /// and it stays false. Wire it here when harvest behaviour lands rather than faking it
-        /// from survey state, which would play a harvest animation over a drone that is scanning.
-        /// </summary>
-        public bool Harvesting { get; }
-
-        private DroneAnimationState(bool docked, bool unassigned, bool assigned,
-                                    bool flying, bool working, bool mining, bool harvesting)
+        private DroneAnimationState(bool isAtHomeDock, bool isWorking,
+                                    bool modeMining, bool modeHarvest, bool operating)
         {
-            this.Docked     = docked;
-            this.Unassigned = unassigned;
-            this.Assigned   = assigned;
-            this.Flying     = flying;
-            this.Working    = working;
-            this.Mining     = mining;
-            this.Harvesting = harvesting;
+            this.IsAtHomeDock = isAtHomeDock;
+            this.IsWorking    = isWorking;
+            this.ModeMining   = modeMining;
+            this.ModeHarvest  = modeHarvest;
+            this.Operating    = operating;
         }
 
         /// <summary>
-        /// Projects the current lifecycle situation onto the seven booleans.
+        /// Projects the current lifecycle situation onto the five booleans.
         /// </summary>
         /// <param name="status">The lifecycle status machine's current status.</param>
-        /// <param name="travelTarget">What an EnRoute drone is travelling toward.</param>
         /// <param name="isMoving">Whether the mover is currently advancing along a path.</param>
-        /// <param name="hasAssignment">Whether the home dock currently has an assigned area.</param>
-        public static DroneAnimationState From(DroneStatus status, DroneTravelTarget travelTarget,
-                                               bool isMoving, bool hasAssignment)
+        /// <param name="isAtHomeDock">Whether the drone is physically within docking range of its dock.</param>
+        /// <param name="usesHarvestTool">Whether this drone's class carries the harvest arm rather than the mining arm.</param>
+        public static DroneAnimationState From(DroneStatus status, bool isMoving,
+                                               bool isAtHomeDock, bool usesHarvestTool)
         {
-            var onStation = status == DroneStatus.Surveying;
+            // Settled, not merely nearby: the status machine flips to Idle on arrival while
+            // the mover can still be closing the last metre, and playing the fully-stopped
+            // animation over a drone that is visibly drifting is the artifact this avoids.
+            var home = isAtHomeDock && !isMoving;
 
             return new DroneAnimationState(
-                docked:     status == DroneStatus.Idle && !isMoving,
-                unassigned: !hasAssignment,
-                assigned:   hasAssignment,
-                flying:     isMoving,
-                working:    onStation,
-                mining:     onStation && !isMoving,
-                harvesting: false);
+                isAtHomeDock: home,
+                isWorking:    status == DroneStatus.Surveying,
+                modeMining:   !usesHarvestTool,
+                modeHarvest:  usesHarvestTool,
+                operating:    !home);
         }
 
         /// <summary>
         /// The state paired with the name it is pushed under, so callers iterate one list
-        /// instead of writing seven near-identical push lines that can disagree.
+        /// instead of writing five near-identical push lines that can disagree.
         /// </summary>
         public (string Name, bool Value)[] AsNamedValues() => new[]
         {
-            (DroneAnimationStateNames.Docked,     this.Docked),
-            (DroneAnimationStateNames.Unassigned, this.Unassigned),
-            (DroneAnimationStateNames.Assigned,   this.Assigned),
-            (DroneAnimationStateNames.Flying,     this.Flying),
-            (DroneAnimationStateNames.Working,    this.Working),
-            (DroneAnimationStateNames.Mining,     this.Mining),
-            (DroneAnimationStateNames.Harvesting, this.Harvesting),
+            (DroneAnimationStateNames.IsAtHomeDock, this.IsAtHomeDock),
+            (DroneAnimationStateNames.IsWorking,    this.IsWorking),
+            (DroneAnimationStateNames.ModeMining,   this.ModeMining),
+            (DroneAnimationStateNames.ModeHarvest,  this.ModeHarvest),
+            (DroneAnimationStateNames.Operating,    this.Operating),
         };
     }
 }

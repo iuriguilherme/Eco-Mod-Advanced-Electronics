@@ -245,9 +245,9 @@ namespace Eco.Mods.TechTree
         /// <summary>
         /// Last value pushed per animation state name, so a state is only written when it
         /// actually changes. <c>SetAnimatedState</c> is a synced write and this runs every tick;
-        /// pushing seven unchanged booleans per tick per drone is pure network churn with no
+        /// pushing five unchanged booleans per tick per drone is pure network churn with no
         /// consumer. Mirrors DroneDockObject's <c>lastPushedWorking</c>, widened to a map because
-        /// there are seven of them.
+        /// there are five of them.
         ///
         /// Not serialized on purpose: an empty map after a restart means the first tick re-pushes
         /// everything, which is what a freshly-connected client needs anyway.
@@ -255,7 +255,7 @@ namespace Eco.Mods.TechTree
         private readonly Dictionary<string, bool> lastPushedAnimationStates = new Dictionary<string, bool>();
 
         /// <summary>
-        /// Projects the current lifecycle situation onto the drone's seven animation booleans and
+        /// Projects the current lifecycle situation onto the drone's five animation booleans and
         /// pushes the ones that changed.
         ///
         /// The mapping itself lives in <see cref="DroneAnimationState.From"/> over in the
@@ -264,15 +264,19 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void RefreshAnimationStates(DroneMoverComponent mover)
         {
-            var hasAssignment = this.HomeDock != null
-                                && !this.HomeDock.IsDestroyed
-                                && !string.IsNullOrWhiteSpace(this.HomeDock.AssignedAreaToken);
+            // Home is a position question, not an assignment one (KD3). A drone that finished
+            // its area and flew back is still assigned, so an assignment-derived flag would
+            // never read as home again. A drone with no dock at all is treated as not home --
+            // it is stranded, and the flying loop is the honest animation for that.
+            var atHomeDock = this.HomeDock != null
+                             && !this.HomeDock.IsDestroyed
+                             && this.IsAtHomeDock();
 
             var state = DroneAnimationState.From(
                 this.stateMachine.Status,
-                this.stateMachine.TravelTarget,
                 mover.IsMoving,
-                hasAssignment);
+                atHomeDock,
+                usesHarvestTool: false);
 
             foreach (var (name, value) in state.AsNamedValues())
             {

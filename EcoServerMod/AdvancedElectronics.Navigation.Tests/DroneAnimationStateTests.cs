@@ -4,7 +4,7 @@ using Xunit;
 namespace AdvancedElectronics.Navigation.Tests
 {
     /// <summary>
-    /// Covers the projection from lifecycle status onto the seven animation booleans the
+    /// Covers the projection from lifecycle status onto the five animation booleans the
     /// HRVSTR animator controller consumes.
     ///
     /// Worth testing despite being branch-light, because the alternative way to discover a
@@ -14,165 +14,175 @@ namespace AdvancedElectronics.Navigation.Tests
     /// </summary>
     public class DroneAnimationStateTests
     {
-        // --- Docked: parked at the dock with nothing to do ---
+        private static DroneAnimationState State(DroneStatus status, bool isMoving,
+                                                 bool isAtHomeDock, bool usesHarvestTool = false) =>
+            DroneAnimationState.From(status, isMoving, isAtHomeDock, usesHarvestTool);
+
+        // --- IsAtHomeDock: physically home and settled ---
 
         [Fact]
-        public void IdleAndStationary_IsDocked()
+        public void AtTheDockAndStationary_IsAtHomeDock()
         {
-            var state = DroneAnimationState.From(DroneStatus.Idle, DroneTravelTarget.None,
-                                                 isMoving: false, hasAssignment: false);
+            var state = State(DroneStatus.Idle, isMoving: false, isAtHomeDock: true);
 
-            Assert.True(state.Docked);
-            Assert.False(state.Flying);
-            Assert.False(state.Working);
+            Assert.True(state.IsAtHomeDock);
+            Assert.False(state.IsWorking);
         }
 
         [Fact]
-        public void IdleButStillMoving_IsNotDocked()
+        public void DispatchedAndAwayFromTheDock_IsNotAtHomeDock()
         {
-            // The final approach home: the state machine flips to Idle on arrival, but the
-            // mover can still be settling. Playing the docked animation while visibly drifting
-            // is the artifact this guards against.
-            var state = DroneAnimationState.From(DroneStatus.Idle, DroneTravelTarget.None,
-                                                 isMoving: true, hasAssignment: false);
+            var state = State(DroneStatus.EnRoute, isMoving: true, isAtHomeDock: false);
 
-            Assert.False(state.Docked);
-            Assert.True(state.Flying);
+            Assert.False(state.IsAtHomeDock);
         }
 
-        // --- Assigned / Unassigned: always exact negations ---
+        [Fact]
+        public void WithinDockingRangeButStillMoving_IsNotYetAtHomeDock()
+        {
+            // The final approach: the status machine flips to Idle on arrival while the
+            // mover is still settling. Playing the fully-stopped animation over a drone
+            // that is visibly drifting is the artifact this guards against.
+            var state = State(DroneStatus.Idle, isMoving: true, isAtHomeDock: true);
+
+            Assert.False(state.IsAtHomeDock);
+        }
+
+        // The case an assignment-derived flag gets wrong, and the reason KD3 reads
+        // position instead. An assignment outlives the survey that completes it, so a
+        // drone that finished its area and flew home is still assigned -- a flag meaning
+        // "not dispatched" would never go true again and the drone would sit in its dock
+        // running the flying loop.
+        [Fact]
+        public void HomeAfterACompletedSurvey_StillAssigned_IsAtHomeDock()
+        {
+            var state = State(DroneStatus.Idle, isMoving: false, isAtHomeDock: true);
+
+            Assert.True(state.IsAtHomeDock);
+        }
+
+        // Recall for lack of fuel keeps the assignment too, for the same reason.
+        [Fact]
+        public void RecalledForFuelAndHomeAgain_IsAtHomeDock()
+        {
+            var state = State(DroneStatus.Idle, isMoving: false, isAtHomeDock: true);
+
+            Assert.True(state.IsAtHomeDock);
+        }
+
+        // --- IsWorking: on station, across the whole pass ---
+
+        [Fact]
+        public void OnStationAndStationary_IsWorking()
+        {
+            var state = State(DroneStatus.Surveying, isMoving: false, isAtHomeDock: false);
+
+            Assert.True(state.IsWorking);
+            Assert.False(state.IsAtHomeDock);
+        }
+
+        [Fact]
+        public void OnStationAndRepositioningBetweenPlots_StaysWorking()
+        {
+            // Park-and-sweep alternates between hopping and standing still. Flicking the
+            // work loop off for every hop would read as a stutter rather than as travel.
+            var state = State(DroneStatus.Surveying, isMoving: true, isAtHomeDock: false);
+
+            Assert.True(state.IsWorking);
+        }
+
+        [Fact]
+        public void EnRouteToTheArea_IsNeitherWorkingNorHome()
+        {
+            var state = State(DroneStatus.EnRoute, isMoving: true, isAtHomeDock: false);
+
+            Assert.False(state.IsWorking);
+            Assert.False(state.IsAtHomeDock);
+        }
+
+        [Fact]
+        public void EnRouteBackToTheDock_IsNeitherWorkingNorHome()
+        {
+            var state = State(DroneStatus.EnRoute, isMoving: true, isAtHomeDock: false);
+
+            Assert.False(state.IsWorking);
+            Assert.False(state.IsAtHomeDock);
+        }
+
+        // Neither flag is true when the drone is stranded, so it plays the flying loop and
+        // hovers. Nobody specified that; it falls out of the projection and is pinned here
+        // so a change to it is a deliberate one.
+        [Fact]
+        public void Unreachable_IsNeitherWorkingNorHome()
+        {
+            var state = State(DroneStatus.Unreachable, isMoving: false, isAtHomeDock: false);
+
+            Assert.False(state.IsWorking);
+            Assert.False(state.IsAtHomeDock);
+        }
+
+        // --- Operating: the propeller layer's only way out of stopped ---
 
         [Theory]
-        [InlineData(true)]
-        [InlineData(false)]
-        public void AssignedAndUnassigned_AreAlwaysOpposites(bool hasAssignment)
+        [InlineData(DroneStatus.Idle, false, true)]
+        [InlineData(DroneStatus.Idle, true, true)]
+        [InlineData(DroneStatus.Idle, false, false)]
+        [InlineData(DroneStatus.EnRoute, true, false)]
+        [InlineData(DroneStatus.Surveying, false, false)]
+        [InlineData(DroneStatus.Surveying, true, false)]
+        [InlineData(DroneStatus.Unreachable, false, false)]
+        public void Operating_IsAlwaysTheNegationOfIsAtHomeDock(
+            DroneStatus status, bool isMoving, bool isAtHomeDock)
         {
-            var state = DroneAnimationState.From(DroneStatus.Idle, DroneTravelTarget.None,
-                                                 isMoving: false, hasAssignment: hasAssignment);
+            var state = State(status, isMoving, isAtHomeDock);
 
-            Assert.Equal(hasAssignment, state.Assigned);
-            Assert.NotEqual(state.Assigned, state.Unassigned);
-        }
-
-        // --- Flying tracks the mover, not the status ---
-
-        [Fact]
-        public void EnRouteToArea_IsFlyingButNotWorking()
-        {
-            // Working means "on station doing the job". The outbound leg is flying, even
-            // though DroneLifecycle.IsWorking counts it -- that property answers a different
-            // question (what to charge fuel for).
-            var state = DroneAnimationState.From(DroneStatus.EnRoute, DroneTravelTarget.District,
-                                                 isMoving: true, hasAssignment: true);
-
-            Assert.True(state.Flying);
-            Assert.False(state.Working);
-            Assert.False(state.Mining);
-        }
-
-        [Fact]
-        public void EnRouteToDock_IsFlyingButNotWorking()
-        {
-            var state = DroneAnimationState.From(DroneStatus.EnRoute, DroneTravelTarget.Dock,
-                                                 isMoving: true, hasAssignment: false);
-
-            Assert.True(state.Flying);
-            Assert.False(state.Working);
-        }
-
-        // --- Working / Mining: the park-and-sweep pass ---
-
-        [Fact]
-        public void SurveyingAndParked_IsWorkingAndMining()
-        {
-            var state = DroneAnimationState.From(DroneStatus.Surveying, DroneTravelTarget.None,
-                                                 isMoving: false, hasAssignment: true);
-
-            Assert.True(state.Working);
-            Assert.True(state.Mining);
-            Assert.False(state.Flying);
-        }
-
-        [Fact]
-        public void SurveyingButHoppingToNextPlot_StaysWorkingAndStopsMining()
-        {
-            // Park-and-sweep alternates: read the columns under this plot, hop to the next.
-            // Working stays true across the whole pass so the drone keeps its deployed posture;
-            // only the sampling animation stops during the hop.
-            var state = DroneAnimationState.From(DroneStatus.Surveying, DroneTravelTarget.None,
-                                                 isMoving: true, hasAssignment: true);
-
-            Assert.True(state.Working);
-            Assert.False(state.Mining);
-            Assert.True(state.Flying);
-        }
-
-        // --- Unreachable is not a work state ---
-
-        [Fact]
-        public void Unreachable_IsNeitherWorkingNorMining()
-        {
-            var state = DroneAnimationState.From(DroneStatus.Unreachable, DroneTravelTarget.District,
-                                                 isMoving: false, hasAssignment: true);
-
-            Assert.False(state.Working);
-            Assert.False(state.Mining);
-            Assert.False(state.Docked); // Unreachable is stranded somewhere, not home.
-        }
-
-        // --- Harvesting is reserved until harvest behaviour exists ---
-
-        [Theory]
-        [InlineData(DroneStatus.Idle)]
-        [InlineData(DroneStatus.EnRoute)]
-        [InlineData(DroneStatus.Surveying)]
-        [InlineData(DroneStatus.Unreachable)]
-        public void Harvesting_IsAlwaysFalse_UntilHarvestBehaviourExists(DroneStatus status)
-        {
-            // Deliberately pinned. The drone surveys today; nothing on the server can
-            // truthfully drive a harvest animation. When harvest behaviour lands, this test
-            // should fail and be rewritten -- that failure is the reminder.
-            var state = DroneAnimationState.From(status, DroneTravelTarget.District,
-                                                 isMoving: false, hasAssignment: true);
-
-            Assert.False(state.Harvesting);
+            Assert.NotEqual(state.IsAtHomeDock, state.Operating);
         }
 
         // --- The name/value pairing the pusher iterates ---
 
         [Fact]
-        public void AsNamedValues_CoversEveryStateNameExactlyOnce()
+        public void AsNamedValues_CarriesExactlyTheFiveControllerParameters()
         {
-            var state = DroneAnimationState.From(DroneStatus.Idle, DroneTravelTarget.None,
-                                                 isMoving: false, hasAssignment: false);
+            var state = State(DroneStatus.Idle, isMoving: false, isAtHomeDock: true);
 
             var names = state.AsNamedValues().Select(pair => pair.Name).ToArray();
 
+            Assert.Equal(5, names.Length);
             Assert.Equal(names.Length, names.Distinct().Count());
-            Assert.Contains(DroneAnimationStateNames.Docked, names);
-            Assert.Contains(DroneAnimationStateNames.Unassigned, names);
-            Assert.Contains(DroneAnimationStateNames.Assigned, names);
-            Assert.Contains(DroneAnimationStateNames.Flying, names);
-            Assert.Contains(DroneAnimationStateNames.Working, names);
-            Assert.Contains(DroneAnimationStateNames.Mining, names);
-            Assert.Contains(DroneAnimationStateNames.Harvesting, names);
+            Assert.Contains(DroneAnimationStateNames.IsAtHomeDock, names);
+            Assert.Contains(DroneAnimationStateNames.IsWorking, names);
+            Assert.Contains(DroneAnimationStateNames.ModeMining, names);
+            Assert.Contains(DroneAnimationStateNames.ModeHarvest, names);
+            Assert.Contains(DroneAnimationStateNames.Operating, names);
+        }
+
+        // The names are the contract, not the C# member names -- the controller reads
+        // strings. A constant renamed without its value changing would pass every other
+        // test here and still animate nothing.
+        [Fact]
+        public void StateNames_AreTheExactStringsTheControllerDeclares()
+        {
+            Assert.Equal("IsAtHomeDock", DroneAnimationStateNames.IsAtHomeDock);
+            Assert.Equal("IsWorking", DroneAnimationStateNames.IsWorking);
+            Assert.Equal("ModeMining", DroneAnimationStateNames.ModeMining);
+            Assert.Equal("ModeHarvest", DroneAnimationStateNames.ModeHarvest);
+            Assert.Equal("Operating", DroneAnimationStateNames.Operating);
         }
 
         [Fact]
         public void AsNamedValues_ReportsTheSameValuesAsTheProperties()
         {
-            var state = DroneAnimationState.From(DroneStatus.Surveying, DroneTravelTarget.None,
-                                                 isMoving: false, hasAssignment: true);
+            var state = State(DroneStatus.Surveying, isMoving: false, isAtHomeDock: false,
+                              usesHarvestTool: true);
 
             var byName = state.AsNamedValues().ToDictionary(pair => pair.Name, pair => pair.Value);
 
-            Assert.Equal(state.Docked,     byName[DroneAnimationStateNames.Docked]);
-            Assert.Equal(state.Unassigned, byName[DroneAnimationStateNames.Unassigned]);
-            Assert.Equal(state.Assigned,   byName[DroneAnimationStateNames.Assigned]);
-            Assert.Equal(state.Flying,     byName[DroneAnimationStateNames.Flying]);
-            Assert.Equal(state.Working,    byName[DroneAnimationStateNames.Working]);
-            Assert.Equal(state.Mining,     byName[DroneAnimationStateNames.Mining]);
-            Assert.Equal(state.Harvesting, byName[DroneAnimationStateNames.Harvesting]);
+            Assert.Equal(state.IsAtHomeDock, byName[DroneAnimationStateNames.IsAtHomeDock]);
+            Assert.Equal(state.IsWorking,    byName[DroneAnimationStateNames.IsWorking]);
+            Assert.Equal(state.ModeMining,   byName[DroneAnimationStateNames.ModeMining]);
+            Assert.Equal(state.ModeHarvest,  byName[DroneAnimationStateNames.ModeHarvest]);
+            Assert.Equal(state.Operating,    byName[DroneAnimationStateNames.Operating]);
         }
     }
 }
