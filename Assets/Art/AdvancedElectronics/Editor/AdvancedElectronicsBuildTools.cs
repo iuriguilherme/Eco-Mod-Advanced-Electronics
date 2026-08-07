@@ -83,8 +83,8 @@ public static class AdvancedElectronicsBuildTools
     /// (Drone_Mining, Drone_Harvest) rather than for any one drone type, which is what
     /// makes that sharing work.
     /// </summary>
-    private const string DroneChassisModel      = ArtFolder + "/HRVSTR-01.fbx";
-    private const string DroneChassisController = ArtFolder + "/HRVSTR_Animator_Controller.controller";
+    private const string DroneChassisModel      = ArtFolder + "/Models/HRVSTR/HRVSTR-01.fbx";
+    private const string DroneChassisController = ArtFolder + "/Animators/HRVSTR_Animator_Controller.controller";
 
     /// <summary>
     /// Every server WorldObject class that renders as the shared chassis. ADDING A DRONE IS
@@ -97,12 +97,17 @@ public static class AdvancedElectronicsBuildTools
     /// underneath: mesh, materials, textures and controller are referenced by GUID, so the
     /// bundle carries one copy no matter how many drones list themselves here.
     ///
-    /// SurveyDroneObject is deliberately ABSENT. It ships today as a hand-built capsule and
-    /// is live on deployed servers; re-running this over it would silently replace shipped
-    /// art. Add it when you actually want the survey drone to become the HRVSTR chassis.
+    /// All three drones are listed. SurveyDroneObject used to be held out because it shipped
+    /// as a hand-built capsule and re-running this over it would have replaced live art; it
+    /// now uses the HRVSTR chassis like the others, so the reason has lapsed. Holding a drone
+    /// out is not free: the finisher is what stamps each prefab's declared animation state
+    /// list, so an absent drone keeps whatever names it was last built with and animates
+    /// nothing, silently.
     /// </summary>
     private static readonly string[] SharedChassisDrones =
     {
+        "SurveyDroneObject",
+        "MiningDroneObject",
         "HarvestDroneObject",
     };
 
@@ -119,8 +124,11 @@ public static class AdvancedElectronicsBuildTools
     [MenuItem("Eco Tools/Advanced Electronics/Finish Dock Prefab")]
     public static void FinishDockPrefab() => FinishPrefab("DroneDockObject", "DroneDock", isDock: true);
 
-    [MenuItem("Eco Tools/Advanced Electronics/Finish Drone Prefab")]
-    public static void FinishDronePrefab() => FinishPrefab("SurveyDroneObject", "SurveyDrone", isDock: false);
+    // There is deliberately no standalone survey-drone finisher. It used to build
+    // SurveyDroneObject from a hand-made "SurveyDrone" capsule in the scene; now that the
+    // survey drone is on the shared chassis, running it would quietly overwrite the
+    // chassis prefab with a capsule and drop its animation states. Use "Finish All Drone
+    // Prefabs".
 
     [MenuItem("Eco Tools/Advanced Electronics/Finish Assembly Prefab")]
     public static void FinishAssemblyPrefab() =>

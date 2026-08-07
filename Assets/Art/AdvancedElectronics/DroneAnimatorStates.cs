@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Client-side-only glue that drives the harvest drone's Animator from the
+/// Client-side-only glue that drives a drone's Animator from the
 /// server-synced boolean WorldObject states. The server never touches an
 /// Animator; it pushes named booleans with <c>SetAnimatedState</c> and this
 /// component is the only thing that turns those into
@@ -14,7 +14,7 @@ using UnityEngine;
 /// <item><description><see cref="Reset"/> (Editor-only, runs once when the
 /// component is first added) sets <c>WorldObject.States</c> to the exact names
 /// in <see cref="BoolStateNames"/> and resizes the paired event arrays, so
-/// nobody has to type seven strings into the custom WorldObject
+/// nobody has to type five strings into the custom WorldObject
 /// Inspector.</description></item>
 /// <item><description><see cref="Awake"/> (runtime, every time the prefab is
 /// instantiated) finds the sibling <c>WorldObject</c> and the Animator, then
@@ -24,12 +24,12 @@ using UnityEngine;
 /// Inspector).</description></item>
 /// </list>
 ///
-/// WHY BOOLS AND NOT THE EXISTING MoveSpeed FLOAT. The survey drone's
+/// WHY BOOLS AND NOT THE EXISTING MoveSpeed FLOAT. The drone's
 /// DroneMoverComponent pushes a float state named "MoveSpeed"
 /// (EcoServerMod/AdvancedElectronics/DroneMoverComponent.cs). The HRVSTR
-/// controller declares no float parameters at all -- all seven of its
-/// parameters are booleans -- so MoveSpeed has no consumer on this controller
-/// and <c>State_Flying</c> carries the same information in the shape the art
+/// controller declares no float parameters at all -- all five of its
+/// parameters are booleans -- so MoveSpeed has no consumer on this controller,
+/// and <c>Operating</c> carries "away from the dock" in the shape the art
 /// actually asks for. MoveSpeed is left pushed and unread rather than removed:
 /// it costs one synced write per movement transition and a future controller
 /// may want a real speed blend.
@@ -56,18 +56,23 @@ public class DroneAnimatorStates : MonoBehaviour
     ///
     /// Taken from the controller's own parameter list, which is authoritative
     /// for the art side; the server constants in
-    /// EcoServerMod/AdvancedElectronics/DroneAnimationStates.cs are authoritative
-    /// for the push side and must match this array exactly.
+    /// EcoServerMod/AdvancedElectronics.Navigation/DroneAnimationState.cs are
+    /// authoritative for the push side and must match this array exactly.
+    ///
+    /// They did not, for the whole of this component's first life: the server
+    /// pushed seven names of its own invention (State_Docked, State_Flying,
+    /// Drone_Mining and four more) that the controller had never heard of. A
+    /// pushed name no consumer matches is dropped rather than reported, so the
+    /// drone rendered, moved, and animated nothing at all, with a clean build and
+    /// a clean log on both sides.
     /// </summary>
     private static readonly string[] BoolStateNames =
     {
-        "State_Docked",
-        "State_Unassigned",
-        "State_Assigned",
-        "State_Flying",
-        "State_Working",
-        "Drone_Mining",
-        "Drone_Harvest",
+        "IsAtHomeDock",
+        "IsWorking",
+        "ModeMining",
+        "ModeHarvest",
+        "Operating",
     };
 
     private Animator animator;
