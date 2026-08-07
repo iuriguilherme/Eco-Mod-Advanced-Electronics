@@ -129,6 +129,31 @@ shape rather than logic — a component tab the client has no view for, or a com
 client-drawn base the client cannot resolve — which is why it appears the moment an object is
 placed, on every instance, rather than intermittently.
 
+### Animated State
+A named value the server pushes to a placed object's client half so the client can react to what the
+object is doing — the only channel by which server behaviour reaches an animation or a rendered
+readout.
+
+It is a signal, never saved state: the value is recomputed from live status and pushed on change, so
+persisting it would let a save file contradict the code that derives it. Its name binds by string in
+three unconnected places — the server's push, the list the prefab declares, and the parameter the
+animation graph reads — and a name present in only some of them is silently ignored rather than
+reported. This is [[Name Match]]'s failure shape one level down: the object renders correctly and
+simply never moves, with a clean build and a clean server log. Contrast [[Persisted State]], which is
+what a value must be to survive a reload.
+
+### Persisted State
+A value written to disk when the world saves and restored when it loads, as opposed to one recomputed
+on demand.
+
+Restoring is a write, so only a member the engine can assign into can carry it — a property that
+derives its value on every read has nothing to receive the saved value, and marking one as persisted
+prevents the mod from loading at all. The failure produces no log line, because registration fails
+before the mod is far enough along for errors to be attributed to it; the tell is the absence of the
+mod's own load line rather than the presence of an error. The distinction from [[Animated State]] is
+the useful test: if a value can be recomputed from something already known, it is a signal and
+persisting it creates a second source of truth.
+
 ## Dock and assignment
 
 ### Drone Dock
