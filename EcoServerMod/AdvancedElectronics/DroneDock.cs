@@ -156,6 +156,7 @@ namespace Eco.Mods.TechTree
         {
             [typeof(SurveyDroneItem)]  = typeof(SurveyDroneObject),
             [typeof(HarvestDroneItem)] = typeof(HarvestDroneObject),
+            [typeof(MiningDroneItem)] = typeof(MiningDroneObject),
         };
 
         /// <summary>

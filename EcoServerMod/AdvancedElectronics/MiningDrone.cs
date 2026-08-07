@@ -24,22 +24,18 @@ using Eco.Shared.Serialization;
 namespace Eco.Mods.TechTree
 {
     /// <summary>
-    /// Craftable survey drone item (R11). Deliberately just an <see cref="Item"/> in
-    /// this unit, not a placeable WorldObject: it lives in a player's or a
+    /// Craftable harvest drone item. Not a placeable WorldObject: it lives in a player's or a
     /// <see cref="DroneDockObject"/>'s inventory until inserted into a dock's storage slot,
-    /// which pairs it (see DroneDockObject.OnDockStorageChanged). See <see cref="SurveyDrone"/>
-    /// below for the physical roaming WorldObject a dock would dispatch -- actually
-    /// spawning/dispatching one from a paired dock (and wiring SurveyDroneObject.SetOwner into
-    /// that dispatch/pairing flow) is still a future unit's concern (U8); this unit (U7)
-    /// only makes the drone's invulnerability, free-roam, and owner-stamping surface
-    /// available on the entity.
+    /// which pairs it (see DroneDockObject.OnDockStorageChanged). See
+    /// <see cref="MiningDroneObject"/> below for the physical roaming WorldObject a dock
+    /// dispatches.
     /// </summary>
     [Serialized]
     [Weight(500)]
-    [LocDisplayName("Survey Drone")]
-    [LocDescription("A craftable ground survey drone. Insert into a Drone Dock to pair it for dispatch.")]
+    [LocDisplayName("Mining Drone")]
+    [LocDescription("A craftable mining drone. Insert into a Drone Dock to pair it for dispatch.")]
     [Ecopedia("Crafted Objects", "Advanced Electronics", true, true, null)]
-    public class SurveyDroneItem : RepairableItem, IWorldObjectComponentSource, IPersistentData
+    public class MiningDroneItem : RepairableItem, IWorldObjectComponentSource, IPersistentData
     {
         /// <summary>
         /// Carries the state of the components this drone installed, across being pulled out of one
@@ -63,7 +59,7 @@ namespace Eco.Mods.TechTree
             2,
             AdvancedElectronicsSkill.MultiplicativeStrategy,
             typeof(AdvancedElectronicsSkill),
-            typeof(SurveyDroneItem),
+            typeof(MiningDroneItem),
             Localizer.DoStr("repair cost"),
             DynamicValueType.Efficiency);
 
@@ -77,16 +73,9 @@ namespace Eco.Mods.TechTree
         // make a worn-out drone permanently dead rather than serviceable.
         public override Item RepairItem => Item.Get<AdvancedCircuitItem>();
 
-        // The mod's own fuel tag, carried by BatteryItem and by nothing else. This read
-        // "Liquid Fuel" -- the vanilla tag on biodiesel and gasoline -- for as long as the Battery
-        // was deferred, because a fuel tag no item carries leaves the dock unfuelable. The Battery
-        // now ships, so that constraint is gone and the drone no longer runs on a mid-game
-        // commodity out of a different tech branch.
-        //
-        // FuelSupplyComponent.Initialize rebuilds its TagRestriction from this list on every
-        // install, so this line is the whole switch. The restriction filters what may be ADDED to
-        // a tank, never what may be burned from it, so a dock still holding biodiesel across the
-        // update burns it off and only then reports itself out of fuel.
+        // The mod's own Battery carries this tag. Matches SurveyDroneItem, which switched off
+        // "Liquid Fuel" once the Battery shipped as a craftable inventory item -- the comment
+        // here still claimed the battery was deferred, which stopped being true then.
         private static readonly string[] fuelTagList = { "Electric Fuel" };
 
         /// <summary>
@@ -138,18 +127,15 @@ namespace Eco.Mods.TechTree
     }
 
     /// <summary>
-    /// The physical roaming drone WorldObject that a <see cref="DroneDockObject"/> dispatches
-    /// (U7, R3/R4/R5). Spawned and destroyed by <see cref="DroneDockObject.OnDockStorageChanged"/>
-    /// when a <see cref="SurveyDroneItem"/> is inserted into / removed from the dock --
-    /// see that method for the pairing-to-spawn wiring (an orchestrator-level integration
-    /// pass connecting U1/U2/U5/U7/U8's independently-built pieces, since no single unit's
-    /// Files list owned the actual spawn call). This unit (U7) contributes the class
-    /// itself as the shell the invulnerability/free-roam/attribution requirements attach
-    /// to, plus the <c>[RequireComponent]</c> declarations that pull in
-    /// <see cref="DroneMoverComponent"/> (U2), <see cref="OreSensorComponent"/> (U5), and
-    /// <see cref="DroneLifecycle"/> (U8) automatically on spawn.
+    /// The physical roaming drone WorldObject that a <see cref="DroneDockObject"/> dispatches.
+    /// Spawned and destroyed by <see cref="DroneDockObject.OnDockStorageChanged"/> when a
+    /// <see cref="MiningDroneItem"/> is inserted into / removed from the dock. The
+    /// <c>[RequireComponent]</c> declarations pull in <see cref="DroneMoverComponent"/>,
+    /// <see cref="OreSensorComponent"/>, and <see cref="DroneLifecycle"/> automatically on
+    /// spawn.
     ///
-    /// Per KTD7:
+    /// The three properties below are inherited from the survey drone's design and the
+    /// reasoning is reproduced because it is not obvious from the code:
     /// <list type="bullet">
     /// <item><description>
     /// R3 (invulnerable to tool/animal damage): this class deliberately implements no
@@ -165,8 +151,8 @@ namespace Eco.Mods.TechTree
     /// TechTree subclasses, e.g. Wolf, Coyote). <c>WorldObject</c> itself implements
     /// neither, and no stock WorldObject subclass in those assemblies implements either
     /// one -- there is no vanilla "structure health" surface for WorldObjects to opt out
-    /// of. <see cref="SurveyDrone"/> follows the same pattern: implement neither, attach
-    /// nothing damage-related, and it is invulnerable by construction.
+    /// of. <see cref="MiningDroneObject"/> follows the same pattern: implement neither,
+    /// attach nothing damage-related, and it is invulnerable by construction.
     /// </description></item>
     /// <item><description>
     /// R4 (free-roam, crosses claims): movement is driven entirely by
@@ -203,9 +189,9 @@ namespace Eco.Mods.TechTree
     // so unsetting it is what removes the affordance -- there is no "not interactable" flag.
     // BaseRampObject in Mods/__core__/Items/Roads.cs is the vanilla precedent.
     [Tag("Usable", Unset = true)]
-    public partial class SurveyDroneObject : WorldObject, IDroneOwnable
+    public partial class MiningDroneObject : WorldObject, IDroneOwnable
     {
-        [Serialized] public bool ModeHarvest = true;
+        [Serialized] public bool ModeMining = true;
         /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
         partial void ModsPreInitialize();
         /// <summary>Hook for mods to customize WorldObject after initialization.</summary>
@@ -220,15 +206,15 @@ namespace Eco.Mods.TechTree
         /// static constructor for the full explanation (copied from the Advanced
         /// Mixology reference mod).
         /// </summary>
-        static SurveyDroneObject()
+        static MiningDroneObject()
         {
-            AddOccupancy<SurveyDroneObject>(new List<BlockOccupancy>
+            AddOccupancy<MiningDroneObject>(new List<BlockOccupancy>
             {
                 new BlockOccupancy(new Vector3i(0, 0, 0)),
             });
         }
 
-        public override LocString DisplayName => Localizer.DoStr("Survey Drone");
+        public override LocString DisplayName => Localizer.DoStr("Mining Drone");
 
         /// <summary>Display name of the owner this drone acts on behalf of, or null if never stamped.</summary>
         [Serialized]
@@ -242,11 +228,10 @@ namespace Eco.Mods.TechTree
         public bool HasOwner => this.OwnerId != 0;
 
         /// <summary>
-        /// Stamps this drone's owner (R5) from the acting user. A plain setter here --
-        /// mirrors DroneDockObject.SetAssignedDistrict -- so SurveyDroneObject itself does not need
-        /// to know about the dock/pairing/chat-command layers that decide WHEN to call
-        /// it (that wiring is U8's job). Delegates the actual (name, id) assignment to
-        /// <see cref="DroneOwnership.FromUser"/>.
+        /// Stamps this drone's owner from the acting user. A plain setter, so
+        /// <see cref="MiningDroneObject"/> itself does not need to know about the
+        /// dock/pairing layers that decide WHEN to call it. Delegates the actual
+        /// (name, id) assignment to <see cref="DroneOwnership.FromUser"/>.
         /// </summary>
         public void SetOwner(User user)
         {
@@ -262,19 +247,19 @@ namespace Eco.Mods.TechTree
         }
     }
 
-    /// <summary>Recipe unlocking <see cref="SurveyDroneItem"/>.</summary>
+    /// <summary>Recipe unlocking <see cref="MiningDroneItem"/>.</summary>
     [RequiresSkill(typeof(AdvancedElectronicsSkill), 1)]
-    public partial class SurveyDroneRecipe : RecipeFamily
+    public partial class MiningDroneRecipe : RecipeFamily
     {
         // Eco force-creates one instance of every RecipeFamily-derived type at startup
         // (RecipeFamily carries [ForceCreateViewAllDerived]) -- registration belongs in
         // the instance constructor, mirroring vanilla recipes (e.g. StorageChestRecipe).
-        public SurveyDroneRecipe()
+        public MiningDroneRecipe()
         {
             var recipe = new Recipe();
             recipe.Init(
-                name: "SurveyDrone",
-                displayName: Localizer.DoStr("Survey Drone"),
+                name: "MiningDrone",
+                displayName: Localizer.DoStr("Mining Drone"),
                 ingredients: new List<IngredientElement>
                 {
                     new IngredientElement(typeof(AdvancedCircuitItem), 6, typeof(AdvancedElectronicsSkill)),
@@ -292,15 +277,15 @@ namespace Eco.Mods.TechTree
                 },
                 items: new List<CraftingElement>
                 {
-                    new CraftingElement<SurveyDroneItem>(1),
+                    new CraftingElement<MiningDroneItem>(1),
                 });
 
             this.Recipes = new List<Recipe> { recipe };
             this.ExperienceOnCraft = 30;
             this.LaborInCalories = CreateLaborInCaloriesValue(1000, typeof(AdvancedElectronicsSkill));
-            this.CraftMinutes = CreateCraftTimeValue(beneficiary: typeof(SurveyDroneRecipe), start: 10, skillType: typeof(AdvancedElectronicsSkill));
+            this.CraftMinutes = CreateCraftTimeValue(beneficiary: typeof(MiningDroneRecipe), start: 10, skillType: typeof(AdvancedElectronicsSkill));
             this.ModsPreInitialize();
-            this.Initialize(displayText: Localizer.DoStr("Survey Drone"), recipeType: typeof(SurveyDroneRecipe));
+            this.Initialize(displayText: Localizer.DoStr("Mining Drone"), recipeType: typeof(MiningDroneRecipe));
             this.ModsPostInitialize();
 
             CraftingComponent.AddRecipe(tableType: typeof(RoboticAssemblyLineObject), recipeFamily: this);

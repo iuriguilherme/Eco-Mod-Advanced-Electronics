@@ -191,6 +191,7 @@ namespace Eco.Mods.TechTree
     [Tag("Usable", Unset = true)]
     public partial class HarvestDroneObject : WorldObject, IDroneOwnable
     {
+        [Serialized] public bool ModeHarvest = true;
         /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
         partial void ModsPreInitialize();
         /// <summary>Hook for mods to customize WorldObject after initialization.</summary>
