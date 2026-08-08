@@ -135,12 +135,18 @@ object is doing — the only channel by which server behaviour reaches an animat
 readout.
 
 It is a signal, never saved state: the value is recomputed from live status and pushed on change, so
-persisting it would let a save file contradict the code that derives it. Its name binds by string in
-three unconnected places — the server's push, the list the prefab declares, and the parameter the
-animation graph reads — and a name present in only some of them is silently ignored rather than
-reported. This is [[Name Match]]'s failure shape one level down: the object renders correctly and
-simply never moves, with a clean build and a clean server log. Contrast [[Persisted State]], which is
-what a value must be to survive a reload.
+persisting it would let a save file contradict the code that derives it.
+
+Its name is the entire binding, and the client does the wiring itself: on building an object it
+walks that object's animation parameters and connects each one to the state of the same name. There
+is nothing to configure — no component to write, no event to hook — and consequently nothing that
+reports a name present on one side and absent on the other. This is [[Name Match]]'s failure shape
+one level down: the object renders correctly and simply never moves, with a clean build and a clean
+server log.
+
+A small set of names is reserved, because the engine already publishes those states itself; reusing
+one is the rare loud failure in this area, and it is loud only in the *client* log. Contrast
+[[Persisted State]], which is what a value must be to survive a reload.
 
 ### Persisted State
 A value written to disk when the world saves and restored when it loads, as opposed to one recomputed
