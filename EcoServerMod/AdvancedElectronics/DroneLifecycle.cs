@@ -623,7 +623,13 @@ namespace Eco.Mods.TechTree
             }
 
             mover.SetClimbHeight(attempt.MaxStepHeight);
-            return mover.SetDestination(this.HomeDock.DroneParkPosition, this.HomeDock.OccupiedColumns);
+            if (!mover.SetDestination(this.HomeDock.DroneParkPosition, this.HomeDock.OccupiedColumns))
+                return false;
+
+            // Same courtesy on the escalated rungs: a retry that finally finds a route should
+            // still leave properly rather than snapping into motion.
+            mover.HoldFor(this.IsAtHomeDock() ? TakeOffLeadInSeconds : WorkExitLeadInSeconds);
+            return true;
         }
 
         /// <summary>
@@ -767,6 +773,12 @@ namespace Eco.Mods.TechTree
                 var center = new PlotPos(plot.X, plot.Z).CenterWorldPos;
                 var reachable = mover.SetDestination(new Vector3(center.x, pos.Y, center.y), this.HomeDock.OccupiedColumns);
                 this.sweepArrivalAttempts++;
+
+                // A hop to the next plot is travel like any other: stow the arm and reach the
+                // flying loop before sliding. Without this the work loop played over a drone
+                // moving sideways, which is what "the animation is still going while it moves"
+                // actually was.
+                if (reachable) mover.HoldFor(WorkExitLeadInSeconds);
 
                 if (!reachable || this.sweepArrivalAttempts > MaxPlotArrivalAttempts)
                 {

@@ -81,14 +81,15 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.False(state.IsAtHomeDock);
         }
 
+        // A hop to the next plot is travel, not work. An earlier version held IsWorking true
+        // across hops to avoid a stutter, and the result was the work loop playing over a
+        // drone sliding sideways with its arm swinging at nothing.
         [Fact]
-        public void OnStationAndRepositioningBetweenPlots_StaysWorking()
+        public void OnStationButRepositioningBetweenPlots_IsNotWorking()
         {
-            // Park-and-sweep alternates between hopping and standing still. Flicking the
-            // work loop off for every hop would read as a stutter rather than as travel.
             var state = State(DroneStatus.Surveying, isMoving: true, isAtHomeDock: false);
 
-            Assert.True(state.IsWorking);
+            Assert.False(state.IsWorking);
         }
 
         // One case, not two. Outbound and homebound legs are indistinguishable here by

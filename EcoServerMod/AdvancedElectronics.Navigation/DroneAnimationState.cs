@@ -74,11 +74,11 @@ namespace AdvancedElectronics.Navigation
         public bool IsAtHomeDock { get; }
 
         /// <summary>
-        /// On station within the assigned area, for the whole time it is there.
+        /// On station within the assigned area and stopped there.
         ///
-        /// Stays true while the drone repositions between plots. Park-and-sweep alternates
-        /// between hopping and standing still, and flicking the work loop off for every hop
-        /// would read as a stutter rather than as travel.
+        /// False while the drone repositions between plots. Park-and-sweep alternates between
+        /// hopping and standing still, and each hop is genuine travel: the arm stows, the
+        /// drone flies, and work restarts on arrival.
         /// </summary>
         public bool IsWorking { get; }
 
@@ -111,7 +111,12 @@ namespace AdvancedElectronics.Navigation
         public static DroneAnimationState From(DroneStatus status, bool isMoving,
                                                bool isAtHomeDock, bool usesHarvestTool)
         {
-            var working = status == DroneStatus.Surveying;
+            // On station AND stopped. Travel is travel, even the short hop from one plot to
+            // the next inside the same area: the drone stows its arm, flies, and starts work
+            // again on arrival. An earlier version held this true across hops to avoid a
+            // stutter, which instead played the work loop over a drone visibly sliding
+            // sideways -- the arm swinging at nothing it was near.
+            var working = status == DroneStatus.Surveying && !isMoving;
 
             // Settled, not merely nearby: the status machine flips to Idle on arrival while
             // the mover can still be closing the last metre, and playing the fully-stopped
