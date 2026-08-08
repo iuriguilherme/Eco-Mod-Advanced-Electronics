@@ -247,6 +247,21 @@ namespace Eco.Mods.TechTree
             user.MsgLocStr($"  Spawned drone at {drone.Position3i} (owner: {owner})");
             user.MsgLocStr($"  Anim state MoveSpeed: {FormatAnimState(drone, DroneMoverComponent.MoveSpeedStateName)}");
 
+            // Every animation boolean, read back from the object's own synced dictionary rather
+            // than recomputed. This is what the client actually receives, so a state reading
+            // "not yet pushed" here means the animator was never going to see it -- which is a
+            // different bug from a state that arrives holding the wrong value.
+            var tool = drone is IDroneToolbearer bearer ? bearer.Tool.ToString() : "NO IDroneToolbearer";
+            user.MsgLocStr($"  Declared tool: {tool}");
+            foreach (var name in new[]
+                     {
+                         DroneAnimationStateNames.IsAtHomeDock,
+                         DroneAnimationStateNames.IsWorking,
+                         DroneAnimationStateNames.ModeMining,
+                         DroneAnimationStateNames.ModeHarvest,
+                     })
+                user.MsgLocStr($"  Anim state {name}: {FormatAnimState(drone, name)}");
+
             if (drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
             {
                 user.MsgLocStr($"  Lifecycle: {lifecycle.Status}, sampling={(lifecycle.ShouldSample ? "yes" : "no")}, homeDock={(lifecycle.HomeDock != null ? "set" : "NOT SET (dispatch wiring gap)")}");
