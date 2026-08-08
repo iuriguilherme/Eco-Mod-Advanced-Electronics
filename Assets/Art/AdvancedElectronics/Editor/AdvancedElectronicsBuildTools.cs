@@ -388,6 +388,8 @@ public static class AdvancedElectronicsBuildTools
 
         go.tag = "ModObject";
 
+        StripMissingScripts(go);
+
         if (sourceModel != null)
         {
             VerifyModelShaders(go);
@@ -685,6 +687,30 @@ public static class AdvancedElectronicsBuildTools
         }
 
         StampBoolStates(worldObject, DroneBoolStateNames);
+    }
+
+    /// <summary>
+    /// Removes components whose script no longer resolves, on the object and everything
+    /// under it.
+    ///
+    /// Unity refuses to save a prefab that carries one, so a deleted or renamed script
+    /// blocks the finisher with an error that names the symptom rather than the object. The
+    /// component itself is already dead -- a script-less MonoBehaviour does nothing but
+    /// occupy a row in the Inspector and a warning per instance at runtime.
+    ///
+    /// This project generates two of them by design: DockReadoutDisplay and
+    /// DroneAnimatorStates were custom client MonoBehaviours, which the Eco client cannot
+    /// load at all (it is an IL2CPP build with no mod-assembly loader), and deleting the
+    /// scripts left their components behind on every prefab that had been finished.
+    /// </summary>
+    private static void StripMissingScripts(GameObject go)
+    {
+        var removed = 0;
+        foreach (var transform in go.GetComponentsInChildren<Transform>(true))
+            removed += GameObjectUtility.RemoveMonoBehavioursWithMissingScript(transform.gameObject);
+
+        if (removed > 0)
+            Debug.Log($"[AdvancedElectronics] Removed {removed} component(s) with a missing script from '{go.name}'. A script-less component does nothing and blocks the prefab save.");
     }
 
     /// <summary>
