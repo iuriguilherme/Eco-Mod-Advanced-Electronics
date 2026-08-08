@@ -380,17 +380,23 @@ namespace Eco.Mods.TechTree
 
             this.lastAnnouncedAnimationStates[name] = value;
 
-            var drone   = this.Parent?.Name ?? "drone";
-            var what    = known ? $"{previous} -> {value}" : $"first push: {value}";
-            var message = $"[anim] {drone}: {name} {what}";
+            var drone = this.Parent?.Name ?? "drone";
+            var what  = known ? $"{previous} -> {value}" : $"first push: {value}";
 
-            // The owner rather than everyone online: the drone belongs to somebody, and the
-            // enumeration of all online users is typed from an assembly this mod does not
-            // reference. An unowned drone still reports to the log below.
+            // Colour so a transition is findable in a scrolling chat log: green went true,
+            // orange went false. Rich text in chat is the same shape the Gift Machine mod
+            // uses, which is where this delivery pattern comes from.
+            var colour  = value ? "green" : "orange";
+            var message = $"<color=\"{colour}\">[anim] {drone}: {name} {what}</color>";
+
+            // Player, not User: an online player's session is what actually receives chat,
+            // and that is the call the Gift Machine mod proved. The owner rather than
+            // everyone online, because UserManager.OnlineUsers is typed from an assembly
+            // this mod does not reference. An unowned or offline drone still reports below.
             if (this.Parent is IDroneOwnable ownable && ownable.HasOwner)
-                UserManager.FindUserByID(ownable.OwnerId)?.MsgLocStr(message);
+                UserManager.FindUserByID(ownable.OwnerId)?.Player?.MsgLocStr(message);
 
-            Log.WriteLineLoc($"{message}");
+            Log.WriteLineLoc($"[anim] {drone}: {name} {what}");
         }
 
         /// <summary>
