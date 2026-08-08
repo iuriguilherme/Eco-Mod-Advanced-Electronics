@@ -101,6 +101,7 @@ All under **Eco Tools > Advanced Electronics**.
 | **Finish Assembly Prefab** | Builds `AdvancedElectronicsAssemblyObject`. |
 | **Finish All Item Icons** | Generates a placeholder PNG per entry in `ItemIcons`. |
 | **Report Duplicate Bundle Object Names** | Lists names appearing twice in the bundle. Run before every build. |
+| **Report Stray Asset Bundle Tags** | Lists assets tagged into their own bundle. Only the scene should be. Run before every build. |
 | **Disable Mod Object Roots** | Fixes invisible in-game objects. See below. |
 
 There is deliberately **no** standalone drone finisher. It used to build the survey drone from
@@ -178,10 +179,21 @@ Worth knowing before you run it, because one branch deletes things:
    "Preparing your citizen..." with no error, because the bundle loader adds names to a
    dictionary and the throw happens inside a coroutine that then silently stops.
 
-6. **Save the scene.** The finishers say so in the Console for a reason: an unsaved scene
+6. **Report Stray Asset Bundle Tags** — only the scene should carry a bundle tag. Any other
+   tagged asset is split into a second bundle that never gets deployed, and every object using
+   it silently fails to render, with no error at build, load, or runtime.
+
+7. **Save the scene.** The finishers say so in the Console for a reason: an unsaved scene
    builds a bundle from the last saved state.
 
-7. **Build the bundle** — Eco Tools > Mod Kit.
+8. **Build the bundle** — Eco Tools > Mod Kit. Then confirm it is self-contained:
+
+   ```bash
+   grep -A 3 '^Dependencies:' AssetBundles/<newest>.manifest    # expect: Dependencies: []
+   ```
+
+   A dependency naming another `advancedelectronics*` bundle means assets left this one and
+   the deploy will be incomplete.
 
 8. **Validate before deploying:**
 

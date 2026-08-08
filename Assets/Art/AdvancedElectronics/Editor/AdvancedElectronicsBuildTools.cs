@@ -733,6 +733,54 @@ public static class AdvancedElectronicsBuildTools
     }
 
     /// <summary>
+    /// Reports any asset carrying its own asset-bundle tag.
+    ///
+    /// Exactly ONE asset in this project should be tagged: the scene, which "Build Current
+    /// Bundle" tags on your behalf. Everything else ships as a dependency of that scene. An
+    /// asset that carries its own tag is pulled OUT of the scene's bundle into a second one,
+    /// and the scene's bundle is emitted with a dependency on it.
+    ///
+    /// That is silent and total. Only one .unity3d gets deployed, so the dependency cannot
+    /// resolve on the client -- and a bundle whose dependency is missing is internally valid,
+    /// so Unity reports nothing at build time and the client reports nothing at load time.
+    /// The objects simply never render: no model, no placement ghost, no error. One stale
+    /// tag on a single material cost a night of chasing invisible drones.
+    ///
+    /// A tag is cleared in the Inspector, at the bottom of the asset's panel: the AssetBundle
+    /// dropdown, set to None.
+    /// </summary>
+    [MenuItem("Eco Tools/Advanced Electronics/Report Stray Asset Bundle Tags")]
+    public static void ReportStrayBundleTags()
+    {
+        var strays = new List<string>();
+        var scenes = new List<string>();
+
+        foreach (var guid in AssetDatabase.FindAssets(string.Empty, new[] { ArtFolder }))
+        {
+            var path = AssetDatabase.GUIDToAssetPath(guid);
+            var importer = AssetImporter.GetAtPath(path);
+            if (importer == null || string.IsNullOrEmpty(importer.assetBundleName)) continue;
+
+            if (path.EndsWith(".unity", System.StringComparison.OrdinalIgnoreCase))
+                scenes.Add($"{path} -> {importer.assetBundleName}");
+            else
+                strays.Add($"{path} -> {importer.assetBundleName}");
+        }
+
+        foreach (var scene in scenes)
+            Debug.Log($"[AdvancedElectronics] Scene bundle tag (expected): {scene}.");
+
+        if (strays.Count == 0)
+        {
+            Debug.Log("[AdvancedElectronics] No stray asset bundle tags. The scene's bundle will be self-contained.");
+            return;
+        }
+
+        foreach (var stray in strays)
+            Debug.LogError($"[AdvancedElectronics] Stray asset bundle tag: {stray}. This asset will be split into its own bundle and the scene's bundle will depend on it -- but only the scene's bundle is deployed, so the dependency will not resolve and objects using this asset will not render, with no error anywhere. Clear it: select the asset, then set the AssetBundle dropdown at the bottom of the Inspector to None.");
+    }
+
+    /// <summary>
     /// Creates the art folder and its per-kind subfolders if missing. Every generated asset
     /// is written into one of these; AssetDatabase writes fail outright on a folder that does
     /// not exist yet, rather than creating it on demand.
