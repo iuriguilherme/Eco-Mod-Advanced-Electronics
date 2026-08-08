@@ -545,7 +545,8 @@ namespace Eco.Mods.TechTree
             //
             // The dock occupies its own columns by design, so the drone has to be allowed
             // through them to dock at all.
-            var found = mover.SetDestination(this.HomeDock.DroneParkPosition, this.HomeDock.OccupiedColumns);
+            var found = mover.SetDestination(this.HomeDock.DroneParkPosition, this.HomeDock.OccupiedColumns,
+                                             landAtDestination: true);
             if (found)
             {
                 // Stow the arm and settle into the flying loop before travelling. A drone
@@ -623,7 +624,8 @@ namespace Eco.Mods.TechTree
             }
 
             mover.SetClimbHeight(attempt.MaxStepHeight);
-            if (!mover.SetDestination(this.HomeDock.DroneParkPosition, this.HomeDock.OccupiedColumns))
+            if (!mover.SetDestination(this.HomeDock.DroneParkPosition, this.HomeDock.OccupiedColumns,
+                                      landAtDestination: true))
                 return false;
 
             // Same courtesy on the escalated rungs: a retry that finally finds a route should

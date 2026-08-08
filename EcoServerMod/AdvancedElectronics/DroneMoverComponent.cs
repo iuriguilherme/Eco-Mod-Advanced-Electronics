@@ -85,7 +85,7 @@ namespace Eco.Mods.TechTree
         /// are judged exactly as before, and the drone still descends to the pad on arrival
         /// because docking uses the dock's park point rather than a routed waypoint.
         /// </summary>
-        private const float CruiseHeightAboveGround = 4f;
+        private const float CruiseHeightAboveGround = 2.5f;
 
         public override void Initialize()
         {
@@ -147,9 +147,25 @@ namespace Eco.Mods.TechTree
         /// Null for a destination that belongs to nobody, so the drone never parks inside
         /// another player's object (it could not roam back out).
         /// </param>
-        public bool SetDestination(Vector3 destination, IReadOnlyCollection<Vector3> exemptOccupiedColumns = null)
+        /// <param name="landAtDestination">
+        /// True to finish exactly at <paramref name="destination"/> rather than at cruise
+        /// height above it. Every routed waypoint sits at the flying altitude, so a landing
+        /// target -- the dock's park point -- would otherwise be approached and then reached
+        /// by some other means, which is what made docking snap downward. Appending the real
+        /// destination turns that drop into an ordinary final leg, flown at the same speed as
+        /// the rest.
+        /// </param>
+        public bool SetDestination(Vector3 destination, IReadOnlyCollection<Vector3> exemptOccupiedColumns = null,
+                                   bool landAtDestination = false)
         {
             var result = this.pathfinder.FindPath(this.Parent.Position, destination, exemptOccupiedColumns);
+
+            if (result.Found && landAtDestination)
+            {
+                var withLanding = new List<Vector3>(result.Waypoints) { destination };
+                result = PathResult.Success(withLanding);
+            }
+
             this.currentPath = result;
             this.waypointIndex = 0;
             return result.Found;
@@ -243,8 +259,18 @@ namespace Eco.Mods.TechTree
                 : current + Vector3.Normalize(toTarget) * step;
 
             this.Parent.Position = nextPos;
-            if (distance >= 0.0001f)
-                this.Parent.Rotation = Quaternion.LookRotation(Vector3.Normalize(toTarget));
+
+            // Yaw only: face where it is going horizontally, and stay level.
+            //
+            // Rotating toward the full 3D heading pitched the whole drone nose-up on every
+            // climb, which suited an entity walking up a slope and does not suit a rotorcraft
+            // -- a helicopter holds its attitude and changes altitude underneath it. A purely
+            // vertical move leaves the heading untouched rather than snapping to some
+            // arbitrary facing.
+            var heading = new Vector3(toTarget.X, 0f, toTarget.Z);
+            if (heading.LengthSquared() >= 0.0001f)
+                this.Parent.Rotation = Quaternion.LookRotation(Vector3.Normalize(heading));
+
             this.Parent.SyncPositionAndRotation();
         }
     }
