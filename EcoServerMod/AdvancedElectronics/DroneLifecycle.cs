@@ -5,7 +5,9 @@ using System.Numerics;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
 using Eco.Gameplay.Objects;
+using Eco.Gameplay.Players;
 using Eco.Shared.IoC;
+using Eco.Shared.Logging;
 using Eco.Shared.Serialization;
 using Eco.Shared.Voxel;
 
@@ -278,6 +280,29 @@ namespace Eco.Mods.TechTree
         private float secondsSinceAnimationRepush;
 
         /// <summary>
+        /// TEMPORARY DIAGNOSTIC. While true, every genuine change to a drone's animation
+        /// booleans is announced in chat to everyone online, so the contract can be watched
+        /// live instead of sampled with /drone status.
+        ///
+        /// Toggled by <c>/drone animwatch</c>. Off by default, and static rather than
+        /// per-drone so one toggle covers every drone in the world.
+        ///
+        /// Delete this and its command once the animation work is settled -- it is a
+        /// debugging aid, not a feature, and it broadcasts to every player on the server.
+        /// </summary>
+        internal static bool AnnounceAnimationStateChanges;
+
+        /// <summary>
+        /// What was last ANNOUNCED, kept apart from what was last PUSHED.
+        ///
+        /// The push cache is cleared periodically to force a re-send, which would otherwise
+        /// read as four fresh "changes" every interval and bury the real transitions in
+        /// repeats. This one is never cleared, so chat only reports a value that actually
+        /// moved.
+        /// </summary>
+        private readonly Dictionary<string, bool> lastAnnouncedAnimationStates = new Dictionary<string, bool>();
+
+        /// <summary>
         /// Projects the current lifecycle situation onto the drone's five animation booleans and
         /// pushes the ones that changed.
         ///
@@ -327,12 +352,45 @@ namespace Eco.Mods.TechTree
 
             foreach (var (name, value) in state.AsNamedValues())
             {
+                this.AnnounceIfChanged(name, value);
+
                 if (this.lastPushedAnimationStates.TryGetValue(name, out var last) && last == value)
                     continue;
 
                 this.lastPushedAnimationStates[name] = value;
                 this.Parent.SetAnimatedState(name, value);
             }
+        }
+
+        /// <summary>
+        /// TEMPORARY DIAGNOSTIC. Announces a genuine change in one animation boolean, so the
+        /// server/client contract can be watched as it happens rather than sampled after the
+        /// fact. See <see cref="AnnounceAnimationStateChanges"/>; delete both together.
+        ///
+        /// Reports the first observation as well as later flips: "never pushed" and "pushed
+        /// false" look identical from the animator's side but are different faults, and the
+        /// first announcement is the only evidence that separates them.
+        /// </summary>
+        private void AnnounceIfChanged(string name, bool value)
+        {
+            if (!AnnounceAnimationStateChanges) return;
+
+            var known = this.lastAnnouncedAnimationStates.TryGetValue(name, out var previous);
+            if (known && previous == value) return;
+
+            this.lastAnnouncedAnimationStates[name] = value;
+
+            var drone   = this.Parent?.Name ?? "drone";
+            var what    = known ? $"{previous} -> {value}" : $"first push: {value}";
+            var message = $"[anim] {drone}: {name} {what}";
+
+            // The owner rather than everyone online: the drone belongs to somebody, and the
+            // enumeration of all online users is typed from an assembly this mod does not
+            // reference. An unowned drone still reports to the log below.
+            if (this.Parent is IDroneOwnable ownable && ownable.HasOwner)
+                UserManager.FindUserByID(ownable.OwnerId)?.MsgLocStr(message);
+
+            Log.WriteLineLoc($"{message}");
         }
 
         /// <summary>

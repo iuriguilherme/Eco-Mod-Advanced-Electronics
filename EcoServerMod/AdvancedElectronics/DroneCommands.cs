@@ -221,6 +221,20 @@ namespace Eco.Mods.TechTree
         /// rendering (world text, tooltip, window) and without repeated
         /// restart-observe cycles — every layer reports its own truth in chat.
         /// </summary>
+        /// <summary>
+        /// TEMPORARY DIAGNOSTIC. Delete alongside
+        /// <see cref="DroneLifecycle.AnnounceAnimationStateChanges"/> once the animation
+        /// contract is settled.
+        /// </summary>
+        [ChatSubCommand("Drone", "Toggle live chat announcements of drone animation state changes (diagnostic).", ChatAuthorizationLevel.User)]
+        public static void AnimWatch(User user)
+        {
+            DroneLifecycle.AnnounceAnimationStateChanges = !DroneLifecycle.AnnounceAnimationStateChanges;
+            user.MsgLocStr(DroneLifecycle.AnnounceAnimationStateChanges
+                ? "Animation state watch ON. Every change to a drone's animation booleans will be announced, to everyone online, until this is toggled off."
+                : "Animation state watch OFF.");
+        }
+
         [ChatSubCommand("Drone", "Dump full drone/dock state for your nearest accessible dock (diagnostic).", ChatAuthorizationLevel.User)]
         public static void Status(User user)
         {
