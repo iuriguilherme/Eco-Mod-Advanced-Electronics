@@ -148,6 +148,22 @@ A small set of names is reserved, because the engine already publishes those sta
 one is the rare loud failure in this area, and it is loud only in the *client* log. Contrast
 [[Persisted State]], which is what a value must be to survive a reload.
 
+### Position Authority
+The rule that exactly one writer sets a placed object's transform: the server, which assigns the
+position and pushes it to clients. Everything on the client side animates the model *within* that
+transform and must never move the transform itself.
+
+The rule exists because nothing enforces it. A client-side animation that displaces its own root is
+a second writer, and by the general rule that the last write to a transform in a frame is the one
+that renders, what a player sees is the interleaving of both rather than the output of either. The resulting error is not constant, which is what
+makes it hard to name: while the server is actively moving the object it re-asserts its position
+every tick and mostly wins, but wherever the server deliberately holds still the other writer
+accumulates unopposed. The object therefore drifts most exactly where it is supposed to be most
+stable, and the symptom reads as a wrong resting height rather than a contested one. The
+recognisable tell is a resting-position constant that improves every time it is tuned and never
+converges. Contrast [[Animated State]], which is the sanctioned server-to-client channel and carries
+signals the client reacts to — never position.
+
 ### Persisted State
 A value written to disk when the world saves and restored when it loads, as opposed to one recomputed
 on demand.
