@@ -29,12 +29,6 @@ namespace AdvancedElectronics.Navigation
         public const string ModeHarvest  = "ModeHarvest";
 
         /// <summary>
-        /// The propeller layer's gate. Named PropellersOn rather than the obvious
-        /// "Operating" because <see cref="Reserved"/> forbids that one -- see below.
-        /// </summary>
-        public const string PropellersOn = "PropellersOn";
-
-        /// <summary>
         /// State names the ModKit's own WorldObject already registers, which a custom
         /// <c>States</c> entry must never repeat.
         ///
@@ -54,7 +48,7 @@ namespace AdvancedElectronics.Navigation
     }
 
     /// <summary>
-    /// The five animation booleans the drone's Animator consumes, derived from lifecycle
+    /// The four animation booleans the drone's Animator consumes, derived from lifecycle
     /// status rather than stored. Pure and Eco-free (KTD2, the same reason
     /// <see cref="DroneStateMachine"/> is), so the whole animation contract is exercised by
     /// DroneAnimationStateTests without a running server -- which matters more here than
@@ -98,28 +92,17 @@ namespace AdvancedElectronics.Navigation
         /// <summary>The drone carries the harvest arm. The exact negation of <see cref="ModeMining"/>.</summary>
         public bool ModeHarvest { get; }
 
-        /// <summary>
-        /// Drives the propeller layer, which is a separate layer with its own two states.
-        /// Its stopped state has exactly one exit, gated on this being true; leaving it
-        /// unpushed freezes the blades permanently however the body animates.
-        ///
-        /// The negation of <see cref="IsAtHomeDock"/>: the blades turn whenever the drone
-        /// is anywhere but settled in its dock, including when it is stranded.
-        /// </summary>
-        public bool PropellersOn { get; }
-
         private DroneAnimationState(bool isAtHomeDock, bool isWorking,
-                                    bool modeMining, bool modeHarvest, bool propellersOn)
+                                    bool modeMining, bool modeHarvest)
         {
             this.IsAtHomeDock = isAtHomeDock;
             this.IsWorking    = isWorking;
             this.ModeMining   = modeMining;
             this.ModeHarvest  = modeHarvest;
-            this.PropellersOn = propellersOn;
         }
 
         /// <summary>
-        /// Projects the current lifecycle situation onto the five booleans.
+        /// Projects the current lifecycle situation onto the four booleans.
         /// </summary>
         /// <param name="status">The lifecycle status machine's current status.</param>
         /// <param name="isMoving">Whether the mover is currently advancing along a path.</param>
@@ -146,13 +129,12 @@ namespace AdvancedElectronics.Navigation
                 isAtHomeDock: home,
                 isWorking:    working,
                 modeMining:   !usesHarvestTool,
-                modeHarvest:  usesHarvestTool,
-                propellersOn: !home);
+                modeHarvest:  usesHarvestTool);
         }
 
         /// <summary>
         /// The state paired with the name it is pushed under, so callers iterate one list
-        /// instead of writing five near-identical push lines that can disagree.
+        /// instead of writing four near-identical push lines that can disagree.
         /// </summary>
         public (string Name, bool Value)[] AsNamedValues() => new[]
         {
@@ -160,7 +142,6 @@ namespace AdvancedElectronics.Navigation
             (DroneAnimationStateNames.IsWorking,    this.IsWorking),
             (DroneAnimationStateNames.ModeMining,   this.ModeMining),
             (DroneAnimationStateNames.ModeHarvest,  this.ModeHarvest),
-            (DroneAnimationStateNames.PropellersOn, this.PropellersOn),
         };
     }
 }

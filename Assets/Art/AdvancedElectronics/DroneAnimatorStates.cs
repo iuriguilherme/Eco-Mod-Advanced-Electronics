@@ -14,7 +14,7 @@ using UnityEngine;
 /// <item><description><see cref="Reset"/> (Editor-only, runs once when the
 /// component is first added) sets <c>WorldObject.States</c> to the exact names
 /// in <see cref="BoolStateNames"/> and resizes the paired event arrays, so
-/// nobody has to type five strings into the custom WorldObject
+/// nobody has to type four strings into the custom WorldObject
 /// Inspector.</description></item>
 /// <item><description><see cref="Awake"/> (runtime, every time the prefab is
 /// instantiated) finds the sibling <c>WorldObject</c> and the Animator, then
@@ -27,10 +27,10 @@ using UnityEngine;
 /// WHY BOOLS AND NOT THE EXISTING MoveSpeed FLOAT. The drone's
 /// DroneMoverComponent pushes a float state named "MoveSpeed"
 /// (EcoServerMod/AdvancedElectronics/DroneMoverComponent.cs). The HRVSTR
-/// controller declares no float parameters at all -- all five of its
+/// controller declares no float parameters at all -- all four of its
 /// parameters are booleans -- so MoveSpeed has no consumer on this controller,
-/// and <c>Operating</c> carries "away from the dock" in the shape the art
-/// actually asks for. MoveSpeed is left pushed and unread rather than removed:
+/// and <c>IsAtHomeDock</c> already carries "away from the dock" for the blades layer,
+/// which is the only consumer that needed it. MoveSpeed is left pushed and unread rather than removed:
 /// it costs one synced write per movement transition and a future controller
 /// may want a real speed blend.
 ///
@@ -72,7 +72,6 @@ public class DroneAnimatorStates : MonoBehaviour
         "IsWorking",
         "ModeMining",
         "ModeHarvest",
-        "PropellersOn",
     };
 
     /// <summary>

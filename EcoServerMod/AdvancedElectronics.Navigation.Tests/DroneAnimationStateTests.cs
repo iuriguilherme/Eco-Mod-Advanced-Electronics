@@ -4,7 +4,7 @@ using Xunit;
 namespace AdvancedElectronics.Navigation.Tests
 {
     /// <summary>
-    /// Covers the projection from lifecycle status onto the five animation booleans the
+    /// Covers the projection from lifecycle status onto the four animation booleans the
     /// HRVSTR animator controller consumes.
     ///
     /// Worth testing despite being branch-light, because the alternative way to discover a
@@ -183,7 +183,6 @@ namespace AdvancedElectronics.Navigation.Tests
 
             Assert.True(state.IsWorking);
             Assert.False(state.IsAtHomeDock);
-            Assert.True(state.PropellersOn);
         }
 
         [Theory]
@@ -202,40 +201,21 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.False(state.IsAtHomeDock && state.IsWorking);
         }
 
-        // --- PropellersOn: the propeller layer's only way out of stopped ---
-
-        [Theory]
-        [InlineData(DroneStatus.Idle, false, true)]
-        [InlineData(DroneStatus.Idle, true, true)]
-        [InlineData(DroneStatus.Idle, false, false)]
-        [InlineData(DroneStatus.EnRoute, true, false)]
-        [InlineData(DroneStatus.Surveying, false, false)]
-        [InlineData(DroneStatus.Surveying, true, false)]
-        [InlineData(DroneStatus.Unreachable, false, false)]
-        public void PropellersOn_IsAlwaysTheNegationOfIsAtHomeDock(
-            DroneStatus status, bool isMoving, bool isAtHomeDock)
-        {
-            var state = State(status, isMoving, isAtHomeDock);
-
-            Assert.NotEqual(state.IsAtHomeDock, state.PropellersOn);
-        }
-
         // --- The name/value pairing the pusher iterates ---
 
         [Fact]
-        public void AsNamedValues_CarriesExactlyTheFiveControllerParameters()
+        public void AsNamedValues_CarriesExactlyTheFourControllerParameters()
         {
             var state = State(DroneStatus.Idle, isMoving: false, isAtHomeDock: true);
 
             var names = state.AsNamedValues().Select(pair => pair.Name).ToArray();
 
-            Assert.Equal(5, names.Length);
+            Assert.Equal(4, names.Length);
             Assert.Equal(names.Length, names.Distinct().Count());
             Assert.Contains(DroneAnimationStateNames.IsAtHomeDock, names);
             Assert.Contains(DroneAnimationStateNames.IsWorking, names);
             Assert.Contains(DroneAnimationStateNames.ModeMining, names);
             Assert.Contains(DroneAnimationStateNames.ModeHarvest, names);
-            Assert.Contains(DroneAnimationStateNames.PropellersOn, names);
         }
 
         // The names are the contract, not the C# member names -- the controller reads
@@ -248,7 +228,6 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal("IsWorking", DroneAnimationStateNames.IsWorking);
             Assert.Equal("ModeMining", DroneAnimationStateNames.ModeMining);
             Assert.Equal("ModeHarvest", DroneAnimationStateNames.ModeHarvest);
-            Assert.Equal("PropellersOn", DroneAnimationStateNames.PropellersOn);
         }
 
         // The regression that cost a night. WorldObject registers Enabled, Operating and
@@ -281,7 +260,6 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal(state.IsWorking,    byName[DroneAnimationStateNames.IsWorking]);
             Assert.Equal(state.ModeMining,   byName[DroneAnimationStateNames.ModeMining]);
             Assert.Equal(state.ModeHarvest,  byName[DroneAnimationStateNames.ModeHarvest]);
-            Assert.Equal(state.PropellersOn,    byName[DroneAnimationStateNames.PropellersOn]);
         }
     }
 }
