@@ -577,10 +577,18 @@ namespace Eco.Mods.TechTree
         internal Vector3 DroneParkPosition => this.Position + new Vector3(0f, StandingHeightAboveDock, 0f);
 
         /// <summary>
-        /// How far above the dock's own block a drone standing on it sits. One block, matching
-        /// the pathfinder's standing convention so walking and teleporting agree.
+        /// How far above the dock's own block a drone resting on it sits.
+        ///
+        /// One block puts the drone's ORIGIN on top of the pad, which is not the same as the
+        /// drone resting on it: the HRVSTR's origin sits at its centre, with the hull reaching
+        /// about half a block below (its collider is ~1.03 tall, centred on the origin), so a
+        /// drone parked at exactly one block sank its belly into the pad.
+        ///
+        /// The half block is the model's own lower extent, not a fudge -- change it if the
+        /// chassis is replaced by one whose origin sits at its feet, in which case it becomes
+        /// one block again.
         /// </summary>
-        private const float StandingHeightAboveDock = 1f;
+        private const float StandingHeightAboveDock = 1.5f;
 
         private void SpawnDrone(User user)
         {
