@@ -17,9 +17,19 @@ Every world object has *two* names, and they are not the same:
 
 | Thing | Named | Does it bind? |
 |---|---|---|
-| The GameObject you build in the scene | `DroneDock` | No. Call it anything. |
+| The GameObject you build in the scene | `DroneDock` | No — and it **must not** carry the suffix. |
 | The prefab asset saved from it | `DroneDockObject` | **Yes.** Must equal the server class exactly. |
 | The server C# class | `DroneDockObject` | — |
+
+**The scene object must not share the prefab's name.** This is not tidiness. "Build Current
+Bundle" tags the *scene* as the asset bundle, so the scene object ships **and** the container's
+prefabs ship — two objects with one name. The client builds its object map with
+`Dictionary.Add`, the second insert throws `ArgumentException` inside the `ReceiveModData`
+coroutine, and that coroutine silently stops. Every player sits on **"Preparing your
+citizen…"** forever with no error anywhere.
+
+So the naming is the opposite of what it looks like: the *prefab* gets the suffix, the *scene
+object* never does.
 
 The suffix is not decoration. The ModKit's own tool adds it for you —
 `Assets/EcoModKit/Scripts/Editor/WorldObjectSetup.cs`:
@@ -62,10 +72,21 @@ Assets/Art/AdvancedElectronics/
 
 Moving assets between these folders is safe — paths carry no binding. Renaming them is not.
 
-If you reorganise, **update the folder constants** at the top of
-`AdvancedElectronicsBuildTools.cs` (`PrefabFolder`, `IconFolder`, `MaterialFolder`,
-`DroneChassisModel`, `DroneChassisController`). A stale constant makes a finisher write a
-stray copy at the old path, and the two drift apart with nothing to warn you.
+If you reorganise, **update the folder constants** near the top of
+`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs` — search that file for
+`ArtFolder` and you will find all of them together:
+
+```csharp
+private const string ArtFolder      = "Assets/Art/AdvancedElectronics";
+private const string PrefabFolder   = ArtFolder + "/Prefabs";
+private const string IconFolder     = ArtFolder + "/Sprites/Icons";
+private const string MaterialFolder = ArtFolder + "/Materials";
+private const string DroneChassisModel      = ArtFolder + "/Sprites/HRVSTR/HRVSTR-01.fbx";
+private const string DroneChassisController = ArtFolder + "/Animators/HRVSTR_Animator_Controller.controller";
+```
+
+A stale constant makes a finisher write a stray copy at the old path, and the two drift apart
+with nothing to warn you.
 
 ---
 
@@ -75,7 +96,7 @@ All under **Eco Tools > Advanced Electronics**.
 
 | Command | Does |
 |---|---|
-| **Finish All Drone Prefabs** | Builds `SurveyDroneObject`, `MiningDroneObject`, `HarvestDroneObject` from the shared HRVSTR chassis. Adds a drone = one line in `SharedChassisDrones` plus a re-run. |
+| **Finish All Drone Prefabs** | Builds `SurveyDroneObject`, `MiningDroneObject`, `HarvestDroneObject` from the shared HRVSTR chassis. Adding a drone is one line in `SharedChassisDrones` plus a re-run — see below. |
 | **Finish Dock Prefab** | Builds `DroneDockObject` from a scene object named `DroneDock`. |
 | **Finish Assembly Prefab** | Builds `AdvancedElectronicsAssemblyObject`. |
 | **Finish All Item Icons** | Generates a placeholder PNG per entry in `ItemIcons`. |
@@ -85,6 +106,44 @@ All under **Eco Tools > Advanced Electronics**.
 There is deliberately **no** standalone drone finisher. It used to build the survey drone from
 a hand-made capsule; now that the survey drone is on the shared chassis, running it would
 overwrite the chassis prefab and drop its animation states.
+
+### Adding a drone
+
+`SharedChassisDrones` lives in the same file,
+`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs` — search for
+`SharedChassisDrones`:
+
+```csharp
+private static readonly string[] SharedChassisDrones =
+{
+    "SurveyDroneObject",
+    "MiningDroneObject",
+    "HarvestDroneObject",
+};
+```
+
+Add the **server class name**, with the `Object` suffix, then re-run **Finish All Drone
+Prefabs**. Each entry becomes its own prefab asset named for its class, because the filename is
+the binding; the mesh, materials and controller underneath are shared by GUID, so the bundle
+carries one copy however many drones list themselves here.
+
+Leaving a drone out of this table is not neutral: the finisher is what stamps each prefab's
+declared animation-state list, so an absent drone keeps whatever names it was last built with
+and animates nothing.
+
+### What the finisher does to your scene object
+
+Worth knowing before you run it, because one branch deletes things:
+
+- **Drones** (`sourceModel` is set): the tool instantiates the chassis if it cannot find a
+  scene object of that name, saves the prefab, then **destroys the scene object** — deliberately,
+  since a same-named scene object would collide with the prefab in the bundle. If you
+  hand-authored a scene object named `SurveyDroneObject`, the tool finds and destroys *that*.
+  `Undo` brings it back, but do not build custom work on an object whose name matches a prefab.
+- **Dock**: looks for a scene object named `DroneDock` and errors out if it is missing. It never
+  deletes it, because it did not create it.
+- **Assembly**: passes the same name for scene object and prefab, so it saves and then logs the
+  duplicate-name error. Rename or delete the scene object; the prefab is what ships.
 
 ---
 
@@ -181,6 +240,8 @@ Test protocol steps live in `docs/protocols/`.
 - **Object renders but never animates** — state-name mismatch. Check the three places above.
 - **Change does not appear at all** — check the prefab container GUIDs (step 4) before
   suspecting the server.
-- **Client hangs at "Preparing your citizen…"** — duplicate object names in the bundle.
+- **Client hangs at "Preparing your citizen…"** — duplicate object names in the bundle. Almost
+  always a scene object sharing a name with a prefab. Run **Report Duplicate Bundle Object
+  Names**; the fix is to rename or delete the scene object, never the prefab.
 
 `docs/solutions/` is organised by category and holds the full write-up for each of these.
