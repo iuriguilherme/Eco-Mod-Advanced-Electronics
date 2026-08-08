@@ -562,15 +562,25 @@ namespace Eco.Mods.TechTree
         /// It used to sit one cell to the side, because the dock occupied a single column and
         /// standing on it meant standing inside it. A pad is something to land on, so the drone
         /// belongs in the middle of it -- and with the pad centred on this position, the middle
-        /// is here. The quarter-block lift clears the mesh, which is half a block tall about its
-        /// own origin.
+        /// is here.
+        ///
+        /// A whole block up, not the mesh's own surface. Every walking waypoint the pathfinder
+        /// produces is <c>GroundHeightAt + 1</c> -- the cell an entity stands IN, one above the
+        /// solid block it stands ON (see GridPathfinder.ToWaypoint). The dock occupies the block
+        /// at its own position, so a drone standing on the dock belongs one block above it. An
+        /// earlier version used the mesh's top surface instead, a quarter of a block, which put
+        /// the drone inside the pad and made the teleport rung land somewhere the walking rung
+        /// never would.
         ///
         /// Provisional, per KTD5: a real dock model may want the drone somewhere else on it.
         /// </summary>
-        internal Vector3 DroneParkPosition => this.Position + new Vector3(0f, PadSurfaceHeight, 0f);
+        internal Vector3 DroneParkPosition => this.Position + new Vector3(0f, StandingHeightAboveDock, 0f);
 
-        /// <summary>Height of the pad's top surface above the dock's placement point.</summary>
-        private const float PadSurfaceHeight = 0.25f;
+        /// <summary>
+        /// How far above the dock's own block a drone standing on it sits. One block, matching
+        /// the pathfinder's standing convention so walking and teleporting agree.
+        /// </summary>
+        private const float StandingHeightAboveDock = 1f;
 
         private void SpawnDrone(User user)
         {
