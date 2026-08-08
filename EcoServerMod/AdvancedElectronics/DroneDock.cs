@@ -588,7 +588,7 @@ namespace Eco.Mods.TechTree
         /// chassis is replaced by one whose origin sits at its feet, in which case it becomes
         /// one block again.
         /// </summary>
-        private const float StandingHeightAboveDock = 1.5f;
+        private const float StandingHeightAboveDock = 2f;
 
         private void SpawnDrone(User user)
         {

@@ -679,6 +679,19 @@ public static class AdvancedElectronicsBuildTools
         // GetComponentInChildren returns true null), but the pattern is worth not copying.
         var animator = go.GetComponentInChildren<Animator>(true);
         if (animator == null) animator = go.AddComponent<Animator>();
+
+        // The server owns this object's transform -- DroneMoverComponent writes Position every
+        // tick and syncs it -- so the animation must not also drive it. The FBX importer turns
+        // root motion on by default, and the two authorities then fight: whichever wrote last
+        // wins, so the drone drifts exactly when the server is NOT moving it. That is worst
+        // while it holds still for a take-off animation, which is precisely when it should be
+        // most stable.
+        if (animator.applyRootMotion)
+        {
+            animator.applyRootMotion = false;
+            EditorUtility.SetDirty(animator);
+            Debug.Log($"[AdvancedElectronics] Turned off Apply Root Motion on '{animator.name}' -- the server drives this transform, not the animation.");
+        }
         if (animator.runtimeAnimatorController != controller)
         {
             animator.runtimeAnimatorController = controller;
