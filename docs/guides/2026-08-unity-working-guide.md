@@ -203,6 +203,47 @@ Worth knowing before you run it, because one branch deletes things:
 
 ---
 
+## You cannot ship a custom script to the client
+
+**A mod can only use components the Eco client already has.** Asset bundles carry no compiled
+code, and the client loads no mod assemblies, so a custom `MonoBehaviour` arrives as *"The
+referenced script is missing"* and does nothing at all. The server DLL is server-only; it never
+reaches a player's machine.
+
+The ModKit ships the library you may use — `WorldObject`, `ModkitPrefabContainer`,
+`HighlightableObject`, `Sign`, `MaterialEvents`, `TextureScroll`, `ButtonStateController` and
+the rest under `Assets/EcoModKit/Scripts/`. Everything else is Inspector wiring.
+
+**How server state reaches the Animator.** The server pushes named booleans with
+`SetAnimatedState`; `WorldObject` re-broadcasts each one as a UnityEvent, index-paired with its
+`States` array. You wire those events by hand:
+
+| Array | Type | Fires |
+|---|---|---|
+| `OnStateEnabledEvents[i]` | `UnityEvent` | state *i* went true |
+| `OnStateDisabledEvents[i]` | `UnityEvent` | state *i* went false |
+| `OnStateChangedEvents[i]` | `UnityEvent<bool>` | either, with the value |
+
+**Use `Animator.SetTrigger`, not `SetBool`.** A UnityEvent persistent call binds at most one
+argument. `SetBool(string, bool)` takes two and cannot be wired; `SetTrigger(string)` takes one,
+which you type into the Inspector as a static value.
+
+Current drone wiring — four states, one trigger per edge:
+
+| State | Enabled event → | Disabled event → |
+|---|---|---|
+| `IsAtHomeDock` | `SetTrigger("Dock")` | `SetTrigger("Undock")` |
+| `IsWorking` | `SetTrigger("WorkStart")` | `SetTrigger("WorkStop")` |
+| `ModeMining` | `SetTrigger("SelectMining")` | — |
+| `ModeHarvest` | `SetTrigger("SelectHarvest")` | — |
+
+The mode triggers fire once, at spawn, and never again — a drone's arm is fixed by its class.
+Branch on them once into the matching sub-graph rather than expecting to re-test them each
+cycle; a consumed trigger is gone.
+
+Re-running a finisher re-stamps `States` but preserves existing event wiring slot by slot, so
+you do not lose this work.
+
 ## Things that fail silently
 
 Each of these produces a working build, a clean server log, and wrong behaviour in game.
@@ -210,17 +251,24 @@ Each of these produces a working build, a clean server log, and wrong behaviour 
 **Prefab name ≠ server class name.** Missing-model placeholder. Caught by
 `validate-name-match.sh`.
 
-**Animation state name ≠ animator parameter name.** The object renders and moves and animates
-nothing. The five names must match across three places that never check each other: the server
-constants in `EcoServerMod/AdvancedElectronics.Navigation/DroneAnimationState.cs`, the array in
-`Assets/Art/AdvancedElectronics/DroneAnimatorStates.cs`, and the controller's own parameters.
-The finisher stamps the prefab from the relay's array, so those two stay in step
-automatically — the controller is the one manual match left. Verify in the Inspector that each
-drone prefab's `States` array reads exactly:
+**A state name the server pushes that nothing declares.** The object renders and moves and
+animates nothing. The four names must match across two places that never check each other: the
+server constants in `EcoServerMod/AdvancedElectronics.Navigation/DroneAnimationState.cs` and
+`DroneBoolStateNames` in the Editor tool, which stamps them into each prefab. Verify in the
+Inspector that each drone prefab's `States` array reads exactly:
 
 ```
-IsAtHomeDock  IsWorking  ModeMining  ModeHarvest  Operating
+IsAtHomeDock  IsWorking  ModeMining  ModeHarvest
 ```
+
+Then check the event slots beside them are actually wired — a stamped name with an empty event
+is the same silence as a missing name.
+
+**A state name the engine already owns.** `WorldObject` registers `Enabled`, `Operating` and
+`Using` itself, so repeating one of those makes the client throw while building the archetype:
+the object is never instanced, so it does not render, previews no placement ghost, and logs
+nothing on the server. This is the loudest-looking failure with the quietest evidence — the
+only trace is `An item with the same key has already been added` in the *client* log.
 
 **A prefab shipped active.** The client holds one inactive copy and clones it per object. An
 active template breaks the cloning: the object is located correctly by the server and nothing

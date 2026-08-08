@@ -77,7 +77,9 @@ GameObject:
   - component: {fileID: 4273993613386434937}
   - component: {fileID: 9138848490811598427}
   - component: {fileID: 7434835025252429453}
+  - component: {fileID: 3216015294697999360}
   - component: {fileID: 58323915811228022}
+  - component: {fileID: 1552085827048755049}
   m_Layer: 0
   m_Name: HarvestDroneObject
   m_TagString: ModObject
@@ -93,8 +95,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1269497546054738757}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: 0}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -115,7 +117,7 @@ Animator:
   m_Controller: {fileID: 9100000, guid: 4c03728eac44d2c438355e16a3a58cc4, type: 2}
   m_CullingMode: 1
   m_UpdateMode: 0
-  m_ApplyRootMotion: 0
+  m_ApplyRootMotion: 1
   m_LinearVelocityBlending: 0
   m_StabilizeFeet: 0
   m_AnimatePhysics: 0
@@ -194,34 +196,10 @@ MonoBehaviour:
       m_Calls: []
   OnEnableOperating:
     m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 4345034094973939376, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
   OnDisableOperating:
     m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 1352710598566563184, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
   OnUsingChanged:
     m_PersistentCalls:
       m_Calls: []
@@ -233,71 +211,30 @@ MonoBehaviour:
       m_Calls: []
   States:
   - IsAtHomeDock
-  - ModeHarvest
   - IsWorking
+  - ModeMining
+  - ModeHarvest
   OnStateEnabledEvents:
   - m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 1352710598566563184, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
   - m_PersistentCalls:
       m_Calls: []
   - m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: -1766051178855112163, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
+  - m_PersistentCalls:
+      m_Calls: []
   OnStateDisabledEvents:
   - m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 4345034094973939376, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
   - m_PersistentCalls:
       m_Calls: []
   - m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: -3958945740437129119, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
+  - m_PersistentCalls:
+      m_Calls: []
   OnStateChangedEvents:
+  - m_PersistentCalls:
+      m_Calls: []
   - m_PersistentCalls:
       m_Calls: []
   - m_PersistentCalls:
@@ -315,9 +252,23 @@ MonoBehaviour:
   defaultBlueColor: {r: 0, g: 0, b: 0, a: 0}
   hasOccupancy: 1
   overrideOccupancy: 0
-  size: {x: 0, y: 0, z: 0}
+  size: {x: 4, y: 2, z: 3}
   occupancyOffset: {x: 0, y: 0, z: 0}
   interactable: 1
+--- !u!114 &3216015294697999360
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1269497546054738757}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6ce3cf79c2a8f3e4a862ca5955bba5f9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Eco.Client::HighlightableObject
+  seeThrough: 0
+  forceOpaque: 0
 --- !u!65 &58323915811228022
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -337,8 +288,20 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 3.5, y: 1, z: 2.75}
-  m_Center: {x: 0, y: 0, z: -0.35}
+  m_Size: {x: 3.3535576, y: 1.0335332, z: 2.5491564}
+  m_Center: {x: 0, y: 0.0054582357, z: -0.34553373}
+--- !u!114 &1552085827048755049
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1269497546054738757}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9fa88347c6604f36a481aa11af32bc1d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Eco.Client::DroneAnimatorStates
 --- !u!1 &1982365404100011558
 GameObject:
   m_ObjectHideFlags: 0

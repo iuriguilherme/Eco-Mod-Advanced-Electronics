@@ -139,8 +139,9 @@ GameObject:
   - component: {fileID: 8704629944911076193}
   - component: {fileID: 6098225325781313625}
   - component: {fileID: 3447306401146482784}
-  - component: {fileID: 2145017652826222449}
   - component: {fileID: 6067401651001839729}
+  - component: {fileID: 2145017652826222449}
+  - component: {fileID: 4127677183014952005}
   m_Layer: 0
   m_Name: SurveyDroneObject
   m_TagString: ModObject
@@ -156,8 +157,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 965731703639178032}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: 0}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -178,7 +179,7 @@ Animator:
   m_Controller: {fileID: 9100000, guid: 4c03728eac44d2c438355e16a3a58cc4, type: 2}
   m_CullingMode: 1
   m_UpdateMode: 0
-  m_ApplyRootMotion: 0
+  m_ApplyRootMotion: 1
   m_LinearVelocityBlending: 0
   m_StabilizeFeet: 0
   m_AnimatePhysics: 0
@@ -257,34 +258,10 @@ MonoBehaviour:
       m_Calls: []
   OnEnableOperating:
     m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 4345034094973939376, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
   OnDisableOperating:
     m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 1352710598566563184, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
   OnUsingChanged:
     m_PersistentCalls:
       m_Calls: []
@@ -296,71 +273,30 @@ MonoBehaviour:
       m_Calls: []
   States:
   - IsAtHomeDock
-  - ModeHarvest
   - IsWorking
+  - ModeMining
+  - ModeHarvest
   OnStateEnabledEvents:
   - m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 1352710598566563184, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
   - m_PersistentCalls:
       m_Calls: []
   - m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: -1766051178855112163, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
+  - m_PersistentCalls:
+      m_Calls: []
   OnStateDisabledEvents:
   - m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 4345034094973939376, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
   - m_PersistentCalls:
       m_Calls: []
   - m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: -3958945740437129119, guid: 83b1ab22e0b1e8f48b2e952911748524, type: 3}
-        m_TargetAssemblyTypeName: 
-        m_MethodName: 
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
+      m_Calls: []
+  - m_PersistentCalls:
+      m_Calls: []
   OnStateChangedEvents:
+  - m_PersistentCalls:
+      m_Calls: []
   - m_PersistentCalls:
       m_Calls: []
   - m_PersistentCalls:
@@ -381,6 +317,20 @@ MonoBehaviour:
   size: {x: 4, y: 2, z: 3}
   occupancyOffset: {x: 0, y: 0, z: 0}
   interactable: 1
+--- !u!114 &6067401651001839729
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 965731703639178032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6ce3cf79c2a8f3e4a862ca5955bba5f9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Eco.Client::HighlightableObject
+  seeThrough: 0
+  forceOpaque: 0
 --- !u!65 &2145017652826222449
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -400,9 +350,9 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 3.5, y: 1, z: 2.75}
-  m_Center: {x: 0, y: 0, z: -0.35}
---- !u!114 &6067401651001839729
+  m_Size: {x: 3.3535576, y: 1.0335332, z: 2.5491564}
+  m_Center: {x: 0, y: 0.0054582357, z: -0.34553373}
+--- !u!114 &4127677183014952005
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -411,11 +361,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 965731703639178032}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6ce3cf79c2a8f3e4a862ca5955bba5f9, type: 3}
+  m_Script: {fileID: 11500000, guid: 9fa88347c6604f36a481aa11af32bc1d, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Eco.Client::HighlightableObject
-  seeThrough: 0
-  forceOpaque: 0
+  m_EditorClassIdentifier: Eco.Client::DroneAnimatorStates
 --- !u!1 &1006750032182233784
 GameObject:
   m_ObjectHideFlags: 0

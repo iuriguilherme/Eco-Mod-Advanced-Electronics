@@ -366,8 +366,9 @@ public static class AdvancedElectronicsBuildTools
     /// </param>
     /// <param name="animatorController">
     /// Asset path of an AnimatorController to drive the object's bool states, or null
-    /// for a static object. Non-null also attaches <c>DroneAnimatorStates</c>, which is
-    /// the only thing that turns server state pushes into Animator parameter writes.
+    /// for a static object. Non-null also stamps the WorldObject's bool state names; the
+    /// wiring from those states to Animator triggers is done by hand in the Inspector,
+    /// because a custom relay component cannot be delivered to the Eco client.
     /// </param>
     private static void FinishPrefab(string typeName, string sceneObjectName, bool isDock,
                                      string sourceModel = null, string animatorController = null)
@@ -474,21 +475,11 @@ public static class AdvancedElectronicsBuildTools
             worldObject.size = derivedSize;
         }
 
-        if (isDock)
-        {
-            var display = go.GetComponent<DockReadoutDisplay>();
-            if (display == null)
-            {
-                display = go.AddComponent<DockReadoutDisplay>();
-                Debug.Log($"[AdvancedElectronics] Added missing DockReadoutDisplay component to '{go.name}'.");
-            }
-
-            DockReadoutDisplay.EnsureStateArrays(worldObject);
-
-            var tmp = go.GetComponentInChildren<TMPro.TMP_Text>(true);
-            if (tmp == null)
-                Debug.LogWarning($"[AdvancedElectronics] No TMP_Text found under '{go.name}' -- the readout has nothing to write to yet. Add a Canvas (Render Mode: World Space) + a Text (TMP) child before this matters at runtime; the prefab will still save fine without it.");
-        }
+        // The dock deliberately gets no in-world readout. It used to carry a
+        // DockReadoutDisplay driving a TextMeshPro block, which was a custom MonoBehaviour
+        // and so could never run on the client -- and the survey readout has since moved
+        // into the dock's own UI panel, where it belongs. All the text ever did was hover
+        // inside the placeholder cube saying nothing.
 
         if (animatorController != null)
             AttachAnimatorStates(go, worldObject, animatorController);
@@ -626,14 +617,47 @@ public static class AdvancedElectronicsBuildTools
     }
 
     /// <summary>
-    /// Gives the object an Animator on <paramref name="controllerPath"/> plus the
-    /// <c>DroneAnimatorStates</c> relay, and stamps the WorldObject's bool state names
-    /// from that relay's own list.
+    /// The bool state names the server pushes, in the order they occupy
+    /// <c>WorldObject.States</c>. Index-paired with <c>OnStateEnabledEvents</c>,
+    /// <c>OnStateDisabledEvents</c> and <c>OnStateChangedEvents</c>, which is how the
+    /// Inspector wiring finds them.
     ///
-    /// The relay is what makes any of this move: the server pushes named booleans via
-    /// SetAnimatedState and the ModKit's WorldObject only re-broadcasts them as
-    /// UnityEvents. Nothing in the ModKit talks to an Animator, so without the relay the
-    /// controller sits on its default state forever and the failure is silent.
+    /// These must match <c>DroneAnimationStateNames</c> in
+    /// EcoServerMod/AdvancedElectronics.Navigation/DroneAnimationState.cs exactly. A name
+    /// present on one side and not the other is dropped in silence -- no error, no log,
+    /// just an animation that never plays.
+    ///
+    /// Declared HERE, in Editor-only code, rather than in a runtime MonoBehaviour. A mod
+    /// cannot ship a custom MonoBehaviour to the Eco client at all: asset bundles carry no
+    /// compiled code and the client loads no mod assemblies, so any custom component
+    /// arrives as "The referenced script is missing" and does nothing. Editor code always
+    /// runs in Unity, which is the one place this list is needed.
+    /// </summary>
+    private static readonly string[] DroneBoolStateNames =
+    {
+        "IsAtHomeDock",
+        "IsWorking",
+        "ModeMining",
+        "ModeHarvest",
+    };
+
+    /// <summary>
+    /// Names the ModKit's WorldObject already registers. Repeating one makes the client
+    /// throw while building the archetype, so the object is never instanced: no model, no
+    /// placement ghost, and nothing in the server log, because the throw is client-side.
+    /// </summary>
+    private static readonly string[] ReservedStateNames = { "Enabled", "Operating", "Using" };
+
+    /// <summary>
+    /// Gives the object an Animator on <paramref name="controllerPath"/> and stamps the
+    /// WorldObject's bool state names.
+    ///
+    /// Stamping the names is all the client half can be. The server pushes named booleans
+    /// via SetAnimatedState and WorldObject re-broadcasts them as UnityEvents; turning
+    /// those into Animator calls is Inspector wiring, because a custom relay component
+    /// cannot be delivered to the client. Wire each state's enabled/disabled event to
+    /// <c>Animator.SetTrigger</c> with a static trigger name -- SetBool takes two arguments
+    /// and a UnityEvent persistent call binds only one.
     /// </summary>
     private static void AttachAnimatorStates(GameObject go, WorldObject worldObject, string controllerPath)
     {
@@ -660,14 +684,46 @@ public static class AdvancedElectronicsBuildTools
             Debug.Log($"[AdvancedElectronics] Set '{animator.name}''s controller to {controllerPath}.");
         }
 
-        if (go.GetComponent<DroneAnimatorStates>() == null)
+        StampBoolStates(worldObject, DroneBoolStateNames);
+    }
+
+    /// <summary>
+    /// Sets <paramref name="worldObject"/>'s bool <c>States</c> array and resizes the three
+    /// paired event arrays to match, preserving any wiring already done in the Inspector
+    /// for slots that survive. Idempotent, so re-running a finisher never costs you your
+    /// event wiring.
+    /// </summary>
+    private static void StampBoolStates(WorldObject worldObject, string[] names)
+    {
+        foreach (var reserved in ReservedStateNames)
         {
-            go.AddComponent<DroneAnimatorStates>();
-            Debug.Log($"[AdvancedElectronics] Added DroneAnimatorStates to '{go.name}'.");
+            if (System.Array.IndexOf(names, reserved) < 0) continue;
+            Debug.LogError($"[AdvancedElectronics] '{reserved}' is a state name WorldObject registers itself, so declaring it makes the client throw while building the archetype -- the object never gets instanced, and there is no error anywhere except the client log. Rename it here and in DroneAnimationStateNames on the server.");
+            return;
         }
 
-        DroneAnimatorStates.EnsureStateArrays(worldObject);
+        worldObject.States = (string[])names.Clone();
+        worldObject.OnStateChangedEvents  = ResizeEvents(worldObject.OnStateChangedEvents,  names.Length);
+        worldObject.OnStateEnabledEvents  = ResizeEvents(worldObject.OnStateEnabledEvents,  names.Length);
+        worldObject.OnStateDisabledEvents = ResizeEvents(worldObject.OnStateDisabledEvents, names.Length);
+
         EditorUtility.SetDirty(worldObject);
+        Debug.Log($"[AdvancedElectronics] Stamped {names.Length} bool states on '{worldObject.name}': {string.Join(", ", names)}. Wire each one's enabled/disabled event to Animator.SetTrigger in the Inspector.");
+    }
+
+    /// <summary>
+    /// Grows or shrinks an event array to one slot per state name, keeping existing slots
+    /// so Inspector wiring survives, and filling new ones rather than leaving nulls (a null
+    /// slot throws when anything tries to add a listener).
+    /// </summary>
+    private static T[] ResizeEvents<T>(T[] existing, int length) where T : new()
+    {
+        var resized = new T[length];
+        for (var i = 0; i < length; i++)
+            resized[i] = existing != null && i < existing.Length && existing[i] != null
+                ? existing[i]
+                : new T();
+        return resized;
     }
 
     /// <summary>
