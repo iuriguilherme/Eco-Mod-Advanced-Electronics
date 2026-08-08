@@ -67,6 +67,30 @@ namespace Eco.Mods.TechTree
         // the sweep of the rest of the area.
         private const int MaxPlotArrivalAttempts = 5;
 
+        /// <summary>
+        /// Frame rate the HRVSTR clips were authored at. Every lead-in below is quoted in
+        /// frames, taken from the FBX importer's clip ranges, so re-timing the animation is a
+        /// change to one number here plus the frame counts -- not a hunt for magic seconds.
+        /// </summary>
+        private const float AnimationFramesPerSecond = 30f;
+
+        private static float AnimationSeconds(int frames) => frames / AnimationFramesPerSecond;
+
+        /// <summary>
+        /// How long the drone stays put after being dispatched, so the take-off sequence can
+        /// finish before it travels: 05_Mode_Select (44) + the arm select (59, the longer of
+        /// mining and harvest) + 01_Flying_Start (119). It reaches 02_Flying_Loop at the moment
+        /// it starts to move, which is the point -- a drone that slides away mid-lift-off reads
+        /// as broken however correct the state machine underneath is.
+        /// </summary>
+        private static readonly float TakeOffLeadInSeconds = AnimationSeconds(44 + 59 + 119);
+
+        /// <summary>
+        /// How long the drone stays put before travelling home or to the next area, so it
+        /// finishes putting its arm away: the work stop (44) + 17_WorkMode_ToFlying (59).
+        /// </summary>
+        private static readonly float WorkExitLeadInSeconds = AnimationSeconds(44 + 59);
+
         private readonly DroneStateMachine stateMachine = new DroneStateMachine();
 
         private string lastKnownAssignedArea;
@@ -317,10 +341,16 @@ namespace Eco.Mods.TechTree
             // never read as home again. A drone with no dock at all is treated as not home --
             // it is stranded, and the flying loop is the honest animation for that.
             //
-            // Raw position only. The projection is what resolves "home AND working" -- a
-            // survey plot beside the dock falls inside the arrival radius -- and it owns that
-            // rule because it can be tested there.
-            var atHomeDock = this.IsAtHomeDock();
+            // Position AND idleness. A dispatched drone is no longer "at home" even while it
+            // is still standing on the pad: the take-off sequence has to start playing before
+            // it can travel, and gating that on movement would mean the drone must move before
+            // the animation that covers moving is allowed to begin.
+            //
+            // The projection resolves "home AND working" separately -- a survey plot beside the
+            // dock falls inside the arrival radius -- and it owns that rule because it can be
+            // tested there.
+            var atHomeDock = this.IsAtHomeDock()
+                             && this.stateMachine.Status == DroneStatus.Idle;
 
             // A drone that does not declare a tool animates with the mining arm rather than
             // freezing at mode-select, so a drone class added later that forgets the
@@ -448,6 +478,11 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
+            // Hold on the pad until the take-off sequence has played. The path is already
+            // computed, so a failure above is still reported now rather than after the wait.
+            // A drone leaving a work area is finishing its arm-stow instead, which is shorter.
+            mover.HoldFor(this.IsAtHomeDock() ? TakeOffLeadInSeconds : WorkExitLeadInSeconds);
+
             this.LastDispatchNote = $"dispatched to area point {target.X:F0},{target.Z:F0}";
         }
 
@@ -513,6 +548,11 @@ namespace Eco.Mods.TechTree
             var found = mover.SetDestination(this.HomeDock.DroneParkPosition, this.HomeDock.OccupiedColumns);
             if (found)
             {
+                // Stow the arm and settle into the flying loop before travelling. A drone
+                // recalled from a work area is mid-work-loop; one that never left the dock has
+                // nothing to stow, and IsAtHomeDock separates the two.
+                mover.HoldFor(this.IsAtHomeDock() ? TakeOffLeadInSeconds : WorkExitLeadInSeconds);
+
                 if (viaDistrictCleared)
                     this.stateMachine.OnDistrictCleared();
             }

@@ -162,14 +162,44 @@ namespace Eco.Mods.TechTree
             this.waypointIndex = 0;
         }
 
+        /// <summary>
+        /// Keeps the drone still for <paramref name="seconds"/> without discarding its path.
+        ///
+        /// The animator's transition clips are one-shots with real length -- take-off runs
+        /// through mode-select, arm-select and lift-off before the flying loop begins -- and
+        /// the drone was sliding away while all of that was still playing. Pausing here rather
+        /// than delaying the path keeps a failed route reported at the moment it is asked for,
+        /// instead of surfacing seconds later from somewhere the caller has already left.
+        /// </summary>
+        public void HoldFor(float seconds)
+        {
+            if (seconds > this.holdRemainingSeconds) this.holdRemainingSeconds = seconds;
+        }
+
+        /// <summary>True while a lead-in animation is playing and the drone must not advance.</summary>
+        public bool IsHolding => this.holdRemainingSeconds > 0f;
+
+        private float holdRemainingSeconds;
+
         public override void Tick()
         {
             base.Tick();
 
+            if (this.holdRemainingSeconds > 0f)
+            {
+                var holdManager = ServiceHolder<IWorldObjectManager>.Obj;
+                this.holdRemainingSeconds -= holdManager != null && holdManager.TickDeltaTime > 0f
+                    ? holdManager.TickDeltaTime
+                    : FallbackTickDeltaSeconds;
+            }
+
             // Push MoveSpeed on movement transitions (and once initially so the key
             // always exists after the first tick) — before the early return below, or
             // the moving->stationary transition would never be pushed.
-            var moving = this.IsMoving;
+            //
+            // A held drone reports stationary: it has a path but is not travelling along it,
+            // and any speed-driven art should show it standing still while the lead-in plays.
+            var moving = this.IsMoving && !this.IsHolding;
             if (!this.hasPushedMoveSpeed || moving != this.lastPushedMoving)
             {
                 this.hasPushedMoveSpeed = true;
@@ -177,7 +207,7 @@ namespace Eco.Mods.TechTree
                 this.Parent.SetAnimatedState(MoveSpeedStateName, moving ? MoveSpeedMetersPerSecond : 0f);
             }
 
-            if (!this.IsMoving)
+            if (!this.IsMoving || this.IsHolding)
                 return;
 
             var current = this.Parent.Position;
