@@ -72,8 +72,21 @@ public class DroneAnimatorStates : MonoBehaviour
         "IsWorking",
         "ModeMining",
         "ModeHarvest",
-        "Operating",
+        "PropellersOn",
     };
+
+    /// <summary>
+    /// Names WorldObject already registers itself. A custom state that repeats one of these
+    /// makes <c>RegisterCustomEvents</c> throw <c>ArgumentException: An item with the same
+    /// key has already been added</c> during <c>OnCreateArchetype</c> -- the archetype is
+    /// never built, so the object is never instanced and simply does not appear. Nothing is
+    /// logged server-side, because the failure is entirely on the client.
+    ///
+    /// The propeller gate was called "Operating" for exactly this reason: it is the animator's
+    /// own parameter name and reads as the obvious choice. It is also one of WorldObject's
+    /// three built-in channels (Enabled / Operating / Using).
+    /// </summary>
+    private static readonly string[] ReservedStateNames = { "Enabled", "Operating", "Using" };
 
     private Animator animator;
 
@@ -112,6 +125,14 @@ public class DroneAnimatorStates : MonoBehaviour
     public static void EnsureStateArrays(WorldObject worldObject)
     {
         if (worldObject == null) return;
+
+        // Fail loudly here rather than silently at runtime on every client.
+        foreach (var reserved in ReservedStateNames)
+        {
+            if (System.Array.IndexOf(BoolStateNames, reserved) < 0) continue;
+            Debug.LogError($"[AdvancedElectronics] '{reserved}' is a state name WorldObject already registers, so declaring it here makes the client throw while building the archetype and the object never gets instanced -- invisible, no placement ghost, nothing in the server log. Rename it in DroneAnimatorStates.BoolStateNames, in DroneAnimationStateNames on the server, and in the animator controller's parameters.");
+            return;
+        }
 
         worldObject.States = (string[])BoolStateNames.Clone();
 

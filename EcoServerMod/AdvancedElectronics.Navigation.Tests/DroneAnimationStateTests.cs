@@ -183,7 +183,7 @@ namespace AdvancedElectronics.Navigation.Tests
 
             Assert.True(state.IsWorking);
             Assert.False(state.IsAtHomeDock);
-            Assert.True(state.Operating);
+            Assert.True(state.PropellersOn);
         }
 
         [Theory]
@@ -202,7 +202,7 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.False(state.IsAtHomeDock && state.IsWorking);
         }
 
-        // --- Operating: the propeller layer's only way out of stopped ---
+        // --- PropellersOn: the propeller layer's only way out of stopped ---
 
         [Theory]
         [InlineData(DroneStatus.Idle, false, true)]
@@ -212,12 +212,12 @@ namespace AdvancedElectronics.Navigation.Tests
         [InlineData(DroneStatus.Surveying, false, false)]
         [InlineData(DroneStatus.Surveying, true, false)]
         [InlineData(DroneStatus.Unreachable, false, false)]
-        public void Operating_IsAlwaysTheNegationOfIsAtHomeDock(
+        public void PropellersOn_IsAlwaysTheNegationOfIsAtHomeDock(
             DroneStatus status, bool isMoving, bool isAtHomeDock)
         {
             var state = State(status, isMoving, isAtHomeDock);
 
-            Assert.NotEqual(state.IsAtHomeDock, state.Operating);
+            Assert.NotEqual(state.IsAtHomeDock, state.PropellersOn);
         }
 
         // --- The name/value pairing the pusher iterates ---
@@ -235,7 +235,7 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Contains(DroneAnimationStateNames.IsWorking, names);
             Assert.Contains(DroneAnimationStateNames.ModeMining, names);
             Assert.Contains(DroneAnimationStateNames.ModeHarvest, names);
-            Assert.Contains(DroneAnimationStateNames.Operating, names);
+            Assert.Contains(DroneAnimationStateNames.PropellersOn, names);
         }
 
         // The names are the contract, not the C# member names -- the controller reads
@@ -248,7 +248,25 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal("IsWorking", DroneAnimationStateNames.IsWorking);
             Assert.Equal("ModeMining", DroneAnimationStateNames.ModeMining);
             Assert.Equal("ModeHarvest", DroneAnimationStateNames.ModeHarvest);
-            Assert.Equal("Operating", DroneAnimationStateNames.Operating);
+            Assert.Equal("PropellersOn", DroneAnimationStateNames.PropellersOn);
+        }
+
+        // The regression that cost a night. WorldObject registers Enabled, Operating and
+        // Using itself, and RegisterCustomEvents adds our States to the same dictionary --
+        // so repeating one throws while the client builds the archetype, the object is never
+        // instanced, and it simply does not appear. No model, no placement ghost, and
+        // nothing in the server log, because the throw is entirely client-side.
+        //
+        // "Operating" was the animator's own parameter name, which is exactly why it got
+        // picked. This test is the only thing standing between the next obvious name and
+        // another silent night.
+        [Fact]
+        public void NoStateName_CollidesWithAWorldObjectBuiltIn()
+        {
+            var state = State(DroneStatus.Idle, isMoving: false, isAtHomeDock: true);
+
+            foreach (var (name, _) in state.AsNamedValues())
+                Assert.DoesNotContain(name, DroneAnimationStateNames.Reserved);
         }
 
         [Fact]
@@ -263,7 +281,7 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal(state.IsWorking,    byName[DroneAnimationStateNames.IsWorking]);
             Assert.Equal(state.ModeMining,   byName[DroneAnimationStateNames.ModeMining]);
             Assert.Equal(state.ModeHarvest,  byName[DroneAnimationStateNames.ModeHarvest]);
-            Assert.Equal(state.Operating,    byName[DroneAnimationStateNames.Operating]);
+            Assert.Equal(state.PropellersOn,    byName[DroneAnimationStateNames.PropellersOn]);
         }
     }
 }

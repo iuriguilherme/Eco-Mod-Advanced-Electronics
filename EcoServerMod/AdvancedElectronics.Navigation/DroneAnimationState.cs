@@ -27,7 +27,30 @@ namespace AdvancedElectronics.Navigation
         public const string IsWorking    = "IsWorking";
         public const string ModeMining   = "ModeMining";
         public const string ModeHarvest  = "ModeHarvest";
-        public const string Operating    = "Operating";
+
+        /// <summary>
+        /// The propeller layer's gate. Named PropellersOn rather than the obvious
+        /// "Operating" because <see cref="Reserved"/> forbids that one -- see below.
+        /// </summary>
+        public const string PropellersOn = "PropellersOn";
+
+        /// <summary>
+        /// State names the ModKit's own WorldObject already registers, which a custom
+        /// <c>States</c> entry must never repeat.
+        ///
+        /// WorldObject.cs ships three built-in state channels -- Enabled, Operating and
+        /// Using -- each with its own enable/disable/changed events, and
+        /// <c>RegisterCustomEvents</c> adds them to the same dictionary the custom States
+        /// array feeds. A repeat throws <c>ArgumentException: An item with the same key
+        /// has already been added</c> inside <c>OnCreateArchetype</c>, so the archetype is
+        /// never created and the object is never instanced: it does not render, does not
+        /// preview a placement ghost, and produces nothing in the server log, because the
+        /// failure is entirely client-side.
+        ///
+        /// This cost a night. "Operating" was the animator's own parameter name and looked
+        /// like the obvious choice on both sides.
+        /// </summary>
+        public static readonly string[] Reserved = { "Enabled", "Operating", "Using" };
     }
 
     /// <summary>
@@ -83,16 +106,16 @@ namespace AdvancedElectronics.Navigation
         /// The negation of <see cref="IsAtHomeDock"/>: the blades turn whenever the drone
         /// is anywhere but settled in its dock, including when it is stranded.
         /// </summary>
-        public bool Operating { get; }
+        public bool PropellersOn { get; }
 
         private DroneAnimationState(bool isAtHomeDock, bool isWorking,
-                                    bool modeMining, bool modeHarvest, bool operating)
+                                    bool modeMining, bool modeHarvest, bool propellersOn)
         {
             this.IsAtHomeDock = isAtHomeDock;
             this.IsWorking    = isWorking;
             this.ModeMining   = modeMining;
             this.ModeHarvest  = modeHarvest;
-            this.Operating    = operating;
+            this.PropellersOn = propellersOn;
         }
 
         /// <summary>
@@ -124,7 +147,7 @@ namespace AdvancedElectronics.Navigation
                 isWorking:    working,
                 modeMining:   !usesHarvestTool,
                 modeHarvest:  usesHarvestTool,
-                operating:    !home);
+                propellersOn: !home);
         }
 
         /// <summary>
@@ -137,7 +160,7 @@ namespace AdvancedElectronics.Navigation
             (DroneAnimationStateNames.IsWorking,    this.IsWorking),
             (DroneAnimationStateNames.ModeMining,   this.ModeMining),
             (DroneAnimationStateNames.ModeHarvest,  this.ModeHarvest),
-            (DroneAnimationStateNames.Operating,    this.Operating),
+            (DroneAnimationStateNames.PropellersOn, this.PropellersOn),
         };
     }
 }
