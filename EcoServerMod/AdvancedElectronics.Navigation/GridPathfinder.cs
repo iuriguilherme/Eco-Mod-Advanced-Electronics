@@ -64,16 +64,21 @@ namespace AdvancedElectronics.Navigation
         private readonly float _maxStepHeight;
         private readonly int _searchMargin;
 
-        public GridPathfinder(IWorldSampler sampler, float maxStepHeight, int searchMargin = DefaultSearchMargin)
+        public GridPathfinder(IWorldSampler sampler, float maxStepHeight, int searchMargin = DefaultSearchMargin,
+                              float standingHeightOffset = WalkingHeightOffset)
         {
             if (maxStepHeight < 0f)
                 throw new ArgumentOutOfRangeException(nameof(maxStepHeight), "maxStepHeight cannot be negative.");
             if (searchMargin < 0)
                 throw new ArgumentOutOfRangeException(nameof(searchMargin), "searchMargin cannot be negative.");
+            if (standingHeightOffset < WalkingHeightOffset)
+                throw new ArgumentOutOfRangeException(nameof(standingHeightOffset),
+                    "standingHeightOffset cannot be below the walking height -- a waypoint at or under the ground surface puts the body inside the floor.");
 
             _sampler = sampler ?? throw new ArgumentNullException(nameof(sampler));
             _maxStepHeight = maxStepHeight;
             _searchMargin = searchMargin;
+            _standingHeightOffset = standingHeightOffset;
         }
 
         /// <summary>
@@ -214,10 +219,21 @@ namespace AdvancedElectronics.Navigation
         /// columns shift by the same +1, so the difference is unchanged.
         /// </summary>
         private Vector3 ToWaypoint(GridColumn column) =>
-            new Vector3(column.X, _sampler.GroundHeightAt(column.X, column.Z) + StandingHeightOffset, column.Z);
+            new Vector3(column.X, _sampler.GroundHeightAt(column.X, column.Z) + _standingHeightOffset, column.Z);
 
-        /// <summary>Vertical offset from the ground surface to the cell an entity occupies.</summary>
-        private const float StandingHeightOffset = 1f;
+        /// <summary>
+        /// Vertical offset from the ground surface to the cell the entity occupies.
+        ///
+        /// One block is the walking default -- the first empty cell above a solid one, which is
+        /// where the engine puts anything that stands. A flying entity wants more: a drone routed
+        /// at ground+1 hugs the terrain and reads as a vehicle scraping the floor rather than
+        /// something airborne. Pathfinding still solves on the ground grid, so this only lifts
+        /// where the entity is drawn along that route; step-height comparisons are unaffected
+        /// because both columns shift by the same amount.
+        /// </summary>
+        public const float WalkingHeightOffset = 1f;
+
+        private readonly float _standingHeightOffset;
 
         private List<Vector3> BuildWaypoints(Dictionary<GridColumn, GridColumn> cameFrom, GridColumn end)
         {

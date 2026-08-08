@@ -75,10 +75,23 @@ namespace Eco.Mods.TechTree
         // Outbound legs never change it, so they behave exactly as before.
         private float maxStepHeight = ReturnEscalation.OrdinaryMaxStepHeight;
 
+        /// <summary>
+        /// How far above the ground the drone flies, in blocks.
+        ///
+        /// The pathfinder's default is one block -- the cell a walking entity stands in. A drone
+        /// routed at that height skims the terrain and reads as something dragging along the
+        /// floor rather than flying. Routing still solves on the ground grid, so this only lifts
+        /// where the drone is drawn along the route it already chose; obstacles and step heights
+        /// are judged exactly as before, and the drone still descends to the pad on arrival
+        /// because docking uses the dock's park point rather than a routed waypoint.
+        /// </summary>
+        private const float CruiseHeightAboveGround = 4f;
+
         public override void Initialize()
         {
             base.Initialize();
-            this.pathfinder = new GridPathfinder(new EcoWorldSampler(), this.maxStepHeight);
+            this.pathfinder = new GridPathfinder(new EcoWorldSampler(), this.maxStepHeight,
+                                                 standingHeightOffset: CruiseHeightAboveGround);
         }
 
         /// <summary>
@@ -91,7 +104,8 @@ namespace Eco.Mods.TechTree
             if (Math.Abs(height - this.maxStepHeight) < 0.0001f) return;
 
             this.maxStepHeight = height;
-            this.pathfinder    = new GridPathfinder(new EcoWorldSampler(), height);
+            this.pathfinder    = new GridPathfinder(new EcoWorldSampler(), height,
+                                                    standingHeightOffset: CruiseHeightAboveGround);
         }
 
         /// <summary>

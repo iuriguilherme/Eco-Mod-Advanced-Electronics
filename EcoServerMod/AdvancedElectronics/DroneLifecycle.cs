@@ -249,14 +249,33 @@ namespace Eco.Mods.TechTree
         /// <summary>
         /// Last value pushed per animation state name, so a state is only written when it
         /// actually changes. <c>SetAnimatedState</c> is a synced write and this runs every tick;
-        /// pushing five unchanged booleans per tick per drone is pure network churn with no
+        /// pushing four unchanged booleans per tick per drone is pure network churn with no
         /// consumer. Mirrors DroneDockObject's <c>lastPushedWorking</c>, widened to a map because
-        /// there are five of them.
+        /// there are four of them.
         ///
         /// Not serialized on purpose: an empty map after a restart means the first tick re-pushes
         /// everything, which is what a freshly-connected client needs anyway.
         /// </summary>
         private readonly Dictionary<string, bool> lastPushedAnimationStates = new Dictionary<string, bool>();
+
+        /// <summary>
+        /// Seconds between forced re-pushes of every animation state, regardless of change.
+        ///
+        /// Change-gating alone loses any state that never changes again. The engine delivers an
+        /// animated state only to clients that hold the object at the moment it is written -- there
+        /// is no replay of current values when a client later builds the object (the client's
+        /// InvokeChangedStateEvent runs on change, and nothing re-sends the standing value). A
+        /// drone's tool booleans are written once, on its first tick, and are constant forever
+        /// after; a player who was not already watching that exact tick therefore never receives
+        /// them, and the animator sits in mode-select waiting for a branch that will never come.
+        ///
+        /// Re-pushing the whole set periodically costs four synced writes per drone per interval
+        /// and repairs any client that arrived late, reconnected, or streamed the object in from
+        /// out of view.
+        /// </summary>
+        private const float AnimationStateRepushIntervalSeconds = 5f;
+
+        private float secondsSinceAnimationRepush;
 
         /// <summary>
         /// Projects the current lifecycle situation onto the drone's five animation booleans and
@@ -289,6 +308,22 @@ namespace Eco.Mods.TechTree
                 mover.IsMoving,
                 atHomeDock,
                 usesHarvestTool);
+
+            // Periodically forget what was pushed, so the next loop re-sends everything even
+            // if nothing changed. See AnimationStateRepushIntervalSeconds: a state that never
+            // changes again reaches nobody who was not already holding the object when it was
+            // first written.
+            var manager = ServiceHolder<IWorldObjectManager>.Obj;
+            var deltaTime = manager != null && manager.TickDeltaTime > 0f
+                ? manager.TickDeltaTime
+                : FallbackTickDeltaSeconds;
+
+            this.secondsSinceAnimationRepush += deltaTime;
+            if (this.secondsSinceAnimationRepush >= AnimationStateRepushIntervalSeconds)
+            {
+                this.secondsSinceAnimationRepush = 0f;
+                this.lastPushedAnimationStates.Clear();
+            }
 
             foreach (var (name, value) in state.AsNamedValues())
             {
