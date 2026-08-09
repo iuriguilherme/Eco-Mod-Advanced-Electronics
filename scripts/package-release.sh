@@ -8,7 +8,7 @@
 #   AdvancedElectronics/AdvancedElectronics.dll
 #   AdvancedElectronics/AdvancedElectronics.Navigation.dll
 #   AdvancedElectronics/AdvancedElectronics.unity3d
-#   AdvancedElectronics/README.txt  LICENSE.txt
+#   AdvancedElectronics/README.txt  LICENSE.txt  LICENSE-ART.txt
 #
 # Mods/AdvancedElectronics/, NOT Mods/UserCode/AdvancedElectronics/. UserCode is for
 # source-code mods Eco compiles at runtime; a compiled-DLL mod lives directly under
@@ -26,9 +26,15 @@
 #
 # The asset bundle is NOT built here -- it comes out of the Unity Editor
 # (Eco Tools > Mod Kit > Build Current Bundle). This script's most important job is
-# refusing to package a STALE one: the bundle carries the prefabs and the
-# DockReadoutDisplay MonoBehaviour, so a bundle older than the client sources ships
-# behaviour that silently does not match the DLLs. That already happened once.
+# refusing to package a STALE one: the bundle carries the prefabs, their animator
+# controllers and avatar masks, so a bundle older than the client assets ships art that
+# silently does not match the DLLs. That already happened once.
+#
+# The bundle carries no code. A mod cannot ship client MonoBehaviours at all -- the Eco
+# client is an IL2CPP build with no managed assembly loading -- so everything the client
+# does is driven by the server pushing animated states whose names match the prefab's
+# animator parameters. See
+# docs/solutions/architecture-patterns/client-animation-is-driven-by-name-not-by-mod-code.md
 #
 # Usage:
 #   scripts/package-release.sh [--version X.Y.Z] [--force]
@@ -38,7 +44,7 @@
 
 set -euo pipefail
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 GAME_VERSION="0.14.0.0"
 FORCE=0
 
@@ -110,8 +116,13 @@ cp "$RELEASE_DIR/AdvancedElectronics.Navigation.dll" "$MODDIR/"
 cp "$BUNDLE"                                         "$MODDIR/"
 cp LICENSE                                           "$MODDIR/LICENSE.txt"
 
+# The drone model is CC BY-SA 4.0 and not ours. Attribution is a licence condition, and
+# the model ships inside the bundle, so the notice has to travel in the zip -- not only
+# in the repository a server admin may never look at.
+cp LICENSE-ART.md                                    "$MODDIR/LICENSE-ART.txt"
+
 cat > "$MODDIR/README.txt" <<TXT
-Advanced Electronics — an Eco mod adding a ground survey drone.
+Advanced Electronics — an Eco mod adding an autonomous flying survey drone.
 Version ${VERSION}, built for Eco ${GAME_VERSION}.
 
   Mod page: https://mod.io/g/eco/m/advanced-electronics
@@ -128,44 +139,35 @@ Version ${VERSION}, built for Eco ${GAME_VERSION}.
 
   This mod ships NO SAVE MIGRATIONS. Objects placed by an earlier version can
   fail to load after an update, and a world object that fails to load can take
-  the whole world's load with it. Updating on a world that already contains
-  Drone Docks or Survey Drones is the single most likely way to lose that world.
+  the whole world's load with it. That risk is inherent to updating this mod and
+  does not go away because a particular release happens to be gentle.
 
-  *** THIS VERSION SPECIFICALLY: placed Drone Docks WILL NOT LOAD, and every ***
-  *** Drone Dock and Survey Drone must be re-crafted.                        ***
+  THIS VERSION, SPECIFICALLY: unlike 0.1.0, this release does not change the
+  component set of the Drone Dock or the Survey Drone, so docks and drones placed
+  by 0.1.0 are expected to load. That is a statement about what changed in the
+  code, not a guarantee about your world -- it has not been tested against every
+  0.1.0 save, and no migration exists to rescue one that does fail.
 
-  The drone's fuel now lives on the dock, installed there by the drone itself
-  while it is slotted, and the dock's component set changed to match. An object's
-  component set is fixed when it is created, so a dock placed by an earlier
-  version never gains the new components and a drone crafted by one declares
-  none -- neither starts working again on its own, and no migration ships to
-  rescue them.
+  BACK UP YOUR SAVE BEFORE UPDATING. If you are coming from a release older than
+  0.1.0, the 0.1.0 warning still applies in full: remove every Drone Dock and
+  Survey Drone with admin tools first, or start a fresh world.
 
-  The safe update path is a fresh world, or removing every Drone Dock and Survey
-  Drone with admin tools BEFORE installing the new version.
+WHAT IS NEW IN 0.2.0
 
-  A Survey Drone now also carries its own condition, which wears while it works,
-  travels with the drone when you move it between docks, and can be repaired at a
-  Tool Bench. Drones in different condition no longer stack together.
+  THE DRONE FLIES, AND YOU CAN SEE IT
 
-WHAT IS NEW IN 0.1.0
+  - The Survey Drone has a model and a full animation set. It sits docked, picks
+    its mode, lifts off, flies, works, and settles back onto its pad, driven by
+    what the drone is actually doing on the server rather than by a loop that
+    plays regardless.
+  - It flies at altitude instead of skimming the terrain, holds itself level like
+    a helicopter rather than tilting into climbs, and changes height slowly enough
+    to see.
+  - The Drone Dock is a 4x4 pad, and the drone parks on top of it rather than
+    inside it.
 
-  - Requires Eco 0.14 (see above).
-  - The drone is a module: slotting it into a dock installs its fuel supply on
-    the dock, and removing it takes them away again. Partly-burned fuel survives
-    the move.
-  - A dock stops working and recalls its drone when it runs out of fuel, breaks a
-    part, or its drone wears out -- and the Survey tab names which one it is.
-  - Fuel, dock parts, and drone condition are only consumed while the drone is
-    actually working. The trip home is always free, so a shortage cannot strand
-    the drone it just recalled.
-  - A drone that cannot find a path home escalates -- climbing higher, then
-    ignoring obstacles, then teleporting -- rather than getting stuck.
-  - A drone cannot be removed while it is away, or while its fuel tank still has
-    fuel in it.
-  - A dock keeps its parts wear when picked up and placed again.
-  - Survey Drone and Drone Dock are now crafted at the Robotic Assembly Line, and
-    the Advanced Electronics Upgrade at the Electronics Assembly.
+  BATTERIES
+
   - NEW ITEM: the Battery. Crafted at the Electronics Assembly from nitric acid,
     copper concentrate and plastic at Advanced Electronics 1. One battery runs a
     drone for about an hour, weighs 1 kg, and stacks to five -- so a dock's two
@@ -182,6 +184,14 @@ WHAT IS NEW IN 0.1.0
     available whether you learn it or not.
   - The Electronics Assembly now accepts the Advanced Electronics Upgrade, which
     reduces what both Battery recipes cost. See INSTALL step 3.
+
+  NOT IN THIS RELEASE
+
+  - A Mining Drone and a Harvest Drone exist in the code and are visible in the
+    source, but neither is craftable: their recipes are withheld because the arm
+    they carry does not yet behave correctly in flight. They are not on any bench
+    and do not appear in the Advanced Electronics tech tree. Nothing is lost by
+    waiting -- the Survey Drone is the one this release is about.
 
   This version is also known to leave orphaned objects in the world --
   drones that outlive their dock, or objects an update no longer
@@ -260,13 +270,17 @@ USAGE
   redirecting the drone.
 
 KNOWN ISSUES IN THIS VERSION
-  - Drone Docks placed by an earlier version do not load. This version removes a
-    stored component from the dock and ships no save migration -- see the ALPHA
-    warning above.
+  - The drone's movement and its animation are out of step at the transitions --
+    it starts travelling before the take-off has finished playing, and lands
+    without waiting for the docking animation. The server times these by counting
+    animation frames rather than by being told when a clip starts or ends, so the
+    two drift apart wherever a clip and a movement leg are supposed to line up.
+    Cosmetic only: the drone goes where it should, and does what it should when it
+    gets there.
+  - The Drone Dock is a placeholder cube, and it currently draws about a metre
+    above the volume it actually occupies. It places and works normally.
   - No placement preview: the Drone Dock and the Advanced Electronics Assembly show
     no ghost outline while you are holding them. They still place normally.
-  - The Survey Drone's own window opens with no tabs, so it cannot be refuelled.
-    Fuel consumption is not implemented yet; the drone runs regardless.
   - A Survey Drone can be left orphaned in the world across a server restart --
     alive with no dock owning it. Admins can list and remove them with
     '/drone orphans' and '/drone orphans destroy'.
@@ -274,9 +288,25 @@ KNOWN ISSUES IN THIS VERSION
     "Unreachable"; the area itself is not marked.
   - Item and skill icons are flat-colour placeholders.
 
+CREDITS
+  The HRVSTR-01 drone -- its model, textures, rig and animations -- was created by
+  Phlo123 (https://github.com/Phlo123) and is licensed under Creative Commons
+  Attribution-ShareAlike 4.0 International (CC BY-SA 4.0):
+
+      https://creativecommons.org/licenses/by-sa/4.0/
+
+  If you redistribute a modified version of the model you must credit Phlo123,
+  say that you changed it, and license your version under CC BY-SA 4.0 as well.
+  That obligation attaches to the model, not to the rest of this mod. Full terms
+  and the exact file list are in LICENSE-ART.txt.
+
 LICENSE
-  LGPL-3.0-or-later. See LICENSE.txt. Source is at the GitHub link above; you may
-  modify and redistribute this mod under the same terms.
+  The mod's code is LGPL-3.0-or-later. See LICENSE.txt. Source is at the GitHub
+  link above; you may modify and redistribute this mod under the same terms.
+
+  The drone model is NOT under that license -- see CREDITS above and
+  LICENSE-ART.txt. The two coexist because the model and the code are separate
+  works shipped together, not one derived from the other.
 
   Eco and the Eco ModKit are the property of Strange Loop Games and are not
   included in or covered by this license.
