@@ -1,6 +1,7 @@
 ---
 title: "The compile target decides what exists, not the source tree next to it"
 date: 2026-08-01
+last_updated: 2026-08-09
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -25,9 +26,12 @@ tree. Every grounded claim in this repo's docs about engine behaviour comes from
 correct practice.
 
 The trap is that the checkout and the compile target are **separate artifacts with separate
-versions**. The checkout sits on whatever branch it was last pulled to; the mod compiles against a
-pinned `Eco.ReferenceAssemblies` package. Nothing connects them, nothing warns when they diverge, and
-the divergence is invisible while reading.
+versions**. The checkout sits on whatever branch it was last pulled to; the mod compiles against
+reference assemblies built from that checkout at the commit pinned by `EcoRefSha`. The pin is a
+guard, not a guarantee — moving the checkout after gathering leaves you reading a tree the resolved
+assemblies no longer come from, and the divergence is invisible while reading. When this incident
+happened the two were not connected at all: the mod pinned an `Eco.ReferenceAssemblies` NuGet
+package with nothing tying it to the checkout.
 
 A planning session designed an entire architecture — a module system in which a slotted item declares
 components the host installs — on APIs read out of that checkout. The checkout was on `staging`, 860
@@ -41,15 +45,19 @@ It was caught by the maintainer mentioning in passing that the feature was a v14
 
 **The compile target is the authority on what exists. Check it before designing on anything new.**
 Not the source tree, not the deployed server, not another mod. The question "does this type exist"
-has exactly one correct place to ask it: the package the project actually resolves.
+has exactly one correct place to ask it: the reference assemblies the project actually resolves.
 
 **The check is seconds long.** Managed assembly metadata stores type names as plain strings, so a
 binary grep answers it without any tooling:
 
 ```bash
-D=~/.nuget/packages/eco.referenceassemblies/<version>/lib/net10.0/Eco.Gameplay.dll
+D="$(grep -oP '(?<=<EcoRefAssembliesDir>)[^<]+' EcoServerMod/AdvancedElectronics/Local.props)Eco.Gameplay.dll"
 grep -qa "IWorldObjectComponentSource" "$D" && echo PRESENT || echo ABSENT
 ```
+
+Do **not** probe `~/.nuget/packages/eco.referenceassemblies/`. That package is still on disk and
+still resolves — but only for the reference-only spike project, which is pinned to the old version.
+It answers, and it answers about the wrong artifact.
 
 Run it per type, in one loop, before the design work rather than after. There is no reason to skip a
 check this cheap on a decision this expensive.

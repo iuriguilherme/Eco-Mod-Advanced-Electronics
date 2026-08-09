@@ -1,6 +1,7 @@
 ---
 title: "A user's sentence usually carries a test result and a request; taking only the request discards the result"
 date: 2026-07-31
+last_updated: 2026-08-09
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -113,3 +114,8 @@ The cheap correction, applied before acting:
   cost, and therefore why a discarded observation is expensive.
 - `docs/solutions/workflow-issues/tracing-beats-theorising-on-invariant-failures.md` — the
   hypothesise-instead-of-observe habit this is one instance of.
+- `docs/solutions/workflow-issues/a-decision-about-state-you-own-is-not-the-users-to-make.md` — the
+  restate-before-acting check applied outside live testing. When the sentence carries a false premise
+  about the tooling rather than an observation, restating it ("tasks live in the harness list, not in
+  a file") is itself the entire answer, and stops an infrastructure proposal being appended to an
+  explanation.

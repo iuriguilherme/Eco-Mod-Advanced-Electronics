@@ -1,6 +1,7 @@
 ---
 title: "Finish the plan's main line before chasing its gated bet"
 date: 2026-07-28
+last_updated: 2026-08-09
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -116,3 +117,6 @@ The user's own framing, given after the fourth null result and worth adopting as
   of the null results in this run was not a real result.
 - `docs/ideation/2026-07-27-mod-ui-vocabulary.md` — the plan in question, including the Tier A/Tier B
   split and the gating warning.
+- `docs/solutions/workflow-issues/a-decision-about-state-you-own-is-not-the-users-to-make.md` — the
+  same carried-state failure in a status summary rather than an investigation: an item survives turns
+  because nobody re-reads it, not because it is still open.

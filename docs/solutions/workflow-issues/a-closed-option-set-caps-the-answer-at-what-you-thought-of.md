@@ -1,6 +1,7 @@
 ---
 title: "A closed option set caps the answer at what you already thought of"
 date: 2026-08-01
+last_updated: 2026-08-09
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -31,6 +32,12 @@ ordering it. The pattern is not that the questions were badly built — most wer
 that a closed option set has a ceiling, and the ceiling is the asker's own model.
 
 ## Guidance
+
+**Check that the decision is theirs before designing the menu.** If you would carry out either option
+yourself and the maintainer would notice no difference in the repository, in something they can see
+running, or in what they are committed to, the question is yours to answer and no menu is the right
+one — see `a-decision-about-state-you-own-is-not-the-users-to-make.md`. Everything below assumes that
+gate has been passed.
 
 **Distinguish choosing from proposing.** Two very different questions wear the same interface.
 
@@ -145,3 +152,7 @@ RIGHT (open, because the answer depends on how the game actually plays):
 - `docs/solutions/workflow-issues/the-compile-target-decides-what-exists.md` — from the same session,
   and the reason two of the answers above arrived late: the version premise was wrong, so the
   questions built on it were drawn from the wrong space.
+- `docs/solutions/workflow-issues/a-decision-about-state-you-own-is-not-the-users-to-make.md` — the
+  prior question. That one asks whether the decision is the maintainer's at all; this one assumes it
+  is and asks whether the options are wide enough. An answer from outside the menu can mean either,
+  so check ownership before widening.

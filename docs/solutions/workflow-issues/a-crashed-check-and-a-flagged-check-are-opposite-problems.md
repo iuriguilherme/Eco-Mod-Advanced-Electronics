@@ -67,11 +67,15 @@ inline environment-variable prefix.
 
 Be precise about what actually breaks, because the failure is narrower than "non-ASCII characters":
 
-- **En dashes and curly quotes do not crash it.** Reproduced directly: a throwaway doc containing an
-  en dash, and another containing a right single quote, both validate `OK` under plain cp1252. Their
-  UTF-8 bytes all happen to have cp1252 meanings, so the file decodes into mojibake and the check
-  completes against text that is wrong but readable. Quietly checking a corrupted copy of the
-  document is its own small problem, but it is not the crash.
+- **En dashes and single curly quotes do not crash it.** Reproduced directly: a throwaway doc
+  containing an en dash, and another containing a right single quote, both validate `OK` under plain
+  cp1252. Their UTF-8 bytes all happen to have cp1252 meanings, so the file decodes into mojibake and
+  the check completes against text that is wrong but readable. Quietly checking a corrupted copy of
+  the document is its own small problem, but it is not the crash. The *closing double* quote is the
+  exception among common typography: U+201D encodes as `E2 80 9D`, and `0x9D` is one of the undefined
+  bytes listed below, so a doc using typographic double quotes crashes exactly like a drawn diagram
+  does. U+201C (`E2 80 9C`) is safe, which makes the pair asymmetric. Docs in this repo use ASCII
+  double quotes, which is why none currently trip it.
 - **Characters whose UTF-8 encoding contains a byte cp1252 leaves undefined do crash it.** Those
   bytes are `0x81`, `0x8D`, `0x8F`, `0x90`, and `0x9D`. In practice the offenders in these docs are
   box-drawing and arrow glyphs: U+2510 (box drawings light down and left) encodes as `E2 94 90`, and
