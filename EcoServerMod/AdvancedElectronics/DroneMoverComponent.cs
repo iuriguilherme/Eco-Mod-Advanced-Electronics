@@ -46,6 +46,33 @@ namespace Eco.Mods.TechTree
         // choices, not ASSUMPTIONs about Eco's behavior).
         private const float MoveSpeedMetersPerSecond = 3f;
 
+        /// <summary>
+        /// How fast the drone climbs and descends when a leg is essentially straight up or down.
+        ///
+        /// Cruise speed applied to a vertical leg is what made leaving and reaching the dock read
+        /// as a teleport: the climb off the pad and the drop onto it are only a metre or two, so
+        /// at 3 m/s they resolve inside a fraction of a second while a four-second animation is
+        /// still playing around them. Nothing was snapping -- the motion was simply too fast to
+        /// see. A rotorcraft changes altitude far more slowly than it crosses ground, so a
+        /// separate vertical rate is also the honest model, not just the prettier one.
+        /// </summary>
+        private const float VerticalSpeedMetersPerSecond = 0.75f;
+
+        /// <summary>
+        /// Cruise speed for an ordinary leg, the slower vertical rate for one that is more up or
+        /// down than along. Compares squared magnitudes so no square root is needed; a perfectly
+        /// diagonal leg counts as horizontal, which is the conservative choice -- it keeps
+        /// ordinary travel at full speed and slows only what actually reads as a climb or a drop.
+        /// </summary>
+        private static float SpeedFor(Vector3 leg)
+        {
+            var horizontalSquared = (leg.X * leg.X) + (leg.Z * leg.Z);
+            var verticalSquared   = leg.Y * leg.Y;
+            return verticalSquared > horizontalSquared
+                ? VerticalSpeedMetersPerSecond
+                : MoveSpeedMetersPerSecond;
+        }
+
         // Fallback delta-time if IWorldObjectManager.TickDeltaTime ever reads
         // as 0 (e.g. an early tick before the manager has measured a real
         // interval) -- keeps the drone advancing instead of stalling forever.
@@ -155,10 +182,34 @@ namespace Eco.Mods.TechTree
         /// destination turns that drop into an ordinary final leg, flown at the same speed as
         /// the rest.
         /// </param>
+        /// <param name="climbOnDeparture">
+        /// True to rise straight up to travelling altitude before setting off, rather than
+        /// leaving on the diagonal of the first routed leg. The mirror of
+        /// <paramref name="landAtDestination"/>, and wanted for the same reason: every routed
+        /// waypoint sits at cruise height, so a drone parked lower gains all of that altitude as
+        /// a side effect of its first horizontal move. Splitting the climb out makes it a leg of
+        /// its own, which <see cref="SpeedFor"/> then flies slowly.
+        /// </param>
         public bool SetDestination(Vector3 destination, IReadOnlyCollection<Vector3> exemptOccupiedColumns = null,
-                                   bool landAtDestination = false)
+                                   bool landAtDestination = false, bool climbOnDeparture = false)
         {
             var result = this.pathfinder.FindPath(this.Parent.Position, destination, exemptOccupiedColumns);
+
+            if (result.Found && climbOnDeparture && result.Waypoints.Count > 0)
+            {
+                // Straight up from where it stands to the altitude the route begins at. Skipped
+                // when the route already starts at this height, so a drone that is level with
+                // its path does not gain a zero-length waypoint it would tick through anyway.
+                var start = this.Parent.Position;
+                var routeHeight = result.Waypoints[0].Y;
+
+                if (Math.Abs(routeHeight - start.Y) > 0.0001f)
+                {
+                    var withClimb = new List<Vector3> { new Vector3(start.X, routeHeight, start.Z) };
+                    withClimb.AddRange(result.Waypoints);
+                    result = PathResult.Success(withClimb);
+                }
+            }
 
             if (result.Found && landAtDestination)
             {
@@ -252,7 +303,7 @@ namespace Eco.Mods.TechTree
             var deltaTime = manager != null && manager.TickDeltaTime > 0f
                 ? manager.TickDeltaTime
                 : FallbackTickDeltaSeconds;
-            var step = MoveSpeedMetersPerSecond * deltaTime;
+            var step = SpeedFor(toTarget) * deltaTime;
 
             var nextPos = distance <= step || distance < 0.0001f
                 ? target

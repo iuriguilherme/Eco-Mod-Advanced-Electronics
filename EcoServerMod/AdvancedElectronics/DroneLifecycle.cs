@@ -77,13 +77,26 @@ namespace Eco.Mods.TechTree
         private static float AnimationSeconds(int frames) => frames / AnimationFramesPerSecond;
 
         /// <summary>
-        /// How long the drone stays put after being dispatched, so the take-off sequence can
-        /// finish before it travels: 05_Mode_Select (44) + the arm select (59, the longer of
-        /// mining and harvest) + 01_Flying_Start (119). It reaches 02_Flying_Loop at the moment
-        /// it starts to move, which is the point -- a drone that slides away mid-lift-off reads
-        /// as broken however correct the state machine underneath is.
+        /// How long the drone stays put after being dispatched, so the sequence that plays on
+        /// the pad can finish before it travels: 05_Mode_Select (44) + the arm select (59, the
+        /// longer of mining and harvest).
+        ///
+        /// 01_Flying_Start (119) is deliberately NOT waited out. It is the lift-off, and a
+        /// lift-off the drone spends motionless is a lift-off that visibly does nothing --
+        /// followed by the drone gaining its altitude afterwards, in a fraction of a second,
+        /// which is what read as a teleport upward. Releasing the hold here instead lets the
+        /// climb happen underneath the clip, and the climb is flown at the mover's vertical
+        /// rate so it takes about as long as the clip does.
+        ///
+        /// KNOWN, SHIPPED IN 0.2.0, NOT A MYSTERY: this trades one artifact for another. The
+        /// jump is gone and the drone now visibly leaves before the take-off has finished,
+        /// because releasing the hold releases horizontal travel along with the climb. The fix
+        /// is to gate those separately -- hold horizontal movement for the full 44 + 59 + 119
+        /// while letting the vertical leg run -- which the mover already has the pieces for
+        /// (climbOnDeparture makes the climb its own leg, SpeedFor flies it slowly). Deferred
+        /// past the release rather than reverted, because reverting only restores the jump.
         /// </summary>
-        private static readonly float TakeOffLeadInSeconds = AnimationSeconds(44 + 59 + 119);
+        private static readonly float TakeOffLeadInSeconds = AnimationSeconds(44 + 59);
 
         /// <summary>
         /// How long the drone stays put before travelling home or to the next area, so it
@@ -471,7 +484,14 @@ namespace Eco.Mods.TechTree
             // without this its first step off the dock has nowhere legal to go. The
             // target itself is not in the set, so this cannot make an occupied
             // destination legal -- a survey point inside someone's building still fails.
-            if (!mover.SetDestination(target, this.HomeDock.OccupiedColumns))
+            //
+            // Leaving the dock climbs before it travels (climbOnDeparture): the pad sits below
+            // travelling altitude, so without a climb leg of its own the drone would gain that
+            // height on the diagonal of its first horizontal step -- in a fraction of a second,
+            // which is what read as a jump. Only from the dock; a drone lifting off a work area
+            // is already at the height its route continues from.
+            if (!mover.SetDestination(target, this.HomeDock.OccupiedColumns,
+                                      climbOnDeparture: this.IsAtHomeDock()))
             {
                 this.LastDispatchNote = $"no path from {this.Parent.Position.X:F0},{this.Parent.Position.Z:F0} to area point {target.X:F0},{target.Z:F0}";
                 this.HandleNoPath(mover);
