@@ -49,7 +49,7 @@
     v14 table shape so it can come back the moment there is a recipe that wants its own bench.
 
     Excluding it removes the item and its world object from the mod, so any already placed in a
-    world will not load. See the release notes' known-issues block.
+    world will not load. The release notes say so under USAGE.
   -->
   <ItemGroup>
     <Compile Remove="AdvancedElectronicsAssembly.cs" />

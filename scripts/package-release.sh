@@ -254,11 +254,16 @@ UNINSTALL
 
 USAGE
   Advanced Electronics is an Engineer specialty. Craft the Advanced Electronics
-  Skill Book at a Laboratory to discover it, then build the Advanced Electronics
-  Assembly at the Electric Machinist Table.
+  Skill Book at a Laboratory to discover it.
 
-  Everything else is crafted at the Advanced Electronics Assembly: the Drone Dock,
-  the Survey Drone, and the Advanced Electronics Upgrade module.
+  Everything is then crafted at vanilla tables:
+
+    Robotic Assembly Line   Drone Dock, Survey Drone
+    Electronics Assembly    Battery, Sulfuric Battery, Advanced Electronics Upgrade
+    Laboratory              Advanced Electronics Skill Book, research paper
+
+  The Advanced Electronics Assembly is NOT in this release -- it is excluded from
+  the build while its placement is unfinished, so nothing asks you to make one.
 
   Place the dock and open its Survey tab. Use "Manage Areas on Map" to draw survey
   areas -- up to ten per dock. The list numbers them; set "Assigned Position" to a
@@ -279,8 +284,8 @@ KNOWN ISSUES IN THIS VERSION
     gets there.
   - The Drone Dock is a placeholder cube, and it currently draws about a metre
     above the volume it actually occupies. It places and works normally.
-  - No placement preview: the Drone Dock and the Advanced Electronics Assembly show
-    no ghost outline while you are holding them. They still place normally.
+  - No placement preview: the Drone Dock shows no ghost outline while you are
+    holding it. It still places normally.
   - A Survey Drone can be left orphaned in the world across a server restart --
     alive with no dock owning it. Admins can list and remove them with
     '/drone orphans' and '/drone orphans destroy'.
