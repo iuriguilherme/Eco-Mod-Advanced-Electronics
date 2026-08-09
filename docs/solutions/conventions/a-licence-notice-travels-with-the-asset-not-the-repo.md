@@ -19,6 +19,25 @@ related_components:
 
 # A licence notice belongs wherever the asset can end up, and the repo is only one of those places
 
+> **THE SPECIFICS BELOW ARE OUT OF DATE. The rule still holds; the file layout it describes
+> does not.** Shortly after this was written the licence structure was corrected on three
+> counts, and every `LICENSE-ART.md` line citation, the "three placements" description, and
+> the future-contributor procedure now describe a layout that no longer exists.
+>
+> What changed, and why:
+>
+> - **`LICENSE-ART` now contains the verbatim CC BY-SA 4.0 legal code and nothing else**, the
+>   way `LICENSE` holds the LGPL text. A licence file holds a licence. The creator's name,
+>   the covered-file list and the mask carve-out moved out of it.
+> - **Those details now live in `README.md` under `## License` → `### Attribution`.** The
+>   `## License` section also now opens with the standard GNU licence notice rather than a
+>   paraphrase of it.
+> - **"Third-party content" was the wrong frame.** Phlo123 is a developer of this mod, not a
+>   third party. The heading is `Attribution`.
+>
+> Read the Context and Why This Matters sections for the lesson. Do not follow the file
+> citations or the numbered procedure until this doc is rewritten against the current layout.
+
 ## Context
 
 Until the HRVSTR-01 drone arrived, this project had a simple licence story: all the code and

@@ -119,7 +119,7 @@ cp LICENSE                                           "$MODDIR/LICENSE.txt"
 # The drone model is CC BY-SA 4.0 and not ours. Attribution is a licence condition, and
 # the model ships inside the bundle, so the notice has to travel in the zip -- not only
 # in the repository a server admin may never look at.
-cp LICENSE-ART.md                                    "$MODDIR/LICENSE-ART.txt"
+cp LICENSE-ART                                       "$MODDIR/LICENSE-ART.txt"
 
 cat > "$MODDIR/README.txt" <<TXT
 Advanced Electronics — an Eco mod adding an autonomous flying survey drone.
@@ -288,28 +288,41 @@ KNOWN ISSUES IN THIS VERSION
     "Unreachable"; the area itself is not marked.
   - Item and skill icons are flat-colour placeholders.
 
-CREDITS
-  The HRVSTR-01 drone -- its model, textures, rig and animations -- was created by
-  Phlo123 (https://github.com/Phlo123) and is licensed under Creative Commons
-  Attribution-ShareAlike 4.0 International (CC BY-SA 4.0):
-
-      https://creativecommons.org/licenses/by-sa/4.0/
-
-  If you redistribute a modified version of the model you must credit Phlo123,
-  say that you changed it, and license your version under CC BY-SA 4.0 as well.
-  That obligation attaches to the model, not to the rest of this mod. Full terms
-  and the exact file list are in LICENSE-ART.txt.
-
 LICENSE
-  The mod's code is LGPL-3.0-or-later. See LICENSE.txt. Source is at the GitHub
-  link above; you may modify and redistribute this mod under the same terms.
 
-  The drone model is NOT under that license -- see CREDITS above and
-  LICENSE-ART.txt. The two coexist because the model and the code are separate
-  works shipped together, not one derived from the other.
+    Advanced Electronics -- an Eco mod adding an autonomous flying survey drone.
+    Copyright (C) 2026  Iuri Guilherme
 
-  Eco and the Eco ModKit are the property of Strange Loop Games and are not
-  included in or covered by this license.
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+  The full text is in LICENSE.txt. Source is at the GitHub link above.
+
+  Eco and the Eco ModKit are the property of Strange Loop Games and are neither
+  included in nor covered by this license.
+
+  ATTRIBUTION
+
+    The HRVSTR-01 drone -- its mesh, textures, rig and animation clips -- was
+    created by Phlo123 (https://github.com/Phlo123) and is licensed under the
+    Creative Commons Attribution-ShareAlike 4.0 International licence, NOT under
+    the licence above. Its full text is in LICENSE-ART.txt.
+
+    If you redistribute a modified version of the model you must credit Phlo123,
+    say that you changed it, and license your version under CC BY-SA 4.0 as
+    well. That obligation attaches to the model and its adaptations, not to this
+    mod's code: the two are separate works shipped together, not one derived
+    from the other.
 TXT
 
 echo "==> Zipping"

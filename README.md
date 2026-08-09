@@ -255,38 +255,53 @@ overrides.
 
 ## License
 
-This mod is licensed under the **GNU Lesser General Public License, version 3 or later**
-(LGPL-3.0-or-later). The full text is in [`LICENSE`](LICENSE). The LGPL incorporates the
-terms of the [GNU GPL v3](https://www.gnu.org/licenses/gpl-3.0.txt) by reference and adds
-permissions on top of it; only the LGPL text is kept here, since that is the licence this
-project grants.
+    Advanced Electronics -- an Eco mod adding an autonomous flying survey drone.
+    Copyright (C) 2026  Iuri Guilherme
 
-In short: you may use, modify and redistribute this mod, including as part of a larger
-work that is not itself LGPL — but changes *to this mod* must be published under the same
-license, and users must be able to replace it with their own modified build. That last
-property is why LGPL rather than GPL: the mod links against Eco's proprietary assemblies
-and is loaded by a proprietary server, which the LGPL explicitly permits and the GPL would
-not.
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
 
-The license covers the contents of this repository — the server C#, the navigation
-library, the Unity scripts and prefabs we authored, and the documentation.
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
 
-### Third-party content
+    You should have received a copy of the GNU Lesser General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-**The HRVSTR-01 drone model is not ours and is not LGPL.** Its mesh, textures, rig and
-animation clips were created by [Phlo123](https://github.com/Phlo123) and are licensed
-under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The model ships
-inside the released asset bundle as well as living in this repository. If you redistribute
-a modified version of the model, ShareAlike requires you to license it under CC BY-SA 4.0
-too — an obligation that attaches to the model, not to this mod's code. See
-[`LICENSE-ART.md`](LICENSE-ART.md) for the exact file list and terms.
+The full text is in [`LICENSE`](LICENSE). The LGPL incorporates the terms of the
+[GNU GPL v3](https://www.gnu.org/licenses/gpl-3.0.txt) by reference and adds permissions on
+top of it; only the LGPL text is kept here, since that is the licence this project grants.
 
-Everything else tracked in this repository is our own work. Strange Loop Games' ModKit,
-client libraries and embedded Unity packages are **not** redistributed here — they are
-account-gated downloads for owners of the game, so mirroring them would route around that
-gate. See [Setup after cloning](#setup-after-cloning) for the paths involved and how to
-supply your own copy.
+LGPL rather than GPL because the mod links against Eco's proprietary assemblies and is
+loaded by a proprietary server, which the LGPL explicitly permits and the GPL would not. In
+short: you may use, modify and redistribute this mod, including as part of a larger work
+that is not itself LGPL -- but changes *to this mod* must be published under the same
+licence, and users must be able to replace it with their own modified build.
 
-Eco, the ModKit and their assets remain the property of Strange Loop Games and are used
-under their mod-development terms. Our LGPL grant covers only our own code — it does not
-extend to anything of theirs, and it does not give you rights to the game or the ModKit.
+Eco, the Eco ModKit and their assets remain the property of Strange Loop Games. They are
+**not** redistributed here -- they are account-gated downloads for owners of the game, so
+mirroring them would route around that gate; see [Setup after cloning](#setup-after-cloning)
+for the paths involved and how to supply your own copy. The grant above covers this
+project's own work only. It does not extend to anything of theirs, and it does not give you
+rights to the game or the ModKit.
+
+### Attribution
+
+The HRVSTR-01 drone -- its mesh, textures, rig and animation clips, under
+`Assets/Art/AdvancedElectronics/Sprites/HRVSTR/` -- was created by
+[Phlo123](https://github.com/Phlo123) and is licensed under the Creative Commons
+Attribution-ShareAlike 4.0 International licence, **not** under the LGPL grant above. The
+full text of that licence is in [`LICENSE-ART`](LICENSE-ART).
+
+The model ships inside the released asset bundle as well as living in this repository, so
+`LICENSE-ART` travels in the release archive too. If you redistribute a modified version of
+the model you must credit Phlo123, say that you changed it, and license your version under
+CC BY-SA 4.0 as well. That obligation attaches to the model and its adaptations, not to
+this project's code: the two are separate works distributed together, not one derived from
+the other.
+
+`HRVSTR_BladesMask.mask`, in the same folder, is this project's own work and falls under the
+LGPL grant despite sitting beside the contributed files.
