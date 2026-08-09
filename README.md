@@ -1,12 +1,15 @@
 # Advanced Electronics — Eco mod
 
 A mod for [Eco](https://play.eco) (Strange Loop Games) adding a **survey drone**: a
-craftable ground rover that a player pairs to a **Drone Dock**, assigns to a survey area
+craftable flying drone that a player pairs to a **Drone Dock**, assigns to a survey area
 drawn on the map, and dispatches to prospect that area for materials. The dock's window
 has two tabs — **Areas** (draw and manage areas, assign the drone) and **Results** (what
 was found, one area at a time, filtered to the materials you care about).
 
-Built and tested against **Eco 0.13.0.4** (`Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024`).
+Built and tested against **Eco 0.14.0.0**. There is no `Eco.ReferenceAssemblies` package for
+0.14 and the shipped server is a single-file bundle with its managed assemblies embedded, so
+the reference assemblies are built from a pinned source checkout instead — see
+`scripts/gather-eco-refs.sh` and `EcoRefSha` in the csproj.
 
 **Mod page:** [mod.io/g/eco/m/advanced-electronics](https://mod.io/g/eco/m/advanced-electronics)
 — released builds are published there. This repository is the source; you only need to
@@ -49,7 +52,7 @@ For running the mod on a server — no build tools, no Unity, no clone required.
    [the mod.io page](https://mod.io/g/eco/m/advanced-electronics).
 2. Stop the Eco server.
 3. Extract the zip and put the `AdvancedElectronics` folder into the server's
-   `Eco_Data/Server/Mods/UserCode/`, giving you `Mods/UserCode/AdvancedElectronics/`:
+   `Eco_Data/Server/Mods/`, giving you `Mods/AdvancedElectronics/`:
    - `AdvancedElectronics.dll` — the mod
    - `AdvancedElectronics.Navigation.dll` — the navigation core the mod cannot load without
    - `AdvancedElectronics.unity3d` — the client asset bundle, which the server transfers to
@@ -65,7 +68,7 @@ For running the mod on a server — no build tools, no Unity, no clone required.
 > is still scanned — the name means nothing to the server. Move old copies out of `Mods/`
 > or delete them.
 
-To uninstall, delete the `Mods/UserCode/AdvancedElectronics/` folder. Note that removing
+To uninstall, delete the `Mods/AdvancedElectronics/` folder. Note that removing
 the mod discards any placed Drone Docks along with their survey areas and findings.
 
 ## Setup after cloning
@@ -93,7 +96,7 @@ you supply your own copy:
 | `Assets/TextMesh Pro/` | Unity's TMP resources — the editor re-imports these on demand |
 
 **You need to own Eco.** Log in to [play.eco](https://play.eco) with the Strange Loop
-Games account the game is registered to and download the ModKit for **0.13.0.4** from
+Games account the game is registered to and download the ModKit for **0.14** from
 there; the step-by-step is
 [Installing the ModKit](https://wiki.play.eco/en/Installing_the_ModKit) on the Eco wiki.
 Note that their public [EcoModKit repo](https://github.com/StrangeLoopGames/EcoModKit)
@@ -120,16 +123,18 @@ grep guid Assets/EcoModKit/Scripts/WorldObject.cs.meta
 ```
 
 If that GUID differs, stop — your ModKit copy is not the one this repo's prefabs were
-authored against. Then open `Assets/DroneScene.unity` and confirm the `DroneDockObject`
+authored against. Then open
+`Assets/Art/AdvancedElectronics/Scenes/AdvancedElectronicsScene.unity` and confirm the
+`DroneDockObject`
 prefab still shows a **WorldObject** component in the Inspector (not "Missing Script").
 
 ## Deploying to a server for testing
 
 ### 0. Prerequisites
 
-- An **Eco 0.13.0.4 dedicated server** you control. The `Eco.ReferenceAssemblies`
-  version pinned in the csproj must match the server's game build — see
-  `EcoServerMod/README.md` > Version matching if yours differs.
+- An **Eco 0.14 dedicated server** you control. `EcoRefVersion` and `EcoRefSha` in the
+  csproj must match the server's game build — see `EcoServerMod/README.md` > Version
+  matching if yours differs.
 - A **.NET 10 SDK** (`dotnet --list-sdks` shows a 10.x entry). No-admin user-local
   install instructions are in `EcoServerMod/README.md` > Building.
 - **Unity 6000.3.19f1** plus the Eco ModKit restored per
@@ -144,15 +149,15 @@ dotnet build EcoServerMod/AdvancedElectronics
 ```
 
 Copy **both** DLLs from `EcoServerMod/AdvancedElectronics/bin/Debug/net10.0/` into the
-server's `Mods/UserCode/` directory:
+server's `Mods/` directory:
 
 - `AdvancedElectronics.dll` — the mod
 - `AdvancedElectronics.Navigation.dll` — the navigation core the mod cannot load without
 
-Eco loads pre-compiled mods from `Mods/` and any of its subdirectories, so a flat
-`Mods/UserCode/` is fine for a dev loop where you are overwriting DLLs constantly.
-Releases use `Mods/UserCode/AdvancedElectronics/` instead, matching how other UserCode
-mods are laid out — one folder to add or delete.
+Eco loads pre-compiled mods from `Mods/` and any of its subdirectories, so dropping the DLLs
+loose in `Mods/` is fine for a dev loop where you are overwriting them constantly. Releases
+use `Mods/AdvancedElectronics/` instead — one folder to add or delete. `Mods/UserCode/` is
+for source-code mods Eco compiles at runtime, not for a compiled-DLL mod like this one.
 
 Or automate the copy: create `EcoServerMod/AdvancedElectronics/Local.props`
 (git-ignored) pointing at your server, and every build deploys both DLLs itself:
@@ -160,7 +165,7 @@ Or automate the copy: create `EcoServerMod/AdvancedElectronics/Local.props`
 ```xml
 <Project>
   <PropertyGroup>
-    <EcoModsDir>C:\path\to\EcoServer\Mods\UserCode</EcoModsDir>
+    <EcoModsDir>C:\path\to\EcoServer\Mods\AdvancedElectronics</EcoModsDir>
   </PropertyGroup>
 </Project>
 ```
@@ -170,7 +175,8 @@ Or automate the copy: create `EcoServerMod/AdvancedElectronics/Local.props`
 The bundle carries the dock/drone prefabs and the item icon. `AssetBundles/` is
 git-ignored, so build it locally:
 
-1. Open this repo's root folder in Unity 6000.3.19f1 and open `Assets/DroneScene.unity`.
+1. Open this repo's root folder in Unity 6000.3.19f1 and open
+   `Assets/Art/AdvancedElectronics/Scenes/AdvancedElectronicsScene.unity`.
 2. Menu **Eco Tools > Mod Kit > Build Current Bundle** (or "ModKit Tools…" to build all
    bundles). Output lands in `AssetBundles/AdvancedElectronics.unity3d`.
 3. Copy `AdvancedElectronics.unity3d` next to the two DLLs on the server. Eco transfers
