@@ -273,8 +273,16 @@ library, the Unity scripts and prefabs we authored, and the documentation.
 
 ### Third-party content
 
-Everything tracked in this repository is our own work. Strange Loop Games' ModKit, client
-libraries and embedded Unity packages are **not** redistributed here — they are
+**The HRVSTR-01 drone model is not ours and is not LGPL.** Its mesh, textures, rig and
+animation clips were created by [Phlo123](https://github.com/Phlo123) and are licensed
+under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The model ships
+inside the released asset bundle as well as living in this repository. If you redistribute
+a modified version of the model, ShareAlike requires you to license it under CC BY-SA 4.0
+too — an obligation that attaches to the model, not to this mod's code. See
+[`LICENSE-ART.md`](LICENSE-ART.md) for the exact file list and terms.
+
+Everything else tracked in this repository is our own work. Strange Loop Games' ModKit,
+client libraries and embedded Unity packages are **not** redistributed here — they are
 account-gated downloads for owners of the game, so mirroring them would route around that
 gate. See [Setup after cloning](#setup-after-cloning) for the paths involved and how to
 supply your own copy.
