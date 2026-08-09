@@ -33,10 +33,22 @@ related_components:
 >   `## License` section also now opens with the standard GNU licence notice rather than a
 >   paraphrase of it.
 > - **"Third-party content" was the wrong frame.** Phlo123 is a developer of this mod, not a
->   third party. The heading is `Attribution`.
+>   third party. The heading is `Attribution`, and a separate `Third Party` heading now holds
+>   only the Strange Loop Games note — kept deliberately, so that if something of theirs ever
+>   does get included it reads as an oversight rather than careless infringement.
+>
+> **One claim below is not merely stale, it is wrong.** This doc repeatedly presents
+> `HRVSTR_BladesMask.mask` as a carve-out — authored by this project and therefore LGPL
+> despite sitting among the contributed files. That is a licensing error. The mask is an
+> avatar mask authored *against Phlo123's rig*, which makes it an adaptation, and ShareAlike
+> says an adaptation is distributed under the same terms. It is CC BY-SA 4.0, like everything
+> else in that folder. Authorship and licence are different questions, and "I made this file"
+> does not settle the second one. The README needs no carve-out precisely because the whole
+> folder is one licence.
 >
 > Read the Context and Why This Matters sections for the lesson. Do not follow the file
-> citations or the numbered procedure until this doc is rewritten against the current layout.
+> citations, the numbered procedure, or anything this doc says about the mask until it is
+> rewritten against the current layout.
 
 ## Context
 

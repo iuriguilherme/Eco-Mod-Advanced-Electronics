@@ -313,16 +313,11 @@ LICENSE
 
   ATTRIBUTION
 
-    The HRVSTR-01 drone -- its mesh, textures, rig and animation clips -- was
-    created by Phlo123 (https://github.com/Phlo123) and is licensed under the
-    Creative Commons Attribution-ShareAlike 4.0 International licence, NOT under
-    the licence above. Its full text is in LICENSE-ART.txt.
-
-    If you redistribute a modified version of the model you must credit Phlo123,
-    say that you changed it, and license your version under CC BY-SA 4.0 as
-    well. That obligation attaches to the model and its adaptations, not to this
-    mod's code: the two are separate works shipped together, not one derived
-    from the other.
+    The HRVSTR-01 drone -- its mesh, textures, rig and animation clips, and work
+    adapted from them -- was created by Phlo123 (https://github.com/Phlo123) and
+    is licensed under the Creative Commons Attribution-ShareAlike 4.0
+    International license, not under the license above. Its full text is in
+    LICENSE-ART.txt.
 TXT
 
 echo "==> Zipping"
