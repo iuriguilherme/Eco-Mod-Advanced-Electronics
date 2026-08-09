@@ -1,265 +1,271 @@
 ---
-title: "A licence notice belongs wherever the asset can end up, and the repo is only one of those places"
-date: 2026-08-09
+title: "Licensing a contributed asset: what decides the licence, and where the notice has to travel"
+date: 2026-08-08
+last_updated: 2026-08-09
 category: conventions
 module: AdvancedElectronics
 problem_type: convention
 component: tooling
 severity: high
 applies_when:
-  - "Third-party content arrives under a licence different from the project's own"
-  - "A README or top-level doc carries a blanket own-work claim written before the contribution landed"
+  - "You author a new asset against someone else's licensed model, rig, texture or animation"
+  - "You are deciding which licence a file in a mixed-licence art folder falls under"
+  - "A licensing rule you are about to write requires an exception or a carve-out"
+  - "Contributed art arrives under a copyleft licence such as CC BY-SA"
   - "The contributed asset ships inside a packaged artifact as well as living in the repository"
-  - "An asset is added to, or derived from, a folder that already holds third-party files"
-tags: [licensing, cc-by-sa, lgpl, attribution, third-party-art, readme, release-packaging]
+tags: [licensing, cc-by-sa, sharealike, derivative-works, attribution, third-party-art, release-packaging]
 related_components:
+  - "README.md"
+  - "LICENSE-ART"
   - "scripts/package-release.sh"
-  - "Assets/Art/AdvancedElectronics"
+  - "Assets/Art/AdvancedElectronics/Sprites/HRVSTR"
 ---
 
-# A licence notice belongs wherever the asset can end up, and the repo is only one of those places
+# Licensing a contributed asset: what decides the licence, and where the notice has to travel
 
-> **THE SPECIFICS BELOW ARE OUT OF DATE. The rule still holds; the file layout it describes
-> does not.** Shortly after this was written the licence structure was corrected on three
-> counts, and every `LICENSE-ART.md` line citation, the "three placements" description, and
-> the future-contributor procedure now describe a layout that no longer exists.
->
-> What changed, and why:
->
-> - **`LICENSE-ART` now contains the verbatim CC BY-SA 4.0 legal code and nothing else**, the
->   way `LICENSE` holds the LGPL text. A licence file holds a licence. The creator's name,
->   the covered-file list and the mask carve-out moved out of it.
-> - **Those details now live in `README.md` under `## License` → `### Attribution`.** The
->   `## License` section also now opens with the standard GNU licence notice rather than a
->   paraphrase of it.
-> - **"Third-party content" was the wrong frame.** Phlo123 is a developer of this mod, not a
->   third party. The heading is `Attribution`, and a separate `Third Party` heading now holds
->   only the Strange Loop Games note — kept deliberately, so that if something of theirs ever
->   does get included it reads as an oversight rather than careless infringement.
->
-> **One claim below is not merely stale, it is wrong.** This doc repeatedly presents
-> `HRVSTR_BladesMask.mask` as a carve-out — authored by this project and therefore LGPL
-> despite sitting among the contributed files. That is a licensing error. The mask is an
-> avatar mask authored *against Phlo123's rig*, which makes it an adaptation, and ShareAlike
-> says an adaptation is distributed under the same terms. It is CC BY-SA 4.0, like everything
-> else in that folder. Authorship and licence are different questions, and "I made this file"
-> does not settle the second one. The README needs no carve-out precisely because the whole
-> folder is one licence.
->
-> Read the Context and Why This Matters sections for the lesson. Do not follow the file
-> citations, the numbered procedure, or anything this doc says about the mask until it is
-> rewritten against the current layout.
+Two questions come up whenever someone else's work enters this repository, and they are
+easy to conflate. **Which licence covers a given file?** and **where does the notice have to
+be so that it reaches whoever ends up with the file?** The first half of this document is the
+one that was got wrong; the second is the one that was got right first time and is worth
+keeping.
 
 ## Context
 
-Until the HRVSTR-01 drone arrived, this project had a simple licence story: all the code and
-all the art were ours, everything was LGPL-3.0-or-later, and one `LICENSE` file at the root
-said so. `README.md` carried a Third-party content section whose first sentence was
-"Everything tracked in this repository is our own work" (`README.md:276` as of tag `v0.1.0`),
-with the rest of the section explaining that Strange Loop Games' ModKit is deliberately
-*not* vendored here.
+`Assets/Art/AdvancedElectronics/Sprites/HRVSTR/HRVSTR_BladesMask.mask` is a Unity avatar
+mask. The maintainer authored it himself — nobody else touched it, and it is not a copy of
+anything. From that fact a conclusion was drawn that felt obvious: our file, our licence, so
+it is LGPL-3.0-or-later like the rest of the project, even though it sits in a folder full of
+Phlo123's CC BY-SA 4.0 drone art.
 
-Then a third party contributed art. The HRVSTR-01 drone chassis — mesh, textures, rig and
-animation clips — was created by GitHub user Phlo123 (https://github.com/Phlo123) and
-licensed CC BY-SA 4.0, not LGPL. It landed in the commit `feat(art): add the HRVSTR-01
-harvest drone model, materials, and animator`. Nothing about that commit tripped an alarm.
-The build kept building, the bundle kept bundling, and the README kept asserting a claim
-that had stopped being true.
+That was wrong, and it was recorded confidently in several places at once — in this document,
+in the licence file of the day, and in the procedure telling future contributors to enumerate
+covered files individually *because* of this case. The mask was described as "the sharpest
+expression of the boundary": same folder as the contributed files, named after the contributed
+model, authored against the contributed rig, and *ours*, under LGPL.
 
-The gap is measurable: the model landed on 2026-08-03 and the attribution was written on
-2026-08-08, in `docs(license): attribute the HRVSTR-01 drone to Phlo123 under CC BY-SA 4.0`
-— 46 commits later. For that whole window the repository publicly claimed authorship of
-work it did not author. This repository is public on GitHub and the mod is published on
-mod.io, so that window was not private.
+The reasoning underneath was: we made this file, therefore we license it. That answers
+**authorship** — who holds copyright in the new contribution — and then silently substitutes
+it for **licence**, which is a different question: under what terms may this contribution be
+distributed, given what it was built from.
 
-The fix was not one file. It was three placements, plus a correction to the claim that had
-expired.
+The maintainer corrected it, in his words:
+
+> The blade mask file was done by me but it's covered in the same CC license because that is
+> exactly what that license says: I am distributing remixed work under the same terms.
+
+The mask is an avatar mask authored *against Phlo123's rig*. That makes it an adaptation, and
+CC BY-SA's ShareAlike condition says adaptations go out under the same licence. It is CC
+BY-SA 4.0, like everything else in that folder.
+
+The wrong version had already shipped: the carve-out was in the `v0.2.0` release zip, public
+on mod.io, before the correction landed in `docs(license): the avatar mask is an adaptation,
+so it carries the same licence`.
 
 ## Guidance
 
-**Put the notice wherever the asset can travel, and treat the repository as the least
+### What decides the licence
+
+**The question is not "who made this file" and not "where does this file live". It is "what
+was this made from, and what does that thing's licence say about derivatives?"**
+
+For the mask, the first half is visible in the file itself. It is a list of transform paths
+lifted from Phlo123's rig, each with a weight:
+
+```yaml
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_L1/Arm_L2/Arm_L3/DrillL/DrillL_Hammer/DrillL_Bit
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Blades_BL
+    m_Weight: 1
+```
+
+Every meaningful line names a bone in someone else's armature. Strip the rig away and the file
+means nothing — it is not merely stored next to the model, it is written in the model's
+vocabulary. That is what makes it derived rather than incidental.
+
+The second half is in the licence, and is worth reading in the licence's own words rather than
+a paraphrase — paraphrase is how the error was produced. `LICENSE-ART` is the verbatim CC
+BY-SA 4.0 legal code. Section 1(a), at `LICENSE-ART:73-81`, defines what counts:
+
+> Adapted Material means material subject to Copyright and Similar
+> Rights that is derived from or based upon the Licensed Material
+> and in which the Licensed Material is translated, altered,
+> arranged, transformed, or otherwise modified in a manner requiring
+> permission under the Copyright and Similar Rights held by the
+> Licensor.
+
+Section 3(b), at `LICENSE-ART:273-285`, is the obligation:
+
+> b. ShareAlike.
+>
+> In addition to the conditions in Section 3(a), if You Share
+> Adapted Material You produce, the following conditions also apply.
+>
+> 1. The Adapter's License You apply must be a Creative Commons
+> license with the same License Elements, this version or
+> later, or a BY-SA Compatible License.
+
+Note the phrase "Adapted Material **You produce**". The licence has already anticipated the
+case where you are the author of the new thing — that is the only case ShareAlike is about.
+Authorship is assumed by the clause, not an exemption from it. "License Elements" at
+`LICENSE-ART:109-111` are "Attribution and ShareAlike", which LGPL-3.0-or-later plainly is
+not. Applying LGPL to the mask is not something this licence leaves open.
+
+**Prefer the model that needs no exception.** The wrong rule required a carve-out: a named
+file, listed against the folder, with an explanation of why it was special. The right rule
+deletes all of that — the folder is one licence, so `README.md` scopes by folder and stops.
+That asymmetry is a usable signal. When a licensing conclusion forces you to write an
+exception, look again at the premise that produced it.
+
+**Folder adjacency is a red herring in both directions.** The wrong rule was built on the
+observation that "same folder does not mean same licence" — true about filesystems, useless as
+a test. A derived file dropped in an unrelated directory is still derived; an independent file
+placed among licensed art is still independent. Derivation decides, and derivation is about
+provenance, not path.
+
+**Frame the answer as a recorded decision, not a ruling.** This describes what CC BY-SA 4.0's
+own text requires and what this project concluded about one file. It is not legal advice and
+does not generalise to licences nobody here has read.
+
+### Where the notice has to travel
+
+**Put the notice wherever the asset can end up, and treat the repository as the least
 important of those places.**
 
-The drone model does not only live in `Assets/Art/AdvancedElectronics/Sprites/HRVSTR/`. It
-is baked into `AdvancedElectronics.unity3d`, which is shipped in a zip to server admins who
-download it from mod.io and will very likely never see the GitHub repo. An asset gets
-lifted out of its repository as a matter of routine — that is what a build *is*. A notice
-that only exists in the repo is a notice attached to the one copy that needs it least.
+The drone model does not only live in the repo. It is baked into `AdvancedElectronics.unity3d`
+and shipped in a zip to server admins who download it from mod.io and will very likely never
+see GitHub. An asset gets lifted out of its repository as a matter of routine — that is what a
+build *is*. A notice that exists only in the repo is attached to the one copy that needs it
+least. The bundle went from roughly 1 MB to 6.7 MB when the model arrived; those bytes are the
+argument in one number.
 
-So this project records the attribution in three places, each aimed at a different reader:
+So the notice lives in three places, each aimed at a different reader:
 
-1. **`LICENSE-ART.md` at the repo root** — the authoritative, complete record. It names the
-   creator and links their profile (`LICENSE-ART.md:8-11`), lists the exact covered files
-   (`LICENSE-ART.md:13-24`), states the practical obligations in plain words
-   (`LICENSE-ART.md:32-36`), and draws the boundary against the code
-   (`LICENSE-ART.md:38-41`). This is for someone reading the source.
+1. **`LICENSE-ART` at the repo root** — the verbatim CC BY-SA 4.0 legal code, nothing else,
+   the way `LICENSE` holds the LGPL text. For someone reading the source.
+2. **The `Attribution` section of `README.md`** (`README.md:281-287`) — who made it, what it
+   covers, scoped by folder, pointing at `LICENSE-ART` for terms. For someone evaluating the
+   project.
+3. **`LICENSE-ART.txt` inside the shipped zip**, beside `LICENSE.txt`, staged by
+   `scripts/package-release.sh:122`, with the attribution repeated in the generated
+   `README.txt`. For whoever ends up with the artifact and no context at all.
 
-2. **A `CREDITS` section in the release `README.txt`** — generated by the packaging script's
-   heredoc at `scripts/package-release.sh:291-301`, immediately above the `LICENSE` section
-   at `:303-313` that explains the two licences coexist. This is for the server admin who
-   opens the readme and reads nothing else.
+**A blanket "everything here is our own work" claim has an expiry date.** `README.md` carried
+exactly that sentence, and it stopped being true the moment the model landed. Nothing
+enforces it — no compiler, no test, no CI job diffing the contributor list against the licence
+file. It stayed wrong for 46 commits across five days in a public repository. Re-read it
+whenever a contribution arrives.
 
-3. **`LICENSE-ART.txt` inside the shipped zip**, beside `LICENSE.txt` — staged by
-   `scripts/package-release.sh:122`, a plain `cp` of `LICENSE-ART.md` renamed to `.txt`
-   alongside the existing `cp LICENSE … LICENSE.txt` at `:117`. The comment above it
-   (`scripts/package-release.sh:119-121`) states the reason outright: the model ships inside
-   the bundle, so the notice has to travel in the zip, not only in a repository the admin
-   may never look at. This is for whoever ends up with the artifact and no context at all.
-
-**Treat "everything here is ours" as a claim with an expiry date.** Nothing enforces it. No
-compiler checks it, no test asserts it, no CI job diffs the contributor list against the
-licence file. It is true only until the next contribution, and then it is silently false.
-The revised `README.md:274-288` now leads with the exception rather than the blanket claim:
-the model paragraph comes first (`:276-282`) and the "Everything **else** tracked in this
-repository is our own work" sentence follows at `:284`, scoped by what precedes it. That
-word "else" is the whole point — the sweeping statement now has something to sweep around.
-
-**Draw the boundary between the licences explicitly, and do not let folder membership decide
-it.** The two licences here coexist; they do not conflict. The ShareAlike condition attaches
-to the model and to adaptations of the model. The mod's C# and the Unity work built *around*
-the model stay LGPL, because they are separate works distributed together rather than one
-derived from the other. That is the position this project took and recorded at
-`LICENSE-ART.md:38-41` and again in the shipped readme at `scripts/package-release.sh:307-309`
-— it is a documented decision about these particular works, not a general ruling about how
-CC BY-SA interacts with code.
-
-The sharpest expression of the boundary is the carve-out at `LICENSE-ART.md:26-27`:
-`HRVSTR_BladesMask.mask` sits in the same folder as the contributed files, is named after
-the contributed model, and is authored against the contributed rig — and it is ours, under
-LGPL. Same folder does not mean same licence. Someone auditing by directory would get that
-one wrong in both directions, and the file list plus the carve-out is what stops them.
-
-**Verify from the artifact, not from the tree.** The repo having a `LICENSE-ART.md` proves
-nothing about the zip. Open the zip and read the file out of it.
+**Verify from the artifact, not from the tree.** The repo having a `LICENSE-ART` proves
+nothing about the zip. Read the file back out of the archive; a green `git status` is not
+evidence.
 
 ## Why This Matters
 
-Attribution under CC BY-SA is a *condition of the licence*, not a courtesy. The permission
-to use the model is conditioned on giving credit, linking the licence, and indicating
-changes. A notice that never reaches the person holding the asset does not satisfy that
-condition in any way that matters, however carefully it is written in a repo they never
-visit.
+**Nothing catches a licensing error.** The wrong carve-out compiled, bundled, packaged,
+uploaded and installed without a murmur. The tests passed. The release script's staleness
+check passed. The documentation validators passed. There is no failing test for a licence
+mistake — the only detector in the loop is a person who happens to think about it. That is how
+a wrong statement travelled from a doc into the licence file, into `README.md`, into a shipped
+`README.txt`, and out to mod.io as part of `v0.2.0`.
 
-The failure mode is also uniquely quiet. Most correctness problems in this project announce
-themselves — a build error, a missing prefab, a drone that will not fly. A missing licence
-notice announces nothing. It compiles, bundles, packages, uploads and installs cleanly, and
-the first signal is somebody else noticing. Between `v0.1.0` and the attribution commit, the
-only thing that would have surfaced the problem was a human remembering.
+**The error pointed the wrong way, which is the worse direction.** Claiming a permissive
+licence over an adaptation of someone else's copyleft work understates their terms to everyone
+downstream. Someone who took the mask on the strength of an LGPL claim would have been misled
+by this project, not by Phlo123. Copyleft was a term the contributor chose deliberately, and
+quietly narrowing it on his behalf is a bigger failure than a missing credit.
 
-There is a second cost beyond compliance: contributed work should be *visibly* contributed.
-Phlo123 made the single most visible object in the mod. A credit that only exists where the
-credited person's collaborators look is not really a credit.
-
-And the boundary matters in the other direction too. Being vague about where ShareAlike
-stops invites a future maintainer — or a downstream redistributor — to assume it swallows
-the whole mod and either over-restrict the code or quietly relicense it. Writing the
-boundary down once, in the file that ships, removes that ambiguity for everyone who comes
-after.
+**The confusion is structural, not careless.** "I made this file" is true, verifiable, and
+arrives already sounding like an answer. It takes a deliberate second step to notice it
+answers a question about copyright ownership while the question on the table is about
+distribution terms. Both questions concern the same file, both have "me" as a plausible
+answer, and only one of them is settled by who did the work.
 
 ## When to Apply
 
-Apply this the moment any of the following is true:
+Apply the derivation test whenever you add or modify a file made *using* licensed material,
+which in a game-mod repo covers more than it first appears:
 
-- Someone else's asset enters the repository — a model, texture, sound, font, icon set, or
-  animation — regardless of how small it is or how obviously permissive the licence looks.
-- You are about to write, or leave standing, a sentence in `README.md` of the form
-  "everything here is ours". Re-check it against what actually landed since it was written.
-- You change what the packaging script stages into the zip, or add a new distribution
-  channel. A new output path is a new place the notice has to reach.
-- You add an asset into a folder that already contains third-party files, or derive an asset
-  from one. Record which side of the line it falls on before the folder's provenance becomes
-  ambiguous.
+- **Avatar masks, avatars and humanoid rig mappings** — written entirely in the source rig's
+  transform paths. This is the case that caught us.
+- **Retargeted or re-authored animation clips** — animating someone else's skeleton produces
+  curves keyed to their bone names.
+- **Materials authored on supplied textures**, and textures painted over a supplied layout.
+- **Meshes edited, decimated, re-topologised or kitbashed from a supplied base.**
+- **Icons or sprites rendered from a licensed model** — a render of a model is made from it.
 
-It does not apply to the ModKit and Eco client libraries. Those are deliberately not tracked
-here at all — they are account-gated downloads restored by each developer, covered by the
-Setup after cloning section of `README.md`, and the correct handling for them is
-non-redistribution rather than attribution.
+Apply the placement rule whenever the packaging changes: a new output path, a new distribution
+channel, or a new file staged into the zip is a new place the notice has to reach.
+
+Apply both whenever you are about to write a licence exception. The exception is the smell.
+
+**Where the line is genuinely unclear.** The mask is an easy case because its entire content is
+the rig's structure. Others are not, and pretending otherwise would replace one overconfident
+rule with another:
+
+- A **material** referencing a licensed texture by GUID contains none of its pixels. Adaptation,
+  or an independent work that points at one? Reasonable people differ.
+- A **prefab** instantiating a licensed model is arguably assembly rather than modification —
+  though a prefab whose hierarchy mirrors the model's internals starts to look like the mask.
+- A **build artifact** like the asset bundle contains the model outright. Not an interesting
+  question: the licensed bytes are in there, which is exactly why the notice ships in the zip.
+
+Where it is unclear, the cheap move is to license the ambiguous file under the stricter of the
+two and say so. Over-applying ShareAlike to one mask costs nothing; under-applying it is a
+public misstatement about someone else's work.
+
+None of this applies to Eco or the Eco ModKit. Those are never tracked here at all — the
+correct handling for them is non-redistribution rather than attribution, which is why
+`README.md` keeps them under a separate `Third Party` heading.
 
 ## Examples
 
-### What a future contributor does when the next asset arrives
+### The wrong reasoning, written out
 
-Work in this order. The order matters because step 4 verifies steps 1 through 3, and only
-the artifact can do that.
+> The mask is named after the drone. It lives in the drone's folder. It is authored against the
+> drone's rig. But we made it, so it is ours — LGPL, carved out of the contributed set.
 
-**1. Record it in `LICENSE-ART.md`.** Add a section for the new asset following the HRVSTR-01
-section as the template: creator name with a link, the licence with a link to its canonical
-text, and an explicit list of covered files with their repo-relative folder. List files
-individually. Do not write "everything under this folder" — the HRVSTR folder is exactly the
-case that would have been wrong, since `HRVSTR_BladesMask.mask` lives there and is not
-covered (`LICENSE-ART.md:26-27`). If you author anything against the contributed asset —
-a mask, a material, a controller — say so in the same section and name which licence it
-falls under.
+Every sentence before the "but" describes derivation. The "but" throws them all away in favour
+of a fact about authorship, and the conclusion follows from the discarded half. The tell is
+that the premises and the conclusion are about different things.
 
-Check the list both ways before moving on. Every path you listed must exist:
+### The right reasoning, same file
 
-```
-git ls-files 'Assets/Art/AdvancedElectronics/Sprites/HRVSTR/*'
-```
+*What was it made from?* Phlo123's rig — the file is a weighted list of his bone paths and
+means nothing without them.
 
-and every non-`.meta` file in that folder must either be in the list or in the carve-out.
-For HRVSTR-01 the folder holds seven assets: six listed at `LICENSE-ART.md:18-23` and
-`HRVSTR_BladesMask.mask` carved out. Nothing is unaccounted for. Note that the derived
-materials and the animator controller live elsewhere —
-`Assets/Art/AdvancedElectronics/Materials/` and `.../Animators/` — and are ours, which is
-what `LICENSE-ART.md:38-41` covers.
+*What does that licence say about derivatives?* `LICENSE-ART:73-81` calls material "derived
+from or based upon the Licensed Material" Adapted Material; `LICENSE-ART:273-285` says Adapted
+Material You produce must go out under a licence with the same License Elements.
 
-**2. Fix the claim in `README.md`.** Find the Third-party content section (`README.md:274`).
-If it still contains an unqualified "everything is ours" sentence, it is now false —
-correct it the way the drone commit did, by stating the exception first and scoping the
-blanket sentence with "else". Keep the README summary short and point at `LICENSE-ART.md`
-for the file list (`README.md:282`); two full copies of the file list will drift apart.
+*Therefore:* CC BY-SA 4.0. That the maintainer authored it is the reason ShareAlike is engaged
+at all, not a reason it is not.
 
-**3. Make it ship.** In `scripts/package-release.sh`, confirm the staging block still copies
-the notice into the mod folder (`:122`) and that the generated `README.txt` heredoc still
-carries a `CREDITS` section naming the creator (`:291-301`). If the new asset is from a
-different creator or under a different licence, extend the `CREDITS` text — it is
-hand-written prose in the heredoc, not generated from `LICENSE-ART.md`, so it does not
-update itself. Also update the header comment at `:11` if the set of files in the zip
-changes.
+### What the correct model let us delete
 
-**4. Verify from the zip, never from the repo.** Build the release, then read the notice
-back out of the artifact:
+The carve-out is gone from `README.md`, along with the per-file list it existed to qualify and
+the procedure telling contributors to enumerate covered files. What remains is one folder path
+and one licence name, plus one clause in the shipped readme — "and work adapted from them" —
+which covers the mask and every future mask without naming any of them.
 
-```
-python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); print('\n'.join(z.namelist())); print(z.read('AdvancedElectronics/LICENSE-ART.txt').decode())" dist/AdvancedElectronics-<version>-eco<game>.zip
-```
+### What is still LGPL, and why that is different
 
-You are checking two things: that `AdvancedElectronics/LICENSE-ART.txt` is a member of the
-archive, and that `AdvancedElectronics/README.txt` actually contains the `CREDITS` text.
-Passing means you read the creator's name out of the shipped bytes. A green `git status` is
-not evidence.
-
-### The two releases, side by side
-
-Running that check against both shipped zips shows the before and after concretely.
-
-`dist/AdvancedElectronics-0.1.0-eco0.14.0.0.zip` predates the model. Its members are the two
-DLLs, a 1,023,183-byte `AdvancedElectronics.unity3d`, `LICENSE.txt` and `README.txt`. There
-is no `LICENSE-ART.txt`, and its `README.txt` has no `CREDITS` section — correctly, because
-at that point there was nothing to credit.
-
-`dist/AdvancedElectronics-0.2.0-eco0.14.0.0.zip` contains six members: the two DLLs, a
-6,723,324-byte `AdvancedElectronics.unity3d`, `LICENSE.txt` (7,817 bytes), `LICENSE-ART.txt`
-(2,122 bytes) and `README.txt` (9,814 bytes). Reading `LICENSE-ART.txt` out of the archive
-gives the full notice — it names Phlo123, links CC BY-SA 4.0, and includes the
-`HRVSTR_BladesMask.mask` carve-out. Reading `README.txt` out of the archive gives the
-`CREDITS` block with the creator's name and profile URL.
-
-The jump in bundle size from roughly 1 MB to roughly 6.7 MB is the model itself arriving
-inside the bundle. That number is the argument for placement 3 in one line: the thing the
-licence covers is now inside the artifact, so the notice has to be inside the artifact too.
+The C# under `EcoServerMod/`, the navigation core, the dock prefab and the Unity scene are not
+made from Phlo123's model. They sit alongside it in a repository and travel alongside it in a
+zip, which is distribution together, not derivation. They remain LGPL-3.0-or-later. That is
+compatible with the mask being CC BY-SA, because the mask fails the test the code passes: it
+was made *from* the licensed material.
 
 ## Related
 
-- `docs/solutions/conventions/excluding-third-party-from-a-unity-mod-repo.md` — the opposite
-  half of the same question. That one is about third-party content that must stay *out* of a
-  public repo because redistribution is not permitted; this one is about content that may come
-  in, and what has to be attached to it when it does.
-- `docs/solutions/conventions/a-defensive-rule-outlives-the-danger-it-answered.md` — the general
-  shape of why "everything here is our own work" went stale without anyone noticing: a claim
-  keeps standing after the thing that made it true has changed, because nothing links the two.
-- `docs/solutions/conventions/a-document-stored-in-its-own-generator-has-no-past-tense.md` — the
-  same generated readme, a different failure. Worth knowing about here because the `CREDITS`
-  block is hand-written prose inside that heredoc rather than generated from `LICENSE-ART.md`,
+- `docs/solutions/conventions/excluding-third-party-from-a-unity-mod-repo.md` — the other half
+  of the licensing picture: material that must stay out of a public repo entirely because
+  redistribution is not permitted.
+- `docs/solutions/conventions/a-defensive-rule-outlives-the-danger-it-answered.md` — the shape
+  of why "everything here is our own work" went stale unnoticed: a claim keeps standing after
+  the thing that made it true has changed.
+- `docs/solutions/conventions/a-document-stored-in-its-own-generator-has-no-past-tense.md` —
+  the same generated readme, a different failure. Its attribution block is hand-written prose,
   so it will not update itself when the next asset arrives.
+- `docs/solutions/runtime-errors/override-animator-layer-without-avatar-mask-overwrites-base-layer.md`
+  — what `HRVSTR_BladesMask.mask` does and why the animator needs it. A file can be technically
+  necessary, fully understood, and still misfiled on licence; the two audits are independent.
