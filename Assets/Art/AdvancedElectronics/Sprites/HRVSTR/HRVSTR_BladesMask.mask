@@ -1,0 +1,69 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!319 &31900000
+AvatarMask:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: HRVSTR_BladesMask
+  m_Mask: 01000000010000000100000001000000010000000100000001000000010000000100000001000000010000000100000001000000
+  m_Elements:
+  - m_Path: 
+    m_Weight: 1
+  - m_Path: HRVSTR_Armature
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_L1
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_L1/Arm_L2
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_L1/Arm_L2/Arm_L3
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_L1/Arm_L2/Arm_L3/CollectorL
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_L1/Arm_L2/Arm_L3/CollectorL/CollectorL_F1
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_L1/Arm_L2/Arm_L3/CollectorL/CollectorL_F2
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_L1/Arm_L2/Arm_L3/CollectorL/CollectorL_F3
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_L1/Arm_L2/Arm_L3/DrillL
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_L1/Arm_L2/Arm_L3/DrillL/DrillL_Hammer
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_L1/Arm_L2/Arm_L3/DrillL/DrillL_Hammer/DrillL_Bit
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_R1
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_R1/Arm_R2
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_R1/Arm_R2/Arm_R3
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_R1/Arm_R2/Arm_R3/CollectorR
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_R1/Arm_R2/Arm_R3/CollectorR/CollectorR_F1
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_R1/Arm_R2/Arm_R3/CollectorR/CollectorR_F2
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_R1/Arm_R2/Arm_R3/CollectorR/CollectorR_F3
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_R1/Arm_R2/Arm_R3/DrillR
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_R1/Arm_R2/Arm_R3/DrillR/DrillR_Hammer
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Arm_R1/Arm_R2/Arm_R3/DrillR/DrillR_Hammer/DrillR_Bit
+    m_Weight: 0
+  - m_Path: HRVSTR_Armature/Drone_Base/Blades_BL
+    m_Weight: 1
+  - m_Path: HRVSTR_Armature/Drone_Base/Blades_BR
+    m_Weight: 1
+  - m_Path: HRVSTR_Armature/Drone_Base/Blades_FL
+    m_Weight: 1
+  - m_Path: HRVSTR_Armature/Drone_Base/Blades_FR
+    m_Weight: 1
+  - m_Path: HRVSTR_Armature/Drone_Base/Storage
+    m_Weight: 0
+  - m_Path: HRVSTR_Mesh
+    m_Weight: 0

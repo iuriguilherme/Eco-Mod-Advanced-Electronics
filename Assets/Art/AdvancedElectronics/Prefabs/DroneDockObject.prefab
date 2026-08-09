@@ -124,7 +124,6 @@ GameObject:
   - component: {fileID: 2451922522235263479}
   - component: {fileID: 7812581730423784706}
   - component: {fileID: 8204056281588536597}
-  - component: {fileID: 3445637808049236089}
   - component: {fileID: 98448096557609478}
   - component: {fileID: 1531191623500053909}
   m_Layer: 0
@@ -273,20 +272,8 @@ MonoBehaviour:
   hasOccupancy: 1
   overrideOccupancy: 0
   size: {x: 4, y: 1, z: 4}
-  occupancyOffset: {x: -2, y: 0, z: -2}
+  occupancyOffset: {x: 0, y: 0, z: 0}
   interactable: 1
---- !u!114 &3445637808049236089
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8664505744619195705}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f5e9a5e84d674944caf746d0c8203b13, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Eco.Client::DockReadoutDisplay
 --- !u!114 &98448096557609478
 MonoBehaviour:
   m_ObjectHideFlags: 0

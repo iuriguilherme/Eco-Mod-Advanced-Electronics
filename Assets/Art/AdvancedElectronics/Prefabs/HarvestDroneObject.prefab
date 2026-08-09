@@ -79,7 +79,6 @@ GameObject:
   - component: {fileID: 7434835025252429453}
   - component: {fileID: 3216015294697999360}
   - component: {fileID: 58323915811228022}
-  - component: {fileID: 1552085827048755049}
   m_Layer: 0
   m_Name: HarvestDroneObject
   m_TagString: ModObject
@@ -117,7 +116,7 @@ Animator:
   m_Controller: {fileID: 9100000, guid: 4c03728eac44d2c438355e16a3a58cc4, type: 2}
   m_CullingMode: 1
   m_UpdateMode: 0
-  m_ApplyRootMotion: 1
+  m_ApplyRootMotion: 0
   m_LinearVelocityBlending: 0
   m_StabilizeFeet: 0
   m_AnimatePhysics: 0
@@ -290,18 +289,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 3.3535576, y: 1.0335332, z: 2.5491564}
   m_Center: {x: 0, y: 0.0054582357, z: -0.34553373}
---- !u!114 &1552085827048755049
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1269497546054738757}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9fa88347c6604f36a481aa11af32bc1d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Eco.Client::DroneAnimatorStates
 --- !u!1 &1982365404100011558
 GameObject:
   m_ObjectHideFlags: 0
