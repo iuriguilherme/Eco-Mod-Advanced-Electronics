@@ -1,7 +1,7 @@
 ---
 title: "A closed option set caps the answer at what you already thought of"
 date: 2026-08-01
-last_updated: 2026-08-09
+last_updated: 2026-08-10
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -36,8 +36,10 @@ that a closed option set has a ceiling, and the ceiling is the asker's own model
 **Check that the decision is theirs before designing the menu.** If you would carry out either option
 yourself and the maintainer would notice no difference in the repository, in something they can see
 running, or in what they are committed to, the question is yours to answer and no menu is the right
-one — see `a-decision-about-state-you-own-is-not-the-users-to-make.md`. Everything below assumes that
-gate has been passed.
+one — see `a-decision-about-state-you-own-is-not-the-users-to-make.md`. Check too that the costs you
+attach to the options are ones you verified rather than ones you assumed — see
+`a-remembered-capability-and-a-cited-file-are-claims.md`. Everything below assumes both gates have
+been passed.
 
 **Distinguish choosing from proposing.** Two very different questions wear the same interface.
 
@@ -50,7 +52,10 @@ wear live, how should removal be gated. Here the option set is a sample of your 
 listing three makes it look like a survey of the space when it is a survey of your last ten minutes.
 
 **Apply the invention test before building the menu.** Ask where the options came from. If you
-observed them — in the code, in the domain, in the user's own words — enumerate freely. If you
+observed them — in the code, in the domain, in the user's own words — enumerate freely. *Observed*
+means you opened it, this session. A remembered path and a capability inferred from a single absent
+grep hit both feel observed and are neither, and a plausible naming convention is the most
+convincing form the illusion takes. If you
 *invented* them, say so in the question, or ask openly, or offer the options while explicitly inviting
 a fourth. The tell is straightforward: writing the option list felt like design work rather than
 description.
@@ -156,3 +161,7 @@ RIGHT (open, because the answer depends on how the game actually plays):
   prior question. That one asks whether the decision is the maintainer's at all; this one assumes it
   is and asks whether the options are wide enough. An answer from outside the menu can mean either,
   so check ownership before widening.
+- `docs/solutions/workflow-issues/a-remembered-capability-and-a-cited-file-are-claims.md` — the other
+  precondition. That one checks the premise the options rest on; this one checks whether the options
+  are wide enough. A menu can clear both gates and still misfire, because the maintainer chose
+  correctly from prices that were never verified.

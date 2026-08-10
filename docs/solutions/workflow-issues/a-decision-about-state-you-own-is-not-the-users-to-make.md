@@ -1,6 +1,7 @@
 ---
 title: "A decision about state you own is not the user's to make; the gap that prompted it was literacy, not tooling"
 date: 2026-08-09
+last_updated: 2026-08-10
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -180,3 +181,7 @@ mentioning the bundling only as a note in passing if it matters at all.
 - `docs/solutions/workflow-issues/finish-the-plans-main-line-before-chasing-its-gated-bet.md` — the
   adjacent failure of carried state: an unresolved item re-listed across turns without ever being
   re-examined.
+- `docs/solutions/workflow-issues/a-remembered-capability-and-a-cited-file-are-claims.md` — the other
+  half of the same escalation. This one asks whether the decision was yours to hand over; that one
+  asks whether the premise you handed over with it was ever checked. A question can pass the
+  ownership test here and still spend the maintainer's attention twice.

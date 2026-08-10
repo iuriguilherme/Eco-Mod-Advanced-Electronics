@@ -1,7 +1,7 @@
 ---
 title: "The compile target decides what exists, not the source tree next to it"
 date: 2026-08-01
-last_updated: 2026-08-09
+last_updated: 2026-08-10
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -46,6 +46,12 @@ It was caught by the maintainer mentioning in passing that the feature was a v14
 **The compile target is the authority on what exists. Check it before designing on anything new.**
 Not the source tree, not the deployed server, not another mod. The question "does this type exist"
 has exactly one correct place to ask it: the reference assemblies the project actually resolves.
+
+**PRESENT answers existence, not behaviour.** The check settles whether you can name a type, not
+whether it does what you remember it doing — the two present types in the Examples below compiled
+and were still the wrong foundation. When the claim is about what a tool or an API *produces*,
+presence is the first question rather than the last, and a PRESENT that is read as a yes to the
+larger question is how this discipline fails while appearing to pass.
 
 **The check is seconds long.** Managed assembly metadata stores type names as plain strings, so a
 binary grep answers it without any tooling:
@@ -108,7 +114,9 @@ every decision that inherits the assumption.
 
 ## Examples
 
-The probe that settled it, run against the package the project resolves:
+The probe that settled it, run against the package the mod resolved **at the time**. The mod has
+since retargeted and no longer resolves this package — see the Guidance above for the probe to run
+today. The snippet is kept because the result is the incident:
 
 ```bash
 D=~/.nuget/packages/eco.referenceassemblies/0.13.0.4-beta-release-1024/lib/net10.0/Eco.Gameplay.dll
@@ -158,3 +166,7 @@ Read together these say *the trees are at different versions*. Read one after th
   rather than of APIs.
 - `docs/solutions/conventions/requirecomponent-binds-at-creation-not-retroactively.md` — another case
   where what the source *says* and what a running world *has* diverge silently.
+- `docs/solutions/workflow-issues/a-remembered-capability-and-a-cited-file-are-claims.md` — where this
+  check stops. There the remembered thing existed in the tree, ran, and produced the very classes in
+  question; what was false was its output, so the presence probe would have returned PRESENT and
+  confirmed the wrong belief.

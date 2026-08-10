@@ -1,7 +1,7 @@
 ---
 title: "A gate that discovers nothing passes everything"
 date: 2026-07-30
-last_updated: 2026-08-03
+last_updated: 2026-08-10
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -112,6 +112,14 @@ same failure: a test suite that globs for `*_test.rb` and finds none passes; a l
 `files:` pattern matching nothing reports clean; a reflection-based registry check that filters on a
 base type nobody inherits from any more validates an empty set. In all of them the reported result is
 *correct* and *useless*, which is why it survives.
+
+**The corpus can also be narrowed by a rule the check does not contain.** Every narrowing above is
+authored by the check's own author and visible in the check's own text — an anchor, a glob, a base-type
+filter. Some are not. A search scoped to the tracked tree inherits `.gitignore`; a modern searcher
+skips ignored and hidden paths by default. The identical command is then correct in one repo and
+structurally blind in another, with nothing in the command to say which. Before reading an empty
+result as an answer, confirm the corpus you searched could have contained the thing — that is a
+different question from whether your pattern was right.
 
 ## When to Apply
 

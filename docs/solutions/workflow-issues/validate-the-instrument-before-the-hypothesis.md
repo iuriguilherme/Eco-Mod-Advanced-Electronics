@@ -1,6 +1,7 @@
 ---
 title: "Validate the instrument before the hypothesis"
 date: 2026-07-31
+last_updated: 2026-08-10
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -149,3 +150,6 @@ grep -oE 'at [A-Za-z0-9_.+<>]+' capture.log | sort | uniq -c | sort -rn | head
   instinct applied to deploys: confirm the artifact under test is the one running.
 - `docs/solutions/workflow-issues/eco-mod-batched-live-testing.md` — batching restarts, which assumes
   each batch actually tests what it claims.
+- `docs/solutions/workflow-issues/a-remembered-capability-and-a-cited-file-are-claims.md` — the third
+  way an instrument misleads: not broken, but never valid for the question. A grep aimed at a file
+  that could not have held the evidence either way returns zero, and the zero reads as a result.
