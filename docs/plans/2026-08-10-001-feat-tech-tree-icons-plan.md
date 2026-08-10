@@ -29,7 +29,7 @@ Extend the mod's existing placeholder-icon command to cover all four Advanced El
 
 The mod declares four tech-tree entries that a player sees as pictures: `AdvancedElectronicsSkill`, `AdvancedElectronicsSkillBook`, `AdvancedElectronicsSkillScroll`, and `EngineeringResearchPaperPostModernItem`. Three have flat 64×64 placeholder PNGs generated on 30 July. The skill has no icon asset at all. None have been verified in a running client — `Bundle, deploy, and live-verify` has been open since the day the placeholders were made.
 
-The mechanism itself was never written down, and two of the beliefs the team held about it were wrong. A repo task points at an `Icons.md` that has never existed in this repository; the file lives only in Strange Loop Games' internal wiki checkout. And the "templating" remembered as an icon-authoring aid is the tech-tree T4 transform, which generates C# class declarations from a spreadsheet and emits no icon metadata whatsoever.
+The mechanism itself was never written down. A repo task points at `Icons.md` without naming the tree that holds it, and the file is not in this repository — it is the Eco wiki checkout's, at `../../Eco.wiki/Icons.md`, 453 lines. And the "templating" remembered as an icon-authoring aid is the tech-tree T4 transform, which generates C# class declarations from a spreadsheet and emits no icon metadata for the classes in question.
 
 The cost is not player-visible breakage. The base game itself ships with missing icons, so a missing icon degrades quietly rather than failing. The cost is that nobody can tell whether these four work, what would make them work, or whether a future entry will silently repeat the problem — and the one binding failure mode is invisible by construction. An icon bound to the wrong class renders perfectly and looks like success.
 
@@ -81,7 +81,7 @@ The dotted edge is the trap. The PNG filename is a human convenience only; the G
 **Documentation**
 
 - R9. The mechanism is written into the repository's learnings so a future entry can be given an icon without rediscovering it: what binds to what, what does not bind, and where the authoritative specification actually lives.
-- R10. The existing repo task that directs a reader to an `Icons.md` inside this repository is corrected, since no such file exists here.
+- R10. The existing repo task citing `Icons.md` names the tree that holds it, so a reader can find the guidance instead of concluding it is missing.
 
 ### Key Flows
 
@@ -153,7 +153,8 @@ Evidence gathered during this brainstorm. Paths inside the mod repository are re
 - `Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs:64` — the icon table; `:166` — the `Finish All Item Icons` menu command; `:256` — the per-item finisher; `:246-250` — the comment stating the PNG filename carries no binding and the GameObject name is the only thing bound.
 - `Assets/Art/AdvancedElectronics/Sprites/Icons/` — nine existing 64×64 placeholders; no file for the skill.
 - `Assets/EcoModKit/Prefabs/ItemTemplate.prefab` and `IconTemplate.prefab` — each carries a `Background` and a `Foreground` child with sprites already assigned; the mod supplies the foreground.
-- `Assets/EcoModKit/Docs/` — contains only `README.md`. There is no `Icons.md` anywhere in this repository. `README.md:8` is written for Eco 0.9.6 and predates the Addressables migration, so its asset-loading guidance does not describe the version this mod targets.
+- `Assets/EcoModKit/Docs/` — contains only `README.md`. `README.md:8` is written for Eco 0.9.6 and predates the Addressables migration, so its asset-loading guidance does not describe the version this mod targets.
+- Eco wiki checkout, `../../Eco.wiki/Icons.md` — 453 lines, the authoritative icon specification. It is not in this repository and no in-repo document points at it, which is why a task citing it by bare filename read as citing something missing.
 - Eco source checkout, `Server/Eco.Gameplay/Items/IHasIcon.cs:11` — the icon name resolves to the type name, requiring no attribute.
 - Eco source checkout, `Server/Eco.Gameplay/Skills/Skill.cs:36` and `Server/Eco.Gameplay/Items/Item.cs:29` — a skill derives from item, and item implements the icon interface. Skills, books, scrolls and research papers are one mechanism, not four.
 - Eco source checkout, `Server/Mods/__core__/AutoGen/Tech/Electronics.cs` — the vanilla Electronics skill, book and scroll carry no icon-related attribute of any kind.

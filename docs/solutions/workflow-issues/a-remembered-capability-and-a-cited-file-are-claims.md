@@ -29,12 +29,16 @@ small, well-bounded task. Three separate assertions about the toolchain turned o
 it was scoped, and all three came from different places:
 
 - the **maintainer's memory** of a capability the wiki supposedly documents,
-- a **repo task** citing a file by name,
+- a **repo task** citing a file by name but not by tree,
 - and the **agent's own claim** about what vanilla art exists on disk.
 
 None of the three was checked by anything. A memory has no validator. A task's cited resource is
 never resolved by the tool that stores the task. And an agent's mid-conversation assertion is
 believed the moment it is typed, because the person reading it is the person who cannot check it.
+
+All three failures turned out to have one shape: a search run against a corpus that could not have
+held the answer, with the empty result read as the answer. The wrong file, the wrong tree, the wrong
+directory. Two of the three were caught only because someone else looked.
 
 The task's whole subject matter made the problem worse rather than better: a missing icon in Eco
 degrades quietly. The engine falls back to a placeholder sprite rather than raising, and Eco's own
@@ -88,14 +92,24 @@ the C# rather than the art. Discarding the lead outright would have thrown away 
 content pipeline. Downgrade the claim from *capability* to *pointer*, then find out what the pointer
 actually points at.
 
-**Resolve a task's cited resource before doing the task.** A task pending since 30 July read
-"Replace placeholder item icons using `Icons.md` guidance". `Assets/EcoModKit/Docs/` contains exactly
-two files, `README.md` and its `.meta`; a search of the tracked tree for the cited name returns
-nothing:
+**Resolve a task's cited resource before doing the task — and widen the search before calling it
+missing.** A task pending since 30 July read "Replace placeholder item icons using `Icons.md`
+guidance". `Assets/EcoModKit/Docs/` contains exactly two files, `README.md` and its `.meta`, and a
+search of this repository returns nothing:
 
 ```bash
 find . -iname "icons.md" -not -path "./Library/*"    # no output
 ```
+
+That was read as *the task cites a file that does not exist*, and that conclusion was wrong. The
+maintainer supplied the correction: `Icons.md` is real, 453 lines of it, in the Eco wiki checkout at
+`../../Eco.wiki/Icons.md` — a sibling this project already cites by that exact relative path in
+`docs/ideation/2026-07-27-mod-ui-vocabulary.md:12`.
+
+So the task was **under-specified, not false**. It named a real document without saying which tree
+held it, and the search covered one tree. `.` is not the corpus; it is one of several this project
+works across. Before concluding a citation is bad, search the sibling checkouts the repo already
+names — the same reflex as reaching for the vendor source tree when a type is not in this one.
 
 **Search the disk, not the index.** `git ls-files | grep -i "icons\.md"` also returns nothing here,
 and it is the wrong check: `.gitignore:147` is `/Assets/EcoModKit/`, so `git ls-files Assets/EcoModKit`
@@ -114,10 +128,11 @@ trackedness is the question being asked, as in
 showing up in the index is the failure being tested for. Index for "is it tracked", disk for
 "does it exist".
 
-The real `Icons.md` does exist, 453 lines of it, but only in a separate vendor wiki checkout outside
-this repository. The task had carried a false premise for ten days, and nothing flagged it, because
-nothing validates that a task's cited resource resolves. That check is one command and belongs at the
-*start* of the task, not after someone has gone looking through `Assets/EcoModKit/Docs/` by hand.
+What the task genuinely lacked is a location, and nothing supplies one: no tool resolves a task's
+citation, so an unqualified filename sits there for ten days looking actionable and is actionable
+only to someone who already knows which tree it lives in. Write the tree into the citation when the
+task is created. That costs a few words at authoring time and saves the reader from having to
+reconstruct it — or, as here, from concluding the file was never real.
 
 **Send an independent verifier before a claim reaches the maintainer's decision, not after.**
 Mid-brainstorm the agent asserted that loose vanilla per-class icon files existed at
@@ -176,7 +191,10 @@ subagent dispatched a few minutes earlier than it actually was.
 - Any request containing "IIRC", "I think there's a", "the wiki has", or "it should be in your tasks
   to research" — before starting the research it authorises.
 - Before starting any task whose text names a file, document, script, or menu command: resolve the
-  name against the tracked tree first.
+  name on disk first, and across the sibling checkouts this project works with — not this repository
+  alone. A name that resolves nowhere in one tree has not been shown to resolve nowhere.
+- When authoring a task that cites a resource: name the tree as well as the file, so the reader does
+  not have to reconstruct it or wrongly conclude it never existed.
 - Before writing a sentence that asserts a file, directory, asset, API, or menu item exists, when you
   have not opened it this session.
 - Before a claim about the toolchain becomes an input to a maintainer's decision — dispatch the
@@ -193,10 +211,12 @@ subagent dispatched a few minutes earlier than it actually was.
 The three checks, and what each returned in this session:
 
 ```bash
-# 1. Does the task's cited resource exist here at all?
+# 1. Does the task's cited resource exist -- and if not here, where?
 #    Disk search, not `git ls-files` -- the vendored SDK is git-ignored.
 find . -iname "icons.md" -not -path "./Library/*"
-#   (no output)  -> the task had cited a file outside this repository for ten days
+#   (no output)  -> NOT an answer on its own. `.` is one tree of several.
+find ../.. -maxdepth 3 -iname "icons.md" 2>/dev/null
+#   ../../Eco.wiki/Icons.md   -> the task was under-specified, not wrong
 
 # 2. Does the surface that would OWN the capability carry its vocabulary?
 #    WRONG surface -- an asset-bundle exporter, which scores 0 either way:
