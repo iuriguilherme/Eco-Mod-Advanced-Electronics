@@ -115,6 +115,8 @@ the scene, not the name of the sprite supplying its icon. Naming the image corre
 artifact is named wrong fails exactly like any other mismatch, and is easier to miss because the
 file that looks like the asset is the one that binds nothing.
 
+Skills, skill books, skill scrolls and research papers are items for this purpose — a skill derives from item, and item is what declares an icon — so all four bind by class name through one mechanism rather than four. Nothing has to be declared to opt in: the bound name is the class's own name, and the icon attributes an item can carry govern redirection and opting *out*.
+
 ### Unrendered Object
 A placed object the server has, ticks, and reports correctly, but which the client cannot build — so
 it has no model, cannot be interacted with, and cannot be targeted by admin tools.
