@@ -1,7 +1,7 @@
 ---
 title: "What a server-only Eco mod can and cannot render on the stock client"
 date: 2026-07-24
-last_updated: 2026-08-01
+last_updated: 2026-08-10
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -42,7 +42,7 @@ readout "did not render" with no server-side error, the same failure class.
 > sibling placement-requirements doc.
 
 Treat client rendering as a **whitelist of proven surfaces**, not an open contract. For a
-server-only Eco mod on 0.13.0.4, the surfaces are:
+server-only Eco mod on 0.14, the surfaces are:
 
 **1. A mod-defined `WorldObjectComponent` tab renders — use it, with constraints.**
 A component with `[Serialized, CreateComponentTabLoc("Tab", true), HasIcon]` and
@@ -92,9 +92,12 @@ generated view fails to decode, and the failure takes the whole object with it: 
   project used four.** Anything below that reads as "a mod tab can only do X" should be checked
   against that list before it is believed — including the two bullets that follow.
 
-  *Verified by reading the client and the SLG wiki on 2026-07-27; which of these render correctly
-  from a mod component tab is NOT yet live-tested. See
-  `docs/ideation/2026-07-27-mod-ui-vocabulary.md` for the ranked candidates and the planned probe.*
+  *Verified by reading the client and the SLG wiki on 2026-07-27. The live probe has since run —
+  five rounds through `EcoServerMod/AdvancedElectronics/UIShowcaseComponent.cs`, ~20 templates
+  deployed, 2026-07-27 to 07-31. Per-template results, including which ones look like display and
+  crash on keystroke, are in
+  `docs/solutions/runtime-errors/autogen-template-binding-contract.md`; that file supersedes this
+  list wherever the two differ on a specific template.*
 
 - **The ceiling: a mod cannot ADD to that set, or ship client code.** Three independent
   mechanisms close it. Panel prefabs come from a serialized `GameObject[]` on a client prefab (a
@@ -183,7 +186,7 @@ generated view fails to decode, and the failure takes the whole object with it: 
   it looks.** `RequiredTag` filters client-side against `ViewClassInfo.Tags`
   (`Client/Assets/UI/Scripts/Utilities/SelectorPopupUI.cs:337-348`), which the server builds
   **once** while constructing the `ControllerManager` plugin
-  (`Eco.Core/Controller/ControllerMarshalerService.cs:367`, reached from `ControllerManager`'s
+  (`Eco.Core/Controller/ControllerMarshalerService.cs:379`, reached from `ControllerManager`'s
   cache build). Consequences:
   - A tag declared with a `[Tag("X")]` **attribute** on a type — including a mod type, or a
     vanilla item replaced via a `.override` file — **does** reach the client. Mod DLLs load and
@@ -207,12 +210,21 @@ generated view fails to decode, and the failure takes the whole object with it: 
   `AreaBonusComponent` (`Components/AreaBonusComponent.cs:140,143`) — itself a
   `WorldObjectComponent`. Because RPCs are compile-time methods, this gives a **fixed pool** of
   buttons gated per position, not a dynamic count.
-- **The escape hatch for custom client UI is a bundle prefab MonoBehaviour driven by
-  animated-states.** A mod ships its own MonoBehaviour on the WorldObject prefab (e.g. this
-  project's `DockReadoutDisplay`) that reads server-synced `StringStates`/`FloatStates` (pushed
-  by `WorldObject.SetAnimatedState`) and renders whatever Unity UI it wants. This is Unity client
-  work, the data channel is one-way (server -> client), and interaction still routes through the
-  server-side `[RPC]` tab — but it is the only way to render UI the generic auto-view cannot.
+- **RETRACTED — there is no custom-MonoBehaviour escape hatch.** This doc originally recorded that a
+  mod could ship its own MonoBehaviour on the WorldObject prefab (this project's
+  `DockReadoutDisplay`) to render arbitrary Unity UI from server-synced states. That is impossible.
+  The Eco client is an IL2CPP build and **cannot load mod code at all** — a custom `MonoBehaviour`
+  arrives as *"the referenced script is missing"*, which is architectural, not a packaging mistake.
+  See `docs/solutions/architecture-patterns/client-animation-is-driven-by-name-not-by-mod-code.md:37`.
+  `DockReadoutDisplay` never ran; it rendered placeholder text forever because nothing could update
+  it, and it has been deleted.
+
+  What genuinely works in its place is narrower and needs no mod code: the server pushes a named
+  state with `SetAnimatedState`, and the client binds it **by name** to an `Animator` parameter of
+  the same name. The mod ships a prefab and an animator controller and nothing else. Live at
+  `EcoServerMod/AdvancedElectronics/DroneLifecycle.cs:404`,
+  `EcoServerMod/AdvancedElectronics/DroneMoverComponent.cs:274`, and
+  `EcoServerMod/AdvancedElectronics/DroneDock.cs:839`.
 
 **2. The map *editor* is reachable, and it is a full multi-entry MANAGER, not just a picker.**
 `player.EditMap(MapEditRequest)` opens the same plot editor district/deed editing uses (it runs
@@ -258,10 +270,13 @@ never consulted, and rendering a custom overlay additionally needs a client-side
 partial on a codegen-generated view type. A server-only mod supplies neither, and its asset
 bundle carries prefabs/textures, not replacements for client engine singletons.
 
-**4. World-space text via the prefab's own bundle script works** (the `SetAnimatedState` →
-prefab `DockReadoutDisplay` path). This is client rendering the mod genuinely controls because
-the MonoBehaviour ships in the bundle — but it is limited to what that prefab script does, not
-arbitrary UI.
+**4. Animator parameters bound by name work; a bundle script does not.** The surviving channel is
+`SetAnimatedState` → an `Animator` parameter of the same name on the prefab. The mod controls the
+*asset* (prefab, controller, clips) and never ships client code. This entry originally read "world-space
+text via the prefab's own bundle script works" and was **wrong** — see the retraction under surface 1.
+It is this doc's only recorded **false positive**, and unlike the three false negatives below it cost
+real work: prefab authoring, two orphaned MonoBehaviours needing a strip pass, and a stale claim in
+the repo README.
 
 **The meta-rule (two halves):**
 
@@ -496,7 +511,7 @@ Parallel.Invoke(Block.Initialize, Item.Initialize);
 Skill.InitializeSkills();
 TagManager.Initialize();
 
-// Eco.Core/Controller/ControllerMarshalerService.cs:367 -- read ONCE per controller type
+// Eco.Core/Controller/ControllerMarshalerService.cs:379 -- read ONCE per controller type
 // while ControllerManager builds its cache. Anything associated after this is invisible
 // to the client picker, no matter how correct the server registry looks.
 var tagsNames = ControllerManager.TypeToTags?.Invoke(controllerType);

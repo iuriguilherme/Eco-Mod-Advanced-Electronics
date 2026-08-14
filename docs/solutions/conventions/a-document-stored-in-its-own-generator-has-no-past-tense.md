@@ -192,7 +192,7 @@ the error.
 - When claiming an update is compatible with objects placed by an earlier version — in this repo
   that means checking `[Serialized]` and `[RequireComponent]` on the affected `WorldObject` classes,
   because a component set is fixed at object creation (see
-  `docs/solutions/conventions/requirecomponent-binds-at-creation-not-retroactively.md`).
+  `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md`).
 - When any user-facing text is generated rather than stored: MOTDs, in-game tooltips built from
   version strings, install instructions embedded in tooling.
 
@@ -273,7 +273,7 @@ than instead of them.
 
 ## Related
 
-- `docs/solutions/conventions/requirecomponent-binds-at-creation-not-retroactively.md` — why a
+- `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — why a
   component-set change breaks placed objects, and therefore why "did the component set change?" is
   the right question to ask before writing a compatibility claim.
 - `docs/solutions/conventions/a-defensive-rule-outlives-the-danger-it-answered.md` — the same failure

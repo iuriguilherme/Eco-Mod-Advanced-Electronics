@@ -211,7 +211,7 @@ the artifact is the release.
 - `docs/solutions/runtime-errors/a-mod-recipe-that-closes-a-cycle-in-the-skill-graph.md` — the other
   way a recipe type's mere existence has consequences beyond its bench, there by writing an
   unintended edge into the tech tree.
-- `docs/solutions/conventions/requirecomponent-binds-at-creation-not-retroactively.md` — the same
+- `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — the same
   closing move from a different angle: check the shipped artifact, not the running world, when the
   question is what a release contains.
 - `docs/solutions/conventions/usercode-cannot-name-a-mod-dll-type.md` — the other place where what

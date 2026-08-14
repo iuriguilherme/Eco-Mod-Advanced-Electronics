@@ -87,10 +87,15 @@ and placing it pours the state back. Nothing else transfers — fields on the ob
 lost — and an object spawned and destroyed outside the pickup path never transfers anything at all,
 whatever its item declares.
 
-Its **component set is fixed when it is created** and stored with it. Changing which components the
-class declares affects only objects made afterwards, so two objects of the same class placed at
-different times can carry different components — and in a world that has survived several builds,
-"what components does this class have" has no single answer.
+Its **component set is re-validated on every server load**, not fixed at creation. The engine walks
+every placed object as the world loads and converges its components on what the class currently
+declares — adding ones that are required and missing, and removing ones no longer required. So a
+declaration change reaches objects already in the world, and it reaches them in both directions.
+
+The removing direction is destructive: a component dropped this way takes its contents with it, so
+narrowing what a class declares can delete player inventory at the next restart rather than merely
+changing what new objects get. A class can opt a component out of that sweep, which is how a
+mod keeps a tab whose contents must survive across a declaration change.
 
 The client-side half is a **template**, not a per-object asset: the client holds one inactive copy
 and instantiates an enabled clone for each World Object the server reports. A template shipped

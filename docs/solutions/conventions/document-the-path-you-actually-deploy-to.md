@@ -1,6 +1,7 @@
 ---
 title: "Document the install path you actually deploy to, not the one you assume"
 date: 2026-07-31
+last_updated: 2026-08-10
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -61,6 +62,12 @@ grep -rn "Mods/UserCode\|Mods\\\\UserCode" --include="*.md" --include="*.sh" \
   --include="*.csproj" --include="*.props" .
 ```
 
+Since this was written, `Mods/UserCode/` also became a *legitimate* target here — the vanilla-table
+overrides under `EcoServerMod/UserCode/`, installed by `scripts/deploy-usercode-overrides.sh`. So the
+grep no longer means "every hit is a bug"; it means "every hit has to declare which of the two it is."
+A check whose output is mostly known-good needs that distinction written next to it, or it stops
+being read.
+
 **Read the packaged artifact, not the source that generates it.** The release README is written by
 a heredoc inside the packaging script. Reviewing the script is not the same as reading what a
 downloader receives — extract the zip, or read the file out of it:
@@ -68,7 +75,8 @@ downloader receives — extract the zip, or read the file out of it:
 ```bash
 python3 - <<'PY'
 import zipfile
-z = zipfile.ZipFile('dist/AdvancedElectronics-0.0.2-eco0.13.0.4.zip')
+import glob
+z = zipfile.ZipFile(sorted(glob.glob('dist/AdvancedElectronics-*.zip'))[-1])
 print(z.read('AdvancedElectronics/README.txt').decode('utf-8'))
 PY
 ```

@@ -73,9 +73,19 @@ the mod discards any placed Drone Docks along with their survey areas and findin
 
 ## Setup after cloning
 
-**The server half needs nothing extra.** `EcoServerMod/` builds straight from a clone —
-its Eco dependency comes from the `Eco.ReferenceAssemblies` NuGet package. If you are only
-touching server C#, skip this section entirely and go to
+**The server half needs no Unity and no ModKit**, but it is not dependency-free. There are
+three tiers, and which one you need depends on what you are touching:
+
+- **`EcoServerMod/AdvancedElectronics.Navigation` and its test project** build and test from a
+  bare clone with nothing but a .NET SDK. They deliberately carry no Eco dependency at all.
+- **The mod itself (`EcoServerMod/AdvancedElectronics`)** needs Eco's server reference
+  assemblies. As noted at the top of this file, there is no `Eco.ReferenceAssemblies` package
+  for 0.14, so run `scripts/gather-eco-refs.sh` against an Eco checkout and set
+  `EcoRefAssembliesDir` in `EcoServerMod/AdvancedElectronics/Local.props` (git-ignored). The
+  csproj errors with instructions if it is unset.
+- **The Unity client project** needs the ModKit restore described below.
+
+If you are only touching server C#, you can skip the Unity section entirely and go to
 [Deploying to a server](#deploying-to-a-server-for-testing).
 
 **The Unity half does need a restore step.** This repository contains only our own work.
@@ -233,7 +243,7 @@ pairing state is not yet persisted).
 - Server code: `EcoServerMod/README.md` (projects, version pinning, building).
 - Client assets: `docs/guides/2026-07-survey-drone-unity-prefab-guide.md` (keyboard-only
   prefab workflow, name-matching rules).
-- Tests: `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` (68 tests over
+- Tests: `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` (124 tests over
   the pure navigation/survey/lifecycle core — no Eco dependency, so they run anywhere).
 - Documented learnings: `docs/solutions/` — solutions to past problems, organized by
   category with YAML frontmatter.
@@ -247,8 +257,8 @@ and assembles `dist/AdvancedElectronics-<version>-eco<game>.zip` in the layout
 
 Rebuild the asset bundle in Unity **first**. The script does not build it (that needs the
 Editor) but it does refuse to package one that is older than anything under `Assets/Art`,
-because the bundle carries the prefabs and the `DockReadoutDisplay` MonoBehaviour — a
-stale bundle ships client behaviour that silently disagrees with the DLLs. If a `git`
+because the bundle carries the prefabs, materials and animator controllers — a
+stale bundle ships client assets that silently disagree with the DLLs. If a `git`
 operation has rewritten source mtimes and you know the bundle is current, `--force`
 overrides.
 

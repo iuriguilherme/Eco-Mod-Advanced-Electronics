@@ -1,6 +1,7 @@
 ---
 title: "Excluding a redistribution-restricted SDK from a Unity mod repo without breaking a fresh clone"
 date: 2026-07-27
+last_updated: 2026-08-10
 category: conventions
 module: AdvancedElectronics
 problem_type: convention
@@ -66,12 +67,22 @@ open the editor. It converts a silent failure into a one-line check. (That 32-he
 asset GUID, not a git commit hash — they are indistinguishable by shape, and tooling that scans docs
 for commit references will flag it.)
 
-**4. Give contributors a path that needs none of it.**
-Here the server half is a separate .NET project resolving Eco through a NuGet reference-assembly
-package, so it builds, tests and runs from a bare clone with no Unity and no SDK. Say that first in
-the setup docs: most contributions touch only that half, and telling them up front that the whole
-restore section is skippable is the difference between a repo that looks approachable and one that
-looks gated.
+**4. Give contributors a path that needs none of it — and say which one.**
+Here the server half is a separate .NET project, so nothing under `EcoServerMod/` needs Unity or the
+ModKit. It does still need Eco's server reference assemblies, and those are not a package: there is
+no `Eco.ReferenceAssemblies` for 0.14 and the shipped server is a single-file bundle with its
+assemblies embedded, so they are built from a pinned Eco source checkout by
+`scripts/gather-eco-refs.sh` and resolved through `EcoRefAssembliesDir` in a git-ignored
+`Local.props` — the mod's csproj hard-errors when it is unset. What builds and tests from a *bare*
+clone with nothing installed is the deliberately Eco-free navigation core
+(`EcoServerMod/AdvancedElectronics.Navigation` and its test project).
+
+Name all three tiers in the setup docs — no Unity for any server work, one gather step for the mod
+itself, nothing at all for the core — because telling contributors which restore steps they can skip
+is the difference between a repo that looks approachable and one that looks gated. Note the direction
+of travel: this was a single NuGet reference and became a local build step on a version bump, so
+*which tier does this contributor actually need* is a question to re-answer per release, not a fact
+to state once.
 
 **5. Verify by cloning, not by reasoning.**
 The rules are only correct if a clone actually works, and that is cheap to test:
@@ -79,11 +90,12 @@ The rules are only correct if a clone actually works, and that is cheap to test:
 ```bash
 git clone --branch main <repo> /tmp/clonetest && cd /tmp/clonetest
 git ls-files | grep -iE "EcoModKit|EcoLibs|ThirdParty|strangeloopgames|TextMesh|Eco\.Client"  # must be empty
-dotnet build <server-project> && dotnet test <test-project>
+dotnet test <eco-free-core-test-project>   # the only build a bare clone can complete
+# the mod project needs EcoRefAssembliesDir first -- see scripts/gather-eco-refs.sh
 ```
 
-Two assertions, both mechanical: nothing third-party is tracked, and the no-SDK path builds and
-passes. Keep the audit grep — it is the regression test for rule 1, and the failure it catches
+Two assertions, both mechanical: nothing third-party is tracked, and the zero-dependency core builds
+and passes. Keep the audit grep — it is the regression test for rule 1, and the failure it catches
 (accidentally committing someone else's code to a public repo) is one you very much want to catch
 before a push rather than after.
 

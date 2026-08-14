@@ -514,5 +514,5 @@ Version probe, run against the package the project currently resolves (`Eco.Refe
 - `EcoServerMod/AdvancedElectronics/DroneLifecycle.cs:128-150` — the existing return-to-dock path.
 - `EcoServerMod/AdvancedElectronics/DroneMoverComponent.cs:46,75` — `MaxStepHeight` as a const, and the pathfinder built from it.
 - `EcoServerMod/AdvancedElectronics.Navigation/GridPathfinder.cs:67` — `maxStepHeight` as a constructor argument.
-- `docs/solutions/conventions/requirecomponent-binds-at-creation-not-retroactively.md` — why component changes do not retrofit.
+- `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — why component changes do not retrofit.
 - `docs/solutions/runtime-errors/initialize-exception-leaves-a-half-built-worldobject.md` — why a failing `Configure` during install is worth logging loudly.

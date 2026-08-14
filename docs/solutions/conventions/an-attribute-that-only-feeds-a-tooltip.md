@@ -1,7 +1,7 @@
 ---
 title: "Source shows what the code does, not what it is meant to do — the 0.14 module-admission gap"
 date: 2026-08-02
-last_updated: 2026-08-02
+last_updated: 2026-08-10
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -27,23 +27,33 @@ This mod ships a UserCode override of a vanilla crafting table so the table's
 `[AllowPluginModules]` names the mod's upgrade module. That override is a real cost: a byte-complete
 copy of upstream source, re-derived on every Eco update, plus a script to install it.
 
-A source read appeared to show the cost bought nothing. In Eco 0.14 as it currently stands, the
-attribute's `Tags` and `ItemTypes` feed exactly one consumer — an item tooltip — and slot admission
-is decided elsewhere, by the module's own tag. That reading is correct and reproducible.
+**Resolved 2026-08-10: the gate came back, and keeping the override was right.**
+`Server/Eco.Gameplay/Components/PluginModulesComponent.cs:407-409` now reads the table's allow-list
+and applies it as a real restriction — `GetStackables()` feeding
+`this.Inventory.AddInvRestriction(new StackableRestriction(this.allowedModules))`. The upstream
+comment this doc quoted, saying every station accepts every module of the right slot type, is gone
+and replaced by its opposite. The override at
+`EcoServerMod/UserCode/AutoGen/WorldObject/RoboticAssemblyLine.override.cs:110` is now load-bearing
+rather than defensively load-bearing. The account below is the state that produced the decision.
 
-**It is also a description of a bug.** Strange Loop Games considers the permissiveness undesired;
-it is reported and slated to be fixed before launch. The per-station gate is coming back.
+A source read appeared to show the cost bought nothing. In Eco 0.14 as it stood on 2026-08-02, the
+attribute's `Tags` and `ItemTypes` fed exactly one consumer — an item tooltip — and slot admission
+was decided elsewhere, by the module's own tag. That reading was correct and reproducible.
 
-So the override is not redundant. It is a workaround that currently appears redundant because the
-thing it works around is temporarily broken.
+**It was also a description of a bug.** Strange Loop Games considered the permissiveness undesired;
+it was reported and slated to be fixed before launch. The per-station gate was coming back — and it
+did.
+
+So the override was not redundant. It was a workaround that appeared redundant because the thing it
+works around was temporarily broken.
 
 ## Guidance
 
 **Keep the override.** A mod that removes it on the strength of current behavior breaks when the fix
 lands — silently, at someone else's server, after release.
 
-**The mechanism finding is still true, and still worth knowing** — it is what makes the current
-behavior explicable rather than mysterious. In 0.14 today:
+**The mechanism finding was accurate for the window it described**, and the reads below still exist —
+what changed is that a fourth consumer joined them. During the gap:
 
 | Read | Where | What it does |
 |---|---|---|
@@ -64,11 +74,12 @@ void WireSlot(AuthorizationInventory leaf, string slotTagName)
 }
 ```
 
-The mechanism that implements per-station gating, `StackableRestriction`, still exists as a class
-but is never instantiated anywhere in the tree. `PluginModulesComponent.cs:398-399` calls it "the
-legacy per-station StackableRestriction" and says every craft station now accepts every module of
-the right slot type. That comment reads as a settled design change. It is describing the state the
-bug report is against.
+The mechanism that implements per-station gating, `StackableRestriction`, existed as a class that
+nothing instantiated. `PluginModulesComponent.cs` called it "the legacy per-station
+StackableRestriction" and said every craft station now accepts every module of the right slot type.
+That comment read as a settled design change. It was describing the state the bug report was against
+— and it has since been replaced by its opposite, with the allow-list applied at
+`PluginModulesComponent.cs:407-409` and the class instantiated again.
 
 **Treat "the restriction is gone" as a question, not an answer.** A removed guard has two possible
 explanations that look identical in source: deliberate simplification, or a regression nobody has
@@ -118,7 +129,10 @@ grep -rn "new StackableRestriction" Server/ --include=*.cs
 #   -> no output. The class exists; nothing instantiates it.
 ```
 
-Both results are accurate. Neither can tell you the state is a defect.
+Both results were accurate. Neither could tell you the state was a defect — and both now return the
+opposite, which is the point: the same two commands, run three months apart, would have justified
+deleting the override and then justified keeping it. Re-running them is not what makes the answer
+trustworthy.
 
 The question that resolves it costs one message: *"is this deliberate, or a bug you know about?"*
 Here the answer was that it is reported and will be fixed before launch, which turned a

@@ -64,7 +64,7 @@ Then:
 
 ```bash
 dotnet build EcoServerMod/AdvancedElectronics          # the mod (also builds Navigation)
-dotnet test  EcoServerMod/AdvancedElectronics.Navigation.Tests   # 31-test suite
+dotnet test  EcoServerMod/AdvancedElectronics.Navigation.Tests   # 124-test suite, no Eco dependency
 dotnet build EcoServerMod/AdvancedElectronics.Spike    # optional -- reference probes only
 ```
 

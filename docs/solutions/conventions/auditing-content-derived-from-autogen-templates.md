@@ -1,7 +1,7 @@
 ---
 title: "Audit mod content derived from AutoGen templates for the references you forgot to rename"
 date: 2026-07-31
-last_updated: 2026-07-31
+last_updated: 2026-08-10
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -36,12 +36,16 @@ leftovers from their templates. Three stopped the build. Three compiled perfectl
 *Loud residue* — a reference to something that does not exist in this Eco version. The build fails and
 names the file and line. It costs time but cannot ship:
 
-- `InsulatedCopperWiringItem` — a v14 item, absent in 0.13.
+- `InsulatedCopperWiringItem` — absent in 0.13, which is what made it loud at the time. **It exists
+  in 0.14** (`Server/Mods/__core__/AutoGen/Item/InsulatedCopperWiring.cs:109`), so after the retarget
+  the same residue compiles and moves to the silent category below. A worked example of the thing
+  this doc is about: whether residue is loud or silent is a property of the compile target, not of
+  the residue.
 - `AshlarStone` used as `typeof(AshlarStone)` when it is a **tag**, not a type. The ingredient wanted
   the string form: `new IngredientElement("AshlarStone", 20, typeof(IndustrySkill))`.
 - `[AllowPluginModules(..., ItemTypes = new[] { typeof(AdvancedElectronicsUpgradeItem) })]` naming a
   plugin-module type that had not been written yet (the module now exists and the attribute is
-  live at `EcoServerMod/AdvancedElectronics/AdvancedElectronicsAssembly.cs:127`).
+  live at `EcoServerMod/AdvancedElectronics/AdvancedElectronicsAssembly.cs:132`).
 
 *Silent residue* — a reference to a type that **does** exist, is the wrong one, and type-checks. This
 is the category that matters:
@@ -127,7 +131,7 @@ it only drops correctly-renamed hits:
 
 ```bash
 # Derived Battery.cs from vanilla Biodiesel.cs -- every remaining "Biodiesel" is residue.
-grep -noE '[A-Za-z]*Biodiesel[A-Za-z]*' EcoServerMod/AdvancedElectronics/Battery.cs.deferred
+grep -noE '[A-Za-z]*Biodiesel[A-Za-z]*' EcoServerMod/AdvancedElectronics/Battery.cs
 
 # Sweeping a whole batch for a vanilla noun, keeping only the un-renamed hits.
 for f in EcoServerMod/AdvancedElectronics/*.cs; do

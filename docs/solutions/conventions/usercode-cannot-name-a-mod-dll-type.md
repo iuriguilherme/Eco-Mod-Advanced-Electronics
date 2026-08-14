@@ -1,7 +1,7 @@
 ---
 title: "UserCode cannot name a type from a mod DLL, so a table override matches on a tag"
 date: 2026-08-01
-last_updated: 2026-08-02
+last_updated: 2026-08-10
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -27,9 +27,10 @@ single assembly. Eco's escape hatch is a whole-file override: a file under `Mods
 path matches a `__core__` file, with `.override` before the extension, replaces it.
 
 **A caveat on the current build, not on this guidance.** In Eco 0.14 as it currently ships, that
-attribute does not in fact gate admission — a module slots on its own tag, so the override appears
-redundant. That permissiveness is a reported bug and is slated to be fixed before launch, so the
-gate is coming back and the override stays. See
+attribute did not in fact gate admission — a module slotted on its own tag, so the override appeared
+redundant. That permissiveness was a reported bug, and **the fix has since landed**: the table's
+allow-list is applied as a real restriction again, so the override is now doing the work it was
+written for. See
 `docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md` for why a source read alone
 gets this wrong. Everything below is unaffected either way: any UserCode file that names a mod type
 fails the same way, whatever the file is for.
@@ -142,10 +143,11 @@ CORE_LINES=$(wc -l < "$CORE"); NEW_LINES=$(wc -l < "$TRACKED")
 
 ## Related
 
-- `docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md` — corrects this doc's
-  original premise. `[AllowPluginModules]` is presentation, not admission; a table admits a module
-  by matching the module's own slot tag. Read that one to decide whether you need an override at
-  all; read this one for what happens when you write one.
+- `docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md` — the episode where
+  `[AllowPluginModules]` briefly stopped gating admission and became presentation only, and the
+  decision to keep the override anyway. That gap has since closed and the attribute gates again.
+  Read that one for why a source read alone gets this wrong; read this one for what happens when
+  you write an override.
 - `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` — the same shape on
   the client side: what a mod may and may not extend without shipping into the game's own build.
 - `docs/solutions/workflow-issues/the-compile-target-decides-what-exists.md` — also about assuming a

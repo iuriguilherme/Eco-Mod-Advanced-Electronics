@@ -1,6 +1,7 @@
 ---
 title: "An inventory restriction governs one verb — a tag filter blocks putting in, not taking out or burning"
 date: 2026-08-02
+last_updated: 2026-08-10
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -124,6 +125,7 @@ The check that produced the second version is two greps — does this restrictio
 - `docs/solutions/runtime-errors/naming-a-component-hides-it-from-its-vanilla-consumer.md` — the
   other fuel-component surprise in this mod, and the same underlying habit: assuming a mechanism
   covers more than the one narrow thing it was written for.
-- `docs/solutions/conventions/requirecomponent-binds-at-creation-not-retroactively.md` — also about
-  what happens to already-existing objects when a declaration changes. There the answer is
-  "nothing"; here it is "they drain normally."
+- `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — also about
+  what happens to already-existing objects when a declaration changes. There the answer is that the
+  engine re-converges each object's component list on every load, adding and removing; here it is
+  "they drain normally."

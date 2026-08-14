@@ -129,7 +129,7 @@ obsolete rather than merely inconvenient.
 
 ## Related
 
-- `docs/solutions/conventions/requirecomponent-binds-at-creation-not-retroactively.md` — another case
+- `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — another case
   where what the source says and what reality holds drift apart without any error; there across
   object lifetimes, here across time.
 - `docs/solutions/conventions/auditing-content-derived-from-autogen-templates.md` — residue left by a

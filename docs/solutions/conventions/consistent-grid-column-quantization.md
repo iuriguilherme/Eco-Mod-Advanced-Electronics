@@ -1,6 +1,7 @@
 ---
 title: Use one consistent world-position-to-grid-column quantization function
 date: 2026-07-17
+last_updated: 2026-08-10
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -18,9 +19,14 @@ related_components: [EcoServerMod/AdvancedElectronics.Navigation, EcoServerMod/A
 
 ## Context
 
+**Status: the inconsistency this documents is resolved. The rule stands and the codebase now follows
+it.** The truncating call site was deleted with the district scaffold (`e72108c`), and every
+remaining position-to-column mapping rounds. This section is kept as the incident that produced the
+rule; the Guidance below is current.
+
 During a multi-reviewer code review of the Advanced Electronics survey-drone mod (branch `feat/drone-feasibility-spike`, PR #1), the adversarial reviewer traced a real, mechanically-verifiable defect: two different pieces of the codebase map the same kind of value — a float world position's X/Z components — to an integer grid column, using two *different* rounding rules.
 
-- `EcoServerMod/AdvancedElectronics/DistrictAssignment.cs:63` truncates:
+- `EcoServerMod/AdvancedElectronics/DistrictAssignment.cs:63` (since deleted) truncated:
   ```csharp
   var pos2i = new WorldPosition2i((int)worldPos.X, (int)worldPos.Z);
   ```
@@ -42,7 +48,7 @@ Neither symptom is a compile error or an obviously-wrong result in isolation —
 
 When more than one code path quantizes a float world position to an integer grid column (or any other single-cell-per-region mapping), **use the exact same quantization function everywhere**, expressed as one named, shared function — not reimplemented per call site, even when the reimplementation "looks" equivalent.
 
-- Prefer `MathF.Round` over a bare `(int)` cast for float-to-int position quantization in this codebase, matching the existing convention in `GridPathfinder.ToColumn` (`EcoServerMod/AdvancedElectronics.Navigation/GridPathfinder.cs:162-163`) and `OreSensorComponent`'s column math (`EcoServerMod/AdvancedElectronics/OreSensorComponent.cs`) — a bare `(int)` cast truncates toward zero, which both reads as an accidental default (nobody chooses truncation on purpose for spatial quantization) and behaves inconsistently around negative coordinates in the same way `SurveyGrid`'s own cell-mapping test suite (`EcoServerMod/AdvancedElectronics.Navigation.Tests/SurveyGridTests.cs`) already had to guard against for its own floor-division convention.
+- Prefer `MathF.Round` over a bare `(int)` cast for float-to-int position quantization in this codebase, matching the convention in `GridPathfinder.ToColumn` (`EcoServerMod/AdvancedElectronics.Navigation/GridPathfinder.cs:207`) and `OreSensorComponent`'s column math (`EcoServerMod/AdvancedElectronics/OreSensorComponent.cs`) — a bare `(int)` cast truncates toward zero, which reads as an accidental default (nobody chooses truncation on purpose for spatial quantization) and behaves inconsistently around negative coordinates.
 - If two different subsystems each already have their own working quantization function (as here: the `Navigation` project's `GridPathfinder`/`OreSensorComponent` vs. the Eco-glue `DistrictAssignment`), don't assume they agree just because both "round a position to a column." Diff the actual expressions, not just the intent.
 - Where a raw, unquantized position genuinely must be compared against a quantized/snapped one (e.g. arrival detection against a placed WorldObject's exact position), either quantize both sides the same way before comparing, or make the tolerance wide enough to absorb the maximum quantization error (up to `0.5` units per axis for round-based quantization) plus any height/axis difference — an unexamined default tolerance (e.g. `ArrivalDetector.DefaultTolerance = 0.1f` in `GridPathfinder.cs:214`) tuned for "close enough" floating-point noise is not automatically wide enough to absorb a full grid-quantization step.
 
@@ -58,26 +64,34 @@ This class of bug is invisible to per-unit tests, because each quantization call
 
 ## Examples
 
-Before (inconsistent — the actual code in this diff as of PR #1, unfixed as of this writing):
+Before (inconsistent — the code as of PR #1):
 
 ```csharp
-// EcoServerMod/AdvancedElectronics/DistrictAssignment.cs:63
+// EcoServerMod/AdvancedElectronics/DistrictAssignment.cs:63   -- truncates
 var pos2i = new WorldPosition2i((int)worldPos.X, (int)worldPos.Z);
 ```
 ```csharp
-// EcoServerMod/AdvancedElectronics.Navigation/GridPathfinder.cs:162-163
+// EcoServerMod/AdvancedElectronics.Navigation/GridPathfinder.cs   -- rounds
 private static GridColumn ToColumn(Vector3 position) =>
     new GridColumn((int)MathF.Round(position.X), (int)MathF.Round(position.Z));
 ```
 
-After (the fix proposed in the PR #1 code review, not yet applied — unify on rounding):
+After — the truncating side went away with the district scaffold rather than being converted, and
+every surviving call site rounds:
 
-```csharp
-// EcoServerMod/AdvancedElectronics/DistrictAssignment.cs
-var pos2i = new WorldPosition2i((int)MathF.Round(worldPos.X), (int)MathF.Round(worldPos.Z));
+```
+GridPathfinder.cs:207          ToColumn      -- MathF.Round
+DroneDock.cs:407-408                         -- MathF.Round
+DroneLifecycle.cs:526, :787                  -- MathF.Round
+OreSensorComponent.cs                        -- MathF.Round
 ```
 
-The arrival-tolerance half of the same defect (`DroneLifecycle.cs:138`) needs a separate decision — either compare against the same rounded column the mover actually targets, or widen `ArrivalDetector`'s tolerance to account for up to half a grid cell of quantization slop plus a ground-height delta — deliberately left as an open design call rather than folded into "just round consistently," since the right choice depends on how precisely a returning drone needs to park at its dock.
+The arrival half was answered structurally rather than by tuning a tolerance. Membership now has one
+owner: `DroneLifecycle.IsPositionInAssignedRegion`, commented *"the single membership seam every
+arrival/roam check goes through"*, delegating to the dock. Collapsing the comparison to one seam is
+the durable version of "quantize both sides the same way" — there is no second side left to disagree.
+`ArrivalDetector.DefaultTolerance` remains `0.1f` (`GridPathfinder.cs:284`), which is now safe because
+nothing compares a rounded column against a raw placed-object position across a subsystem boundary.
 
 ## Related
 

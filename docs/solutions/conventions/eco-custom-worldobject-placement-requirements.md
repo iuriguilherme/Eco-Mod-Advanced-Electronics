@@ -160,7 +160,7 @@ namespace Eco.Mods.TechTree
 ```
 
 The client prefab and its root GameObject were renamed to `DroneDockObject` to match (see
-`Assets/Art/AdvancedElectronics/DroneDockObject.prefab`).
+`Assets/Art/AdvancedElectronics/Prefabs/DroneDockObject.prefab`).
 
 ## Status
 

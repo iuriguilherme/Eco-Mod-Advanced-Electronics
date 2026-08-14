@@ -164,7 +164,7 @@ Read together these say *the trees are at different versions*. Read one after th
 - `docs/solutions/conventions/document-the-path-you-actually-deploy-to.md` — the deploy-side twin.
   Same underlying question — is the thing I am acting on the thing that runs — asked of binaries
   rather than of APIs.
-- `docs/solutions/conventions/requirecomponent-binds-at-creation-not-retroactively.md` — another case
+- `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — another case
   where what the source *says* and what a running world *has* diverge silently.
 - `docs/solutions/workflow-issues/a-remembered-capability-and-a-cited-file-are-claims.md` — where this
   check stops. There the remembered thing existed in the tree, ran, and produced the very classes in
