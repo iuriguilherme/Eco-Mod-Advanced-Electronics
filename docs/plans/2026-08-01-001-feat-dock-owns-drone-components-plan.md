@@ -415,7 +415,7 @@ flowchart TB
 - **Dock parts wear rate and drone durability rate.** No vanilla analogue is close enough to copy, since no vanilla attachment wears passively. Start low enough that a full survey costs a visible but small fraction of condition, and adjust after one long live session.
 - **The module system works for a non-vehicle host.** Every piece is generic — `GetOrCreateComponent`, `RemoveComponent`, `ComponentInstallation`, `ComponentSourceRestriction` — and only `ModularVehicleComponent`, the driver, requires `VehicleComponent`. But every shipped user of the mechanism is a vehicle. If installation misbehaves, that gap is the first thing to check.
 - **The pinned 0.14 build matches the released one.** The mod is developed against a `staging` checkout while 0.14 is still changing. Re-verify before any public release; see Risks.
-- **Component changes do not retrofit.** Docks and drones already in a world keep whatever components they were created with, which is why R17 exists.
+- **Component changes DO retrofit — corrected 2026-08-14.** This plan was written believing placed objects keep whatever components they were created with, and R17 was justified by that. The engine re-validates every persisted object's component list on every server load, adding what the class now requires and removing what it no longer does — and a removed component takes its contents with it. Re-read R17 against `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` before implementing it.
 
 ## Risks
 
@@ -514,5 +514,5 @@ Version probe, run against the package the project currently resolves (`Eco.Refe
 - `EcoServerMod/AdvancedElectronics/DroneLifecycle.cs:128-150` — the existing return-to-dock path.
 - `EcoServerMod/AdvancedElectronics/DroneMoverComponent.cs:46,75` — `MaxStepHeight` as a const, and the pathfinder built from it.
 - `EcoServerMod/AdvancedElectronics.Navigation/GridPathfinder.cs:67` — `maxStepHeight` as a constructor argument.
-- `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — why component changes do not retrofit.
+- `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — why component changes reach objects already placed, in both directions.
 - `docs/solutions/runtime-errors/initialize-exception-leaves-a-half-built-worldobject.md` — why a failing `Configure` during install is worth logging loudly.

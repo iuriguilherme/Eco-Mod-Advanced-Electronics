@@ -90,6 +90,14 @@ docs(solutions): record that RequireComponent binds at creation only
 - CONCEPTS.md: World Object gains component-set-fixed-at-creation
 ```
 
+Both blocks above are quoted verbatim from the real commit and are kept that way, because what
+they illustrate is commit-message *form*. Note for anyone reading them for content: **the technical
+claim they state was overturned on 2026-08-14** — `[RequireComponent]` is re-enforced on every server
+load, the doc they name has been deleted, and the `CONCEPTS.md` entry has been corrected. See
+`docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md`. That an
+exemplar in a conventions doc kept circulating a retracted claim is itself the subject of
+`docs/solutions/workflow-issues/a-knowledge-store-corroborates-its-own-errors.md`.
+
 A code commit under the same rule — what changed, not why it was interesting:
 
 ```text

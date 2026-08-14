@@ -86,6 +86,8 @@ Let the player toggle individual plots on/off inside a drawn area without redraw
 
 ### 6. Custom client-prefab survey panel  ·  pain #4 (ambitious)  ·  leverage HIGH / cost HIGH
 
+> **Struck 2026-08-14 — this is impossible and always was.** The Eco client is an IL2CPP build and cannot load mod code at all, so a bundle-shipped `MonoBehaviour` arrives as "the referenced script is missing". This entry is kept rather than deleted because it was proposed on the strength of a learnings doc that recorded the path as a *proven* client surface; that entry has since been retracted. See `docs/solutions/architecture-patterns/client-animation-is-driven-by-name-not-by-mod-code.md`. Nothing below this line is actionable.
+
 The "real" fix for #4: a bundle-shipped Unity MonoBehaviour on the dock prefab, driven by `SetAnimatedState`, rendering a genuinely native-looking list/panel of areas + findings. This is the only path to a true My-Deeds-style UI (the ModKit blocks the client panel classes).
 
 - **Why it's here:** it's the honest answer to "match the rest of the game," and it would also host #1's area list beautifully.

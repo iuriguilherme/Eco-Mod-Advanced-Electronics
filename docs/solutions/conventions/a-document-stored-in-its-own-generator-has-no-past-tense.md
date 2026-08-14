@@ -59,8 +59,8 @@ in a boxed capitals block:
 
 followed by "The safe update path is a fresh world, or removing every Drone Dock and Survey Drone
 with admin tools BEFORE installing the new version." That was true and important for 0.1.0: that
-release moved the drone's fuel onto the dock and changed the dock's component set, and an Eco
-object's component set is fixed when the object is created.
+release moved the drone's fuel onto the dock and changed the dock's component set, and a component
+the class no longer declares is stripped from placed objects — with its contents — at the next load.
 
 It is false for 0.2.0. The block had survived every edit of the cycle untouched — the Battery
 commit's own message notes that it left "the backup and save-migration warnings alone", because
@@ -191,7 +191,8 @@ the error.
   re-craft, or start fresh. Re-derive the change that justifies it or cut it.
 - When claiming an update is compatible with objects placed by an earlier version — in this repo
   that means checking `[Serialized]` and `[RequireComponent]` on the affected `WorldObject` classes,
-  because a component set is fixed at object creation (see
+  because the engine re-converges each placed object's component set on every load, adding and
+  removing (see
   `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md`).
 - When any user-facing text is generated rather than stored: MOTDs, in-game tooltips built from
   version strings, install instructions embedded in tooling.
