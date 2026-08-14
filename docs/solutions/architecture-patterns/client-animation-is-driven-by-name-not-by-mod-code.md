@@ -1,17 +1,19 @@
 ---
 title: "A mod cannot ship client code, so animation is driven by matching names"
 date: 2026-08-08
+last_updated: 2026-08-14
 category: architecture-patterns
 module: EcoServerMod
 problem_type: architecture_decision
 component: animation
 severity: high
 applies_when:
+  - "Reaching for a MonoBehaviour to bridge server data to any client-side behaviour"
+  - "Designing world-space UI, a custom readout, or any client rendering the auto-view cannot do"
   - "Making a modded WorldObject animate in response to server state"
-  - "Reaching for a MonoBehaviour to bridge server data to a client component"
   - "Choosing names for the booleans a server pushes with SetAnimatedState"
   - "The client log says a referenced script on a mod prefab is missing"
-tags: [eco-modding, animation, animator, modkit, il2cpp, client-server, silent-failure]
+tags: [eco-modding, animation, animator, monobehaviour, asset-bundle, world-space-ui, modkit, il2cpp, client-server, silent-failure]
 related_components: [Assets/Art/AdvancedElectronics, EcoServerMod/AdvancedElectronics.Navigation]
 ---
 
@@ -55,7 +57,7 @@ That makes the whole contract a name match:
 
 ```
 server:  Parent.SetAnimatedState("IsAtHomeDock", true)
-                                  └── same string ──┐
+                                  \___ same string ___\
 animator parameter:                    Bool "IsAtHomeDock"
 ```
 
@@ -148,3 +150,25 @@ No bridging component, on either side.
 - `docs/solutions/build-errors/a-stray-bundle-tag-splits-the-bundle-and-nothing-renders.md` —
   the other reason a correct-looking prefab does nothing in game. Tell them apart by the client
   log: a missing script names the script, a split bundle says nothing at all.
+- `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` — the whitelist of
+  surfaces a server-only mod can actually render on. It had recorded this MonoBehaviour path as a
+  *proven surface*; that entry is now its only retracted false positive.
+
+## How far the wrong version travelled
+
+Worth recording separately, because the constraint itself was cheap to state and expensive to
+un-record. Before it was understood, the MonoBehaviour path was not merely attempted — it was
+**written down as verified**. It reached, in order: a prefab and two `MonoBehaviour` scripts; the
+whitelist in `eco-server-only-mod-client-rendering-surfaces.md`, where it was listed among *proven*
+client surfaces; and the repo `README.md`, which described the shipped bundle as carrying
+`DockReadoutDisplay`. Each copy read as corroboration of the others.
+
+That is the asymmetry between a false negative and a false positive in a knowledge store. The same
+doc had already collected several overturned false negatives — things wrongly believed impossible —
+and each cost only the capability it withheld until someone retried it. This one cost the opposite:
+work done on a foundation that could not hold, plus every downstream artifact that repeated it, and
+nothing in the store contradicted it because the store was the thing repeating it.
+
+When a capability is recorded as *proven*, record what proved it. "Verified by reading the client
+and the wiki" is a different claim from "verified by watching it run", and only the second one
+survives a constraint like this.

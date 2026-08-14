@@ -146,7 +146,8 @@ persisting it would let a save file contradict the code that derives it.
 
 Its name is the entire binding, and the client does the wiring itself: on building an object it
 walks that object's animation parameters and connects each one to the state of the same name. There
-is nothing to configure — no component to write, no event to hook — and consequently nothing that
+is nothing to configure — no component to write, no event to hook, and no possibility of one — the client cannot load mod code
+at all, so the name binding is not a convenience but the only channel there is — and consequently nothing that
 reports a name present on one side and absent on the other. This is [[Name Match]]'s failure shape
 one level down: the object renders correctly and simply never moves, with a clean build and a clean
 server log.

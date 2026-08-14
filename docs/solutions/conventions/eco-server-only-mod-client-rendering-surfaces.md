@@ -274,7 +274,7 @@ bundle carries prefabs/textures, not replacements for client engine singletons.
 `SetAnimatedState` → an `Animator` parameter of the same name on the prefab. The mod controls the
 *asset* (prefab, controller, clips) and never ships client code. This entry originally read "world-space
 text via the prefab's own bundle script works" and was **wrong** — see the retraction under surface 1.
-It is this doc's only recorded **false positive**, and unlike the three false negatives below it cost
+It is this doc's only recorded **false positive**, and unlike the false negatives below it cost
 real work: prefab authoring, two orphaned MonoBehaviours needing a strip pass, and a stale claim in
 the repo README.
 
