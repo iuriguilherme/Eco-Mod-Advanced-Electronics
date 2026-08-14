@@ -1,3 +1,5 @@
+[![Conventional Code](https://img.shields.io/badge/code-conventional%20🏭-red?style=for-the-badge)](https://github.com/zwbao/certified-organic-code)
+
 # Advanced Electronics — Eco mod
 
 A mod for [Eco](https://play.eco) (Strange Loop Games) adding a **survey drone**: a
