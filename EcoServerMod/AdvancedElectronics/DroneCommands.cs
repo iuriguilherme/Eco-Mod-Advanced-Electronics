@@ -4,6 +4,8 @@ using System.Linq;
 using System.Numerics;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Items;
+using Eco.Gameplay.Components;
+using Eco.Gameplay.Components.Storage;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
@@ -248,6 +250,32 @@ namespace Eco.Mods.TechTree
             user.MsgLocStr($"Dock '{dock.Name}' at {dock.Position3i}:");
             user.MsgLocStr($"  Survey areas: {dock.SurveyAreas.Count}, assigned area: {(dock.AssignedSurveyArea?.Name ?? "(none)")} (id {dock.AssignedSurveyAreaId})");
             user.MsgLocStr($"  Paired drone item: {(dock.HasDrone ? "yes" : "no")}");
+
+            // Everything from here to the anim states was added after the first live pass, where a
+            // mining drone sat parked and the readout could not say why. DroneLifecycle.Tick returns
+            // at the serviceability gate BEFORE it ever reaches dispatch, so a stopped dock leaves
+            // LastDispatchNote reading "no dispatch yet" -- indistinguishable from an assignment that
+            // never landed. These lines separate the candidates, so one command names the cause
+            // instead of costing a restart per guess.
+            user.MsgLocStr($"  Serviceable: {dock.IsServiceable} (stop reason: {dock.StopReason})");
+
+            if (dock.TryGetComponent<FuelSupplyComponent>(out var fuel))
+                // Enabled is `energy > 0` -- the live burned charge, NOT the tank contents. A full
+                // tank that never loaded a unit reads Enabled=false with EnergyInSupply>0, which is
+                // a different fault from a genuinely empty tank (both read "out of fuel" in the UI).
+                user.MsgLocStr($"  Fuel: enabled={fuel.Enabled}, burning={fuel.CurrentFuel?.DisplayName.ToString() ?? "(none)"}, energy={fuel.Energy:F0}, inSupply={fuel.EnergyInSupply:F0}");
+            else
+                user.MsgLocStr("  Fuel: no FuelSupplyComponent installed (no drone slotted?)");
+
+            // The mining assignment is a separate token from the survey one above, and
+            // BuildStrategy returns null -- no dispatch, no movement -- if the mining area, the
+            // named cargo hold, or the link component is missing. All three are reported.
+            user.MsgLocStr($"  Mining assignment: {dock.AssignedMiningAreaToken ?? "(none)"}");
+            var hold = dock.GetComponent(typeof(PublicStorageComponent), DroneCargo.HoldName);
+            user.MsgLocStr($"  Mining hold '{DroneCargo.HoldName}': {(hold != null ? "present" : "MISSING (blocks mining dispatch)")}");
+            user.MsgLocStr($"  Link component: {(dock.TryGetComponent<LinkComponent>(out _) ? "present" : "MISSING (blocks mining dispatch)")}");
+            user.MsgLocStr($"  Mining job: {(dock.MiningJob == null ? "(none)" : dock.MiningJob.Status.ToString())}");
+            user.MsgLocStr($"  Mining halted server-wide: {MiningHalt.IsHalted}");
             user.MsgLocStr($"  Anim state Working: {FormatAnimState(dock, DroneDockObject.WorkingStateName)}");
 
             var drone = dock.SpawnedDrone;
