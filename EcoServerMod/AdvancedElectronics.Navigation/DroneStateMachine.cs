@@ -1,16 +1,25 @@
 namespace AdvancedElectronics.Navigation
 {
     /// <summary>
-    /// The survey drone's externally-visible status (U8, R15). Idle/EnRoute/Surveying/
-    /// Unreachable per the unit's state diagram -- deliberately just the label; all
-    /// mutation happens through <see cref="DroneStateMachine"/>'s named transition
+    /// A drone's externally-visible status (U8, R15; job-neutral since U14/KTD3, which
+    /// put a second job kind -- mining -- behind the same travel machine). Idle/EnRoute/
+    /// OnStation/Unreachable per the unit's state diagram -- deliberately just the label;
+    /// all mutation happens through <see cref="DroneStateMachine"/>'s named transition
     /// methods, never by assigning this enum from outside.
     /// </summary>
     public enum DroneStatus
     {
         Idle,
         EnRoute,
-        Surveying,
+
+        /// <summary>
+        /// Arrived at the assigned area and parked there, doing whatever work the
+        /// slotted drone's job strategy defines (surveying or mining) -- renamed from
+        /// the survey-specific "Surveying" once mining became a second consumer of this
+        /// same travel machine (KTD13). Behaviourally identical to the old value; only
+        /// the name stopped being survey-only vocabulary.
+        /// </summary>
+        OnStation,
         Unreachable
     }
 
@@ -94,7 +103,7 @@ namespace AdvancedElectronics.Navigation
         /// True only while Surveying. The Eco side gates its per-tick ore-sampling
         /// work on this (R6) -- an Idle, EnRoute, or Unreachable drone never samples.
         /// </summary>
-        public bool ShouldSample => this.Status == DroneStatus.Surveying;
+        public bool ShouldSample => this.Status == DroneStatus.OnStation;
 
         /// <summary>
         /// A district has been assigned (fresh assignment from Idle/Unreachable, or a
@@ -125,7 +134,7 @@ namespace AdvancedElectronics.Navigation
         {
             if (this.Status == DroneStatus.EnRoute && this.TravelTarget == DroneTravelTarget.District)
             {
-                this.Status = DroneStatus.Surveying;
+                this.Status = DroneStatus.OnStation;
             }
         }
 
@@ -167,7 +176,7 @@ namespace AdvancedElectronics.Navigation
         public void OnDistrictCleared()
         {
             var pursuingDistrict =
-                this.Status == DroneStatus.Surveying ||
+                this.Status == DroneStatus.OnStation ||
                 (this.Status == DroneStatus.EnRoute && this.TravelTarget == DroneTravelTarget.District);
 
             if (pursuingDistrict)

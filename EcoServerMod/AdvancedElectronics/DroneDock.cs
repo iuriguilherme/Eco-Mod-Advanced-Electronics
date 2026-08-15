@@ -829,7 +829,7 @@ namespace Eco.Mods.TechTree
             if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed
                 && this.SpawnedDrone.TryGetComponent<DroneLifecycle>(out var lifecycle))
             {
-                working = lifecycle.Status == DroneStatus.EnRoute || lifecycle.Status == DroneStatus.Surveying;
+                working = lifecycle.Status == DroneStatus.EnRoute || lifecycle.Status == DroneStatus.OnStation;
             }
 
             if (this.lastPushedWorking == working)

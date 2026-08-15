@@ -116,7 +116,7 @@ namespace AdvancedElectronics.Navigation
             // again on arrival. An earlier version held this true across hops to avoid a
             // stutter, which instead played the work loop over a drone visibly sliding
             // sideways -- the arm swinging at nothing it was near.
-            var working = status == DroneStatus.Surveying && !isMoving;
+            var working = status == DroneStatus.OnStation && !isMoving;
 
             // Settled, not merely nearby: the status machine flips to Idle on arrival while
             // the mover can still be closing the last metre, and playing the fully-stopped

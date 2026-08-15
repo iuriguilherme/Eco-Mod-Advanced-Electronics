@@ -1,3 +1,4 @@
+using AdvancedElectronics.Navigation;
 using Eco.Gameplay.Players;
 
 namespace Eco.Mods.TechTree
@@ -30,21 +31,6 @@ namespace Eco.Mods.TechTree
 
         /// <summary>Stamps this drone's owner from the acting user.</summary>
         void SetOwner(User user);
-    }
-
-    /// <summary>
-    /// Which arm a drone carries. The HRVSTR chassis models both and the animator's
-    /// mode-select branches on exactly one of them, so there is no third arm and no
-    /// armless drone -- an enum rather than a pair of booleans, because "neither" and
-    /// "both" are states the art cannot render and this shape cannot express.
-    /// </summary>
-    public enum DroneTool
-    {
-        /// <summary>The mining arm. What the survey drone scans with.</summary>
-        Mining,
-
-        /// <summary>The harvest arm.</summary>
-        Harvest,
     }
 
     /// <summary>
