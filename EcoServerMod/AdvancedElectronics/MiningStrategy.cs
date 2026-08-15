@@ -36,6 +36,17 @@ namespace Eco.Mods.TechTree
         private PlotCoord? currentShaftPlot;
         private int shaftResumeIndex;
 
+        /// <summary>
+        /// True from the tick the hold reaches capacity until it is fully unloaded (R24,
+        /// AE1). This is what actually sends the drone home: <see cref="TryGetNextTarget"/>
+        /// offers nothing while it is set, and <see cref="IsComplete"/> reads true for it
+        /// too, so the lifecycle's "no target, but the strategy has nothing more right
+        /// now" branch fires exactly as it does for a genuinely finished job -- the
+        /// difference is this one resumes (R24's idle-at-dock dispatch condition) instead
+        /// of staying home.
+        /// </summary>
+        private bool holdFull;
+
         public MiningStrategy(
             DroneDockObject homeDock,
             MiningAreaRef areaRef,
@@ -69,7 +80,8 @@ namespace Eco.Mods.TechTree
         /// <summary>The job this strategy is driving -- exposed for the panel (U9), which persists its snapshot on the dock.</summary>
         public MiningJob Job => this.job;
 
-        public bool IsComplete => this.job.Status == MiningJobStatus.Complete || this.job.Status == MiningJobStatus.Ended;
+        public bool IsComplete =>
+            this.job.Status == MiningJobStatus.Complete || this.job.Status == MiningJobStatus.Ended || this.holdFull;
 
         /// <summary>
         /// Re-resolves the source area fresh (KTD2's three-outcome policy), rather than
@@ -101,6 +113,9 @@ namespace Eco.Mods.TechTree
         public bool TryGetNextTarget(out PlotCoord plot)
         {
             plot = default;
+
+            if (this.holdFull)
+                return false; // full hold takes priority over offering more work -- see IsComplete.
 
             if (MiningHalt.IsHalted)
             {
@@ -193,10 +208,16 @@ namespace Eco.Mods.TechTree
             }
 
             // R24/AE1: a full hold interrupts the shaft; the resume point (shaftResumeIndex)
-            // already stored above lets the same shaft continue after the next unload.
+            // already stored above lets the same shaft continue after the next unload. The
+            // plot itself stays Unworked and currentShaftPlot is deliberately left set, so
+            // resuming after unload re-enters this same plot at this same layer rather than
+            // restarting it or skipping to a different one.
             var holdQuantity = this.hold.NonEmptyStacks.Sum(s => s.Quantity);
             if (holdQuantity >= this.holdCapacity)
-                return ParkedWorkOutcome.PlotDone; // lifecycle asks for a target again; TryGetNextTarget will re-offer this same plot once resumed, since it is still Unworked.
+            {
+                this.holdFull = true;
+                return ParkedWorkOutcome.PlotDone;
+            }
 
             return ParkedWorkOutcome.StillWorking;
         }
@@ -212,14 +233,26 @@ namespace Eco.Mods.TechTree
 
         public void OnArrivedHome()
         {
-            if (this.job.Status != MiningJobStatus.Working && this.job.Status != MiningJobStatus.WaitingToUnload)
-                return;
-
+            // Unconditional: the hold's cargo needs to reach storage regardless of job
+            // status -- including Complete or Ended, where the job finished (or was ended)
+            // while the drone was still out and the last, often-largest load is still
+            // riding home. job.OnUnloadSucceeded/OnUnloadRefused each already no-op for a
+            // status they don't apply to, so only a genuinely in-progress job's status moves.
             var plan = CargoUnloader.TryUnload(this.hold, this.link, this.homeDock.StampedCitizen);
+
             if (plan.Outcome == UnloadOutcome.Full)
+            {
+                this.holdFull = false;
                 this.job.OnUnloadSucceeded();
+            }
             else
+            {
+                // Partial or refused: the hold is not empty, so it still counts as full for
+                // dispatch purposes (KD14 -- the drone waits and keeps retrying rather than
+                // heading back out half-loaded).
+                this.holdFull = true;
                 this.job.OnUnloadRefused();
+            }
         }
 
         public void OnEnded(string reason)

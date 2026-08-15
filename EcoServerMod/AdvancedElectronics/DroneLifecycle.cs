@@ -865,6 +865,25 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
+        /// Retries the strategy's home-arrival hook (unload) on the dock's own throttled
+        /// tick (KTD11, R27) -- not a one-shot on arrival. A refused or partial push at
+        /// arrival otherwise never gets retried: nothing else calls
+        /// <see cref="IJobStrategy.OnArrivedHome"/> again once the drone has already
+        /// physically arrived and gone Idle. Safe to call on every throttled tick
+        /// regardless of state: it only does anything while the drone reads Idle and
+        /// physically home, and OnArrivedHome itself is a cheap no-op on an already-empty
+        /// hold (the survey strategy's own implementation never does anything at all).
+        /// </summary>
+        public void RetryUnloadIfWaiting()
+        {
+            if (this.strategy == null) return;
+            if (this.stateMachine.Status != DroneStatus.Idle) return;
+            if (!this.IsAtHomeDock()) return;
+
+            this.strategy.OnArrivedHome();
+        }
+
+        /// <summary>
         /// Horizontal distance within which the drone counts as docked, measured from the
         /// dock's own position.
         ///

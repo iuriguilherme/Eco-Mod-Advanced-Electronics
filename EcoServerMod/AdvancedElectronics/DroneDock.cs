@@ -1057,6 +1057,13 @@ namespace Eco.Mods.TechTree
             if (this.TryGetComponent<SurveyComponent>(out var surveyTab))
                 surveyTab.RefreshAll();
 
+            // R27/KTD11: retry a refused/partial unload from the dock's own throttled tick,
+            // never from the link component's change event (it does not fire on a linked
+            // container's contents changing -- Engine Reference).
+            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed
+                && this.SpawnedDrone.TryGetComponent<DroneLifecycle>(out var retryLifecycle))
+                retryLifecycle.RetryUnloadIfWaiting();
+
             this.PersistMiningJob();
             if (this.TryGetComponent<MiningComponent>(out var miningTab))
                 miningTab.RefreshAll();
