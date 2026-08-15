@@ -59,7 +59,12 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(PropertyAuthComponent))]
     [RequireComponent(typeof(PublicStorageComponent))]
     [RequireComponent(typeof(OccupancyRequirementComponent))]
-    [RequireComponent(typeof(SurveyComponent))]
+    // SurveyComponent is no longer required here (R29, R44, R45; U15) -- the survey drone
+    // installs it, the same way the mining drone installs the Mining tab, so a dock shows
+    // only the tab of whichever drone is slotted. Removing a required component deletes it
+    // from every already-placed dock at the next server load (see
+    // docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md);
+    // that is the intended outcome here.
     // TEMPORARY: UI vocabulary probes. Remove once the layout brainstorm has its screenshots.
     //
     // v8 brings the container probe back onto the dock. v7 quarantined it on the drone to keep a
@@ -99,6 +104,14 @@ namespace Eco.Mods.TechTree
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
+        /// <summary>
+        /// Player-facing name for the area type, shared by both dock tabs (R1, KD2). The
+        /// rename is display-only -- code identifiers and persisted area names (e.g. a
+        /// freshly created area's default "Survey Area N") are unchanged, so no save
+        /// migration is required.
+        /// </summary>
+        public const string DroneAreaLabel = "Drone Area";
+
         // Single storage slot, drone item only (see Initialize). Slot count is a
         // vanilla-proven Initialize(int) arg; the item-type and stack-limit
         // restrictions are applied per the vanilla AddInvRestriction pattern

@@ -127,6 +127,12 @@ namespace Eco.Mods.TechTree
             ComponentInstallation.For<FuelConsumptionComponent>(
                 configure:         c => c.Initialize(FuelJoulesPerSecond),
                 proxyInteractions: false),
+            // R29/R44/U15: the Survey tab travels with this drone instead of being permanently
+            // required on the dock, so a dock holding a mining drone shows no Survey tab.
+            // Unnamed -- nothing else on the dock is a survey component, so naming it would
+            // only risk hiding it from a lookup (KTD4's rule applied in the other direction).
+            // No configure: SurveyComponent's own Initialize() override does its setup.
+            ComponentInstallation.For<SurveyComponent>(proxyInteractions: false),
         };
 
         /// <summary>
