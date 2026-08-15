@@ -465,6 +465,15 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void DispatchToArea(DroneMoverComponent mover)
         {
+            // R42: checked before every dispatch, not only at each plot arrival --
+            // MiningStrategy's own re-check (TryGetNextTarget) covers the latter, but a
+            // halted job must never even leave the dock for its first hop.
+            if (this.CurrentJobKind() == DroneJobKind.Mining && MiningHalt.IsHalted)
+            {
+                this.LastDispatchNote = "mining is halted server-wide";
+                return;
+            }
+
             this.stateMachine.OnDistrictAssigned("job:" + this.CurrentAssignedToken());
 
             // Only build a fresh strategy when there is none, or the previous one finished --
