@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Numerics;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
+using Eco.Gameplay.Components;
+using Eco.Gameplay.Components.Storage;
+using Eco.Gameplay.Items;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
 using Eco.Shared.IoC;
@@ -191,12 +194,13 @@ namespace Eco.Mods.TechTree
             // the situation as of the start of this tick), which is the same trade
             // DroneMoverComponent already makes for MoveSpeed.
 
-            // The drone surveys the dock's assigned survey area (KTD9). The token is opaque to the
-            // state machine — it only drives change-detection and the target label. It encodes the
-            // area id AND an edit epoch, so editing the assigned area's plots changes the token and
-            // re-dispatches the drone (fresh pathfinding + sweep of the new shape) exactly like an
-            // unassign+reassign.
-            var assignedToken = this.HomeDock.AssignedAreaToken;
+            // The drone works whichever area its own declared tool assigns it to (KTD9, U10):
+            // a survey area for a survey drone, a mining area reference for a mining drone.
+            // The token is opaque to the state machine — it only drives change-detection and
+            // the target label. It encodes the assignment AND an edit/reassignment epoch, so
+            // editing or reassigning changes the token and re-dispatches the drone (fresh
+            // pathfinding + fresh strategy) exactly like an unassign+reassign.
+            var assignedToken = this.CurrentAssignedToken();
 
             // Serviceability gates dispatch, not assignment (R10, R12). An unserviceable dock keeps
             // its assignment -- so the panel can say "out of fuel" rather than looking unassigned --
@@ -283,7 +287,12 @@ namespace Eco.Mods.TechTree
                     break;
 
                 default:
-                    // Idle: nothing to drive (R6 -- no district, no work).
+                    // Idle. R24: a drone at the dock with an unfinished job is a dispatch
+                    // condition, not a terminal state -- after an unload, ask the SAME
+                    // strategy instance for its next target rather than waiting for the
+                    // assigned-area token to change (which would also reset shaft progress).
+                    if (this.strategy != null && !this.strategy.IsComplete && this.IsAtHomeDock())
+                        this.DispatchToArea(mover);
                     break;
             }
         }
@@ -456,34 +465,40 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void DispatchToArea(DroneMoverComponent mover)
         {
-            this.stateMachine.OnDistrictAssigned("area:" + this.HomeDock.AssignedSurveyAreaId);
+            this.stateMachine.OnDistrictAssigned("job:" + this.CurrentAssignedToken());
 
-            // A (re)dispatch starts a fresh strategy instance, which is what resets plot-list
-            // progress -- there is nothing to explicitly clear. Behaviour-preserving for this
-            // unit (KTD3): every drone still runs the survey strategy hardcoded here. Selecting
-            // between survey and mining by the drone's declared tool is U10's wiring, once a
-            // mining strategy exists to select.
-            this.strategy = this.Parent.TryGetComponent<OreSensorComponent>(out var sensor)
-                ? new SurveyStrategy(this.HomeDock, sensor)
-                : null;
-            this.plotArrivalAttempts = 0;
+            // Only build a fresh strategy when there is none, or the previous one finished --
+            // a resume dispatch (R24: idle-at-dock with an unfinished job) reuses the SAME
+            // instance so shaft/sweep progress survives the round trip home. A genuinely new
+            // assignment always presents as a token change, which is the only other caller of
+            // this method, so the two cases cannot be confused with each other.
+            var needsFreshStrategy = this.strategy == null || this.strategy.IsComplete;
 
-            // No survey reset on reassign (KTD11): findings are per-area and persist with the
-            // area, so switching the drone between areas keeps each area's own data. The sensor
-            // attributes new samples to whichever area is assigned; a reassign is just a new
-            // attribution target, not a wipe.
-            var entry = this.HomeDock.AssignedSurveyArea;
-            if (entry == null)
+            var area = this.CurrentTargetArea(out var noAreaReason);
+            if (area == null)
             {
-                this.LastDispatchNote = "assigned survey area did not resolve";
+                this.LastDispatchNote = noAreaReason;
                 this.HandleNoPath(mover);
                 return;
             }
 
-            var destination = ResolveDestinationInArea(entry.ToSurveyArea(), this.Parent.Position);
+            if (needsFreshStrategy)
+            {
+                this.strategy = this.BuildStrategy(area);
+                this.plotArrivalAttempts = 0;
+            }
+
+            if (this.strategy == null)
+            {
+                this.LastDispatchNote = "no job strategy for this drone's declared tool";
+                this.HandleNoPath(mover);
+                return;
+            }
+
+            var destination = ResolveDestinationInArea(area, this.Parent.Position);
             if (destination == null)
             {
-                this.LastDispatchNote = $"survey area '{entry.Name}' has no plot to target";
+                this.LastDispatchNote = "assigned area has no plot to target";
                 this.HandleNoPath(mover);
                 return;
             }
@@ -517,11 +532,117 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// True when the drone's assigned survey area contains <paramref name="pos"/> (U8/KTD9).
-        /// The single membership seam every arrival/roam check goes through.
+        /// True when the drone's assigned area (survey or mining, by its declared tool)
+        /// contains <paramref name="pos"/> (U8/U10/KTD9). The single membership seam every
+        /// arrival/roam check goes through.
         /// </summary>
-        private bool IsPositionInAssignedRegion(Vector3 pos) =>
-            this.HomeDock.IsPositionInAssignedArea(pos);
+        private bool IsPositionInAssignedRegion(Vector3 pos)
+        {
+            var area = this.CurrentTargetArea(out _);
+            return area != null && area.ContainsWorldColumn(
+                (int)MathF.Round(pos.X), (int)MathF.Round(pos.Z), PlotUtil.PropertyPlotLength);
+        }
+
+        /// <summary>The job kind this drone's declared tool selects (KTD3), or null for an undeclared/unrecognised tool.</summary>
+        private DroneJobKind? CurrentJobKind() =>
+            this.Parent is IDroneToolbearer bearer ? DroneJobSelection.SelectFor(bearer.Tool) : null;
+
+        /// <summary>The change-detection token for whichever assignment this drone's job kind reads (U10).</summary>
+        private string CurrentAssignedToken() =>
+            this.CurrentJobKind() == DroneJobKind.Mining
+                ? this.HomeDock.AssignedMiningAreaToken
+                : this.HomeDock.AssignedAreaToken;
+
+        /// <summary>
+        /// Resolves the Eco-free area this drone is currently assigned to work, regardless
+        /// of job kind. A mining drone resolves through its <see cref="MiningAreaRef"/>
+        /// (KTD2's three-outcome policy -- a not-yet-resolved or already-invalidated
+        /// reference reports no area, same as an unresolved survey assignment).
+        /// </summary>
+        private SurveyArea CurrentTargetArea(out string noAreaReason)
+        {
+            noAreaReason = null;
+
+            if (this.CurrentJobKind() == DroneJobKind.Mining)
+            {
+                var reference = this.HomeDock.AssignedMiningArea;
+                if (reference == null)
+                {
+                    noAreaReason = "no mining area assigned";
+                    return null;
+                }
+
+                if (reference.Resolve(out _, out var miningEntry) != AreaLookupSignal.Found)
+                {
+                    noAreaReason = "assigned mining area did not resolve";
+                    return null;
+                }
+
+                return miningEntry.ToSurveyArea();
+            }
+
+            var entry = this.HomeDock.AssignedSurveyArea;
+            if (entry == null)
+            {
+                noAreaReason = "assigned survey area did not resolve";
+                return null;
+            }
+
+            return entry.ToSurveyArea();
+        }
+
+        /// <summary>
+        /// The v1 mining tier's shaft depth (R12, KD4) -- matches the survey drone's own
+        /// sensor reach, which is not a coincidence: a plot is worth the same depth to
+        /// either drone kind at this tier.
+        /// </summary>
+        private const int MiningTierDepth = 15;
+
+        /// <summary>
+        /// Approximate hold capacity in items (KTD5: roughly 400-500 items per trip across
+        /// 16 slots). A live-tunable estimate, not a hard engine limit -- the real limit is
+        /// each linked destination's own stack capacity, which <see cref="CargoUnloader"/>
+        /// discovers by attempting the push rather than predicting it.
+        /// </summary>
+        private const int MiningHoldCapacityEstimate = 16 * 400;
+
+        /// <summary>Builds the job strategy for this drone's declared tool (KTD3, U10) -- survey unchanged since U14; mining wired here for the first time.</summary>
+        private IJobStrategy BuildStrategy(SurveyArea area)
+        {
+            if (this.CurrentJobKind() == DroneJobKind.Mining)
+            {
+                var job = this.HomeDock.MiningJob;
+                if (job == null || job.Status == MiningJobStatus.Complete || job.Status == MiningJobStatus.Ended)
+                {
+                    job = new MiningJob(area.EnumeratePlots());
+                    this.HomeDock.MiningJob = job;
+                }
+
+                if (this.HomeDock.AssignedMiningArea == null
+                    || this.HomeDock.GetComponent(typeof(PublicStorageComponent), DroneCargo.HoldName) is not PublicStorageComponent holdComponent
+                    || !this.HomeDock.TryGetComponent<LinkComponent>(out var link))
+                    return null;
+
+                return new MiningStrategy(
+                    this.HomeDock,
+                    this.HomeDock.AssignedMiningArea,
+                    job,
+                    new EcoWorldSampler(),
+                    new EcoBlockClassifier(),
+                    new MiningRemovalService(),
+                    new YieldTable(minableYield: RubbleObject.MaxAmountPerBlock, excavatableYield: 1),
+                    Item.Get<MiningArmItem>(),
+                    holdComponent.Storage,
+                    link,
+                    PlotUtil.PropertyPlotLength,
+                    MiningTierDepth,
+                    MiningHoldCapacityEstimate);
+            }
+
+            return this.Parent.TryGetComponent<OreSensorComponent>(out var sensor)
+                ? new SurveyStrategy(this.HomeDock, sensor)
+                : null;
+        }
 
         /// <summary>
         /// The point inside <paramref name="area"/> nearest <paramref name="anchor"/>, by

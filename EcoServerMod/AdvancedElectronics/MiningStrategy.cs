@@ -19,8 +19,7 @@ namespace Eco.Mods.TechTree
     public sealed class MiningStrategy : IJobStrategy
     {
         private readonly DroneDockObject homeDock;
-        private readonly DroneDockObject sourceDock;
-        private readonly SurveyAreaEntry sourceArea;
+        private readonly MiningAreaRef areaRef;
         private readonly MiningJob job;
         private readonly IWorldSampler sampler;
         private readonly IBlockClassifier classifier;
@@ -39,8 +38,7 @@ namespace Eco.Mods.TechTree
 
         public MiningStrategy(
             DroneDockObject homeDock,
-            DroneDockObject sourceDock,
-            SurveyAreaEntry sourceArea,
+            MiningAreaRef areaRef,
             MiningJob job,
             IWorldSampler sampler,
             IBlockClassifier classifier,
@@ -54,8 +52,7 @@ namespace Eco.Mods.TechTree
             int holdCapacity)
         {
             this.homeDock = homeDock;
-            this.sourceDock = sourceDock;
-            this.sourceArea = sourceArea;
+            this.areaRef = areaRef;
             this.job = job;
             this.sampler = sampler;
             this.classifier = classifier;
@@ -74,8 +71,32 @@ namespace Eco.Mods.TechTree
 
         public bool IsComplete => this.job.Status == MiningJobStatus.Complete || this.job.Status == MiningJobStatus.Ended;
 
-        private bool IsSurveyed(PlotCoord plot) =>
-            PlotFreshness.IsMineable(this.sourceArea.ReadSurveyedStamps().StampFor(plot), this.homeDock.ReadMinedStamps().StampFor(plot));
+        /// <summary>
+        /// Re-resolves the source area fresh (KTD2's three-outcome policy), rather than
+        /// trusting a reference captured once at strategy construction -- this is what
+        /// lets a survey dock picked up mid-job (AE7) or a redrawn area actually end the
+        /// job, instead of the strategy silently comparing stamps against a stale entry.
+        /// </summary>
+        private SurveyAreaEntry ResolveSourceArea()
+        {
+            var signal = this.areaRef.Resolve(out _, out var area);
+            var outcome = AreaResolutionPolicy.Resolve(signal, this.areaRef.StoredChangeToken, area == null ? null : MiningAreaRef.CurrentChangeToken(area));
+
+            switch (outcome)
+            {
+                case AreaResolutionOutcome.Invalidated:
+                    if (this.job.Status == MiningJobStatus.Working || this.job.Status == MiningJobStatus.WaitingToUnload)
+                        this.job.End(MiningEndReason.AreaGone);
+                    return null;
+                case AreaResolutionOutcome.NotYetResolved:
+                    return null;
+                default:
+                    return area;
+            }
+        }
+
+        private bool IsSurveyed(SurveyAreaEntry sourceArea, PlotCoord plot) =>
+            PlotFreshness.IsMineable(sourceArea.ReadSurveyedStamps().StampFor(plot), this.homeDock.ReadMinedStamps().StampFor(plot));
 
         public bool TryGetNextTarget(out PlotCoord plot)
         {
@@ -87,16 +108,28 @@ namespace Eco.Mods.TechTree
                 return false;
             }
 
+            if (!this.homeDock.RecheckStamp())
+            {
+                this.job.End(MiningEndReason.StampInvalid);
+                return false;
+            }
+
+            var sourceArea = this.ResolveSourceArea();
+            if (sourceArea == null)
+                return false; // either not-yet-resolved (retry) or just ended (Invalidated) -- both report no target.
+
+            bool IsSurveyed(PlotCoord p) => this.IsSurveyed(sourceArea, p);
+
             if (this.job.Status == MiningJobStatus.Idle)
                 this.job.Dispatch();
 
             if (this.job.Status != MiningJobStatus.Working)
                 return false;
 
-            if (this.job.TryComplete(this.IsSurveyed))
+            if (this.job.TryComplete(IsSurveyed))
                 return false;
 
-            var next = this.job.NextPlot(this.IsSurveyed);
+            var next = this.job.NextPlot(IsSurveyed);
             if (next == null)
                 return false;
 
@@ -106,15 +139,11 @@ namespace Eco.Mods.TechTree
 
         public ParkedWorkOutcome TickParkedWork()
         {
+            // TryGetNextTarget re-checks the citizen stamp and re-resolves the source area on
+            // every call (KTD9, R33, R37) -- both already ended the job and reported no
+            // target if either failed, so a false return here needs no further diagnosis.
             if (!this.TryGetNextTarget(out var target))
                 return ParkedWorkOutcome.PlotDone; // nothing left to do here; lifecycle will re-ask for a target.
-
-            // Re-check the citizen stamp at each plot arrival (KTD9, R33, R37), not once per dispatch.
-            if (!this.homeDock.RecheckStamp())
-            {
-                this.job.End(MiningEndReason.StampInvalid);
-                return ParkedWorkOutcome.PlotFailed;
-            }
 
             if (this.currentShaftPlot == null || !this.currentShaftPlot.Value.Equals(target))
             {

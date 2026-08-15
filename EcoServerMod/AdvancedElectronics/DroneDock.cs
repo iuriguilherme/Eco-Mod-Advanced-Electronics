@@ -334,6 +334,16 @@ namespace Eco.Mods.TechTree
         /// <summary>The area this mining dock currently consumes, or null when unassigned.</summary>
         [Serialized] public MiningAreaRef AssignedMiningArea { get; set; }
 
+        // Bumped on every AssignMiningArea call (U10), so the lifecycle's change-detection
+        // token changes even when the SAME area is reassigned -- mirroring
+        // assignedAreaEpoch's own reasoning for a redraw. A fresh token is what starts a
+        // fresh MiningJob rather than silently resuming a finished or stale one.
+        [Serialized] private int miningAssignmentEpoch;
+
+        /// <summary>Change-detection token for the mining assignment (U10), or null when unassigned.</summary>
+        public string AssignedMiningAreaToken =>
+            this.AssignedMiningArea == null ? null : $"mining:{this.AssignedMiningArea.AreaId}:{this.miningAssignmentEpoch}";
+
         /// <summary>
         /// This dock's own mined stamps (KTD12), flattened as (x, z, stamp) triples --
         /// compared against the SOURCE area's surveyed stamps to decide which plots are
@@ -406,11 +416,16 @@ namespace Eco.Mods.TechTree
             }
 
             this.AssignedMiningArea = area == null ? null : MiningAreaRef.For(sourceDock, area);
+            this.miningAssignmentEpoch++;
             return true;
         }
 
         /// <summary>Clears this dock's mining area assignment (R7). The mined ledger, hold, and stamp are untouched.</summary>
-        public void UnassignMiningArea() => this.AssignedMiningArea = null;
+        public void UnassignMiningArea()
+        {
+            this.AssignedMiningArea = null;
+            this.miningAssignmentEpoch++;
+        }
 
         /// <summary>
         /// Re-checks the stamped citizen against live access (KTD9 -- at each plot arrival,
