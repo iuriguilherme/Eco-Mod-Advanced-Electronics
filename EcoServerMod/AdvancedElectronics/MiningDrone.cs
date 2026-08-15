@@ -83,9 +83,9 @@ namespace Eco.Mods.TechTree
         /// The components this drone brings to whatever dock it is slotted into (R5, R7). The
         /// dock installs them on slot and uninstalls them on removal; see DroneDockObject.
         ///
-        /// BOTH INSTALLATIONS ARE DELIBERATELY UNNAMED, which reverses this plan's KTD7. Naming
-        /// them crashed the server on the first tick of real work: FuelConsumptionComponent
-        /// resolves its supply in its own Initialize with
+        /// THE FUEL PAIR IS DELIBERATELY UNNAMED, which reverses this plan's KTD4 in the other
+        /// direction. Naming them crashed the server on the first tick of real work:
+        /// FuelConsumptionComponent resolves its supply in its own Initialize with
         ///
         ///     this.fuelSupply = this.Parent.GetComponent&lt;FuelSupplyComponent&gt;();
         ///
@@ -95,12 +95,10 @@ namespace Eco.Mods.TechTree
         /// The pairing is not name-aware, so it is not ours to name.
         ///
         /// Unnamed is safe here because the dock declares no fuel components of its own; the
-        /// ambiguity KTD7 guards against is a real hazard only for a type the dock already
-        /// carries unnamed, which today means PublicStorageComponent. A future cargo hold must
-        /// be named for exactly that reason.
-        ///
-        /// No cargo component is declared. R7 is satisfied by the mechanism existing, not by
-        /// shipping an unused hold.
+        /// ambiguity KTD4 guards against is a real hazard only for a type the dock already
+        /// carries unnamed, which today means PublicStorageComponent -- exactly why the cargo
+        /// hold below IS named (U6, R23, R25): see <see cref="DroneCargo"/>, the single place
+        /// the hold's name and slot count live.
         /// </summary>
         public IEnumerable<ComponentInstallation> ComponentsToInstall => new[]
         {
@@ -116,6 +114,7 @@ namespace Eco.Mods.TechTree
             ComponentInstallation.For<FuelConsumptionComponent>(
                 configure:         c => c.Initialize(FuelJoulesPerSecond),
                 proxyInteractions: false),
+            DroneCargo.Installation(),
         };
 
         /// <summary>
