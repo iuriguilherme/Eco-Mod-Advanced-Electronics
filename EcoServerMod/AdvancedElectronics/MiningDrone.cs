@@ -182,7 +182,10 @@ namespace Eco.Mods.TechTree
     /// </summary>
     [Serialized]
     [RequireComponent(typeof(DroneMoverComponent))]
-    [RequireComponent(typeof(OreSensorComponent))]
+    // No OreSensorComponent (KTD8, U11): the mining drone consumes another dock's survey
+    // findings (R8) rather than reading ground nobody asked about, and this drone class
+    // never wrote findings anyway. Removing a required component deletes it from every
+    // already-placed mining drone at the next server load, which is the intended outcome.
     [RequireComponent(typeof(DroneLifecycle))]
     // The drone carries no fuel, parts, storage, or auth components, and is not interactable
     // (R1, R2). All three of those moved to the dock, which is an ordinary placed object with
@@ -253,18 +256,8 @@ namespace Eco.Mods.TechTree
         }
     }
 
-    // WITHHELD FOR THE NEXT RELEASE -- the mining drone's arm does not yet behave the way it is
-    // meant to during flight, so the drone is not offered to players.
-    //
-    // The whole class is commented out rather than just its table registration. RecipeFamily
-    // carries [ForceCreateViewAllDerived], so the type existing is enough: Eco instantiates it at
-    // startup and Initialize() registers the recipe, which leaves it visible in the recipe browser
-    // and the skill's tech tree even when it belongs to no bench. Only removing the type removes
-    // it from the game.
-    //
-    // The item and world object are deliberately left defined, so a save that already holds a
-    // mining drone keeps loading. Restore by deleting the /* and */ below.
-    /*
+    // RESTORED (U11, R32): the mining drone now has mining behaviour, which is the only
+    // reason this recipe was withheld.
     /// <summary>Recipe unlocking <see cref="MiningDroneItem"/>.</summary>
     [RequiresSkill(typeof(AdvancedElectronicsSkill), 1)]
     public partial class MiningDroneRecipe : RecipeFamily
@@ -306,13 +299,8 @@ namespace Eco.Mods.TechTree
             this.Initialize(displayText: Localizer.DoStr("Mining Drone"), recipeType: typeof(MiningDroneRecipe));
             this.ModsPostInitialize();
 
-            // WITHHELD FOR THE NEXT RELEASE. The mining drone's arm does not yet behave the way
-            // it is meant to during flight, so it is not offered to players. Registering no
-            // table is what hides it: a RecipeFamily that joins no CraftingComponent appears on
-            // no bench, while the item and world object stay defined so existing saves that
-            // already hold one keep loading. Restore by uncommenting the line below.
-            //
-            // CraftingComponent.AddRecipe(tableType: typeof(RoboticAssemblyLineObject), recipeFamily: this);
+            // RESTORED (U11, R32).
+            CraftingComponent.AddRecipe(tableType: typeof(RoboticAssemblyLineObject), recipeFamily: this);
         }
 
         /// <summary>Hook for mods to customize RecipeFamily before initialization. You can change recipes, xp, labor, time here.</summary>
@@ -321,5 +309,4 @@ namespace Eco.Mods.TechTree
         /// <summary>Hook for mods to customize RecipeFamily after initialization, but before registration. You can change skill requirements here.</summary>
         partial void ModsPostInitialize();
     }
-    */
 }

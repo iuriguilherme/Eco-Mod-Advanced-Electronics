@@ -145,6 +145,14 @@ done
 
 for t in "${ITEM_TYPES[@]:-}"; do
   [ -z "$t" ] && continue
+  # U4/U11: MiningArmItem is never crafted, held, or placed in an inventory --
+  # the mining removal service (EcoServerMod/AdvancedElectronics/MiningRemovalService.cs)
+  # builds its own game actions naming it directly and it is never presented to
+  # a player, so it carries no client-side icon/prefab by design. Documented
+  # exception, not a gap.
+  if [ "$t" = "MiningArmItem" ]; then
+    continue
+  fi
   # Item GameObjects live inside a scene, not as a standalone asset file (see
   # header) — check file basenames first (in case a future workflow saves one
   # as a prefab too), then fall back to scanning every scene for a matching
