@@ -71,6 +71,11 @@ namespace Eco.Mods.TechTree
             if (this.columnCursor < total)
                 return ParkedWorkOutcome.StillWorking;
 
+            // KTD12: the surveyed stamp is written when a plot is swept, from the same
+            // monotonic counter the mining dock's mined stamp draws from, so the two are
+            // comparable (PlotFreshness.IsMineable) without any coordination between docks.
+            this.homeDock.AssignedSurveyArea?.RecordSurveyedPlot(plot, (long)Eco.Simulation.Time.WorldTime.Seconds);
+
             this.Advance();
             return ParkedWorkOutcome.PlotDone;
         }

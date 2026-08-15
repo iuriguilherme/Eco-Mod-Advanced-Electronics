@@ -195,6 +195,14 @@ namespace Eco.Mods.TechTree
             return PlotStampAccumulator.FromSnapshot(entries);
         }
 
+        /// <summary>Records <paramref name="plot"/> surveyed at <paramref name="stampValue"/> and persists it immediately, mirroring the mining dock's own <c>RecordMinedPlot</c>.</summary>
+        public void RecordSurveyedPlot(PlotCoord plot, long stampValue)
+        {
+            var accumulator = this.ReadSurveyedStamps();
+            accumulator.Record(plot, stampValue);
+            this.SetSurveyedStamps(accumulator);
+        }
+
         /// <summary>The persisted findings back in the Eco-free shape the readout formatter consumes.</summary>
         public IEnumerable<SurveyFinding> ReadFindings() =>
             this.Findings.Select(s => s.ToSurveyFinding(this.Id));
