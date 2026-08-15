@@ -6,6 +6,7 @@ using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
 using Eco.Core.Items;
 using Eco.Core.Utils;
+using Eco.Gameplay.Auth;
 using Eco.Gameplay.Components;
 using Eco.Gameplay.Components.Auth;
 using Eco.Gameplay.Components.Storage;
@@ -322,6 +323,68 @@ namespace Eco.Mods.TechTree
         /// <summary>The dock's assigned area entry, or null when unassigned or the assigned id no longer resolves.</summary>
         public SurveyAreaEntry AssignedSurveyArea =>
             this.AssignedSurveyAreaId == 0 ? null : this.SurveyAreas.FirstOrDefault(a => a.Id == this.AssignedSurveyAreaId);
+
+        // ---------------------------------------------------------------
+        // U8: a mining dock's reference to an area published by a survey dock (KTD2), and
+        // this dock's own per-plot mined stamps (KTD12). Only meaningful on a dock holding
+        // a mining drone, but declared here rather than on the drone: the reference and
+        // the mined ledger are dock-owned state, the same way SurveyAreas is.
+        // ---------------------------------------------------------------
+
+        /// <summary>The area this mining dock currently consumes, or null when unassigned.</summary>
+        [Serialized] public MiningAreaRef AssignedMiningArea { get; set; }
+
+        /// <summary>
+        /// This dock's own mined stamps (KTD12), flattened as (x, z, stamp) triples --
+        /// compared against the SOURCE area's surveyed stamps to decide which plots are
+        /// mineable (<see cref="AdvancedElectronics.Navigation.PlotFreshness.IsMineable"/>).
+        /// Deliberately not cleared on reassignment: a plot already mined stays recorded
+        /// mined even if the dock is later pointed at a different area, since the mined
+        /// stamp describes the WORLD position, not the assignment.
+        /// </summary>
+        [Serialized] public ThreadSafeList<long> MinedStamps { get; set; } = new();
+
+        /// <summary>This dock's persisted mined stamps, rehydrated into a live accumulator.</summary>
+        public PlotStampAccumulator ReadMinedStamps()
+        {
+            var entries = new Dictionary<PlotCoord, long>();
+            for (var i = 0; i + 2 < this.MinedStamps.Count; i += 3)
+                entries[new PlotCoord((int)this.MinedStamps[i], (int)this.MinedStamps[i + 1])] = this.MinedStamps[i + 2];
+            return PlotStampAccumulator.FromSnapshot(entries);
+        }
+
+        /// <summary>Records <paramref name="plot"/> mined at <paramref name="stampValue"/> and persists it immediately -- unlike the survey side, there is no live/throttled projection step, since a mined stamp is written once per plot, not accumulated per column.</summary>
+        public void RecordMinedPlot(PlotCoord plot, long stampValue)
+        {
+            var accumulator = this.ReadMinedStamps();
+            accumulator.Record(plot, stampValue);
+
+            var flat = new ThreadSafeList<long>();
+            foreach (var entry in accumulator.Snapshot())
+            {
+                flat.Add(entry.Key.X);
+                flat.Add(entry.Key.Z);
+                flat.Add(entry.Value);
+            }
+            this.MinedStamps = flat;
+        }
+
+        /// <summary>True when <paramref name="citizen"/> holds full access on this dock (R39, R40) -- the level the dig-or-mine action itself declares, not the attribute default.</summary>
+        public bool HasFullAccess(User citizen) =>
+            citizen != null && ServiceHolder<IAuthManager>.Obj.IsAuthorized(this, citizen, AccessType.FullAccess, null, out _).Success;
+
+        /// <summary>
+        /// Assigns this mining dock to consume <paramref name="area"/>, published by
+        /// <paramref name="sourceDock"/> (R2, R3, R5, KD15). Never draws or edits an area
+        /// itself -- that remains the survey dock's alone.
+        /// </summary>
+        public void AssignMiningArea(DroneDockObject sourceDock, SurveyAreaEntry area)
+        {
+            this.AssignedMiningArea = area == null ? null : MiningAreaRef.For(sourceDock, area);
+        }
+
+        /// <summary>Clears this dock's mining area assignment (R7). The mined ledger and hold are untouched.</summary>
+        public void UnassignMiningArea() => this.AssignedMiningArea = null;
 
         /// <summary>
         /// Creates and stores a new survey area from already-validated plots (the picker
