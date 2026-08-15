@@ -194,6 +194,25 @@ namespace Eco.Mods.TechTree
             // the situation as of the start of this tick), which is the same trade
             // DroneMoverComponent already makes for MoveSpeed.
 
+            // The dock guard this class's doc comment has always promised, and which was missing
+            // until the first live restart found it. Everything below dereferences HomeDock, and it
+            // is null in two real situations:
+            //
+            //   - The first tick after a world load. The drone WorldObject persists but its HomeDock
+            //     is a live reference that does not, so the dock re-attaches it from the serialized
+            //     object id in DroneDockObject.RestoreDroneLinkOnce, on the DOCK's first tick.
+            //     WorldObjectManager.TickAll iterates objects with a plain ForEach and guarantees no
+            //     ordering between a drone and its dock, so the drone can and does tick first. One
+            //     inert tick, then the dock re-links and the next tick proceeds normally.
+            //   - A dock demolished while its drone was out, which leaves the reference dangling
+            //     (hence IsDestroyed as well as null -- every leg below paths to a dead dock's
+            //     coordinates). An orphaned drone goes inert instead of pathing forever.
+            //
+            // Below RefreshAnimationStates on purpose: an orphaned drone still has an animator, and
+            // freezing it mid-pose with both mode booleans false -- a combination the controller's
+            // mode-select has no branch for -- reads worse than showing it hovering.
+            if (this.HomeDock == null || this.HomeDock.IsDestroyed) return;
+
             // The drone works whichever area its own declared tool assigns it to (KTD9, U10):
             // a survey area for a survey drone, a mining area reference for a mining drone.
             // The token is opaque to the state machine — it only drives change-detection and
