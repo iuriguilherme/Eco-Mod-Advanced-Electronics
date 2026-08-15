@@ -30,6 +30,24 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private bool hasResolvedOnce;
 
+        /// <summary>
+        /// Consecutive failed lookups since the last success or load. Also not serialized, and it
+        /// is what bounds the tolerance above: hasResolvedOnce alone made "not yet resolved"
+        /// permanent for an area that was deleted before the restart, because it only ever flips
+        /// true on a SUCCESSFUL resolve. Such a reference retried every tick forever, the job never
+        /// ended, and the drone never came home -- live pass #1 left two of them parked in the pit
+        /// of an area that no longer existed.
+        ///
+        /// Load ordering resolves within the first few ticks or not at all, so a reference that has
+        /// never resolved is treated as genuinely gone once it has had clearly more chances than
+        /// that. Deliberately generous: the cost of waiting too long is a drone idle for a few more
+        /// seconds, while the cost of giving up too early is a job ended against an area that was
+        /// about to appear.
+        /// </summary>
+        private int consecutiveFailures;
+
+        private const int FailuresBeforeConfirmedGone = 20;
+
         public MiningAreaRef() { }
 
         public static MiningAreaRef For(WorldObject owningDock, SurveyAreaEntry area) => new MiningAreaRef
@@ -59,6 +77,7 @@ namespace Eco.Mods.TechTree
             owningDock = dock;
             area = entry;
             this.hasResolvedOnce = true;
+            this.consecutiveFailures = 0;
             return AreaLookupSignal.Found;
         }
 
@@ -67,6 +86,14 @@ namespace Eco.Mods.TechTree
 
         public static string CurrentChangeToken(SurveyAreaEntry area) => $"{area.Id}:{area.Epoch}";
 
-        private AreaLookupSignal NotFound() => this.hasResolvedOnce ? AreaLookupSignal.ConfirmedGone : AreaLookupSignal.NotYetResolved;
+        private AreaLookupSignal NotFound()
+        {
+            if (this.hasResolvedOnce) return AreaLookupSignal.ConfirmedGone;
+
+            this.consecutiveFailures++;
+            return this.consecutiveFailures >= FailuresBeforeConfirmedGone
+                ? AreaLookupSignal.ConfirmedGone
+                : AreaLookupSignal.NotYetResolved;
+        }
     }
 }
