@@ -177,6 +177,25 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
+        public void SnapshotRoundTrips_ThroughProjectionAndRehydration_IdenticalCounts()
+        {
+            var job = new MiningJob(new[] { P00, P10, P01 });
+            job.Dispatch();
+            job.MarkWorked(P00);
+            job.MarkSkipped(P10, SkipCategory.Property);
+
+            var snapshot = job.ToSnapshot();
+            var rehydrated = MiningJob.FromSnapshot(snapshot);
+
+            Assert.Equal(job.Status, rehydrated.Status);
+            Assert.Equal(job.WorkedCount, rehydrated.WorkedCount);
+            Assert.Equal(job.SkippedCount, rehydrated.SkippedCount);
+            Assert.Equal(PlotOutcome.Worked, rehydrated.OutcomeOf(P00));
+            Assert.Equal(PlotOutcome.Skipped, rehydrated.OutcomeOf(P10));
+            Assert.Equal(job.SkipCountsByCategory()[SkipCategory.Property], rehydrated.SkipCountsByCategory()[SkipCategory.Property]);
+        }
+
+        [Fact]
         public void TryComplete_NoOp_WhenNotWorking()
         {
             var job = new MiningJob(new[] { P00 });

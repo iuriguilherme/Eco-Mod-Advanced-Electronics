@@ -423,6 +423,67 @@ namespace Eco.Mods.TechTree
             return citizen != null && !citizen.DevToolSelected && this.HasFullAccess(citizen);
         }
 
+        // ---------------------------------------------------------------
+        // U9: the mining job's ledger lives with the dock, not the drone world object, so
+        // it survives a drone despawn (U9's own reasoning). Persisted as a flattened
+        // snapshot (U2's ToSnapshot/FromSnapshot), the live-accumulator-plus-snapshot
+        // pattern the survey side already uses for findings.
+        // ---------------------------------------------------------------
+
+        [Serialized] private int miningJobStatusValue = -1; // -1 = no job yet
+        [Serialized] private int miningJobEndReasonValue = -1;
+        [Serialized] private ThreadSafeList<int> miningJobLedger = new();
+
+        private MiningJob liveMiningJob;
+
+        /// <summary>The current mining job, rehydrated from the persisted snapshot on first access after load. Null until one is created.</summary>
+        public MiningJob MiningJob
+        {
+            get
+            {
+                if (this.liveMiningJob == null && this.miningJobStatusValue >= 0)
+                    this.liveMiningJob = this.RehydrateMiningJob();
+                return this.liveMiningJob;
+            }
+            set => this.liveMiningJob = value;
+        }
+
+        /// <summary>Projects the live job onto its persisted snapshot fields. Called from the dock's own throttled tick.</summary>
+        public void PersistMiningJob()
+        {
+            if (this.liveMiningJob == null) return;
+
+            var snapshot = this.liveMiningJob.ToSnapshot();
+            this.miningJobStatusValue = (int)snapshot.Status;
+            this.miningJobEndReasonValue = snapshot.EndReason.HasValue ? (int)snapshot.EndReason.Value : -1;
+
+            var flat = new ThreadSafeList<int>();
+            foreach (var entry in snapshot.Ledger)
+            {
+                flat.Add(entry.Plot.X);
+                flat.Add(entry.Plot.Z);
+                flat.Add((int)entry.Outcome);
+                flat.Add(entry.Category.HasValue ? (int)entry.Category.Value : -1);
+            }
+            this.miningJobLedger = flat;
+        }
+
+        private MiningJob RehydrateMiningJob()
+        {
+            var entries = new List<MiningJobSnapshot.LedgerEntry>();
+            for (var i = 0; i + 3 < this.miningJobLedger.Count; i += 4)
+            {
+                var plot = new PlotCoord(this.miningJobLedger[i], this.miningJobLedger[i + 1]);
+                var outcome = (PlotOutcome)this.miningJobLedger[i + 2];
+                var categoryValue = this.miningJobLedger[i + 3];
+                entries.Add(new MiningJobSnapshot.LedgerEntry(plot, outcome, categoryValue < 0 ? (SkipCategory?)null : (SkipCategory)categoryValue));
+            }
+
+            var status = (MiningJobStatus)this.miningJobStatusValue;
+            var endReason = this.miningJobEndReasonValue < 0 ? (MiningEndReason?)null : (MiningEndReason)this.miningJobEndReasonValue;
+            return MiningJob.FromSnapshot(new MiningJobSnapshot(status, endReason, entries));
+        }
+
         /// <summary>
         /// Creates and stores a new survey area from already-validated plots (the picker
         /// enforces the tier cap before calling this). Returns the new entry.
@@ -980,6 +1041,10 @@ namespace Eco.Mods.TechTree
             // this push the tab's controls look dead however much they update server-side.
             if (this.TryGetComponent<SurveyComponent>(out var surveyTab))
                 surveyTab.RefreshAll();
+
+            this.PersistMiningJob();
+            if (this.TryGetComponent<MiningComponent>(out var miningTab))
+                miningTab.RefreshAll();
 
             // Temporary, with the U1 probe: drives the showcase's server-state mirror so a write
             // can be observed without a restart. Goes when the showcase does.

@@ -115,6 +115,10 @@ namespace Eco.Mods.TechTree
                 configure:         c => c.Initialize(FuelJoulesPerSecond),
                 proxyInteractions: false),
             DroneCargo.Installation(),
+            // R29/R44/R45/U9: the Mining tab travels with this drone -- present only while
+            // it is slotted, and reports the dock as operating (KTD13) so fuel and wear
+            // flow. Unnamed: nothing else on the dock is a mining component.
+            ComponentInstallation.For<MiningComponent>(proxyInteractions: false),
         };
 
         /// <summary>

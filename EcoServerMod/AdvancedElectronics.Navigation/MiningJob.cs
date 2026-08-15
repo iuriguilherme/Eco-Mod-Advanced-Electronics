@@ -244,5 +244,61 @@ namespace AdvancedElectronics.Navigation
                 counts[category]++;
             return counts;
         }
+
+        /// <summary>Projects this job's status and ledger into a flat, serializable snapshot (U9's derived-snapshot pattern).</summary>
+        public MiningJobSnapshot ToSnapshot()
+        {
+            var entries = _ledger.Select(kv => new MiningJobSnapshot.LedgerEntry(
+                kv.Key, kv.Value, _skipCategories.TryGetValue(kv.Key, out var c) ? c : (SkipCategory?)null)).ToList();
+            return new MiningJobSnapshot(Status, EndReason, entries);
+        }
+
+        /// <summary>Rebuilds a job from a persisted snapshot -- the ledger's own plot set becomes the job's area-plot set, so no separate area-plots argument is needed.</summary>
+        public static MiningJob FromSnapshot(MiningJobSnapshot snapshot)
+        {
+            var job = new MiningJob(snapshot.Ledger.Select(e => e.Plot));
+            foreach (var entry in snapshot.Ledger)
+            {
+                if (entry.Outcome == PlotOutcome.Worked)
+                    job._ledger[entry.Plot] = PlotOutcome.Worked;
+                else if (entry.Outcome == PlotOutcome.Skipped && entry.Category.HasValue)
+                {
+                    job._ledger[entry.Plot] = PlotOutcome.Skipped;
+                    job._skipCategories[entry.Plot] = entry.Category.Value;
+                }
+            }
+            job.Status = snapshot.Status;
+            job.EndReason = snapshot.EndReason;
+            return job;
+        }
+    }
+
+    /// <summary>A flat, serializable projection of a <see cref="MiningJob"/> (U9's derived-snapshot pattern).</summary>
+    public readonly struct MiningJobSnapshot
+    {
+        public readonly struct LedgerEntry
+        {
+            public PlotCoord Plot { get; }
+            public PlotOutcome Outcome { get; }
+            public SkipCategory? Category { get; }
+
+            public LedgerEntry(PlotCoord plot, PlotOutcome outcome, SkipCategory? category)
+            {
+                Plot = plot;
+                Outcome = outcome;
+                Category = category;
+            }
+        }
+
+        public MiningJobStatus Status { get; }
+        public MiningEndReason? EndReason { get; }
+        public IReadOnlyList<LedgerEntry> Ledger { get; }
+
+        public MiningJobSnapshot(MiningJobStatus status, MiningEndReason? endReason, IReadOnlyList<LedgerEntry> ledger)
+        {
+            Status = status;
+            EndReason = endReason;
+            Ledger = ledger;
+        }
     }
 }
