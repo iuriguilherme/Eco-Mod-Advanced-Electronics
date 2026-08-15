@@ -101,6 +101,11 @@ namespace Eco.Mods.TechTree
     // Installs whatever the slotted drone declares -- fuel supply and fuel consumption today,
     // a cargo hold when some future drone brings one. The dock declares none of them itself.
     [RequireComponent(typeof(DroneModuleComponent))]
+    // R26: 20 rather than the engine's default of 9, so enough linked storage to absorb a
+    // mining area's output can be reached -- the vanilla Store's own radius (Engine
+    // Reference), shared with the waste sorters and the largest any vanilla object takes.
+    // Existing docks acquire this at the next server load (U7).
+    [RequireComponent(typeof(LinkComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
@@ -118,6 +123,9 @@ namespace Eco.Mods.TechTree
         // (Mods/__core__/AutoGen/WorldObject/StorageChest.cs on the dedicated server
         // ships this exact shape in source).
         private const int DockSlotCount = 1;
+
+        /// <summary>R26: the vanilla Store's own radius, not the engine's default of 9.</summary>
+        private const float LinkRadius = 20f;
 
         public override LocString DisplayName => Localizer.DoStr("Drone Dock");
 
@@ -494,6 +502,11 @@ namespace Eco.Mods.TechTree
                 // -- removal while the drone is out -- is refused outright (R19).
                 this.GetComponent<DroneModuleComponent>().AttachTo(storage);
             }
+
+            // R26: 20-block link radius, so enough linked storage to absorb a mining
+            // area's output can be reached.
+            this.GetComponent<LinkComponent>().Initialize(LinkRadius);
+
             this.ModsPostInitialize();
             {
                 this.GetComponent<PartsComponent>().Config(() => LocString.Empty, new PartInfo[]
