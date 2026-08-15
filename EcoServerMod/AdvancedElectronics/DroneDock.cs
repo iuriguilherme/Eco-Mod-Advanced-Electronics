@@ -373,18 +373,55 @@ namespace Eco.Mods.TechTree
         public bool HasFullAccess(User citizen) =>
             citizen != null && ServiceHolder<IAuthManager>.Obj.IsAuthorized(this, citizen, AccessType.FullAccess, null, out _).Success;
 
+        // ---------------------------------------------------------------
+        // U12: the assignment's citizen stamp (R18, R33, R37, R40, KD10) -- who is
+        // accountable for every removal this dock's mining job performs. A plain (name,
+        // id) snapshot, not a live User reference (mirrors DroneOwnership's own reasoning:
+        // a stale live reference would dangle across a session boundary).
+        // ---------------------------------------------------------------
+
+        [Serialized] public string StampedCitizenName { get; private set; }
+        [Serialized] public int StampedCitizenId { get; private set; }
+
+        /// <summary>The stamped citizen, re-resolved live every read, or null if never stamped or now offline/unknown.</summary>
+        public User StampedCitizen => this.StampedCitizenId == 0 ? null : UserManager.FindUserByID(this.StampedCitizenId);
+
         /// <summary>
         /// Assigns this mining dock to consume <paramref name="area"/>, published by
-        /// <paramref name="sourceDock"/> (R2, R3, R5, KD15). Never draws or edits an area
-        /// itself -- that remains the survey dock's alone.
+        /// <paramref name="sourceDock"/> (R2, R3, R5, KD15), and stamps <paramref name="actingCitizen"/>
+        /// as the party accountable for it (R18, R40) -- re-stamping on every reassignment,
+        /// including to the same area. Refuses the whole call (no assignment, no stamp) if
+        /// the acting citizen has a permission-ignoring tool selected (R37) or lacks full
+        /// access on this dock (R40); returns whether it succeeded.
         /// </summary>
-        public void AssignMiningArea(DroneDockObject sourceDock, SurveyAreaEntry area)
+        public bool AssignMiningArea(DroneDockObject sourceDock, SurveyAreaEntry area, User actingCitizen)
         {
+            if (area != null)
+            {
+                if (actingCitizen == null || actingCitizen.DevToolSelected || !this.HasFullAccess(actingCitizen))
+                    return false;
+
+                this.StampedCitizenName = actingCitizen.Name;
+                this.StampedCitizenId = actingCitizen.Id;
+            }
+
             this.AssignedMiningArea = area == null ? null : MiningAreaRef.For(sourceDock, area);
+            return true;
         }
 
-        /// <summary>Clears this dock's mining area assignment (R7). The mined ledger and hold are untouched.</summary>
+        /// <summary>Clears this dock's mining area assignment (R7). The mined ledger, hold, and stamp are untouched.</summary>
         public void UnassignMiningArea() => this.AssignedMiningArea = null;
+
+        /// <summary>
+        /// Re-checks the stamped citizen against live access (KTD9 -- at each plot arrival,
+        /// not once per dispatch): full access on this dock (R33, R40), and not a
+        /// permission-ignoring tool now selected (R37). False ends the job.
+        /// </summary>
+        public bool RecheckStamp()
+        {
+            var citizen = this.StampedCitizen;
+            return citizen != null && !citizen.DevToolSelected && this.HasFullAccess(citizen);
+        }
 
         /// <summary>
         /// Creates and stores a new survey area from already-validated plots (the picker
