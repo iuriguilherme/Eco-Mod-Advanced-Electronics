@@ -102,8 +102,8 @@ namespace Eco.Mods.TechTree
             }
 
             var (sourceDock, area) = offered[this.browseIndex];
-            if (!dock.AssignMiningArea(sourceDock, area, player?.User))
-                player?.MsgLocStr("Could not assign -- you need full access on this dock, and no permission-ignoring tool may be selected.", NotificationStyle.Error);
+            if (!dock.AssignMiningArea(sourceDock, area, player?.User, out var refusalReason))
+                player?.MsgLocStr($"Could not assign -- {refusalReason}.", NotificationStyle.Error);
 
             this.RefreshAll();
         }

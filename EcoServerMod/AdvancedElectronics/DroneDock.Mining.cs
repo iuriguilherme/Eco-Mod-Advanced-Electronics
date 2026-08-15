@@ -96,12 +96,54 @@ namespace Eco.Mods.TechTree
         /// the acting citizen has a permission-ignoring tool selected (R37) or lacks full
         /// access on this dock (R40); returns whether it succeeded.
         /// </summary>
-        public bool AssignMiningArea(DroneDockObject sourceDock, SurveyAreaEntry area, User actingCitizen)
+        public bool AssignMiningArea(DroneDockObject sourceDock, SurveyAreaEntry area, User actingCitizen) =>
+            this.AssignMiningArea(sourceDock, area, actingCitizen, out _);
+
+        /// <inheritdoc cref="AssignMiningArea(DroneDockObject, SurveyAreaEntry, User)"/>
+        /// <param name="refusalReason">Why the call was refused, for the caller to show; null on success.</param>
+        public bool AssignMiningArea(DroneDockObject sourceDock, SurveyAreaEntry area, User actingCitizen, out string refusalReason)
         {
+            refusalReason = null;
+
             if (area != null)
             {
-                if (actingCitizen == null || actingCitizen.DevToolSelected || !this.HasFullAccess(actingCitizen))
+                if (actingCitizen == null)
+                {
+                    refusalReason = "no acting citizen";
                     return false;
+                }
+
+                if (actingCitizen.DevToolSelected)
+                {
+                    refusalReason = "put away the permission-ignoring tool first";
+                    return false;
+                }
+
+                if (!this.HasFullAccess(actingCitizen))
+                {
+                    refusalReason = "you need full access on this mining dock";
+                    return false;
+                }
+
+                // R39's other half, and the one that was missing: full access on the dock that
+                // PUBLISHED the area, not just on the one consuming it. Without this, holding your
+                // own mining dock was enough to send it mining an area drawn by a survey dock you
+                // have no access to -- the mining dock's own auth said yes, and nothing ever asked
+                // the source. Live pass #1 confirmed the drone flew there and worked.
+                //
+                // Checked here rather than in the RPC because this is the state operation every
+                // caller goes through; a gate on one caller is a gate one new caller forgets.
+                if (sourceDock == null || sourceDock.IsDestroyed)
+                {
+                    refusalReason = "that area's survey dock is gone";
+                    return false;
+                }
+
+                if (!sourceDock.HasFullAccess(actingCitizen))
+                {
+                    refusalReason = $"you need full access on '{sourceDock.Name}', the dock that surveyed this area";
+                    return false;
+                }
 
                 this.StampedCitizenName = actingCitizen.Name;
                 this.StampedCitizenId = actingCitizen.Id;
