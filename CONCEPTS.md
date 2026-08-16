@@ -266,11 +266,26 @@ because the survey finished or the area was unassigned.
 
 A recall preserves the area's Coverage and Findings, so servicing the dock resumes the survey rather
 than restarting it. The return leg itself is treated as always possible: a drone is never stranded by
-the same shortage that recalled it.
+the same shortage that recalled it. That guarantee is progressive, and its last resorts abandon the
+[[Cruise Profile]] entirely — a return that cannot be flown is eventually simply performed.
 
 That guarantee covers the *movement* of getting home; it does not cover reaching the point where the
 return is attempted. A drone whose [[Drone Status]] never transitions toward home is stranded just as
 surely, and no amount of movement fallback rescues it, because the fallback is never invoked.
+
+### Cruise Profile
+The shape a drone's flight takes whenever it is actually flown: rise in place, cross level,
+descend in place onto the destination. The level leg is flown high enough to clear the highest ground anywhere on the route,
+so obstacles between the two ends are passed over rather than followed.
+
+Climbing and descending are their own legs rather than something blended into forward travel. A
+drone that gained height while moving forward would cut into rising ground, and one that took its
+height from whatever it happened to be flying over would dive into every hollow on the way —
+neither is what a hovering machine should look like, and the second is slow as well as absurd.
+
+Only the two ends sit at ground level; the drone still lands where it was sent, including at the
+bottom of a shaft. This is what lets a drone work terrain it has itself reshaped: the route is
+computed over the excavation rather than through it.
 
 ### Assignment
 The single Survey Area a dock has directed its drone to work on. Assigning is distinct from viewing:
