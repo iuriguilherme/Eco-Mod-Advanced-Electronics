@@ -34,6 +34,9 @@ namespace Eco.Mods.TechTree
 
         public bool IsComplete => this.plots != null && this.plots.Count > 0 && this.plotIndex >= this.plots.Count;
 
+        /// <summary>A survey sweep has no temporary stop -- finished is finished, so this matches <see cref="IsComplete"/> exactly.</summary>
+        public bool IsExhausted => this.IsComplete;
+
         public bool TryGetNextTarget(out PlotCoord plot)
         {
             this.EnsureInitialized();

@@ -500,7 +500,10 @@ namespace Eco.Mods.TechTree
             // instance so shaft/sweep progress survives the round trip home. A genuinely new
             // assignment always presents as a token change, which is the only other caller of
             // this method, so the two cases cannot be confused with each other.
-            var needsFreshStrategy = this.strategy == null || this.strategy.IsComplete;
+            // IsExhausted, not IsComplete: a full hold reads complete (there is nothing to offer
+            // right now) but must NOT discard the strategy, or the resume trip rebuilds the shaft
+            // plan against the excavated floor and starts a second shaft inside the first.
+            var needsFreshStrategy = this.strategy == null || this.strategy.IsExhausted;
 
             var area = this.CurrentTargetArea(out var noAreaReason);
             if (area == null)

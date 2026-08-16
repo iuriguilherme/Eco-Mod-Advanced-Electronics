@@ -94,7 +94,15 @@ namespace Eco.Mods.TechTree
         public MiningJob Job => this.job;
 
         public bool IsComplete =>
-            this.job.Status == MiningJobStatus.Complete || this.job.Status == MiningJobStatus.Ended || this.holdFull;
+            this.IsExhausted || this.holdFull;
+
+        /// <summary>
+        /// Only the job's own terminal states. A full hold is deliberately NOT exhaustion -- it is
+        /// the reason to go home, and this strategy must survive the trip carrying
+        /// currentShaftPlot and shaftResumeIndex, or the shaft restarts from the pit floor.
+        /// </summary>
+        public bool IsExhausted =>
+            this.job.Status == MiningJobStatus.Complete || this.job.Status == MiningJobStatus.Ended;
 
         /// <summary>
         /// Re-resolves the source area fresh (KTD2's three-outcome policy), rather than

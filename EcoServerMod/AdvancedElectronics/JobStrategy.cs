@@ -33,6 +33,20 @@ namespace Eco.Mods.TechTree
         /// <summary>True once every plot this strategy knows about has been worked or skipped.</summary>
         bool IsComplete { get; }
 
+        /// <summary>
+        /// True when this strategy has nothing left to do EVER, so the lifecycle may discard it and
+        /// build a fresh one. Distinct from <see cref="IsComplete"/>, which also reads true for a
+        /// temporary stop such as a full hold.
+        ///
+        /// Conflating the two discarded a mining strategy on every unload trip. The replacement
+        /// rebuilt its ShaftPlan against the CURRENT surface -- by then the floor of the pit it had
+        /// just dug -- so the drone started a second shaft at the bottom of the first, with no
+        /// entrance, and each new plan opened with its own 3x3 layer over ground already cut 5x5.
+        /// That is the alternating 3x3/5x5 layers, the skipped layers, the unmined 3x3 core inside
+        /// a mined ring, and the plot that stopped at 5 instead of 15 (live pass #8).
+        /// </summary>
+        bool IsExhausted { get; }
+
         /// <summary>One tick of work while parked in the plot <see cref="TryGetNextTarget"/> last returned.</summary>
         ParkedWorkOutcome TickParkedWork();
 
