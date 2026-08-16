@@ -120,15 +120,38 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Every survey dock in the world holding at least one area (R2, R3, KD15) --
-        /// access filtering (R39) happens at assign time, where the acting player is
-        /// known; the browse cursor itself carries no player context to filter by.
+        /// The survey docks this dock may consume areas from: same owner, holding at least one
+        /// area (R2, R3, KD15).
+        ///
+        /// The owner filter is the answer to "a drone dock should not interact with every other
+        /// drone dock in the world -- it is a private world object like any other". Until it
+        /// existed, this listed every dock on the server, including ones the player had no access
+        /// to, and the assign path would happily take one.
+        ///
+        /// It is a rule rather than a player action, which is its known weakness: co-owned or
+        /// company land still shares broadly, because Owners is a Title and two docks on the same
+        /// deed legitimately share it. That is the accepted cost of not adding a pairing UI.
+        /// Access filtering (R39) still happens at assign time, where the acting player is known
+        /// -- ownership answers "whose docks are these", authorization answers "may YOU use them",
+        /// and both are needed.
         /// </summary>
-        private IEnumerable<(DroneDockObject Dock, SurveyAreaEntry Area)> OfferedAreas() =>
-            ServiceHolder<IWorldObjectManager>.Obj.All
+        private IEnumerable<(DroneDockObject Dock, SurveyAreaEntry Area)> OfferedAreas()
+        {
+            if (this.Parent is not DroneDockObject self) return Enumerable.Empty<(DroneDockObject, SurveyAreaEntry)>();
+
+            return ServiceHolder<IWorldObjectManager>.Obj.All
                 .OfType<DroneDockObject>()
-                .Where(d => !d.IsDestroyed && d.HasComponent<SurveyComponent>())
+                .Where(d => !d.IsDestroyed && d.HasComponent<SurveyComponent>() && SharesOwnerWith(self, d))
                 .SelectMany(d => d.SurveyAreas.Select(a => (Dock: d, Area: a)));
+        }
+
+        /// <summary>
+        /// Whether two docks belong to the same owner. An unowned dock matches only another
+        /// unowned one -- deliberately, since "nobody owns it" is not a household, and treating
+        /// null as a wildcard would put every unclaimed dock in the world back on the list.
+        /// </summary>
+        private static bool SharesOwnerWith(DroneDockObject self, DroneDockObject other) =>
+            ReferenceEquals(self, other) || Equals(self.Owners, other.Owners);
 
         public void RefreshAll()
         {

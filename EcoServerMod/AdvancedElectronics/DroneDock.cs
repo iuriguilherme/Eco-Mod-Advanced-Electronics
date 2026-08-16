@@ -666,6 +666,27 @@ namespace Eco.Mods.TechTree
             if (this.restartRelinkDone) return;
             this.restartRelinkDone = true;
 
+            // Deferred until every world object is registered, NOT run on this tick. The lookup
+            // below decides "my drone is gone" from GetFromID returning null, and on the first
+            // tick after a load that answer is a lie -- the drone persists but may not be in the
+            // registry yet. Acting on it respawned a drone that already existed, and since the
+            // original was never destroyed, every restart added another: live pass #3 finished
+            // with four drones on a one-drone dock, two docked and two hovering.
+            //
+            // Same guard LinkComponent.Initialize uses for the same reason (its own comment:
+            // "on load, referenced objects may not be registered yet and we'd incorrectly drop
+            // persisted link settings"). A miscount there loses settings; here it forks an object.
+            WorldObjectManager.Init.RunIfOrWhenInitialized(this.RestoreDroneLinkNow);
+        }
+
+        /// <summary>
+        /// The body of <see cref="RestoreDroneLinkOnce"/>, run only once the world object registry
+        /// is complete so a null lookup genuinely means gone.
+        /// </summary>
+        private void RestoreDroneLinkNow()
+        {
+            if (this.IsDestroyed) return; // the dock could have been picked up while we waited.
+
             if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed)
                 return; // already linked this session.
 
@@ -683,6 +704,14 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
+            // Second line of defence, because one forked object is permanent: a drone that already
+            // claims this dock adopts rather than doubles. Covers the case the id lookup cannot --
+            // a drone whose id this dock lost (an interrupted save, a pre-KTD10 world) but which is
+            // standing at the pad pointing at us. Cheaper than the alternative: the world grows a
+            // drone per restart, and nothing ever removes the extras.
+            if (this.AdoptOrphanedDroneClaimingThisDock())
+                return;
+
             // Drone WorldObject is gone but the item is still docked: respawn and re-pair.
             if (this.TryGetComponent<PublicStorageComponent>(out var storage))
             {
@@ -693,6 +722,26 @@ namespace Eco.Mods.TechTree
                     this.SpawnDrone(null);
                 }
             }
+        }
+
+        /// <summary>
+        /// Re-links a live drone that already names this dock as home, if one exists. Returns
+        /// whether one was adopted.
+        /// </summary>
+        private bool AdoptOrphanedDroneClaimingThisDock()
+        {
+            foreach (var obj in ServiceHolder<IWorldObjectManager>.Obj.All.OfType<WorldObject>())
+            {
+                if (obj.IsDestroyed) continue;
+                if (!obj.TryGetComponent<DroneLifecycle>(out var lifecycle)) continue;
+                if (!ReferenceEquals(lifecycle.HomeDock, this)) continue;
+
+                this.SpawnedDrone = obj;
+                this.spawnedDroneObjectId = obj.ObjectID;
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
