@@ -74,14 +74,33 @@ namespace AdvancedElectronics.Navigation
         /// The drone's everyday climb height. The first rung must match it, or every return leg
         /// would open by relaxing a constraint it had no reason to relax. DroneMoverComponent
         /// builds its ordinary pathfinder from this same value.
+        ///
+        /// This was 1f -- a WALKING entity's step, one block. The drone flies. That single
+        /// mismatch was the whole of the "drone gets stuck" family: a shaft cut to the mining
+        /// tier's 15 layers presents a 15-block step, so the machine that dug the hole could not
+        /// path back into it, and the same trip that succeeded outbound failed on the return
+        /// (live pass #7: "dispatched to area point 302,617" then "no path ... to area point
+        /// 302,617"). It equally explains a freshly drawn area on a slope reading unreachable to
+        /// the survey drone, and non-contiguous plots being skipped -- any terrain step over one
+        /// block was a wall to a machine that hovers.
+        ///
+        /// 16f rather than a new number: it is the Hover rung's existing value, so the everyday
+        /// capability now matches what the ladder already considered reasonable for this drone,
+        /// and it clears MiningTierDepth (15) with a block to spare. Obstacle avoidance is
+        /// untouched -- this changes how far the drone may climb or descend, not what it may pass
+        /// through.
         /// </summary>
-        public const float OrdinaryMaxStepHeight = 1f;
+        public const float OrdinaryMaxStepHeight = 16f;
 
         private static readonly ReturnAttempt[] ladder =
         {
-            new(ReturnTier.Normal,    OrdinaryMaxStepHeight, ignoresObstacles: false, teleports: false, isFinal: false),
-            new(ReturnTier.HighClimb, 4f,                    ignoresObstacles: false, teleports: false, isFinal: false),
-            new(ReturnTier.Hover,     16f,                   ignoresObstacles: true,  teleports: false, isFinal: false),
+            // Rung heights re-based on the everyday value now that it reflects flight rather than
+            // walking. HighClimb was 4 and Hover 16, both of which now sit at or under the
+            // ordinary rung -- an "escalation" that climbed less than the drone already could.
+            // The monotonic-ladder test caught exactly that, which is the test doing its job.
+            new(ReturnTier.Normal,    OrdinaryMaxStepHeight,      ignoresObstacles: false, teleports: false, isFinal: false),
+            new(ReturnTier.HighClimb, OrdinaryMaxStepHeight * 2f, ignoresObstacles: false, teleports: false, isFinal: false),
+            new(ReturnTier.Hover,     OrdinaryMaxStepHeight * 4f, ignoresObstacles: true,  teleports: false, isFinal: false),
             new(ReturnTier.Clip,      float.MaxValue,        ignoresObstacles: true,  teleports: false, isFinal: false),
             new(ReturnTier.Teleport,  float.MaxValue,        ignoresObstacles: true,  teleports: true,  isFinal: true),
         };

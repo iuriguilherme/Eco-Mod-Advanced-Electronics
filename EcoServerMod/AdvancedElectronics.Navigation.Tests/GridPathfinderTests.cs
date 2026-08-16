@@ -413,6 +413,53 @@ namespace AdvancedElectronics.Navigation.Tests
         /// Simple in-memory fake IWorldSampler for tests - a set-based
         /// override of a flat, all-walkable default plane. No real Eco data.
         /// </summary>
+        // --- The drone flies: a shaft it dug itself must stay reachable ---
+
+        [Fact]
+        public void ShaftDugToFullTierDepth_IsStillReachable_AtTheDronesOwnClimbHeight()
+        {
+            // The exact live failure, offline: flat ground, one column cut to the mining tier's
+            // 15 layers, drone parked at its dock trying to get back in. At the old walking step
+            // of 1f this returned no path, the lifecycle went Unreachable, and the drone hovered
+            // over its dock forever.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(5, 0, 64f - 15f);
+
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+
+            var result = pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(5, 50, 0));
+
+            Assert.True(result.Found);
+            Assert.Equal(50f, result.Waypoints[result.Waypoints.Count - 1].Y); // shaft floor + 1
+        }
+
+        [Fact]
+        public void ShaftDugToFullTierDepth_IsUnreachable_AtAWalkingStep()
+        {
+            // The regression this guards: proves the old value is what refused the path, so the
+            // constant is doing the work and a future "tidy-up" back to 1f fails here loudly
+            // rather than on a live server two restarts later.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(5, 0, 64f - 15f);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+
+            Assert.False(pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(5, 50, 0)).Found);
+        }
+
+        [Fact]
+        public void ADropOfSeveralBlocks_IsTraversable_SoASlopedAreaIsNotAWall()
+        {
+            // Same constant, the other reported symptom: a freshly drawn area on a slope read
+            // "unreachable" to the survey drone. Any terrain step over one block was a wall.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            for (var x = 1; x <= 4; x++) sampler.SetHeight(x, 0, 64f + x * 3f);
+
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+
+            Assert.True(pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(4, 77, 0)).Found);
+        }
+
         private sealed class FakeWorldSampler : IWorldSampler
         {
             private readonly HashSet<(int X, int Z)> _solid = new HashSet<(int, int)>();
