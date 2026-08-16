@@ -511,6 +511,17 @@ namespace Eco.Mods.TechTree
                 // same event without an ordering hazard, because the case they would have raced on
                 // -- removal while the drone is out -- is refused outright (R19).
                 this.GetComponent<DroneModuleComponent>().AttachTo(storage);
+
+                // Seed the pairing from the slot BEFORE any storage event can fire. PairedDrone is
+                // not [Serialized] -- it is re-derived from the slot -- so after a load it reads
+                // null while the drone item is physically still sitting there. OnDockStorageChanged
+                // spawns on a false-to-true transition, and that stale null made the very first
+                // storage change of the session (link activity, a consolidate, the module driver's
+                // own install) look like a drone being inserted. It spawned a second drone next to
+                // the one already standing on the pad, every restart, on every dock whose slot
+                // anything touched -- which is why the one dock nobody interacted with was the
+                // only one that did not fork.
+                this.PairedDrone = storage.Storage.NonEmptyStacks.FirstOrDefault()?.Item;
             }
 
             // R26: 20-block link radius, so enough linked storage to absorb a mining
@@ -634,6 +645,13 @@ namespace Eco.Mods.TechTree
             // drone, which would look like a working dock dispatching someone else's robot.
             if (this.PairedDrone == null
                 || !DroneObjectForItem.TryGetValue(this.PairedDrone.GetType(), out var droneObjectType))
+                return;
+
+            // Structural guard against forking a drone, placed at the one point every spawn path
+            // goes through. A duplicate world object is permanent -- nothing collects the extra --
+            // so this must be impossible rather than merely unlikely, and it has now been reached
+            // by two different callers for two different reasons across two live passes.
+            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed)
                 return;
 
             var obj = WorldObjectManager.ForceAdd(droneObjectType, user, this.DroneParkPosition, Quaternion.Identity, false) as WorldObject;
