@@ -37,6 +37,19 @@ namespace Eco.Mods.TechTree
         private int shaftResumeIndex;
 
         /// <summary>
+        /// The plot most recently handed to the lifecycle by <see cref="TryGetNextTarget"/>,
+        /// whether or not the drone ever reached it.
+        ///
+        /// currentShaftPlot cannot answer that: it is set inside TickParkedWork, which only runs
+        /// once the drone has actually parked. An arrival that fails never gets there, so
+        /// OnArrivalFailed had nothing to mark and silently recorded nothing -- and an unmarked
+        /// plot is still Unworked, so it was offered again the next tick, forever. Live pass #5
+        /// caught a drone hovering over its area on the working animation with the job reading
+        /// "Working, worked 0, skipped 0" while the lifecycle reported "skipped unreachable plot".
+        /// </summary>
+        private PlotCoord? lastOfferedPlot;
+
+        /// <summary>
         /// True from the tick the hold reaches capacity until it is fully unloaded (R24,
         /// AE1). This is what actually sends the drone home: <see cref="TryGetNextTarget"/>
         /// offers nothing while it is set, and <see cref="IsComplete"/> reads true for it
@@ -149,6 +162,7 @@ namespace Eco.Mods.TechTree
                 return false;
 
             plot = next.Value;
+            this.lastOfferedPlot = plot;
             return true;
         }
 
@@ -279,11 +293,17 @@ namespace Eco.Mods.TechTree
 
         public void OnArrivalFailed()
         {
-            if (this.currentShaftPlot is { } plot)
-            {
-                this.job.MarkSkipped(plot, SkipCategory.Unreachable);
-                this.currentShaftPlot = null;
-            }
+            // Falls back to the last offered plot, because the common case is an arrival that
+            // failed BEFORE the drone ever parked -- currentShaftPlot is set inside TickParkedWork
+            // and is therefore still null exactly when this is most likely to be called. Marking
+            // nothing leaves the plot Unworked, so the lifecycle is handed the same target again
+            // the next tick and the drone loops over its area indefinitely.
+            var plot = this.currentShaftPlot ?? this.lastOfferedPlot;
+            if (plot == null) return;
+
+            this.job.MarkSkipped(plot.Value, SkipCategory.Unreachable);
+            this.currentShaftPlot = null;
+            this.lastOfferedPlot = null;
         }
 
         public void OnArrivedHome()
