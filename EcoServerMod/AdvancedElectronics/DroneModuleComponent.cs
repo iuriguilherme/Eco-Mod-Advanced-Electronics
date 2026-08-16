@@ -186,6 +186,17 @@ namespace Eco.Mods.TechTree
             this.Sync();
         }
 
+        /// <summary>
+        /// Whether two component sources call for the same installation. Null matches only null --
+        /// an empty slot and a filled one are never the same kind, so insertion and removal both
+        /// still trigger a sync.
+        /// </summary>
+        private static bool SameKind(IWorldObjectComponentSource a, IWorldObjectComponentSource b)
+        {
+            if (a == null || b == null) return a == null && b == null;
+            return a.GetType() == b.GetType();
+        }
+
         private void Sync()
         {
             // Belt and braces: Tick should never run under an inventory lock, but if it somehow
@@ -193,7 +204,27 @@ namespace Eco.Mods.TechTree
             if (InventoryLock.IsHeldByCurrentThread) { this.syncPending = true; return; }
 
             var newSource = this.SlottedSource;
-            if (ReferenceEquals(this.installedSource, newSource)) return;
+
+            // Compared by TYPE, not by instance. What gets installed is a function of which drone
+            // KIND is slotted -- ComponentsToInstall is declared per item class -- so two instances
+            // of MiningDroneItem call for byte-identical components and swapping one for the other
+            // has nothing to reinstall.
+            //
+            // Reference equality churned constantly, because ordinary inventory work (a
+            // consolidate, a restack, a stack merge) hands back a different Item instance for the
+            // same slot contents. Every such change tore every component off the dock and put it
+            // back, and the client rebuilds a world object's whole UI when its component set
+            // changes -- destroying live controls mid-subscription. That is the disappearing
+            // +/- selectors and assign buttons, visible in the client log as
+            //
+            //     Destroyed AutoGenSelector has active subscriptions for: ...
+            //     Destroyed InputFieldControl has active subscriptions for: MiningComponentView...
+            //
+            // A genuine swap between two DIFFERENT drone kinds still differs by type and still
+            // reinstalls. A swap between two of the same kind skips the capture/restore round trip,
+            // which is safe here because R8 refuses to release a drone whose tank still holds fuel
+            // -- there is no partly-burned unit left to carry across.
+            if (SameKind(this.installedSource, newSource)) return;
 
             if (this.installedSource != null) this.Uninstall(this.installedSource);
             if (newSource != null && !this.TryInstall(newSource)) return;
