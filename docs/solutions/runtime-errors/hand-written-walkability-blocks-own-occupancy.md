@@ -1,6 +1,7 @@
 ---
 title: "Hand-written walkability made a modded entity's own occupancy block impassable, so pathfinding never returned a path"
 date: 2026-07-20
+last_updated: 2026-08-16
 category: runtime-errors
 module: EcoServerMod
 problem_type: runtime_error
@@ -36,6 +37,14 @@ of walkability, and that rule classified the drone's own position as solid terra
   invariance is the signature: a *routing* problem varies with geometry, a *predicate*
   problem does not.
 - Nothing in the server log — no exception, because nothing throws.
+
+**If your `Unreachable` is NOT invariant, this is the wrong doc.** Some destinations working
+and others not means the predicate is fine and the fault is downstream — either the geometry
+genuinely blocks that route, or the lifecycle mishandles a legitimate no-path result. The
+second is a distinct failure with its own signature: the drone hovers rather than sitting
+still, and its job ledger freezes at zero worked and zero skipped while the lifecycle claims
+to have skipped a plot. See
+`docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md`.
 
 ## What Didn't Work
 
@@ -153,3 +162,8 @@ is `Solid`, so the start column is walkable, while genuine terrain still blocks.
 - `docs/solutions/conventions/eco-custom-worldobject-placement-requirements.md` — the
   occupancy/placement contract; `WorldObjectBlock` and the `Occupied` attribute come from
   the same mechanism.
+- `docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md` —
+  the other way a drone ends up reporting `Unreachable`. There the pathfinder is correct and
+  the no-path result is legitimate; the lifecycle simply has no working exit from the state,
+  so the drone loops instead of retiring the plot. Separated by invariance: this doc's failure
+  never varies with geometry, that one's happens only for particular destinations.
