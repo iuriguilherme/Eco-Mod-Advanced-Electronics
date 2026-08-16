@@ -106,7 +106,12 @@ namespace Eco.Mods.TechTree
     // mining area's output can be reached -- the vanilla Store's own radius (Engine
     // Reference), shared with the waste sorters and the largest any vanilla object takes.
     // Existing docks acquire this at the next server load (U7).
-    [RequireComponent(typeof(LinkComponent))]
+    // The dock's own subclass, not the stock component: a dock must auto-link to storage off its
+    // deed (an unowned stockpile has no deed at all), or the hold fills and every later dig is
+    // refused for lack of room. See DroneDockLinkComponent for why that is not a permission
+    // change. MIGRATION: a dock saved before this carries a stock LinkComponent; the swap is
+    // exercised on the alpha test world rather than assumed safe.
+    [RequireComponent(typeof(DroneDockLinkComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
