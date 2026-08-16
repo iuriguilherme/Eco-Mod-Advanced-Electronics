@@ -1,7 +1,7 @@
 ---
 title: "A gate that discovers nothing passes everything"
 date: 2026-07-30
-last_updated: 2026-08-10
+last_updated: 2026-08-16
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -13,6 +13,7 @@ applies_when:
   - "A plan cites an existing gate as evidence that new work is correct"
   - "Narrowing a pattern to exclude false positives, where over-narrowing is silent"
   - "Refactoring a type onto a new base class, interface, directory, or naming convention"
+  - "A runtime conditional guards recovery, cleanup, or retry logic and may not be satisfiable in the state that triggers it"
 tags: [validation, verification, false-confidence, grep, regex, tooling, eco-modding, name-match, coverage-regression]
 related_components: [scripts, EcoServerMod/AdvancedElectronics]
 ---
@@ -112,6 +113,17 @@ same failure: a test suite that globs for `*_test.rb` and finds none passes; a l
 `files:` pattern matching nothing reports clean; a reflection-based registry check that filters on a
 base type nobody inherits from any more validates an empty set. In all of them the reported result is
 *correct* and *useless*, which is why it survives.
+
+**It generalises past tooling, too.** Everything above is a check, and every trigger this entry lists
+names one — but the shape is a property of unsatisfiable conditions, not of validation code. The same
+error in running code is a recovery path whose guard cannot be true in the state that needs
+recovering: the handler runs, tests its condition, finds it false, returns having done nothing, and
+every caller reads that as a recovery correctly performed. Nothing throws and nothing logs, for the
+same reason a discovery-less gate prints PASS. See
+`docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md`, where
+three instances of it in one subsystem each produced an infinite loop rather than a crash. The
+tooling advice above translates directly — *verify a gate by breaking it* becomes *force the process
+into each terminal state and confirm it can leave*.
 
 **The corpus can also be narrowed by a rule the check does not contain.** Every narrowing above is
 authored by the check's own author and visible in the check's own text — an anchor, a glob, a base-type
@@ -270,3 +282,7 @@ existed when it was last edited.
   shape in the deploy path: a step that reports success without having confirmed the thing it claims.
 - `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` — why name match is
   the invariant worth gating on in this project at all.
+- `docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md` — the
+  first runtime member of this family. Same kernel, different axis: there the unsatisfiable condition
+  guards a recovery handler rather than a validation step, so its silence reads as a successful
+  recovery instead of a passing gate, and the symptom is an infinite loop instead of a green check.
