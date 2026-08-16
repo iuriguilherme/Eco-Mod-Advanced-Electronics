@@ -75,7 +75,7 @@ namespace AdvancedElectronics.Navigation.Tests
         [Fact]
         public void OnStationAndStationary_IsWorking()
         {
-            var state = State(DroneStatus.Surveying, isMoving: false, isAtHomeDock: false);
+            var state = State(DroneStatus.OnStation, isMoving: false, isAtHomeDock: false);
 
             Assert.True(state.IsWorking);
             Assert.False(state.IsAtHomeDock);
@@ -87,7 +87,7 @@ namespace AdvancedElectronics.Navigation.Tests
         [Fact]
         public void OnStationButRepositioningBetweenPlots_IsNotWorking()
         {
-            var state = State(DroneStatus.Surveying, isMoving: true, isAtHomeDock: false);
+            var state = State(DroneStatus.OnStation, isMoving: true, isAtHomeDock: false);
 
             Assert.False(state.IsWorking);
         }
@@ -121,7 +121,7 @@ namespace AdvancedElectronics.Navigation.Tests
         [Fact]
         public void MiningArm_SelectsMiningModeOnly()
         {
-            var state = State(DroneStatus.Surveying, isMoving: false, isAtHomeDock: false,
+            var state = State(DroneStatus.OnStation, isMoving: false, isAtHomeDock: false,
                               usesHarvestTool: false);
 
             Assert.True(state.ModeMining);
@@ -131,7 +131,7 @@ namespace AdvancedElectronics.Navigation.Tests
         [Fact]
         public void HarvestArm_SelectsHarvestModeOnly()
         {
-            var state = State(DroneStatus.Surveying, isMoving: false, isAtHomeDock: false,
+            var state = State(DroneStatus.OnStation, isMoving: false, isAtHomeDock: false,
                               usesHarvestTool: true);
 
             Assert.True(state.ModeHarvest);
@@ -145,8 +145,8 @@ namespace AdvancedElectronics.Navigation.Tests
         [InlineData(DroneStatus.Idle, true)]
         [InlineData(DroneStatus.EnRoute, false)]
         [InlineData(DroneStatus.EnRoute, true)]
-        [InlineData(DroneStatus.Surveying, false)]
-        [InlineData(DroneStatus.Surveying, true)]
+        [InlineData(DroneStatus.OnStation, false)]
+        [InlineData(DroneStatus.OnStation, true)]
         [InlineData(DroneStatus.Unreachable, false)]
         [InlineData(DroneStatus.Unreachable, true)]
         public void ModeBooleans_AreNeverEqual_WhateverTheStatus(DroneStatus status, bool usesHarvestTool)
@@ -161,7 +161,7 @@ namespace AdvancedElectronics.Navigation.Tests
         [Theory]
         [InlineData(DroneStatus.Idle)]
         [InlineData(DroneStatus.EnRoute)]
-        [InlineData(DroneStatus.Surveying)]
+        [InlineData(DroneStatus.OnStation)]
         [InlineData(DroneStatus.Unreachable)]
         public void ModeBooleans_DoNotVaryWithLifecycleStatus(DroneStatus status)
         {
@@ -180,7 +180,7 @@ namespace AdvancedElectronics.Navigation.Tests
         [Fact]
         public void SurveyingInsideTheDocksOwnRadius_IsWorkingNotHome()
         {
-            var state = State(DroneStatus.Surveying, isMoving: false, isAtHomeDock: true);
+            var state = State(DroneStatus.OnStation, isMoving: false, isAtHomeDock: true);
 
             Assert.True(state.IsWorking);
             Assert.False(state.IsAtHomeDock);
@@ -190,9 +190,9 @@ namespace AdvancedElectronics.Navigation.Tests
         [InlineData(DroneStatus.Idle, false, true)]
         [InlineData(DroneStatus.Idle, true, true)]
         [InlineData(DroneStatus.EnRoute, true, false)]
-        [InlineData(DroneStatus.Surveying, false, true)]
-        [InlineData(DroneStatus.Surveying, true, true)]
-        [InlineData(DroneStatus.Surveying, false, false)]
+        [InlineData(DroneStatus.OnStation, false, true)]
+        [InlineData(DroneStatus.OnStation, true, true)]
+        [InlineData(DroneStatus.OnStation, false, false)]
         [InlineData(DroneStatus.Unreachable, false, true)]
         public void IsAtHomeDockAndIsWorking_AreNeverBothTrue(
             DroneStatus status, bool isMoving, bool isAtHomeDock)
@@ -252,7 +252,7 @@ namespace AdvancedElectronics.Navigation.Tests
         [Fact]
         public void AsNamedValues_ReportsTheSameValuesAsTheProperties()
         {
-            var state = State(DroneStatus.Surveying, isMoving: false, isAtHomeDock: false,
+            var state = State(DroneStatus.OnStation, isMoving: false, isAtHomeDock: false,
                               usesHarvestTool: true);
 
             var byName = state.AsNamedValues().ToDictionary(pair => pair.Name, pair => pair.Value);

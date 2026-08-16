@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
 using Eco.Core.Items;
 using Eco.Gameplay.Components;

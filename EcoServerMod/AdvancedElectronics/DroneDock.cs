@@ -6,6 +6,7 @@ using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
 using Eco.Core.Items;
 using Eco.Core.Utils;
+using Eco.Gameplay.Auth;
 using Eco.Gameplay.Components;
 using Eco.Gameplay.Components.Auth;
 using Eco.Gameplay.Components.Storage;
@@ -59,7 +60,12 @@ namespace Eco.Mods.TechTree
     [RequireComponent(typeof(PropertyAuthComponent))]
     [RequireComponent(typeof(PublicStorageComponent))]
     [RequireComponent(typeof(OccupancyRequirementComponent))]
-    [RequireComponent(typeof(SurveyComponent))]
+    // SurveyComponent is no longer required here (R29, R44, R45; U15) -- the survey drone
+    // installs it, the same way the mining drone installs the Mining tab, so a dock shows
+    // only the tab of whichever drone is slotted. Removing a required component deletes it
+    // from every already-placed dock at the next server load (see
+    // docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md);
+    // that is the intended outcome here.
     // TEMPORARY: UI vocabulary probes. Remove once the layout brainstorm has its screenshots.
     //
     // v8 brings the container probe back onto the dock. v7 quarantined it on the drone to keep a
@@ -96,15 +102,36 @@ namespace Eco.Mods.TechTree
     // Installs whatever the slotted drone declares -- fuel supply and fuel consumption today,
     // a cargo hold when some future drone brings one. The dock declares none of them itself.
     [RequireComponent(typeof(DroneModuleComponent))]
+    // R26: 20 rather than the engine's default of 9, so enough linked storage to absorb a
+    // mining area's output can be reached -- the vanilla Store's own radius (Engine
+    // Reference), shared with the waste sorters and the largest any vanilla object takes.
+    // Existing docks acquire this at the next server load (U7).
+    // The dock's own subclass, not the stock component: a dock must auto-link to storage off its
+    // deed (an unowned stockpile has no deed at all), or the hold fills and every later dig is
+    // refused for lack of room. See DroneDockLinkComponent for why that is not a permission
+    // change. MIGRATION: a dock saved before this carries a stock LinkComponent; the swap is
+    // exercised on the alpha test world rather than assumed safe.
+    [RequireComponent(typeof(DroneDockLinkComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
+        /// <summary>
+        /// Player-facing name for the area type, shared by both dock tabs (R1, KD2). The
+        /// rename is display-only -- code identifiers and persisted area names (e.g. a
+        /// freshly created area's default "Survey Area N") are unchanged, so no save
+        /// migration is required.
+        /// </summary>
+        public const string DroneAreaLabel = "Drone Area";
+
         // Single storage slot, drone item only (see Initialize). Slot count is a
         // vanilla-proven Initialize(int) arg; the item-type and stack-limit
         // restrictions are applied per the vanilla AddInvRestriction pattern
         // (Mods/__core__/AutoGen/WorldObject/StorageChest.cs on the dedicated server
         // ships this exact shape in source).
         private const int DockSlotCount = 1;
+
+        /// <summary>R26: the vanilla Store's own radius, not the engine's default of 9.</summary>
+        private const float LinkRadius = 20f;
 
         public override LocString DisplayName => Localizer.DoStr("Drone Dock");
 
@@ -302,6 +329,10 @@ namespace Eco.Mods.TechTree
         public SurveyAreaEntry AssignedSurveyArea =>
             this.AssignedSurveyAreaId == 0 ? null : this.SurveyAreas.FirstOrDefault(a => a.Id == this.AssignedSurveyAreaId);
 
+        // Mining-specific state (U8 cross-dock reference + mined stamps, U12 citizen
+        // stamp/re-check/full-access, U9 mining job ledger) moved to DroneDock.Mining.cs
+        // (maintainability -- this file was crossing 1000 lines).
+
         /// <summary>
         /// Creates and stores a new survey area from already-validated plots (the picker
         /// enforces the tier cap before calling this). Returns the new entry.
@@ -480,7 +511,23 @@ namespace Eco.Mods.TechTree
                 // same event without an ordering hazard, because the case they would have raced on
                 // -- removal while the drone is out -- is refused outright (R19).
                 this.GetComponent<DroneModuleComponent>().AttachTo(storage);
+
+                // Seed the pairing from the slot BEFORE any storage event can fire. PairedDrone is
+                // not [Serialized] -- it is re-derived from the slot -- so after a load it reads
+                // null while the drone item is physically still sitting there. OnDockStorageChanged
+                // spawns on a false-to-true transition, and that stale null made the very first
+                // storage change of the session (link activity, a consolidate, the module driver's
+                // own install) look like a drone being inserted. It spawned a second drone next to
+                // the one already standing on the pad, every restart, on every dock whose slot
+                // anything touched -- which is why the one dock nobody interacted with was the
+                // only one that did not fork.
+                this.PairedDrone = storage.Storage.NonEmptyStacks.FirstOrDefault()?.Item;
             }
+
+            // R26: 20-block link radius, so enough linked storage to absorb a mining
+            // area's output can be reached.
+            this.GetComponent<LinkComponent>().Initialize(LinkRadius);
+
             this.ModsPostInitialize();
             {
                 this.GetComponent<PartsComponent>().Config(() => LocString.Empty, new PartInfo[]
@@ -600,6 +647,13 @@ namespace Eco.Mods.TechTree
                 || !DroneObjectForItem.TryGetValue(this.PairedDrone.GetType(), out var droneObjectType))
                 return;
 
+            // Structural guard against forking a drone, placed at the one point every spawn path
+            // goes through. A duplicate world object is permanent -- nothing collects the extra --
+            // so this must be impossible rather than merely unlikely, and it has now been reached
+            // by two different callers for two different reasons across two live passes.
+            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed)
+                return;
+
             var obj = WorldObjectManager.ForceAdd(droneObjectType, user, this.DroneParkPosition, Quaternion.Identity, false) as WorldObject;
             if (obj == null)
             {
@@ -635,6 +689,27 @@ namespace Eco.Mods.TechTree
             if (this.restartRelinkDone) return;
             this.restartRelinkDone = true;
 
+            // Deferred until every world object is registered, NOT run on this tick. The lookup
+            // below decides "my drone is gone" from GetFromID returning null, and on the first
+            // tick after a load that answer is a lie -- the drone persists but may not be in the
+            // registry yet. Acting on it respawned a drone that already existed, and since the
+            // original was never destroyed, every restart added another: live pass #3 finished
+            // with four drones on a one-drone dock, two docked and two hovering.
+            //
+            // Same guard LinkComponent.Initialize uses for the same reason (its own comment:
+            // "on load, referenced objects may not be registered yet and we'd incorrectly drop
+            // persisted link settings"). A miscount there loses settings; here it forks an object.
+            WorldObjectManager.Init.RunIfOrWhenInitialized(this.RestoreDroneLinkNow);
+        }
+
+        /// <summary>
+        /// The body of <see cref="RestoreDroneLinkOnce"/>, run only once the world object registry
+        /// is complete so a null lookup genuinely means gone.
+        /// </summary>
+        private void RestoreDroneLinkNow()
+        {
+            if (this.IsDestroyed) return; // the dock could have been picked up while we waited.
+
             if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed)
                 return; // already linked this session.
 
@@ -652,6 +727,14 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
+            // Second line of defence, because one forked object is permanent: a drone that already
+            // claims this dock adopts rather than doubles. Covers the case the id lookup cannot --
+            // a drone whose id this dock lost (an interrupted save, a pre-KTD10 world) but which is
+            // standing at the pad pointing at us. Cheaper than the alternative: the world grows a
+            // drone per restart, and nothing ever removes the extras.
+            if (this.AdoptOrphanedDroneClaimingThisDock())
+                return;
+
             // Drone WorldObject is gone but the item is still docked: respawn and re-pair.
             if (this.TryGetComponent<PublicStorageComponent>(out var storage))
             {
@@ -662,6 +745,26 @@ namespace Eco.Mods.TechTree
                     this.SpawnDrone(null);
                 }
             }
+        }
+
+        /// <summary>
+        /// Re-links a live drone that already names this dock as home, if one exists. Returns
+        /// whether one was adopted.
+        /// </summary>
+        private bool AdoptOrphanedDroneClaimingThisDock()
+        {
+            foreach (var obj in ServiceHolder<IWorldObjectManager>.Obj.All.OfType<WorldObject>())
+            {
+                if (obj.IsDestroyed) continue;
+                if (!obj.TryGetComponent<DroneLifecycle>(out var lifecycle)) continue;
+                if (!ReferenceEquals(lifecycle.HomeDock, this)) continue;
+
+                this.SpawnedDrone = obj;
+                this.spawnedDroneObjectId = obj.ObjectID;
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -829,7 +932,7 @@ namespace Eco.Mods.TechTree
             if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed
                 && this.SpawnedDrone.TryGetComponent<DroneLifecycle>(out var lifecycle))
             {
-                working = lifecycle.Status == DroneStatus.EnRoute || lifecycle.Status == DroneStatus.Surveying;
+                working = lifecycle.Status == DroneStatus.EnRoute || lifecycle.Status == DroneStatus.OnStation;
             }
 
             if (this.lastPushedWorking == working)
@@ -854,6 +957,17 @@ namespace Eco.Mods.TechTree
             // this push the tab's controls look dead however much they update server-side.
             if (this.TryGetComponent<SurveyComponent>(out var surveyTab))
                 surveyTab.RefreshAll();
+
+            // R27/KTD11: retry a refused/partial unload from the dock's own throttled tick,
+            // never from the link component's change event (it does not fire on a linked
+            // container's contents changing -- Engine Reference).
+            if (this.SpawnedDrone != null && !this.SpawnedDrone.IsDestroyed
+                && this.SpawnedDrone.TryGetComponent<DroneLifecycle>(out var retryLifecycle))
+                retryLifecycle.RetryUnloadIfWaiting();
+
+            this.PersistMiningJob();
+            if (this.TryGetComponent<MiningComponent>(out var miningTab))
+                miningTab.RefreshAll();
 
             // Temporary, with the U1 probe: drives the showcase's server-state mirror so a write
             // can be observed without a restart. Goes when the showcase does.

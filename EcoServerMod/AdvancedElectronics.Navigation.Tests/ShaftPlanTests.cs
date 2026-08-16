@@ -1,0 +1,149 @@
+using System.Collections.Generic;
+using System.Linq;
+using AdvancedElectronics.Navigation;
+using Xunit;
+
+namespace AdvancedElectronics.Navigation.Tests
+{
+    public class ShaftPlanTests
+    {
+        private const int PlotSize = 5;
+        private const int TierDepth = 15; // 9 + 14*25 = 359, the Problem Frame's figure.
+
+        [Fact]
+        public void FlatPlot_EmitsNineSurfacePositionsAndFullFiveByFiveBelow()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 10f);
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+
+            Assert.Equal(9, plan.Layers[0].Positions.Count);
+            for (int depth = 1; depth < TierDepth; depth++)
+                Assert.Equal(25, plan.Layers[depth].Positions.Count);
+        }
+
+        [Fact]
+        public void SteppedTerrain_CentreColumnsEachUseOwnSurfaceHeight()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 10f);
+            // Three different heights across the centre 3x3 (world columns 1..3, plot size 5).
+            sampler.SetHeight(1, 1, 10f);
+            sampler.SetHeight(2, 2, 20f);
+            sampler.SetHeight(3, 3, 30f);
+
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+            var surface = plan.Layers[0].Positions;
+
+            Assert.Contains(surface, p => p.X == 1 && p.Z == 1 && p.Y == 10);
+            Assert.Contains(surface, p => p.X == 2 && p.Z == 2 && p.Y == 20);
+            Assert.Contains(surface, p => p.X == 3 && p.Z == 3 && p.Y == 30);
+        }
+
+        [Fact]
+        public void BelowSurface_EachColumnDescendsFromItsOwnSurface_NotASharedPlane()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 10f);
+            sampler.SetHeight(0, 0, 10f); // low column
+            sampler.SetHeight(1, 0, 20f); // high column
+
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+            var secondLayer = plan.Layers[1].Positions; // one below each column's own surface
+
+            var low = secondLayer.Single(p => p.X == 0 && p.Z == 0);
+            var high = secondLayer.Single(p => p.X == 1 && p.Z == 0);
+
+            Assert.Equal(9, low.Y);
+            Assert.Equal(19, high.Y);
+        }
+
+        [Fact]
+        public void RimColumns_ContributeNoSurfacePosition()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 10f);
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+            var surface = plan.Layers[0].Positions;
+
+            // Rim = the 16 columns outside the centre 3x3 (world columns 0 and 4 on either axis).
+            Assert.DoesNotContain(surface, p => p.X == 0 || p.X == 4 || p.Z == 0 || p.Z == 4);
+            Assert.Equal(9, surface.Count);
+        }
+
+        [Fact]
+        public void LayerGrouping_NoLayerSpansTwoDepths_EveryPositionInExactlyOneLayer()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 10f);
+            sampler.SetHeight(1, 1, 12f); // uneven terrain so "depth" isn't trivially one world Y
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+
+            var seen = new HashSet<BlockPos>();
+            foreach (var layer in plan.Layers)
+            {
+                foreach (var pos in layer.Positions)
+                    Assert.True(seen.Add(pos), $"{pos} appeared in more than one layer.");
+            }
+            Assert.Equal(plan.TotalPositionCount, seen.Count);
+        }
+
+        [Fact]
+        public void ResumeMidShaft_YieldsExactlyRemainingPositions_SameOrder_NoRepeatsNoneSkipped()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 10f);
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+            var all = plan.AllPositions();
+
+            const int resumeAt = 20; // lands inside layer 0/1 boundary region
+            var remaining = plan.LayersFrom(resumeAt).SelectMany(l => l.Positions).ToList();
+
+            Assert.Equal(all.Skip(resumeAt), remaining);
+        }
+
+        [Fact]
+        public void ResumeAtLastPosition_YieldsEmptyRemainder()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 10f);
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+
+            var remaining = plan.LayersFrom(plan.TotalPositionCount);
+
+            Assert.Empty(remaining);
+        }
+
+        [Fact]
+        public void FlatPlot_TotalPositionCount_MatchesPlanFigure()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 10f);
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+
+            Assert.Equal(359, plan.TotalPositionCount);
+        }
+
+        [Fact]
+        public void WorldWrapSeamPlot_QuantizesToSamePlotTheEngineWouldChoose()
+        {
+            // Q3: the shared quantization function (PlotCoord.FromWorldColumn) is what
+            // ShaftPlan's own plot->world math must agree with; this is a regression
+            // guard on that agreement, not a claim about the engine's own wrap seam.
+            var sampler = new FakeWorldSampler(defaultHeight: 10f);
+            var plot = PlotCoord.FromWorldColumn(-1, -1, PlotSize);
+            var plan = ShaftPlan.Create(plot, TierDepth, sampler, PlotSize);
+
+            Assert.All(plan.Layers[0].Positions, p => Assert.Equal(plot, PlotCoord.FromWorldColumn(p.X, p.Z, PlotSize)));
+        }
+
+        private sealed class FakeWorldSampler : IWorldSampler
+        {
+            private readonly Dictionary<(int X, int Z), float> _heights = new Dictionary<(int, int), float>();
+            private readonly float _defaultHeight;
+
+            public FakeWorldSampler(float defaultHeight) => _defaultHeight = defaultHeight;
+
+            public void SetHeight(int x, int z, float height) => _heights[(x, z)] = height;
+
+            public bool IsSolidAt(int x, int z) => false;
+
+            public bool IsObstacleAt(int x, int z) => false;
+
+            public float GroundHeightAt(int x, int z) =>
+                _heights.TryGetValue((x, z), out float height) ? height : _defaultHeight;
+        }
+    }
+}

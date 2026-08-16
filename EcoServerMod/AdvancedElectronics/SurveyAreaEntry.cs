@@ -76,6 +76,15 @@ namespace Eco.Mods.TechTree
         [Serialized] public ThreadSafeList<int> PlotCoords { get; set; } = new();
 
         /// <summary>
+        /// Bumped every time this area's geometry is set or redrawn (U8, KTD2). A mining
+        /// dock's <c>MiningAreaRef</c> stores the epoch observed at assignment time, so a
+        /// later redraw of THIS area -- whether or not it is the source dock's own
+        /// currently-assigned area -- invalidates the mining job the same way a delete
+        /// does, without the mining dock needing to compare geometry itself.
+        /// </summary>
+        [Serialized] public int Epoch { get; set; }
+
+        /// <summary>
         /// This area's survey findings, persisted with the area (KTD11 design change): available
         /// until the area is deleted or edited. Reassigning the drone away and back does NOT clear
         /// them — they belong to the area, not the drone or the dock's current assignment. Cleared
@@ -93,6 +102,16 @@ namespace Eco.Mods.TechTree
 
         /// <summary>Median surface height across the surveyed columns; meaningful when <see cref="SurveyDepth"/> > 0.</summary>
         [Serialized] public int MedianSurface { get; set; }
+
+        /// <summary>
+        /// Per-plot surveyed stamps (KTD12, R41), flattened as (x, z, stamp) triples --
+        /// the persisted mirror of the live <see cref="PlotStampAccumulator"/> the sweep
+        /// writes into. Compared against the mining dock's own mined stamps
+        /// (<see cref="PlotFreshness.IsMineable"/>) to decide which plots a mining job may
+        /// work. Follows the same lifecycle as <see cref="Findings"/>: cleared on a redraw
+        /// or delete, since a plot's old stamp says nothing about the new geometry.
+        /// </summary>
+        [Serialized] public ThreadSafeList<long> SurveyedStamps { get; set; } = new();
 
         /// <summary>Parameterless constructor required by the Eco serializer.</summary>
         public SurveyAreaEntry() { }
@@ -120,6 +139,7 @@ namespace Eco.Mods.TechTree
                 this.PlotCoords.Add(p.X);
                 this.PlotCoords.Add(p.Z);
             }
+            this.Epoch++;
             this.ClearFindings();
         }
 
@@ -135,13 +155,52 @@ namespace Eco.Mods.TechTree
             this.MedianSurface = medianSurface;
         }
 
-        /// <summary>Discards this area's findings (delete, or an edit that redraws the geometry).</summary>
+        /// <summary>Discards this area's findings and surveyed stamps (delete, or an edit that redraws the geometry).</summary>
         public void ClearFindings()
         {
             this.Findings = new ThreadSafeList<OreFindingSnapshot>();
             this.CoveragePercent = 0f;
             this.SurveyDepth = 0;
             this.MedianSurface = 0;
+            this.SurveyedStamps = new ThreadSafeList<long>();
+        }
+
+        /// <summary>
+        /// Replaces this area's persisted surveyed stamps from the live accumulator's
+        /// current snapshot. Skips the write when <paramref name="stamps"/> is empty, so a
+        /// just-restarted, not-yet-repopulated accumulator never overwrites a populated
+        /// persisted snapshot before the drone has re-surveyed.
+        /// </summary>
+        public void SetSurveyedStamps(PlotStampAccumulator stamps)
+        {
+            if (stamps == null || stamps.IsEmpty)
+                return;
+
+            var flat = new ThreadSafeList<long>();
+            foreach (var entry in stamps.Snapshot())
+            {
+                flat.Add(entry.Key.X);
+                flat.Add(entry.Key.Z);
+                flat.Add(entry.Value);
+            }
+            this.SurveyedStamps = flat;
+        }
+
+        /// <summary>This area's persisted surveyed stamps, rehydrated into a live accumulator.</summary>
+        public PlotStampAccumulator ReadSurveyedStamps()
+        {
+            var entries = new Dictionary<PlotCoord, long>();
+            for (var i = 0; i + 2 < this.SurveyedStamps.Count; i += 3)
+                entries[new PlotCoord((int)this.SurveyedStamps[i], (int)this.SurveyedStamps[i + 1])] = this.SurveyedStamps[i + 2];
+            return PlotStampAccumulator.FromSnapshot(entries);
+        }
+
+        /// <summary>Records <paramref name="plot"/> surveyed at <paramref name="stampValue"/> and persists it immediately, mirroring the mining dock's own <c>RecordMinedPlot</c>.</summary>
+        public void RecordSurveyedPlot(PlotCoord plot, long stampValue)
+        {
+            var accumulator = this.ReadSurveyedStamps();
+            accumulator.Record(plot, stampValue);
+            this.SetSurveyedStamps(accumulator);
         }
 
         /// <summary>The persisted findings back in the Eco-free shape the readout formatter consumes.</summary>

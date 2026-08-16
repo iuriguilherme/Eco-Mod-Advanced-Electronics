@@ -29,12 +29,17 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal(new Vector3(0, 1, 0), result.Waypoints[0]);
             Assert.Equal(new Vector3(5, 1, 0), result.Waypoints[result.Waypoints.Count - 1]);
 
-            // "Direct line": z never deviates, x strictly increases toward the goal.
+            // "Direct line": z never deviates and x never backtracks. Deliberately NOT strictly
+            // increasing any more -- the route now opens with a climb and closes with a descent,
+            // each a waypoint sharing its neighbour's column, which is the point of flying rather
+            // than walking. Progress toward the goal is still monotonic.
             for (int i = 1; i < result.Waypoints.Count; i++)
             {
                 Assert.Equal(0f, result.Waypoints[i].Z);
-                Assert.True(result.Waypoints[i].X > result.Waypoints[i - 1].X);
+                Assert.True(result.Waypoints[i].X >= result.Waypoints[i - 1].X);
             }
+
+            Assert.True(result.Waypoints.Count > 2, "a flight profile has more than its two endpoints");
         }
 
         // --- R2: solid wall obstacle ---
@@ -413,6 +418,159 @@ namespace AdvancedElectronics.Navigation.Tests
         /// Simple in-memory fake IWorldSampler for tests - a set-based
         /// override of a flat, all-walkable default plane. No real Eco data.
         /// </summary>
+        // --- The drone is 3.35 blocks wide, not a point ---
+
+        [Fact]
+        public void ARouteDoesNotGraze_APlacedObject()
+        {
+            // A single obstacle beside the direct line. Routing as a point put the drone's centre
+            // one column clear while its hull passed through the object -- what looked like
+            // partial clipping of stockpiles.
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            sampler.SetObstacle(3, 1);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(0, 1, 0), new Vector3(6, 1, 0));
+
+            Assert.True(result.Found);
+            foreach (var waypoint in result.Waypoints)
+                Assert.False(waypoint.X == 3f && waypoint.Z == 0f,
+                    "routed within one column of the obstacle -- the hull would overlap it");
+        }
+
+        [Fact]
+        public void SolidTerrainBeside_DoesNotBlock_SoAShaftIsStillEnterable()
+        {
+            // Clearance is obstacles only. A 5x5 shaft is a hole with solid walls; requiring a
+            // clear block on every side would make the drone unable to enter what it digs.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            for (var z = -1; z <= 1; z++) { sampler.SetSolid(2, z); sampler.SetSolid(4, z); }
+            sampler.SetHeight(3, 0, 60f);
+
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+
+            Assert.True(pathfinder.FindPath(new Vector3(3, 65, 1), new Vector3(3, 61, 0)).Found);
+        }
+
+        [Fact]
+        public void ExemptColumnsAreSkippedInTheSweep_SoTheDockDoesNotWallItsDroneIn()
+        {
+            // Every pad cell reports Occupied. Without exempting them in the clearance sweep too,
+            // a drone beside its own dock finds its footprint overlapping the pad and cannot move.
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            var pad = new List<Vector3>();
+            for (var x = 0; x <= 1; x++)
+            for (var z = 0; z <= 1; z++)
+            {
+                sampler.SetObstacle(x, z);
+                pad.Add(new Vector3(x, 0, z));
+            }
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+
+            Assert.True(pathfinder.FindPath(new Vector3(0, 1, 0), new Vector3(6, 1, 0), pad).Found);
+        }
+
+        // --- The drone flies: it crosses pits, it does not descend into them ---
+
+        [Fact]
+        public void APitOnTheRoute_IsFlownOver_NotDescendedInto()
+        {
+            // Flat ground with a shaft partway along. Every waypoint between the ends must stay
+            // at or above the surrounding surface -- the drone used to trace the hole down and up.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(3, 0, 49f);
+
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+            var result = pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(6, 65, 0));
+
+            Assert.True(result.Found);
+            foreach (var waypoint in result.Waypoints)
+                Assert.True(waypoint.Y >= 64f, $"waypoint dipped to {waypoint.Y}, into the pit");
+        }
+
+        [Fact]
+        public void TheClimbIsItsOwnLeg_SoTheDroneRisesBeforeItTravels()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+
+            var result = pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(5, 65, 0));
+
+            // Second waypoint shares the first's column and is higher: a vertical climb, not a
+            // diagonal. The diagonal is what read as the drone clipping into rising ground.
+            Assert.Equal(result.Waypoints[0].X, result.Waypoints[1].X);
+            Assert.Equal(result.Waypoints[0].Z, result.Waypoints[1].Z);
+            Assert.True(result.Waypoints[1].Y > result.Waypoints[0].Y);
+
+            // ...and the mirror image at the far end: descend in place onto the goal.
+            var last = result.Waypoints.Count - 1;
+            Assert.Equal(result.Waypoints[last].X, result.Waypoints[last - 1].X);
+            Assert.Equal(result.Waypoints[last].Z, result.Waypoints[last - 1].Z);
+            Assert.True(result.Waypoints[last - 1].Y > result.Waypoints[last].Y);
+        }
+
+        [Fact]
+        public void TheGoalKeepsItsGroundHeight_SoAShaftFloorIsStillLandedOn()
+        {
+            // Cruising must not stop the drone reaching the bottom of its own shaft.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(5, 0, 49f);
+
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+            var result = pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(5, 50, 0));
+
+            Assert.True(result.Found);
+            Assert.Equal(50f, result.Waypoints[result.Waypoints.Count - 1].Y);
+        }
+
+        // --- The drone flies: a shaft it dug itself must stay reachable ---
+
+        [Fact]
+        public void ShaftDugToFullTierDepth_IsStillReachable_AtTheDronesOwnClimbHeight()
+        {
+            // The exact live failure, offline: flat ground, one column cut to the mining tier's
+            // 15 layers, drone parked at its dock trying to get back in. At the old walking step
+            // of 1f this returned no path, the lifecycle went Unreachable, and the drone hovered
+            // over its dock forever.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(5, 0, 64f - 15f);
+
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+
+            var result = pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(5, 50, 0));
+
+            Assert.True(result.Found);
+            Assert.Equal(50f, result.Waypoints[result.Waypoints.Count - 1].Y); // shaft floor + 1
+        }
+
+        [Fact]
+        public void ShaftDugToFullTierDepth_IsUnreachable_AtAWalkingStep()
+        {
+            // The regression this guards: proves the old value is what refused the path, so the
+            // constant is doing the work and a future "tidy-up" back to 1f fails here loudly
+            // rather than on a live server two restarts later.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(5, 0, 64f - 15f);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+
+            Assert.False(pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(5, 50, 0)).Found);
+        }
+
+        [Fact]
+        public void ADropOfSeveralBlocks_IsTraversable_SoASlopedAreaIsNotAWall()
+        {
+            // Same constant, the other reported symptom: a freshly drawn area on a slope read
+            // "unreachable" to the survey drone. Any terrain step over one block was a wall.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            for (var x = 1; x <= 4; x++) sampler.SetHeight(x, 0, 64f + x * 3f);
+
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+
+            Assert.True(pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(4, 77, 0)).Found);
+        }
+
         private sealed class FakeWorldSampler : IWorldSampler
         {
             private readonly HashSet<(int X, int Z)> _solid = new HashSet<(int, int)>();

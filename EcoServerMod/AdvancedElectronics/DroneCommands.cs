@@ -4,12 +4,15 @@ using System.Linq;
 using System.Numerics;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Items;
+using Eco.Gameplay.Components;
+using Eco.Gameplay.Components.Storage;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
 using Eco.Gameplay.Systems.Messaging.Chat.Commands;
 using Eco.Shared.IoC;
 using Eco.Shared.Items;
+using Eco.Shared.Services;
 using Eco.Shared.SharedTypes;
 
 namespace Eco.Mods.TechTree
@@ -25,6 +28,73 @@ namespace Eco.Mods.TechTree
     {
         [ChatCommand("Advanced Electronics drone commands.", ChatAuthorizationLevel.User)]
         public static void Drone(User user) { }
+
+        /// <summary>
+        /// Lists the nearest dock's linked storages, or toggles one on/off by its listed number.
+        ///
+        /// The Storage tab is meant to own this, and on a Store it does. The dock's panel has been
+        /// rendering the target list without the Take From / Put Into controls, which left "link
+        /// that stockpile yourself" impossible to actually do -- and that gap is what made
+        /// auto-linking everything look like a fix instead of the workaround it was.
+        ///
+        /// This is the fallback, not the design: it guarantees manual control exists from the
+        /// moment the vanilla default is restored, so testing is never blocked on a UI question.
+        /// Delete it once the tab's own controls are confirmed working.
+        /// </summary>
+        [ChatSubCommand(nameof(Drone), "Lists linked storages, or toggles one by number: /drone link 3", "link", ChatAuthorizationLevel.User)]
+        public static void Link(User user, int number = 0)
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null)
+            {
+                user.MsgLocStr("No drone dock you have access to was found nearby.");
+                return;
+            }
+
+            if (!dock.TryGetComponent<LinkComponent>(out var link))
+            {
+                user.MsgLocStr("That dock has no link component.", NotificationStyle.Error);
+                return;
+            }
+
+            // Every reachable target, linked or not -- an unlinked one has to be listed or it could
+            // never be turned on. GetLinkedStoragesWithSettings returns exactly that: the
+            // authorized set, each with its current settings.
+            var targets = link.GetLinkedStoragesWithSettings(user)
+                              .Where(entry => entry.Storage?.Parent != null && entry.Storage.Parent is not DroneDockObject)
+                              .ToList();
+
+            if (targets.Count == 0)
+            {
+                user.MsgLocStr("No linkable storage in range of that dock.");
+                return;
+            }
+
+            if (number < 1 || number > targets.Count)
+            {
+                user.MsgLocStr($"Linked storage for '{dock.Name}' -- /drone link <number> toggles one:");
+                for (var i = 0; i < targets.Count; i++)
+                {
+                    var (storage, settings) = targets[i];
+                    var state = settings.Output ? "LINKED" : "not linked";
+                    user.MsgLocStr($"  {i + 1}. {storage.Parent.Name} -- {state}");
+                }
+                return;
+            }
+
+            var chosen = targets[number - 1];
+            var turnOn = !chosen.Settings.Output;
+
+            // Both directions together: the drone only ever pushes cargo out, but a target the
+            // player has deliberately linked should behave like any other link, and leaving Input
+            // untouched would make the tab disagree with this command.
+            link.SetObjectInput(user, chosen.Storage, turnOn, userModified: true);
+            link.SetObjectOutput(user, chosen.Storage, turnOn, userModified: true);
+
+            user.MsgLocStr(
+                $"{chosen.Storage.Parent.Name} is now {(turnOn ? "linked" : "unlinked")} for '{dock.Name}'.",
+                NotificationStyle.Info);
+        }
 
         /// <summary>
         /// Lists the dock's survey areas with their ids (diagnostic). Bridges the gap until the
@@ -248,6 +318,53 @@ namespace Eco.Mods.TechTree
             user.MsgLocStr($"Dock '{dock.Name}' at {dock.Position3i}:");
             user.MsgLocStr($"  Survey areas: {dock.SurveyAreas.Count}, assigned area: {(dock.AssignedSurveyArea?.Name ?? "(none)")} (id {dock.AssignedSurveyAreaId})");
             user.MsgLocStr($"  Paired drone item: {(dock.HasDrone ? "yes" : "no")}");
+
+            // Everything from here to the anim states was added after the first live pass, where a
+            // mining drone sat parked and the readout could not say why. DroneLifecycle.Tick returns
+            // at the serviceability gate BEFORE it ever reaches dispatch, so a stopped dock leaves
+            // LastDispatchNote reading "no dispatch yet" -- indistinguishable from an assignment that
+            // never landed. These lines separate the candidates, so one command names the cause
+            // instead of costing a restart per guess.
+            user.MsgLocStr($"  Serviceable: {dock.IsServiceable} (stop reason: {dock.StopReason})");
+
+            if (dock.TryGetComponent<FuelSupplyComponent>(out var fuel))
+                // Enabled is `energy > 0` -- the live burned charge, NOT the tank contents. A full
+                // tank that never loaded a unit reads Enabled=false with EnergyInSupply>0, which is
+                // a different fault from a genuinely empty tank (both read "out of fuel" in the UI).
+                user.MsgLocStr($"  Fuel: enabled={fuel.Enabled}, burning={fuel.CurrentFuel?.DisplayName.ToString() ?? "(none)"}, energy={fuel.Energy:F0}, inSupply={fuel.EnergyInSupply:F0}");
+            else
+                user.MsgLocStr("  Fuel: no FuelSupplyComponent installed (no drone slotted?)");
+
+            // The mining assignment is a separate token from the survey one above, and
+            // BuildStrategy returns null -- no dispatch, no movement -- if the mining area, the
+            // named cargo hold, or the link component is missing. All three are reported.
+            user.MsgLocStr($"  Mining assignment: {dock.AssignedMiningAreaToken ?? "(none)"}");
+            var hold = dock.GetComponent(typeof(PublicStorageComponent), DroneCargo.HoldName);
+            user.MsgLocStr($"  Mining hold '{DroneCargo.HoldName}': {(hold != null ? "present" : "MISSING (blocks mining dispatch)")}");
+            user.MsgLocStr($"  Link component: {(dock.TryGetComponent<LinkComponent>(out _) ? "present" : "MISSING (blocks mining dispatch)")}");
+            if (dock.MiningJob is { } miningJob)
+            {
+                user.MsgLocStr($"  Mining job: {miningJob.Status}, worked {miningJob.WorkedCount}, skipped {miningJob.SkippedCount}{(miningJob.EndReason.HasValue ? $", ended: {miningJob.EndReason}" : string.Empty)}");
+
+                // The counts alone repeat the panel. The refusal text is the part that is not
+                // anywhere else: "obstructed" is the removal service's catch-all for everything
+                // that was neither law nor property, so the category names the bucket and this
+                // names the cause.
+                var skipped = miningJob.SkipCountsByCategory().Where(kv => kv.Value > 0).ToList();
+                if (skipped.Count > 0)
+                    user.MsgLocStr($"  Skips by category: {string.Join(", ", skipped.Select(kv => $"{kv.Key}={kv.Value}"))}");
+                if (!string.IsNullOrWhiteSpace(miningJob.LastRefusalDetail))
+                    user.MsgLocStr($"  Last refusal: {miningJob.LastRefusalDetail}");
+
+                var shaft = MiningReadout.FormatShaftProgress(
+                    miningJob.ShaftLayersDone, miningJob.ShaftLayersTotal,
+                    miningJob.TargetSurveyedStamp, miningJob.TargetMinedStamp);
+                if (!string.IsNullOrWhiteSpace(shaft))
+                    user.MsgLocStr($"  {shaft}");
+            }
+            else
+                user.MsgLocStr("  Mining job: (none)");
+            user.MsgLocStr($"  Mining halted server-wide: {MiningHalt.IsHalted}");
             user.MsgLocStr($"  Anim state Working: {FormatAnimState(dock, DroneDockObject.WorkingStateName)}");
 
             var drone = dock.SpawnedDrone;

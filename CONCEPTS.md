@@ -211,6 +211,10 @@ otherwise identical hosts differ by their module. Component state survives the m
 from one host and put into another carries its contents and condition with it, rather than being
 reset.
 
+Installing and uninstalling are not free and not invisible: each one changes the host's component set
+and so triggers a [[Panel Rebuild]] for anyone with the host's window open. A module system therefore
+has to be certain the set has genuinely changed before acting on it.
+
 A module is the mod's answer to a host that cannot itself be the thing players interact with. It
 lets the player be told the capability belongs to the module, while the engine sees a host that
 borrowed it.
@@ -241,13 +245,47 @@ Serviceability gates dispatch rather than the drone itself, so an unserviceable 
 distinguishable from an unassigned one — a player who is out of fuel must be told that, not shown an
 area that looks like nobody asked for it.
 
+### Drone Status
+Where a dispatched drone is in its round trip: waiting at the dock, travelling to the area, working
+on station, or unable to get where it was sent.
+
+The statuses are not merely a readout — they are what decides the drone's next move each tick, so a
+status the drone cannot leave is a drone that stops working forever. The unable-to-reach status is
+the one that matters: it is entered both by a journey that failed part-way and by a departure that
+never began, and a drone in it may be standing anywhere, including on its own dock. Every escape
+from it must therefore be testable without assuming travel is under way, or the drone that most
+needs the escape is the one that cannot take it.
+
+Statuses are drone state, unlike [[Assignment]], which is the dock's. Clearing the assignment does
+not by itself move a stuck drone, because the status machine advances on its own each tick rather
+than being driven by the assignment.
+
 ### Recall
 The drone's return to its dock because the dock stopped being Serviceable, as opposed to returning
 because the survey finished or the area was unassigned.
 
 A recall preserves the area's Coverage and Findings, so servicing the dock resumes the survey rather
 than restarting it. The return leg itself is treated as always possible: a drone is never stranded by
-the same shortage that recalled it.
+the same shortage that recalled it. That guarantee is progressive, and its last resorts abandon the
+[[Cruise Profile]] entirely — a return that cannot be flown is eventually simply performed.
+
+That guarantee covers the *movement* of getting home; it does not cover reaching the point where the
+return is attempted. A drone whose [[Drone Status]] never transitions toward home is stranded just as
+surely, and no amount of movement fallback rescues it, because the fallback is never invoked.
+
+### Cruise Profile
+The shape a drone's flight takes whenever it is actually flown: rise in place, cross level,
+descend in place onto the destination. The level leg is flown high enough to clear the highest ground anywhere on the route,
+so obstacles between the two ends are passed over rather than followed.
+
+Climbing and descending are their own legs rather than something blended into forward travel. A
+drone that gained height while moving forward would cut into rising ground, and one that took its
+height from whatever it happened to be flying over would dive into every hollow on the way —
+neither is what a hovering machine should look like, and the second is slow as well as absurd.
+
+Only the two ends sit at ground level; the drone still lands where it was sent, including at the
+bottom of a shaft. This is what lets a drone work terrain it has itself reshaped: the route is
+computed over the excavation rather than through it.
 
 ### Assignment
 The single Survey Area a dock has directed its drone to work on. Assigning is distinct from viewing:
@@ -272,6 +310,22 @@ controls, and every element added is subtracted from every other. The unit is th
 two-column row (22 px, label left and control right). Costs are quoted as multiples of it: a
 `BigButton` is 3.2 rows, a `StringPlaque` is 5. Judging a control on whether it works misses what it
 costs its neighbours.
+
+### Panel Rebuild
+The teardown and reconstruction of a host's whole window that follows any change to which components
+the host carries. The set of tabs is derived from the set of components, so changing the set
+invalidates the window rather than updating it.
+
+The cost falls on whoever has that window open. A rebuild discards the live controls and builds new
+ones, and a control discarded while it still holds a subscription to a synced value is not replaced —
+it is simply absent for the rest of that viewer's session, with no error raised anywhere on the
+server. Controls therefore disappear one at a time, silently, until a tab is unusable and only
+reconnecting restores it.
+
+This makes a [[Module]]'s install and uninstall a UI event as much as a capability change, and makes
+any guard deciding "does the installed set still match what is slotted?" load-bearing: a guard that
+fires more often than the set genuinely changes will empty the panels of every player watching.
+Prefer a stable set whose members disable themselves over a set that installs and uninstalls.
 
 ### Control Pool
 The fixed set of compile-time controls that stands in for a per-object list. A dynamically sized

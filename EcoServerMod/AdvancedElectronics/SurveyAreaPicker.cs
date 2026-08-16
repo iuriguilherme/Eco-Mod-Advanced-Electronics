@@ -107,7 +107,7 @@ namespace Eco.Mods.TechTree
 
             return new MapEditRequest
             {
-                MapHintTitle    = "Survey Areas",
+                MapHintTitle    = DroneDockObject.DroneAreaLabel + "s",
                 MapHint         = Localizer.DoStr(
                     "Draw the areas for the drone to survey. Add, rename, redraw or delete areas here, then confirm."),
                 AllowNewEntries = true,
@@ -115,7 +115,7 @@ namespace Eco.Mods.TechTree
                 Readonly        = false,
                 Overlay = new EditableOverlay
                 {
-                    Name       = "Survey Areas",
+                    Name       = DroneDockObject.DroneAreaLabel + "s",
                     Map        = map,
                     MapEntries = mapEntries,
                 },

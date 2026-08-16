@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AdvancedElectronics.Navigation;
 using Eco.Core.Controller;
 using Eco.Core.Items;
 using Eco.Gameplay.Components;
@@ -82,9 +83,9 @@ namespace Eco.Mods.TechTree
         /// The components this drone brings to whatever dock it is slotted into (R5, R7). The
         /// dock installs them on slot and uninstalls them on removal; see DroneDockObject.
         ///
-        /// BOTH INSTALLATIONS ARE DELIBERATELY UNNAMED, which reverses this plan's KTD7. Naming
-        /// them crashed the server on the first tick of real work: FuelConsumptionComponent
-        /// resolves its supply in its own Initialize with
+        /// THE FUEL PAIR IS DELIBERATELY UNNAMED, which reverses this plan's KTD4 in the other
+        /// direction. Naming them crashed the server on the first tick of real work:
+        /// FuelConsumptionComponent resolves its supply in its own Initialize with
         ///
         ///     this.fuelSupply = this.Parent.GetComponent&lt;FuelSupplyComponent&gt;();
         ///
@@ -94,12 +95,10 @@ namespace Eco.Mods.TechTree
         /// The pairing is not name-aware, so it is not ours to name.
         ///
         /// Unnamed is safe here because the dock declares no fuel components of its own; the
-        /// ambiguity KTD7 guards against is a real hazard only for a type the dock already
-        /// carries unnamed, which today means PublicStorageComponent. A future cargo hold must
-        /// be named for exactly that reason.
-        ///
-        /// No cargo component is declared. R7 is satisfied by the mechanism existing, not by
-        /// shipping an unused hold.
+        /// ambiguity KTD4 guards against is a real hazard only for a type the dock already
+        /// carries unnamed, which today means PublicStorageComponent -- exactly why the cargo
+        /// hold below IS named (U6, R23, R25): see <see cref="DroneCargo"/>, the single place
+        /// the hold's name and slot count live.
         /// </summary>
         public IEnumerable<ComponentInstallation> ComponentsToInstall => new[]
         {
@@ -115,6 +114,11 @@ namespace Eco.Mods.TechTree
             ComponentInstallation.For<FuelConsumptionComponent>(
                 configure:         c => c.Initialize(FuelJoulesPerSecond),
                 proxyInteractions: false),
+            DroneCargo.Installation(),
+            // R29/R44/R45/U9: the Mining tab travels with this drone -- present only while
+            // it is slotted, and reports the dock as operating (KTD13) so fuel and wear
+            // flow. Unnamed: nothing else on the dock is a mining component.
+            ComponentInstallation.For<MiningComponent>(proxyInteractions: false),
         };
 
         /// <summary>
@@ -178,7 +182,10 @@ namespace Eco.Mods.TechTree
     /// </summary>
     [Serialized]
     [RequireComponent(typeof(DroneMoverComponent))]
-    [RequireComponent(typeof(OreSensorComponent))]
+    // No OreSensorComponent (KTD8, U11): the mining drone consumes another dock's survey
+    // findings (R8) rather than reading ground nobody asked about, and this drone class
+    // never wrote findings anyway. Removing a required component deletes it from every
+    // already-placed mining drone at the next server load, which is the intended outcome.
     [RequireComponent(typeof(DroneLifecycle))]
     // The drone carries no fuel, parts, storage, or auth components, and is not interactable
     // (R1, R2). All three of those moved to the dock, which is an ordinary placed object with
@@ -249,18 +256,8 @@ namespace Eco.Mods.TechTree
         }
     }
 
-    // WITHHELD FOR THE NEXT RELEASE -- the mining drone's arm does not yet behave the way it is
-    // meant to during flight, so the drone is not offered to players.
-    //
-    // The whole class is commented out rather than just its table registration. RecipeFamily
-    // carries [ForceCreateViewAllDerived], so the type existing is enough: Eco instantiates it at
-    // startup and Initialize() registers the recipe, which leaves it visible in the recipe browser
-    // and the skill's tech tree even when it belongs to no bench. Only removing the type removes
-    // it from the game.
-    //
-    // The item and world object are deliberately left defined, so a save that already holds a
-    // mining drone keeps loading. Restore by deleting the /* and */ below.
-    /*
+    // RESTORED (U11, R32): the mining drone now has mining behaviour, which is the only
+    // reason this recipe was withheld.
     /// <summary>Recipe unlocking <see cref="MiningDroneItem"/>.</summary>
     [RequiresSkill(typeof(AdvancedElectronicsSkill), 1)]
     public partial class MiningDroneRecipe : RecipeFamily
@@ -302,13 +299,8 @@ namespace Eco.Mods.TechTree
             this.Initialize(displayText: Localizer.DoStr("Mining Drone"), recipeType: typeof(MiningDroneRecipe));
             this.ModsPostInitialize();
 
-            // WITHHELD FOR THE NEXT RELEASE. The mining drone's arm does not yet behave the way
-            // it is meant to during flight, so it is not offered to players. Registering no
-            // table is what hides it: a RecipeFamily that joins no CraftingComponent appears on
-            // no bench, while the item and world object stay defined so existing saves that
-            // already hold one keep loading. Restore by uncommenting the line below.
-            //
-            // CraftingComponent.AddRecipe(tableType: typeof(RoboticAssemblyLineObject), recipeFamily: this);
+            // RESTORED (U11, R32).
+            CraftingComponent.AddRecipe(tableType: typeof(RoboticAssemblyLineObject), recipeFamily: this);
         }
 
         /// <summary>Hook for mods to customize RecipeFamily before initialization. You can change recipes, xp, labor, time here.</summary>
@@ -317,5 +309,4 @@ namespace Eco.Mods.TechTree
         /// <summary>Hook for mods to customize RecipeFamily after initialization, but before registration. You can change skill requirements here.</summary>
         partial void ModsPostInitialize();
     }
-    */
 }

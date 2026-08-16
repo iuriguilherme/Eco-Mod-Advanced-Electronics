@@ -1,6 +1,7 @@
 ---
 title: "Hand-written walkability made a modded entity's own occupancy block impassable, so pathfinding never returned a path"
 date: 2026-07-20
+last_updated: 2026-08-16
 category: runtime-errors
 module: EcoServerMod
 problem_type: runtime_error
@@ -37,6 +38,22 @@ of walkability, and that rule classified the drone's own position as solid terra
   problem does not.
 - Nothing in the server log — no exception, because nothing throws.
 
+**If your `Unreachable` is NOT invariant, this is the wrong doc.** Some destinations working
+and others not means the block predicate is fine, and there are three other places the fault
+can be:
+
+- **The geometry genuinely blocks that route.** Nothing is broken.
+- **The movement model wrongly says it does.** The predicate is right, but a locomotion
+  constraint above it — how far the entity may rise, what shape its route takes — is modelled
+  for the wrong kind of body. The tell is *directional*: the same trip succeeds outbound and
+  fails on the return, or a destination becomes unreachable only after the drone reshapes the
+  terrain around it. See
+  `docs/solutions/logic-errors/the-pathfinder-modelled-a-flying-drone-as-a-walker.md`.
+- **The lifecycle mishandles a legitimate no-path result.** The drone hovers rather than
+  sitting still, and its job ledger freezes at zero worked and zero skipped while the lifecycle
+  claims to have skipped a plot. See
+  `docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md`.
+
 ## What Didn't Work
 
 Three wrong root causes were pursued before the real one, each costing a live test:
@@ -72,9 +89,17 @@ var block = World.GetBlock(pos);
 if (block.Is<Solid>() || block.Is<Occupied>()) return false;   // room to stand
 var underblock = World.GetBlock(pos.AddY(-1));
 if (!underblock.Is<Solid>() && !underblock.Is<UnderWater>()) return false;  // ground beneath
+if (underblock.Is<Constructed>()) return false;                // animals stay off player floors
 var overBlock = World.GetBlock(pos.AddY(1));
 if (overBlock.Is<Solid>() || overBlock.Is<Occupied>()) return false;        // headroom
+if (block.Is<UnderWater>() && overBlock.Is<UnderWater>()) return false;     // only the top of water
 ```
+
+Two of those six tests are **not** mirrored by this mod, deliberately. `EcoWorldSampler` refuses
+the `Constructed` rejection — that test exists to keep *animals* off player-built floors, and a
+drone is a machine that must be able to cross a road, not least because a dock may stand on one.
+The water rule is likewise not carried across. Both divergences are about what kind of entity is
+moving, which is the boundary the Prevention section below draws.
 
 Before — a guess, in the mod's own sampler:
 
@@ -132,6 +157,16 @@ is `Solid`, so the start column is walkable, while genuine terrain still blocks.
   one.** Walkability, reachability, and placement validity are engine semantics, not
   intuitions. Find the engine's own implementation and copy its tests; a plausible-sounding
   reimplementation ("solid means not empty") will diverge on exactly the cases that matter.
+- **But mirror it for world facts only, never for locomotion.** `IsPathable` answers two
+  different kinds of question in one predicate. *What is this block* — `Is<Solid>`,
+  `Is<Occupied>` — is a property of the world and is true for any entity, and copying it is
+  what this entry is about. *How may a body move through it* — ground beneath, headroom, and
+  in the sibling `CalcMovability`, how far it may rise — is a property of a **biped**, because
+  the engine only ever wrote this for animals. Copying that half silently imports a walker's
+  locomotion, which is how a flying drone ended up limited to a one-block step and unable to
+  re-enter its own excavation. See
+  `docs/solutions/logic-errors/the-pathfinder-modelled-a-flying-drone-as-a-walker.md`. Footprint
+  and route shape the engine does not model at all, so those were never available to copy.
 - **An entity occupies its own position.** Any self-authored spatial query — pathfinding,
   obstacle checks, line of sight — must decide what happens when the query lands on the
   asking entity. Start/goal exemption is one answer; an ignore-set is another; silently
@@ -153,3 +188,14 @@ is `Solid`, so the start column is walkable, while genuine terrain still blocks.
 - `docs/solutions/conventions/eco-custom-worldobject-placement-requirements.md` — the
   occupancy/placement contract; `WorldObjectBlock` and the `Occupied` attribute come from
   the same mechanism.
+- `docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md` —
+  the other way a drone ends up reporting `Unreachable`. There the pathfinder is correct and
+  the no-path result is legitimate; the lifecycle simply has no working exit from the state,
+  so the drone loops instead of retiring the plot. Separated by invariance: this doc's failure
+  never varies with geometry, that one's happens only for particular destinations.
+- `docs/solutions/logic-errors/the-pathfinder-modelled-a-flying-drone-as-a-walker.md` — the
+  third cause, and the one that scopes this entry's headline rule. There the block predicate is
+  correct and the *locomotion model* above it is wrong: a flying drone constrained by a walker's
+  one-block step. It is also the reason this entry's mirror-the-engine advice now carries a
+  boundary — the engine's predicate is a walking predicate, and only its world half is safe to
+  copy.

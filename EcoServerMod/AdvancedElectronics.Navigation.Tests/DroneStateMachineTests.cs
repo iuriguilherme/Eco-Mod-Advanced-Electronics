@@ -48,7 +48,7 @@ namespace AdvancedElectronics.Navigation.Tests
 
             sm.OnArrived();
 
-            Assert.Equal(DroneStatus.Surveying, sm.Status);
+            Assert.Equal(DroneStatus.OnStation, sm.Status);
             Assert.True(sm.ShouldSample);
         }
 
@@ -61,7 +61,7 @@ namespace AdvancedElectronics.Navigation.Tests
             var sm = new DroneStateMachine();
             sm.OnDistrictAssigned("Farmland");
             sm.OnArrived();
-            Assert.Equal(DroneStatus.Surveying, sm.Status);
+            Assert.Equal(DroneStatus.OnStation, sm.Status);
 
             sm.OnDistrictAssigned("Mining Zone");
 
@@ -96,7 +96,7 @@ namespace AdvancedElectronics.Navigation.Tests
             var sm = new DroneStateMachine();
             sm.OnDistrictAssigned("Farmland");
             sm.OnArrived();
-            Assert.Equal(DroneStatus.Surveying, sm.Status);
+            Assert.Equal(DroneStatus.OnStation, sm.Status);
 
             var attemptReturn = sm.OnNoPathFound();
 
@@ -129,7 +129,7 @@ namespace AdvancedElectronics.Navigation.Tests
             var sm = new DroneStateMachine();
             sm.OnDistrictAssigned("Farmland");
             sm.OnArrived();
-            Assert.Equal(DroneStatus.Surveying, sm.Status);
+            Assert.Equal(DroneStatus.OnStation, sm.Status);
 
             sm.OnDistrictCleared();
 

@@ -1,6 +1,7 @@
 ---
 title: "A defensive rule outlives the danger it answered, and its comment argues for keeping it"
 date: 2026-08-01
+last_updated: 2026-08-16
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -94,6 +95,9 @@ that refuses removals while telling itself it never refuses removals.
   behaviour.
 - When a comment explains a permission or prohibition by naming a risk — that comment has an
   expiry condition, whether or not it says so.
+- When retiring a mitigation because a guarantee makes its failure impossible — name the layer the
+  guarantee covers, then ask whether the failure can recur above it. A guarantee that a step cannot
+  fail is not a guarantee that the step is reached.
 
 ## Examples
 
@@ -127,6 +131,45 @@ then teleport) means a return can no longer fail, so the escape hatch is
 obsolete rather than merely inconvenient.
 ```
 
+**And then that replacement's own premise expired, which is the sharpest example this entry has.**
+Its load-bearing claim is *"a return can no longer fail"*. That is true of the return's **movement**
+and false of the decision to begin one. A later session produced three unrecoverable stuck states —
+a drone hovering over its own dock indefinitely, and a drone looping on a plot it never reached —
+none of which the escalation could rescue, because the escalation is only reached by a state machine
+that decides to go home, and the bug was that it never decided. See
+`docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md`.
+
+Decomposed the same way as the original:
+
+```text
+"the return-leg escalation means a return can no longer fail,
+ so the escape hatch is obsolete"
+
+  antecedent  -> movement home always succeeds        <- still true
+  hidden step -> the drone always attempts to go home <- was never established
+  consequent  -> the escape hatch is obsolete         <- survives, groundless
+```
+
+The failure mode was not eliminated; it **moved up a layer**. Guaranteeing a step cannot fail says
+nothing about whether that step is reached, and a mitigation retired on the strength of the guarantee
+is retired on the strength of the wrong half. When retiring a mitigation because some failure is now
+impossible, state which layer the guarantee covers and check whether the failure can recur above it.
+
+**A third expiry mode, from the same ladder.** The rungs quoted above have since been re-based: the
+first rung is now the drone's *everyday* climb height, and the two above it are multiples of it,
+because at their former absolute values they climbed no more than the new ordinary rung — an
+escalation that escalated nothing. The reason is worth more than the numbers. Those lower rungs were
+substantially compensating for a base movement constraint that was itself wrong (a flying drone
+limited to a walker's one-block step; see
+`docs/solutions/logic-errors/the-pathfinder-modelled-a-flying-drone-as-a-walker.md`). So a defensive
+structure can also expire by having been built on a **defect** rather than on a danger — and that
+kind ages worst of all, because fixing the defect silently turns the mitigation into dead weight
+that still looks principled.
+
+The live comment at `EcoServerMod/AdvancedElectronics/DroneDock.cs` still carries the unqualified
+claim, so this entry's own advice — delete the expired justification rather than only changing the
+behaviour — is currently outstanding against the very comment it was written about.
+
 ## Related
 
 - `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — another case
@@ -137,3 +180,6 @@ obsolete rather than merely inconvenient.
 - `docs/solutions/workflow-issues/a-user-report-carries-evidence-and-a-request.md` — the removal
   constraint in this entry came from the maintainer's own domain knowledge during a review, not from
   the finding that prompted the question.
+- `docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md` — the
+  three stuck states that expired this entry's replacement premise. Stranding returned above the
+  movement layer, where the return-leg escalation cannot reach it.

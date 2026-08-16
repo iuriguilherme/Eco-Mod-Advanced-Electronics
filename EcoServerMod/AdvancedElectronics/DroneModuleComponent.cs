@@ -126,6 +126,51 @@ namespace Eco.Mods.TechTree
 
             // Placement and world load both land here with a slot that may already hold a drone.
             this.syncPending = true;
+
+            // ...but on world load, deferring EVERYTHING to Tick is a whole load too late for any
+            // component whose configuration does not serialize. WorldObjectManager.Initialize runs
+            // two full passes over every object: pass 1 is DoInitializationSteps (which calls the
+            // dock's own Initialize, and so reaches here), pass 2 is FinishInitialize ->
+            // InitializeComponents. Pass 1 finishes before pass 2 starts, so this is the last hook
+            // that still precedes every component's Initialize().
+            //
+            // FuelSupplyComponent needs exactly that. Its `fuelTags` is a plain field, not
+            // [Serialized], set only by Initialize(numFuelSlots, fuelTags) -- our Configure. Its
+            // parameterless Initialize() then does `this.fuelTags.Select(...)`, so a fuel component
+            // that survived the save with no Configure re-applied throws ArgumentNullException
+            // inside InitializeComponents and takes the whole server down at boot, world unloadable.
+            this.ReconfigurePersistedComponents();
+        }
+
+        /// <summary>
+        /// Re-applies each installation's Configure to a component that survived the save, without
+        /// creating, removing, or restoring anything. Configure restores non-serialized setup on a
+        /// live component; that is idempotent and safe to run before the component is initialized,
+        /// which is the whole point of calling it from <see cref="AttachTo"/> rather than Tick.
+        ///
+        /// Deliberately NOT the install path: no component is attached here, so there is nothing to
+        /// unwind, and RestoreState is left for Tick -- consuming the drone item's PersistentData
+        /// this early would spend it against components that have not initialized yet.
+        /// </summary>
+        private void ReconfigurePersistedComponents()
+        {
+            if (this.SlottedSource is not { } source) return;
+
+            foreach (var inst in source.ComponentsToInstall)
+            {
+                if (inst.Configure == null) continue;
+                if (this.Parent.GetComponent(inst.ComponentType, inst.Name) is not WorldObjectComponent existing) continue;
+
+                // One component's bad Configure must not stop the rest, and must not abort the
+                // dock's Initialize -- a half-built WorldObject is a failure mode this mod has
+                // already paid for (docs/solutions/runtime-errors/initialize-exception-leaves-a-half-built-worldobject.md).
+                try { inst.Configure(existing); }
+                catch (Exception e)
+                {
+                    Log.WriteErrorLineLoc(
+                        $"Drone Dock: re-configuring persisted {inst.ComponentType.Name} on load failed: {e}");
+                }
+            }
         }
 
         private void OnSlotChanged(User user)
@@ -141,6 +186,17 @@ namespace Eco.Mods.TechTree
             this.Sync();
         }
 
+        /// <summary>
+        /// Whether two component sources call for the same installation. Null matches only null --
+        /// an empty slot and a filled one are never the same kind, so insertion and removal both
+        /// still trigger a sync.
+        /// </summary>
+        private static bool SameKind(IWorldObjectComponentSource a, IWorldObjectComponentSource b)
+        {
+            if (a == null || b == null) return a == null && b == null;
+            return a.GetType() == b.GetType();
+        }
+
         private void Sync()
         {
             // Belt and braces: Tick should never run under an inventory lock, but if it somehow
@@ -148,7 +204,27 @@ namespace Eco.Mods.TechTree
             if (InventoryLock.IsHeldByCurrentThread) { this.syncPending = true; return; }
 
             var newSource = this.SlottedSource;
-            if (ReferenceEquals(this.installedSource, newSource)) return;
+
+            // Compared by TYPE, not by instance. What gets installed is a function of which drone
+            // KIND is slotted -- ComponentsToInstall is declared per item class -- so two instances
+            // of MiningDroneItem call for byte-identical components and swapping one for the other
+            // has nothing to reinstall.
+            //
+            // Reference equality churned constantly, because ordinary inventory work (a
+            // consolidate, a restack, a stack merge) hands back a different Item instance for the
+            // same slot contents. Every such change tore every component off the dock and put it
+            // back, and the client rebuilds a world object's whole UI when its component set
+            // changes -- destroying live controls mid-subscription. That is the disappearing
+            // +/- selectors and assign buttons, visible in the client log as
+            //
+            //     Destroyed AutoGenSelector has active subscriptions for: ...
+            //     Destroyed InputFieldControl has active subscriptions for: MiningComponentView...
+            //
+            // A genuine swap between two DIFFERENT drone kinds still differs by type and still
+            // reinstalls. A swap between two of the same kind skips the capture/restore round trip,
+            // which is safe here because R8 refuses to release a drone whose tank still holds fuel
+            // -- there is no partly-burned unit left to carry across.
+            if (SameKind(this.installedSource, newSource)) return;
 
             if (this.installedSource != null) this.Uninstall(this.installedSource);
             if (newSource != null && !this.TryInstall(newSource)) return;
