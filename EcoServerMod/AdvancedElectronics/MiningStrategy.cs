@@ -200,6 +200,20 @@ namespace Eco.Mods.TechTree
                 this.yieldTable,
                 this.classifier);
 
+            if (result.Outcome == RemovalOutcome.Refused && this.HoldIsFull())
+            {
+                // A refusal with a full hold is not an obstructed plot -- it is this drone having
+                // nowhere to put the next block. Abandoning the plot here is what made a mining
+                // run stop after five layers of fifteen and report blocked terrain for ground that
+                // was clear (live pass #3).
+                //
+                // The plot stays Unworked and currentShaftPlot/shaftResumeIndex stay set, so the
+                // same shaft resumes at the same layer after the next unload, exactly as the
+                // capacity branch below intends.
+                this.holdFull = true;
+                return ParkedWorkOutcome.PlotDone;
+            }
+
             if (result.Outcome == RemovalOutcome.Refused)
             {
                 // The engine's own refusal wording travels with the skip. Obstructed is the
@@ -217,14 +231,39 @@ namespace Eco.Mods.TechTree
             // plot itself stays Unworked and currentShaftPlot is deliberately left set, so
             // resuming after unload re-enters this same plot at this same layer rather than
             // restarting it or skipping to a different one.
-            var holdQuantity = this.hold.NonEmptyStacks.Sum(s => s.Quantity);
-            if (holdQuantity >= this.holdCapacity)
+            if (this.HoldIsFull())
             {
                 this.holdFull = true;
                 return ParkedWorkOutcome.PlotDone;
             }
 
             return ParkedWorkOutcome.StillWorking;
+        }
+
+        /// <summary>
+        /// Whether the hold can take no more. Asks the inventory, and keeps the configured
+        /// estimate only as an upper bound.
+        ///
+        /// The estimate alone was the whole test, and it never fired: it is 16 slots x 400, while
+        /// sixteen slots of stacked blocks hold a small fraction of that. Its own doc comment
+        /// admitted as much -- "a live-tunable estimate, not a hard engine limit" -- so the drone
+        /// never noticed a full hold and instead learned it by having a dig refused, which
+        /// TickParkedWork then filed as an obstructed plot. Stack capacity is a question the
+        /// inventory can answer exactly, so ask it rather than predict it (the same reasoning
+        /// CargoUnloader already applies in the other direction).
+        /// </summary>
+        private bool HoldIsFull()
+        {
+            if (this.hold.Stacks.All(s => s.Quantity > 0 && s.Item != null))
+            {
+                // Every slot occupied. Still not full if a stack has headroom, which only the
+                // stack's own max size can say.
+                if (this.hold.NonEmptyStacks.All(s => s.Quantity >= s.Item.MaxStackSize))
+                    return true;
+            }
+
+            var holdQuantity = this.hold.NonEmptyStacks.Sum(s => s.Quantity);
+            return holdQuantity >= this.holdCapacity;
         }
 
         public void OnArrivalFailed()
