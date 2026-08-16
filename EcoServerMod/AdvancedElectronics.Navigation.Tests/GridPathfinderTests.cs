@@ -29,12 +29,17 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal(new Vector3(0, 1, 0), result.Waypoints[0]);
             Assert.Equal(new Vector3(5, 1, 0), result.Waypoints[result.Waypoints.Count - 1]);
 
-            // "Direct line": z never deviates, x strictly increases toward the goal.
+            // "Direct line": z never deviates and x never backtracks. Deliberately NOT strictly
+            // increasing any more -- the route now opens with a climb and closes with a descent,
+            // each a waypoint sharing its neighbour's column, which is the point of flying rather
+            // than walking. Progress toward the goal is still monotonic.
             for (int i = 1; i < result.Waypoints.Count; i++)
             {
                 Assert.Equal(0f, result.Waypoints[i].Z);
-                Assert.True(result.Waypoints[i].X > result.Waypoints[i - 1].X);
+                Assert.True(result.Waypoints[i].X >= result.Waypoints[i - 1].X);
             }
+
+            Assert.True(result.Waypoints.Count > 2, "a flight profile has more than its two endpoints");
         }
 
         // --- R2: solid wall obstacle ---
@@ -413,6 +418,59 @@ namespace AdvancedElectronics.Navigation.Tests
         /// Simple in-memory fake IWorldSampler for tests - a set-based
         /// override of a flat, all-walkable default plane. No real Eco data.
         /// </summary>
+        // --- The drone flies: it crosses pits, it does not descend into them ---
+
+        [Fact]
+        public void APitOnTheRoute_IsFlownOver_NotDescendedInto()
+        {
+            // Flat ground with a shaft partway along. Every waypoint between the ends must stay
+            // at or above the surrounding surface -- the drone used to trace the hole down and up.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(3, 0, 49f);
+
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+            var result = pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(6, 65, 0));
+
+            Assert.True(result.Found);
+            foreach (var waypoint in result.Waypoints)
+                Assert.True(waypoint.Y >= 64f, $"waypoint dipped to {waypoint.Y}, into the pit");
+        }
+
+        [Fact]
+        public void TheClimbIsItsOwnLeg_SoTheDroneRisesBeforeItTravels()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+
+            var result = pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(5, 65, 0));
+
+            // Second waypoint shares the first's column and is higher: a vertical climb, not a
+            // diagonal. The diagonal is what read as the drone clipping into rising ground.
+            Assert.Equal(result.Waypoints[0].X, result.Waypoints[1].X);
+            Assert.Equal(result.Waypoints[0].Z, result.Waypoints[1].Z);
+            Assert.True(result.Waypoints[1].Y > result.Waypoints[0].Y);
+
+            // ...and the mirror image at the far end: descend in place onto the goal.
+            var last = result.Waypoints.Count - 1;
+            Assert.Equal(result.Waypoints[last].X, result.Waypoints[last - 1].X);
+            Assert.Equal(result.Waypoints[last].Z, result.Waypoints[last - 1].Z);
+            Assert.True(result.Waypoints[last - 1].Y > result.Waypoints[last].Y);
+        }
+
+        [Fact]
+        public void TheGoalKeepsItsGroundHeight_SoAShaftFloorIsStillLandedOn()
+        {
+            // Cruising must not stop the drone reaching the bottom of its own shaft.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(5, 0, 49f);
+
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+            var result = pathfinder.FindPath(new Vector3(0, 65, 0), new Vector3(5, 50, 0));
+
+            Assert.True(result.Found);
+            Assert.Equal(50f, result.Waypoints[result.Waypoints.Count - 1].Y);
+        }
+
         // --- The drone flies: a shaft it dug itself must stay reachable ---
 
         [Fact]

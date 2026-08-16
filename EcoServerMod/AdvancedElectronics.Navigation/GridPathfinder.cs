@@ -246,11 +246,66 @@ namespace AdvancedElectronics.Navigation
             }
             columns.Reverse();
 
-            var waypoints = new List<Vector3>(columns.Count);
-            foreach (GridColumn column in columns)
-                waypoints.Add(ToWaypoint(column));
+            return CruiseProfile(columns);
+        }
+
+        /// <summary>
+        /// Turns a column route into a flight profile: climb where you start, cross level, descend
+        /// where you finish.
+        ///
+        /// Following the ground per column is a walker's route. A drone given one flies the SHAPE
+        /// of the terrain -- down into every pit on the way and back out the far side, which is
+        /// both slow and absurd to watch, and became unmissable once the drone was allowed to
+        /// descend into its own shafts at all. Cruise altitude is the highest ground anywhere on
+        /// the route plus clearance, so the level leg passes over every obstacle between the ends
+        /// rather than tracing them.
+        ///
+        /// The climb and the descent are their OWN legs -- a waypoint directly above the start, and
+        /// one directly above the goal -- so the drone goes up before it goes forward instead of
+        /// gaining height on a diagonal. That diagonal is what read as clipping into terrain when
+        /// the ground rose faster than the drone did.
+        ///
+        /// Endpoints keep their ground-relative height: the drone still lands where it was going,
+        /// including at the bottom of a shaft. Only the travel between them is lifted.
+        /// </summary>
+        private List<Vector3> CruiseProfile(List<GridColumn> columns)
+        {
+            if (columns.Count == 1) return new List<Vector3> { ToWaypoint(columns[0]) };
+
+            var cruiseGround = float.MinValue;
+            foreach (var column in columns)
+            {
+                var ground = _sampler.GroundHeightAt(column.X, column.Z);
+                if (ground > cruiseGround) cruiseGround = ground;
+            }
+
+            var cruiseY = cruiseGround + _standingHeightOffset + CruiseClearance;
+
+            var start = ToWaypoint(columns[0]);
+            var goal = ToWaypoint(columns[columns.Count - 1]);
+
+            var waypoints = new List<Vector3>(columns.Count + 2) { start };
+
+            // Climb in place, unless the route never needed to rise (already at or above cruise).
+            if (cruiseY > start.Y) waypoints.Add(new Vector3(start.X, cruiseY, start.Z));
+
+            // Level crossing over every column between the ends.
+            for (var i = 1; i < columns.Count - 1; i++)
+                waypoints.Add(new Vector3(columns[i].X, cruiseY, columns[i].Z));
+
+            // Arrive above the goal, then descend in place onto it.
+            if (cruiseY > goal.Y) waypoints.Add(new Vector3(goal.X, cruiseY, goal.Z));
+            waypoints.Add(goal);
+
             return waypoints;
         }
+
+        /// <summary>
+        /// How far above the highest ground on the route the level leg flies, on top of
+        /// <see cref="WalkingHeightOffset"/>. Two blocks clears a fence, a hedge and a stockpile
+        /// lip without putting the drone so high that short hops look like launches.
+        /// </summary>
+        public const float CruiseClearance = 2f;
 
         private readonly struct GridColumn : IEquatable<GridColumn>
         {
