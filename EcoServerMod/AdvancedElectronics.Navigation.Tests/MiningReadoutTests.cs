@@ -148,6 +148,17 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
+        public void Idle_DistinguishesUnassignedFromNotYetSetOut()
+        {
+            var unassigned = MiningReadout.FormatJobStatus(MiningJobStatus.Idle, 0, hasAssignment: false);
+            var assigned = MiningReadout.FormatJobStatus(MiningJobStatus.Idle, 0, hasAssignment: true);
+
+            Assert.NotEqual(unassigned, assigned);
+            Assert.Contains("no area assigned", unassigned);
+            Assert.DoesNotContain("no area assigned", assigned);
+        }
+
+        [Fact]
         public void ShaftProgress_NothingRecordedYet_RendersEmpty()
         {
             Assert.Equal(string.Empty, MiningReadout.FormatShaftProgress(0, 0, 0, 0));

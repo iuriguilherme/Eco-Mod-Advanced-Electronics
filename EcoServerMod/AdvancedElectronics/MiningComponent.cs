@@ -199,7 +199,7 @@ namespace Eco.Mods.TechTree
 
             if (job != null)
             {
-                this.JobStatusDisplay = MiningReadout.FormatJobStatus(job.Status, job.WorkedCount);
+                this.JobStatusDisplay = MiningReadout.FormatJobStatus(job.Status, job.WorkedCount, reference != null);
                 this.ProgressDisplay = $"worked {job.WorkedCount}, skipped {job.SkippedCount}";
                 this.SkipLineDisplay = MiningReadout.FormatSkipLine(job.SkipCountsByCategory(), job.SkippedCount);
             }

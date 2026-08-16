@@ -14,11 +14,18 @@ namespace AdvancedElectronics.Navigation
         /// Job status wording, distinguishing complete-but-zero-worked (AE4) from a run
         /// still under way -- a bare status name would read the same for both.
         /// </summary>
-        public static string FormatJobStatus(MiningJobStatus status, int workedCount)
+        /// <param name="hasAssignment">
+        /// Whether the dock currently holds an area assignment. Idle means "this job has not
+        /// dispatched yet", which happens both before an area is chosen AND in the gap between
+        /// assigning one and the drone leaving -- two situations that read identically in the
+        /// status alone. Reporting "no area assigned" during the second was simply false, and live
+        /// pass #6 caught it saying so with mining:5:9 assigned on the same screen.
+        /// </param>
+        public static string FormatJobStatus(MiningJobStatus status, int workedCount, bool hasAssignment = false)
         {
             switch (status)
             {
-                case MiningJobStatus.Idle: return "idle -- no area assigned";
+                case MiningJobStatus.Idle: return hasAssignment ? "idle -- waiting to set out" : "idle -- no area assigned";
                 case MiningJobStatus.Working: return "working";
                 case MiningJobStatus.WaitingToUnload: return "waiting to unload";
                 case MiningJobStatus.Complete:

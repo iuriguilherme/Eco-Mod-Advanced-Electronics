@@ -225,16 +225,24 @@ namespace Eco.Mods.TechTree
                 this.yieldTable,
                 this.classifier);
 
-            if (result.Outcome == RemovalOutcome.Refused && this.HoldIsFull())
+            if (result.Outcome == RemovalOutcome.Refused && !this.hold.IsEmpty)
             {
-                // A refusal with a full hold is not an obstructed plot -- it is this drone having
-                // nowhere to put the next block. Abandoning the plot here is what made a mining
-                // run stop after five layers of fifteen and report blocked terrain for ground that
-                // was clear (live pass #3).
+                // A refusal while carrying anything is treated as "no room for this layer", not as
+                // an obstructed plot. Gating this on HoldIsFull was too strict and is what kept the
+                // run stopping at 5 layers of 15 (live pass #6: "Last refusal: Not enough room in
+                // inventory" alongside a hold that was not yet full). The hold does not have to be
+                // FULL to be unable to take another twenty-five positions at once, so predicting
+                // fullness was the wrong question -- the engine already answered the right one by
+                // refusing.
                 //
-                // The plot stays Unworked and currentShaftPlot/shaftResumeIndex stay set, so the
-                // same shaft resumes at the same layer after the next unload, exactly as the
-                // capacity branch below intends.
+                // Self-limiting, so this cannot spin: going home empties the hold, and a refusal
+                // with an EMPTY hold falls through to the genuine-skip branch below, because lack
+                // of room cannot be the cause when nothing is aboard. If the unload itself is
+                // refused, OnArrivedHome leaves holdFull set and the drone waits at the dock (KD14)
+                // rather than flying out to be refused again.
+                //
+                // The plot stays Unworked with currentShaftPlot and shaftResumeIndex intact, so the
+                // same shaft resumes at the same layer after the next unload.
                 this.holdFull = true;
                 return ParkedWorkOutcome.PlotDone;
             }
