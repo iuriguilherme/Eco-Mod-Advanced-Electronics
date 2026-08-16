@@ -211,6 +211,10 @@ otherwise identical hosts differ by their module. Component state survives the m
 from one host and put into another carries its contents and condition with it, rather than being
 reset.
 
+Installing and uninstalling are not free and not invisible: each one changes the host's component set
+and so triggers a [[Panel Rebuild]] for anyone with the host's window open. A module system therefore
+has to be certain the set has genuinely changed before acting on it.
+
 A module is the mod's answer to a host that cannot itself be the thing players interact with. It
 lets the player be told the capability belongs to the module, while the engine sees a host that
 borrowed it.
@@ -272,6 +276,22 @@ controls, and every element added is subtracted from every other. The unit is th
 two-column row (22 px, label left and control right). Costs are quoted as multiples of it: a
 `BigButton` is 3.2 rows, a `StringPlaque` is 5. Judging a control on whether it works misses what it
 costs its neighbours.
+
+### Panel Rebuild
+The teardown and reconstruction of a host's whole window that follows any change to which components
+the host carries. The set of tabs is derived from the set of components, so changing the set
+invalidates the window rather than updating it.
+
+The cost falls on whoever has that window open. A rebuild discards the live controls and builds new
+ones, and a control discarded while it still holds a subscription to a synced value is not replaced —
+it is simply absent for the rest of that viewer's session, with no error raised anywhere on the
+server. Controls therefore disappear one at a time, silently, until a tab is unusable and only
+reconnecting restores it.
+
+This makes a [[Module]]'s install and uninstall a UI event as much as a capability change, and makes
+any guard deciding "does the installed set still match what is slotted?" load-bearing: a guard that
+fires more often than the set genuinely changes will empty the panels of every player watching.
+Prefer a stable set whose members disable themselves over a set that installs and uninstalls.
 
 ### Control Pool
 The fixed set of compile-time controls that stands in for a per-object list. A dynamically sized

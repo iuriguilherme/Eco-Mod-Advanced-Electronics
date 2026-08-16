@@ -1,7 +1,7 @@
 ---
 title: "What a server-only Eco mod can and cannot render on the stock client"
 date: 2026-07-24
-last_updated: 2026-08-10
+last_updated: 2026-08-16
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -446,8 +446,23 @@ folder, which is why a client-side throw looks like "no error anywhere" if you o
 This matters more than it sounds. A whole investigation was run by bisecting deployed builds and
 its conclusion written up as "the exception text is unavailable, diagnosed by bisection, not by
 reading an error" — while the exception, with a full managed stack trace naming the exact cast,
-was on disk the entire time. **Read `Player.log` before bisecting anything client-side.** Search it
-for `Disconnected with error`, `InvalidCastException`, or `Errors report:`.
+was on disk the entire time. **Read `Player.log` before bisecting anything client-side.**
+
+**Search terms are examples, not a checklist.** `Disconnected with error`, `InvalidCastException`
+and `Errors report:` cover the crash-shaped failures below, and for a long time this section listed
+only those three — which is a trap, because a client-side failure does not have to be a crash. A
+grep that comes back empty against a fixed list is evidence about the list, not about the log.
+Scroll it, or search for the symptom's own vocabulary. Two families seen so far:
+
+- **Crash-shaped** — the client throws on view reception. The three strings above find these.
+- **Lifecycle-shaped** — nothing throws; the client tears something down and says so.
+  `Destroyed <ClassName> has active subscriptions for: ...` is the signature, and the class it names
+  is the control that vanished (`AutoGenSelector` for a `+`/`-` number selector, `InputFieldControl`
+  for a text readout, `WorldObjectUI` for a whole window). Also here: `Cannot find icon with name
+  <X>`, which is a missing client asset rather than a code fault. See
+  `docs/solutions/logic-errors/comparing-a-slotted-item-by-reference-destroys-the-open-ui.md` — six
+  passes of server-log searching happened before anyone opened `Player.log` on that one, precisely
+  because the failure matched none of the three crash strings.
 
 The crash signature for a list whose elements do not deserialize to `View` — a
 `[SyncToView] IEnumerable<string>` member:
@@ -522,6 +537,10 @@ var tagsNames = ControllerManager.TypeToTags?.Invoke(controllerType);
 - `docs/solutions/conventions/eco-custom-worldobject-placement-requirements.md` — the sibling
   "the stripped reference assemblies hide the truth" convention, for placement rather than
   rendering; both are cases where a compiling server contract hides a client requirement.
+- `docs/solutions/logic-errors/comparing-a-slotted-item-by-reference-destroys-the-open-ui.md` — the
+  lifecycle-shaped client failure this section's search terms did not cover: changing a world
+  object's component set rebuilds its window and permanently destroys the controls a viewer had
+  open, with nothing logged server-side.
 - `docs/solutions/best-practices/ship-the-readout-not-just-the-data.md` — why the readout surface
   is part of the feature; this doc is the constraint list that surface must fit inside.
 - `docs/solutions/workflow-issues/tracing-beats-theorising-on-invariant-failures.md` — the same
