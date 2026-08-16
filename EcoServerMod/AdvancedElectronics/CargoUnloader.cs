@@ -31,7 +31,18 @@ namespace Eco.Mods.TechTree
             if (stampedCitizen == null)
                 return HoldLedger.Plan(holdQuantity, 0);
 
-            var destinations = link.GetSortedLinkedInventories(stampedCitizen);
+            // Another drone dock is not a warehouse. Its cargo hold is an ordinary
+            // PublicStorageComponent, so the link network offered it as a destination like any
+            // chest and drones filled each other's holds -- cargo that then never reaches storage,
+            // because the receiving drone unloads from its own hold, not into it.
+            //
+            // Excluded by owning object rather than by component name: the drone bay and any
+            // future dock storage are equally wrong targets, and matching on the hold's name would
+            // silently stop covering them.
+            var destinations = new InventoryCollection(
+                link.GetSortedLinkedEnabledStorages(stampedCitizen)
+                    .Where(storage => storage.Parent is not DroneDockObject)
+                    .Select(storage => storage.Inventory));
             var moved = 0;
 
             // Snapshot: a successful push below removes from the hold, which would

@@ -220,10 +220,14 @@ namespace Eco.Mods.TechTree
                 .ToList();
 
             var removable = classified.Where(c => c.Classification != BlockClassification.NotRemovable).ToList();
-            this.shaftResumeIndex += layer.Positions.Count;
 
             if (removable.Count == 0)
-                return ParkedWorkOutcome.StillWorking; // this layer was e.g. a wall (AE5) or already empty; move on next tick.
+            {
+                // Nothing to submit, so this layer IS finished -- advance past it or the shaft
+                // stalls on a layer of wall (AE5) or already-empty ground.
+                this.shaftResumeIndex += layer.Positions.Count;
+                return ParkedWorkOutcome.StillWorking;
+            }
 
             var result = this.removalService.Remove(
                 removable.Select(c => (c.Position, c.Classification)).ToList(),
@@ -267,11 +271,15 @@ namespace Eco.Mods.TechTree
                 return ParkedWorkOutcome.PlotFailed;
             }
 
+            // Only NOW is the layer finished. Advancing before submitting counted a layer whose
+            // removal was then refused for room, so the resume skipped it outright -- live pass #9
+            // found layers 6 and 10 unmined in every plot, exactly the two unload boundaries.
+            this.shaftResumeIndex += layer.Positions.Count;
+
             // R24/AE1: a full hold interrupts the shaft; the resume point (shaftResumeIndex)
-            // already stored above lets the same shaft continue after the next unload. The
-            // plot itself stays Unworked and currentShaftPlot is deliberately left set, so
-            // resuming after unload re-enters this same plot at this same layer rather than
-            // restarting it or skipping to a different one.
+            // lets the same shaft continue after the next unload. The plot itself stays Unworked
+            // and currentShaftPlot is deliberately left set, so resuming after unload re-enters
+            // this same plot at this same layer rather than restarting it or skipping ahead.
             if (this.HoldIsFull())
             {
                 this.holdFull = true;

@@ -45,19 +45,24 @@ namespace Eco.Mods.TechTree
 
         protected override LinkSettings NewDefaultLinkSettings(IAlias alias, WorldObject linkedObj, Type compType)
         {
-            // The dock's own master switch, same as the stock component's first check.
-            if (!this.AutoLink) return Unlinked;
-
-            // A target that has opted out stays out. Both of these are the stock component's own
-            // refusals, kept deliberately: the deed rule is the only one being replaced.
-            if (linkedObj.HasComponent<VehicleComponent>() && linkedObj.Auth?.IsPublicProperty == true)
-                return Unlinked;
-
-            if (compType.HasAttribute<DefaultToUnlinkedAttribute>())
-                return Unlinked;
-
-            // The replaced rule: no deed comparison. Reachable and permitted is enough.
-            return new LinkSettings { Input = true, Output = true };
+            // REVERTED to the stock default, deliberately.
+            //
+            // This class briefly replaced the deed rule so a dock auto-linked to every reachable
+            // storage, because an unowned stockpile has no deed and the hold could not empty. That
+            // fixed the wrong layer: the maintainer's requirement is that a drone behaves like
+            // every other machine -- owned storage on the same deed is linked by default, and an
+            // unowned stockpile is linked only when the player explicitly says so, exactly as a
+            // store or crafting table works. Auto-dumping into public piles is a gameplay decision
+            // this mod does not get to make on the player's behalf.
+            //
+            // The subclass is kept rather than deleted: it is the seam where a drone-specific link
+            // rule belongs if one is ever justified, and removing it would mean another
+            // [RequireComponent] type change on every saved dock.
+            //
+            // The real gap this exposed is that the dock's Storage tab offers no per-target
+            // enable/disable, so "explicitly link it" is not yet an action the player can take.
+            // That is a UI bug to fix, not a reason to widen the default.
+            return base.NewDefaultLinkSettings(alias, linkedObj, compType);
         }
     }
 }
