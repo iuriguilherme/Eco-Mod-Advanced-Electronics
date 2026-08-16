@@ -859,16 +859,26 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void TickUnreachableRetry(DroneMoverComponent mover)
         {
-            if (mover.IsMoving)
+            // Home is checked FIRST, and without regard to movement. Arrival used to be tested
+            // only inside the moving branch, so a drone that went Unreachable while already
+            // standing at its dock could never leave the state: it is not moving, so it fell to
+            // the periodic retry, which re-pathed a zero-length route to where it already was,
+            // "succeeded", and declared nothing. It hovered over its own dock indefinitely, and
+            // unassigning could not clear it because the loop was not driven by the assignment --
+            // which is what forced the assign-a-different-area workaround.
+            //
+            // This is the common case now rather than a corner: an outbound dispatch that fails
+            // leaves the drone Unreachable exactly where it stands, and where it stands is usually
+            // the dock it just set out from.
+            if (this.IsAtHomeDock())
             {
-                if (this.IsAtHomeDock())
-                {
-                    this.stateMachine.OnReturnedToDock();
-                    this.strategy?.OnArrivedHome();
-                    this.ResetReturnLadder(mover);
-                }
+                this.stateMachine.OnReturnedToDock();
+                this.strategy?.OnArrivedHome();
+                this.ResetReturnLadder(mover);
                 return;
             }
+
+            if (mover.IsMoving) return; // a return leg is in flight; let it fly.
 
             var manager = ServiceHolder<IWorldObjectManager>.Obj;
             var deltaTime = manager != null && manager.TickDeltaTime > 0f
