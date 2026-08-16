@@ -1,5 +1,8 @@
+using AdvancedElectronics.Navigation;
 using Eco.Gameplay.Components.Storage;
 using Eco.Gameplay.Items;
+using Eco.Gameplay.Objects;
+using Eco.Shared.Localization;
 
 namespace Eco.Mods.TechTree
 {
@@ -41,8 +44,58 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public static ComponentInstallation Installation() => ComponentInstallation.For<PublicStorageComponent>(
             name: HoldName,
-            configure: c => c.Initialize(HoldSlots),
+            configure: Configure,
             canUninstall: c => c.Storage.IsEmpty,
             proxyInteractions: false);
+
+        private static void Configure(PublicStorageComponent hold)
+        {
+            hold.Initialize(HoldSlots);
+
+            // R23/R25: the hold is the flying drone's, not a chest on the pad. Without this the
+            // dock's Storage tab let a player empty a drone that was kilometres away and halfway
+            // down a shaft -- and, because the hold is a linked inventory, let one drone's cargo
+            // be moved into another's.
+            hold.Storage.AddInvRestriction(new DroneHoldRestriction(hold.Parent));
+        }
+    }
+
+    /// <summary>
+    /// Refuses to let anything be taken out of a drone's cargo hold unless the drone is home and
+    /// idle (R23, R25).
+    ///
+    /// Only TAKING is refused, deliberately. The mining removal service delivers each layer's
+    /// yield into this same inventory while the drone is out working, and a restriction on adding
+    /// cannot tell that write apart from a player stuffing the hold -- both arrive as an inventory
+    /// change carrying the stamped citizen. Blocking it would stop the drone mining at all, which
+    /// is a far worse failure than a player being able to donate rocks to a drone.
+    ///
+    /// The unload path takes from the hold, but only ever at the dock, where the drone is Idle and
+    /// this restriction already allows it.
+    ///
+    /// Mirrors <see cref="DroneDockedRestriction"/>, which guards the drone bay the same way and
+    /// for the same reason; the two differ only in which inventory they sit on.
+    /// </summary>
+    public class DroneHoldRestriction : InventoryRestriction
+    {
+        private readonly WorldObject parent;
+
+        public DroneHoldRestriction(WorldObject parent) => this.parent = parent;
+
+        public override LocString Message =>
+            Localizer.DoStr("The drone is still out. Wait for it to return before unloading it by hand.");
+
+        public override int MaxPickup(RestrictionCheckData checkData, Item item, int currentQuantity)
+        {
+            if (this.parent is not DroneDockObject dock) return -1;
+
+            var drone = dock.SpawnedDrone;
+            if (drone == null || drone.IsDestroyed) return -1;  // nothing flying; the hold is just a box.
+
+            return drone.TryGetComponent<DroneLifecycle>(out var lifecycle)
+                   && lifecycle.Status != DroneStatus.Idle
+                ? 0
+                : -1;
+        }
     }
 }
