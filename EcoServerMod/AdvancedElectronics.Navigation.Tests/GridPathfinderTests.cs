@@ -418,6 +418,59 @@ namespace AdvancedElectronics.Navigation.Tests
         /// Simple in-memory fake IWorldSampler for tests - a set-based
         /// override of a flat, all-walkable default plane. No real Eco data.
         /// </summary>
+        // --- The drone is 3.35 blocks wide, not a point ---
+
+        [Fact]
+        public void ARouteDoesNotGraze_APlacedObject()
+        {
+            // A single obstacle beside the direct line. Routing as a point put the drone's centre
+            // one column clear while its hull passed through the object -- what looked like
+            // partial clipping of stockpiles.
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            sampler.SetObstacle(3, 1);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+            var result = pathfinder.FindPath(new Vector3(0, 1, 0), new Vector3(6, 1, 0));
+
+            Assert.True(result.Found);
+            foreach (var waypoint in result.Waypoints)
+                Assert.False(waypoint.X == 3f && waypoint.Z == 0f,
+                    "routed within one column of the obstacle -- the hull would overlap it");
+        }
+
+        [Fact]
+        public void SolidTerrainBeside_DoesNotBlock_SoAShaftIsStillEnterable()
+        {
+            // Clearance is obstacles only. A 5x5 shaft is a hole with solid walls; requiring a
+            // clear block on every side would make the drone unable to enter what it digs.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            for (var z = -1; z <= 1; z++) { sampler.SetSolid(2, z); sampler.SetSolid(4, z); }
+            sampler.SetHeight(3, 0, 60f);
+
+            var pathfinder = new GridPathfinder(sampler, ReturnEscalation.OrdinaryMaxStepHeight);
+
+            Assert.True(pathfinder.FindPath(new Vector3(3, 65, 1), new Vector3(3, 61, 0)).Found);
+        }
+
+        [Fact]
+        public void ExemptColumnsAreSkippedInTheSweep_SoTheDockDoesNotWallItsDroneIn()
+        {
+            // Every pad cell reports Occupied. Without exempting them in the clearance sweep too,
+            // a drone beside its own dock finds its footprint overlapping the pad and cannot move.
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            var pad = new List<Vector3>();
+            for (var x = 0; x <= 1; x++)
+            for (var z = 0; z <= 1; z++)
+            {
+                sampler.SetObstacle(x, z);
+                pad.Add(new Vector3(x, 0, z));
+            }
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+
+            Assert.True(pathfinder.FindPath(new Vector3(0, 1, 0), new Vector3(6, 1, 0), pad).Found);
+        }
+
         // --- The drone flies: it crosses pits, it does not descend into them ---
 
         [Fact]

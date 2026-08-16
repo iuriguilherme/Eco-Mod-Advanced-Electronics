@@ -60,13 +60,27 @@ namespace AdvancedElectronics.Navigation
     {
         private const int DefaultSearchMargin = 25;
 
+        /// <summary>
+        /// How many columns either side of its own the drone's hull covers, for obstacle clearance.
+        ///
+        /// One, from the collider: 3.35 blocks wide means a half-extent of ~1.68, so a column at
+        /// distance 1 lies under the hull and one at distance 2 (2.0 > 1.68) does not. Raising this
+        /// to 2 would refuse any gap narrower than five blocks, which most builds cannot offer.
+        /// </summary>
+        public const int DroneClearanceRadius = 1;
+
         private readonly IWorldSampler _sampler;
         private readonly float _maxStepHeight;
         private readonly int _searchMargin;
+        private readonly int _clearanceRadius;
 
         public GridPathfinder(IWorldSampler sampler, float maxStepHeight, int searchMargin = DefaultSearchMargin,
-                              float standingHeightOffset = WalkingHeightOffset)
+                              float standingHeightOffset = WalkingHeightOffset,
+                              int clearanceRadius = DroneClearanceRadius)
         {
+            if (clearanceRadius < 0)
+                throw new ArgumentOutOfRangeException(nameof(clearanceRadius), "clearanceRadius cannot be negative.");
+            _clearanceRadius = clearanceRadius;
             if (maxStepHeight < 0f)
                 throw new ArgumentOutOfRangeException(nameof(maxStepHeight), "maxStepHeight cannot be negative.");
             if (searchMargin < 0)
@@ -165,7 +179,7 @@ namespace AdvancedElectronics.Navigation
                         if (_sampler.IsSolidAt(neighbor.X, neighbor.Z))
                             continue;
                     }
-                    else if (!IsWalkable(neighbor))
+                    else if (!IsWalkable(neighbor, exempt))
                         continue;
                     if (!IsStepAllowed(current, neighbor))
                         continue;
@@ -183,8 +197,42 @@ namespace AdvancedElectronics.Navigation
             return PathResult.NotFound;
         }
 
-        private bool IsWalkable(GridColumn column) =>
-            !_sampler.IsSolidAt(column.X, column.Z) && !_sampler.IsObstacleAt(column.X, column.Z);
+        /// <summary>
+        /// Whether the drone's whole footprint fits over <paramref name="column"/>, not merely its
+        /// centre.
+        ///
+        /// The drone's collider is 3.35 x 2.55 blocks, so it reaches about 1.68 blocks either side
+        /// of the column it occupies -- a neighbouring column at distance 1 is underneath the hull,
+        /// one at distance 2 is not. Routing it as a point let it pass through the edge of a
+        /// stockpile while its centre cleared: the avoidance was real but only ever a block wide.
+        ///
+        /// CLEARANCE APPLIES TO OBSTACLES ONLY, never to solidity. Terrain beside the drone is
+        /// normal and must stay passable -- a shaft is a 5x5 hole with solid walls, and requiring
+        /// a clear block on every side would make the drone unable to enter the very thing it digs,
+        /// or to fly along any cliff. Height is what governs terrain, and the cruise profile
+        /// already lifts the route over it.
+        ///
+        /// Exempt columns are skipped in the sweep as well as at the centre. Without that the dock
+        /// walls its own drone in: every pad cell reports Occupied, so a drone standing beside the
+        /// pad would find its footprint overlapping it and refuse to move.
+        /// </summary>
+        private bool IsWalkable(GridColumn column, HashSet<GridColumn> exempt)
+        {
+            if (_sampler.IsSolidAt(column.X, column.Z)) return false;
+            if (_sampler.IsObstacleAt(column.X, column.Z)) return false;
+
+            for (var dx = -_clearanceRadius; dx <= _clearanceRadius; dx++)
+            for (var dz = -_clearanceRadius; dz <= _clearanceRadius; dz++)
+            {
+                if (dx == 0 && dz == 0) continue;
+
+                var beside = new GridColumn(column.X + dx, column.Z + dz);
+                if (exempt.Contains(beside)) continue;
+                if (_sampler.IsObstacleAt(beside.X, beside.Z)) return false;
+            }
+
+            return true;
+        }
 
         private bool IsStepAllowed(GridColumn from, GridColumn to)
         {
