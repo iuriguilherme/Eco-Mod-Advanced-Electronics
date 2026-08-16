@@ -245,6 +245,21 @@ Serviceability gates dispatch rather than the drone itself, so an unserviceable 
 distinguishable from an unassigned one — a player who is out of fuel must be told that, not shown an
 area that looks like nobody asked for it.
 
+### Drone Status
+Where a dispatched drone is in its round trip: waiting at the dock, travelling to the area, working
+on station, or unable to get where it was sent.
+
+The statuses are not merely a readout — they are what decides the drone's next move each tick, so a
+status the drone cannot leave is a drone that stops working forever. The unable-to-reach status is
+the one that matters: it is entered both by a journey that failed part-way and by a departure that
+never began, and a drone in it may be standing anywhere, including on its own dock. Every escape
+from it must therefore be testable without assuming travel is under way, or the drone that most
+needs the escape is the one that cannot take it.
+
+Statuses are drone state, unlike [[Assignment]], which is the dock's. Clearing the assignment does
+not by itself move a stuck drone, because the status machine advances on its own each tick rather
+than being driven by the assignment.
+
 ### Recall
 The drone's return to its dock because the dock stopped being Serviceable, as opposed to returning
 because the survey finished or the area was unassigned.
@@ -252,6 +267,10 @@ because the survey finished or the area was unassigned.
 A recall preserves the area's Coverage and Findings, so servicing the dock resumes the survey rather
 than restarting it. The return leg itself is treated as always possible: a drone is never stranded by
 the same shortage that recalled it.
+
+That guarantee covers the *movement* of getting home; it does not cover reaching the point where the
+return is attempted. A drone whose [[Drone Status]] never transitions toward home is stranded just as
+surely, and no amount of movement fallback rescues it, because the fallback is never invoked.
 
 ### Assignment
 The single Survey Area a dock has directed its drone to work on. Assigning is distinct from viewing:
