@@ -55,26 +55,38 @@ namespace Eco.Mods.TechTree
     [Serialized]
     public class DroneDockLinkComponent : SharedLinkComponent
     {
+        private static LinkSettings Unlinked => new LinkSettings { Input = false, Output = false };
+
         protected override LinkSettings NewDefaultLinkSettings(IAlias alias, WorldObject linkedObj, Type compType)
         {
-            // REVERTED to the stock default, deliberately.
+            // The wide default is back, KNOWINGLY AGAINST the stated preference, because the
+            // narrow one is only correct once the player can opt a target in -- and they cannot
+            // yet. Reverting to vanilla while the Storage tab still offers no Take From / Put Into
+            // controls did not restore a choice, it removed the behaviour and left nothing in its
+            // place: the hold could reach only owned, same-deed storage and simply stopped when
+            // that filled.
             //
-            // This class briefly replaced the deed rule so a dock auto-linked to every reachable
-            // storage, because an unowned stockpile has no deed and the hold could not empty. That
-            // fixed the wrong layer: the maintainer's requirement is that a drone behaves like
-            // every other machine -- owned storage on the same deed is linked by default, and an
-            // unowned stockpile is linked only when the player explicitly says so, exactly as a
-            // store or crafting table works. Auto-dumping into public piles is a gameplay decision
-            // this mod does not get to make on the player's behalf.
+            // So this stays until the tab's controls work, at which point the correct default is
+            // base.NewDefaultLinkSettings(...) -- one line, already written once, and the commit
+            // that flips it should also delete /drone link.
             //
-            // The subclass is kept rather than deleted: it is the seam where a drone-specific link
-            // rule belongs if one is ever justified, and removing it would mean another
-            // [RequireComponent] type change on every saved dock.
-            //
-            // The real gap this exposed is that the dock's Storage tab offers no per-target
-            // enable/disable, so "explicitly link it" is not yet an action the player can take.
-            // That is a UI bug to fix, not a reason to widen the default.
-            return base.NewDefaultLinkSettings(alias, linkedObj, compType);
+            // Meanwhile /drone link provides the opt-OUT: the wide default plus an explicit way to
+            // unlink is a strictly better position than a narrow default with no way to link.
+            if (!this.AutoLink) return Unlinked;
+
+            // A target that has opted out stays out. Both are the stock component's own refusals,
+            // kept deliberately: the deed rule is the only one being replaced.
+            if (linkedObj.HasComponent<VehicleComponent>() && linkedObj.Auth?.IsPublicProperty == true)
+                return Unlinked;
+
+            if (compType.HasAttribute<DefaultToUnlinkedAttribute>())
+                return Unlinked;
+
+            // The replaced rule: no deed comparison. Reachable and permitted is enough.
+            // Authorization is untouched -- GetAuthorizedLinkedObjects still drops anything the
+            // querying alias cannot reach, so this widens the default to what that citizen could
+            // already access by hand, never beyond it.
+            return new LinkSettings { Input = true, Output = true };
         }
     }
 }
