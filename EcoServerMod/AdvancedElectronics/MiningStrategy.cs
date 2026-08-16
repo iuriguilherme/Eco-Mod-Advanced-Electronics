@@ -202,7 +202,12 @@ namespace Eco.Mods.TechTree
 
             if (result.Outcome == RemovalOutcome.Refused)
             {
-                this.job.MarkSkipped(target, RefusalMapping.ToSkipCategory(result.RefusalStage));
+                // The engine's own refusal wording travels with the skip. Obstructed is the
+                // removal service's FALLBACK stage -- everything that was not law and not
+                // property -- so without this the panel could only ever say "obstructed", which
+                // names the bucket and not the cause. Live pass #2 lost two of three plots to
+                // exactly that, with the answer already computed and thrown away here.
+                this.job.MarkSkipped(target, RefusalMapping.ToSkipCategory(result.RefusalStage), result.Message);
                 this.currentShaftPlot = null;
                 return ParkedWorkOutcome.PlotFailed;
             }

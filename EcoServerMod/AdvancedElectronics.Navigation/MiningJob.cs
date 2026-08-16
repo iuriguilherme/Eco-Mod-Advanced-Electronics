@@ -166,12 +166,29 @@ namespace AdvancedElectronics.Navigation
             _ledger[plot] = PlotOutcome.Worked;
         }
 
-        /// <summary>Records <paramref name="plot"/> abandoned under <paramref name="category"/> (R22).</summary>
-        public void MarkSkipped(PlotCoord plot, SkipCategory category)
+        /// <summary>
+        /// The engine's own words for the most recent refusal, or null if nothing has been
+        /// refused. Deliberately last-only rather than per-plot: it exists to answer "why did
+        /// that just fail", and one line the player can read beats a ledger nobody opens.
+        ///
+        /// The category alone is not an answer. Obstructed is the FALLBACK classification -- the
+        /// removal service attributes a refusal to a pretest only after re-checking that neither
+        /// law nor property refused it -- so "1 obstructed" means "not law, not property, cause
+        /// unknown". Live pass #2 ended with two of three drones reporting exactly that, and the
+        /// cause was already in hand: the service captures the engine's refusal message and the
+        /// strategy was discarding it. Not persisted; it describes this session's last attempt.
+        /// </summary>
+        public string LastRefusalDetail { get; private set; }
+
+        /// <summary>Records <paramref name="plot"/> abandoned under <paramref name="category"/> (R22), with the engine's own refusal wording when there is one.</summary>
+        public void MarkSkipped(PlotCoord plot, SkipCategory category, string refusalDetail = null)
         {
             RequirePlot(plot);
             _ledger[plot] = PlotOutcome.Skipped;
             _skipCategories[plot] = category;
+
+            if (!string.IsNullOrWhiteSpace(refusalDetail))
+                LastRefusalDetail = refusalDetail;
         }
 
         private void RequirePlot(PlotCoord plot)

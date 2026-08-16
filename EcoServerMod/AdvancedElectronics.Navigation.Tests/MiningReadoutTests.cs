@@ -139,5 +139,22 @@ namespace AdvancedElectronics.Navigation.Tests
         {
             Assert.Equal(string.Empty, MiningReadout.FormatBlockedReason(false, null));
         }
+
+        [Fact]
+        public void NoRefusal_RendersEmpty()
+        {
+            Assert.Equal(string.Empty, MiningReadout.FormatRefusalDetail(null));
+            Assert.Equal(string.Empty, MiningReadout.FormatRefusalDetail("   "));
+        }
+
+        [Fact]
+        public void ARefusal_KeepsTheEnginesOwnWording()
+        {
+            // The engine's text is the payload -- it must survive verbatim, since it is the only
+            // thing distinguishing one Obstructed skip from another.
+            var rendered = MiningReadout.FormatRefusalDetail("Not enough room in inventory.");
+
+            Assert.Contains("Not enough room in inventory.", rendered);
+        }
     }
 }

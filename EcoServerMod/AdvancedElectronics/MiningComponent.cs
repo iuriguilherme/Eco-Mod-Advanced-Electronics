@@ -63,6 +63,10 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("String")]
         public string SkipLineDisplay { get; private set; } = string.Empty;
 
+        /// <summary>The engine's own wording for the last refusal -- what "obstructed" will not tell you.</summary>
+        [SyncToView, Autogen, UITypeName("String")]
+        public string LastRefusalDisplay { get; private set; } = string.Empty;
+
         [SyncToView, Autogen, UITypeName("String")]
         public string HeadroomDisplay { get; private set; } = string.Empty;
 
@@ -158,6 +162,8 @@ namespace Eco.Mods.TechTree
                 this.SkipLineDisplay = string.Empty;
             }
 
+            this.LastRefusalDisplay = MiningReadout.FormatRefusalDetail(job?.LastRefusalDetail);
+
             // Outside the job branch on purpose: the halt refuses dispatch before a job exists, so
             // the case that most needs explaining is exactly the one with no job to read an end
             // reason from. Setting this inside the branches is what made a halted dock silent.
@@ -171,6 +177,7 @@ namespace Eco.Mods.TechTree
             this.Changed(nameof(this.StopReasonDisplay));
             this.Changed(nameof(this.ProgressDisplay));
             this.Changed(nameof(this.SkipLineDisplay));
+            this.Changed(nameof(this.LastRefusalDisplay));
             this.Changed(nameof(this.HeadroomDisplay));
             this.Changed(nameof(this.BrowseAreasDisplay));
             this.Changed(nameof(this.BrowsePosition));

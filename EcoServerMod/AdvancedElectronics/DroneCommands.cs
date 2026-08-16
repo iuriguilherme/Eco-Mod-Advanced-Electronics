@@ -274,7 +274,22 @@ namespace Eco.Mods.TechTree
             var hold = dock.GetComponent(typeof(PublicStorageComponent), DroneCargo.HoldName);
             user.MsgLocStr($"  Mining hold '{DroneCargo.HoldName}': {(hold != null ? "present" : "MISSING (blocks mining dispatch)")}");
             user.MsgLocStr($"  Link component: {(dock.TryGetComponent<LinkComponent>(out _) ? "present" : "MISSING (blocks mining dispatch)")}");
-            user.MsgLocStr($"  Mining job: {(dock.MiningJob == null ? "(none)" : dock.MiningJob.Status.ToString())}");
+            if (dock.MiningJob is { } miningJob)
+            {
+                user.MsgLocStr($"  Mining job: {miningJob.Status}, worked {miningJob.WorkedCount}, skipped {miningJob.SkippedCount}{(miningJob.EndReason.HasValue ? $", ended: {miningJob.EndReason}" : string.Empty)}");
+
+                // The counts alone repeat the panel. The refusal text is the part that is not
+                // anywhere else: "obstructed" is the removal service's catch-all for everything
+                // that was neither law nor property, so the category names the bucket and this
+                // names the cause.
+                var skipped = miningJob.SkipCountsByCategory().Where(kv => kv.Value > 0).ToList();
+                if (skipped.Count > 0)
+                    user.MsgLocStr($"  Skips by category: {string.Join(", ", skipped.Select(kv => $"{kv.Key}={kv.Value}"))}");
+                if (!string.IsNullOrWhiteSpace(miningJob.LastRefusalDetail))
+                    user.MsgLocStr($"  Last refusal: {miningJob.LastRefusalDetail}");
+            }
+            else
+                user.MsgLocStr("  Mining job: (none)");
             user.MsgLocStr($"  Mining halted server-wide: {MiningHalt.IsHalted}");
             user.MsgLocStr($"  Anim state Working: {FormatAnimState(dock, DroneDockObject.WorkingStateName)}");
 

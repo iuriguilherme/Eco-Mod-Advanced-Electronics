@@ -63,6 +63,17 @@ namespace AdvancedElectronics.Navigation
                 : FormatStopReason(jobEndReason);
 
         /// <summary>
+        /// The engine's own words for the last refusal, or empty when nothing has been refused.
+        ///
+        /// A row of its own rather than folded into the skip line, because the two answer
+        /// different questions: the skip line counts what happened across the area, this says why
+        /// the most recent one failed. Prefixed so a raw engine string does not read as the mod's
+        /// own prose.
+        /// </summary>
+        public static string FormatRefusalDetail(string detail) =>
+            string.IsNullOrWhiteSpace(detail) ? string.Empty : "last refusal: " + detail.Trim();
+
+        /// <summary>
         /// The composed skip line (R31): the all-zero case, a single category, and
         /// multiple categories each render distinctly, and every rendered count sums to
         /// <paramref name="skippedTotal"/>.
