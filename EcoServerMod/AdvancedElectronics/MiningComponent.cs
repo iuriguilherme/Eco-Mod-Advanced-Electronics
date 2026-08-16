@@ -67,6 +67,10 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("String")]
         public string LastRefusalDisplay { get; private set; } = string.Empty;
 
+        /// <summary>Shaft depth reached, and the two stamps behind the mineable decision.</summary>
+        [SyncToView, Autogen, UITypeName("String")]
+        public string ShaftProgressDisplay { get; private set; } = string.Empty;
+
         [SyncToView, Autogen, UITypeName("String")]
         public string HeadroomDisplay { get; private set; } = string.Empty;
 
@@ -110,6 +114,27 @@ namespace Eco.Mods.TechTree
                 player?.MsgLocStr($"Could not assign -- {refusalReason}.", NotificationStyle.Error);
 
             this.RefreshAll();
+        }
+
+        /// <summary>
+        /// Clears this dock's mining assignment (R7). Until this existed the only way to stop a
+        /// drone was to point it at another area, which is not a stop -- it is a different job, and
+        /// it meant an assignment survived every restart and re-ran itself on load.
+        /// </summary>
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Unassign Area")]
+        public void UnassignArea(Player player)
+        {
+            if (this.Parent is not DroneDockObject dock) return;
+
+            if (dock.AssignedMiningArea == null)
+            {
+                player?.MsgLocStr("This dock has no mining area assigned.", NotificationStyle.Warning);
+                return;
+            }
+
+            dock.UnassignMiningArea();
+            this.RefreshAll();
+            player?.MsgLocStr("Mining area unassigned. The drone returns to its dock.", NotificationStyle.Info);
         }
 
         public override void Initialize()
@@ -186,6 +211,9 @@ namespace Eco.Mods.TechTree
             }
 
             this.LastRefusalDisplay = MiningReadout.FormatRefusalDetail(job?.LastRefusalDetail);
+            this.ShaftProgressDisplay = job == null
+                ? string.Empty
+                : MiningReadout.FormatShaftProgress(job.ShaftLayersDone, job.ShaftLayersTotal, job.TargetSurveyedStamp, job.TargetMinedStamp);
 
             // Outside the job branch on purpose: the halt refuses dispatch before a job exists, so
             // the case that most needs explaining is exactly the one with no job to read an end
@@ -201,6 +229,7 @@ namespace Eco.Mods.TechTree
             this.Changed(nameof(this.ProgressDisplay));
             this.Changed(nameof(this.SkipLineDisplay));
             this.Changed(nameof(this.LastRefusalDisplay));
+            this.Changed(nameof(this.ShaftProgressDisplay));
             this.Changed(nameof(this.HeadroomDisplay));
             this.Changed(nameof(this.BrowseAreasDisplay));
             this.Changed(nameof(this.BrowsePosition));

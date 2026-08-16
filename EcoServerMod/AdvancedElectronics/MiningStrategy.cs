@@ -172,6 +172,17 @@ namespace Eco.Mods.TechTree
             }
 
             var layers = this.currentShaftPlan.LayersFrom(this.shaftResumeIndex);
+
+            // Diagnostic, recorded every tick of parked work: how deep this shaft has actually got,
+            // and the two stamps IsMineable compares. Re-resolves the source area rather than
+            // threading one down, because a stale copy is exactly what this is here to rule out.
+            var progressArea = this.ResolveSourceArea();
+            this.job.RecordShaftProgress(
+                this.currentShaftPlan.Layers.Count - layers.Count,
+                this.currentShaftPlan.Layers.Count,
+                progressArea == null ? 0 : progressArea.ReadSurveyedStamps().StampFor(target),
+                this.homeDock.ReadMinedStamps().StampFor(target));
+
             if (layers.Count == 0)
             {
                 // Every layer of this plot is done.

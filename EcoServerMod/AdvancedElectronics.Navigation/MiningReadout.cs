@@ -63,6 +63,22 @@ namespace AdvancedElectronics.Navigation
                 : FormatStopReason(jobEndReason);
 
         /// <summary>
+        /// Shaft depth reached and the two stamps behind the mineable decision (KTD12).
+        ///
+        /// The stamps are shown raw rather than as a verdict: the whole reason this row exists is
+        /// that the verdict ("nothing was mineable") disagreed with the ground (five layers dug),
+        /// and only the inputs can settle which one is wrong. IsMineable wants surveyed newer than
+        /// mined, so surveyed &lt;= mined is the failing case and reads as such at a glance.
+        /// </summary>
+        public static string FormatShaftProgress(int layersDone, int layersTotal, long surveyedStamp, long minedStamp)
+        {
+            if (layersTotal <= 0 && surveyedStamp == 0 && minedStamp == 0) return string.Empty;
+
+            var mineable = surveyedStamp > minedStamp ? "mineable" : "NOT mineable";
+            return $"shaft {layersDone}/{layersTotal} layers; surveyed={surveyedStamp}, mined={minedStamp} ({mineable})";
+        }
+
+        /// <summary>
         /// The engine's own words for the last refusal, or empty when nothing has been refused.
         ///
         /// A row of its own rather than folded into the skip line, because the two answer

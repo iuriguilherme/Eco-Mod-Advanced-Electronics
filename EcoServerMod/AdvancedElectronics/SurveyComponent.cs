@@ -14,6 +14,7 @@ using Eco.Shared.Items;
 using Eco.Shared.Localization;
 using Eco.Shared.Networking;
 using Eco.Shared.Serialization;
+using Eco.Shared.Services;
 using Eco.Shared.SharedTypes;
 
 namespace Eco.Mods.TechTree
@@ -220,6 +221,28 @@ namespace Eco.Mods.TechTree
             if (this.Parent is not DroneDockObject dock) return;
             await SurveyAreaPicker.ManageAreas(player, dock, MaxAreaPlots);
             this.RefreshAll();
+        }
+
+        /// <summary>
+        /// Clears this dock's survey assignment. The map picker can assign but had no way to
+        /// un-assign, so stopping a survey drone meant pointing it at a different area -- and
+        /// picking a non-existent one left it flipping between idle and unreachable, chasing
+        /// somewhere that was never there.
+        /// </summary>
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Unassign Area")]
+        public void UnassignArea(Player player)
+        {
+            if (this.Parent is not DroneDockObject dock) return;
+
+            if (dock.AssignedSurveyAreaId == 0)
+            {
+                player?.MsgLocStr("This dock has no survey area assigned.", NotificationStyle.Warning);
+                return;
+            }
+
+            dock.AssignSurveyArea(0);
+            this.RefreshAll();
+            player?.MsgLocStr("Survey area unassigned. The drone returns to its dock.", NotificationStyle.Info);
         }
 
         public override void Initialize()

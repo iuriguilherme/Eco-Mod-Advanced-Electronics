@@ -287,6 +287,12 @@ namespace Eco.Mods.TechTree
                     user.MsgLocStr($"  Skips by category: {string.Join(", ", skipped.Select(kv => $"{kv.Key}={kv.Value}"))}");
                 if (!string.IsNullOrWhiteSpace(miningJob.LastRefusalDetail))
                     user.MsgLocStr($"  Last refusal: {miningJob.LastRefusalDetail}");
+
+                var shaft = MiningReadout.FormatShaftProgress(
+                    miningJob.ShaftLayersDone, miningJob.ShaftLayersTotal,
+                    miningJob.TargetSurveyedStamp, miningJob.TargetMinedStamp);
+                if (!string.IsNullOrWhiteSpace(shaft))
+                    user.MsgLocStr($"  {shaft}");
             }
             else
                 user.MsgLocStr("  Mining job: (none)");

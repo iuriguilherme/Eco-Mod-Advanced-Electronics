@@ -148,6 +148,36 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
+        public void ShaftProgress_NothingRecordedYet_RendersEmpty()
+        {
+            Assert.Equal(string.Empty, MiningReadout.FormatShaftProgress(0, 0, 0, 0));
+        }
+
+        [Fact]
+        public void ShaftProgress_ShowsDepthAndBothStamps()
+        {
+            var rendered = MiningReadout.FormatShaftProgress(5, 15, 900, 100);
+
+            Assert.Contains("5/15", rendered);
+            Assert.Contains("900", rendered);
+            Assert.Contains("100", rendered);
+        }
+
+        [Theory]
+        [InlineData(900, 100, true)]   // surveyed after mined -> work to do
+        [InlineData(100, 900, false)]  // mined after surveyed -> already done
+        [InlineData(100, 100, false)]  // equal is NOT mineable; IsMineable wants strictly newer
+        public void ShaftProgress_CallsTheMineableVerdictTheSameWayIsMineableDoes(long surveyed, long mined, bool mineable)
+        {
+            // The row exists to expose a disagreement between this verdict and the ground, so the
+            // verdict shown must be the same comparison the strategy actually gates on.
+            var rendered = MiningReadout.FormatShaftProgress(1, 15, surveyed, mined);
+
+            Assert.Equal(mineable, PlotFreshness.IsMineable(surveyed, mined));
+            Assert.Equal(mineable, !rendered.Contains("NOT mineable"));
+        }
+
+        [Fact]
         public void ARefusal_KeepsTheEnginesOwnWording()
         {
             // The engine's text is the payload -- it must survive verbatim, since it is the only

@@ -180,6 +180,38 @@ namespace AdvancedElectronics.Navigation
         /// </summary>
         public string LastRefusalDetail { get; private set; }
 
+        /// <summary>
+        /// Live shaft progress for the plot being worked, and the two stamps that decide whether
+        /// that plot is mineable at all (KTD12). Diagnostic, not persisted.
+        ///
+        /// Exists because live pass #4 produced a contradiction no amount of source reading could
+        /// resolve: five layers of fifteen were dug, yet the job ended "complete -- finished,
+        /// nothing was mineable" with worked 0. MarkWorked only runs when a shaft's layers are
+        /// exhausted, so the plot stayed Unworked -- and TryComplete must refuse to complete while
+        /// a SURVEYED plot is unworked. For both to be true, isSurveyed had to go false for the
+        /// very plot being mined, which means comparing the two stamps directly rather than
+        /// guessing which of three mechanisms moved them.
+        /// </summary>
+        public int ShaftLayersDone { get; private set; }
+
+        /// <inheritdoc cref="ShaftLayersDone"/>
+        public int ShaftLayersTotal { get; private set; }
+
+        /// <inheritdoc cref="ShaftLayersDone"/>
+        public long TargetSurveyedStamp { get; private set; }
+
+        /// <inheritdoc cref="ShaftLayersDone"/>
+        public long TargetMinedStamp { get; private set; }
+
+        /// <summary>Records what the strategy sees while working a plot. Diagnostic only -- touches no ledger state and no status.</summary>
+        public void RecordShaftProgress(int layersDone, int layersTotal, long surveyedStamp, long minedStamp)
+        {
+            ShaftLayersDone = layersDone;
+            ShaftLayersTotal = layersTotal;
+            TargetSurveyedStamp = surveyedStamp;
+            TargetMinedStamp = minedStamp;
+        }
+
         /// <summary>Records <paramref name="plot"/> abandoned under <paramref name="category"/> (R22), with the engine's own refusal wording when there is one.</summary>
         public void MarkSkipped(PlotCoord plot, SkipCategory category, string refusalDetail = null)
         {
