@@ -547,6 +547,30 @@ namespace Eco.Mods.TechTree
                                       climbOnDeparture: this.IsAtHomeDock()))
             {
                 this.LastDispatchNote = $"no path from {this.Parent.Position.X:F0},{this.Parent.Position.Z:F0} to area point {target.X:F0},{target.Z:F0}";
+
+                // Count it against the SAME cap the plot-to-plot hop uses, and retire the plot when
+                // it runs out. Without this an outbound path failure was uncounted and had no exit:
+                // dispatch fails -> HandleNoPath -> Unreachable -> the retry attempts the RETURN
+                // leg, which trivially succeeds because the drone is already at its dock -> Idle ->
+                // R24's idle-at-dock resume dispatches again -> fails again. The drone hovers over
+                // the dock flickering Idle/Unreachable forever, the plot stays Unworked, and
+                // unassigning does not help because the loop is not driven by the assignment.
+                //
+                // A mining drone hits this where a survey drone never did: it digs the shaft that
+                // makes its own destination unpathable, so the exact trip that worked on the way
+                // out fails on the way back (live pass #7 -- "dispatched to area point 302,617"
+                // then "no path ... to area point 302,617", six layers apart).
+                //
+                // This does not make the plot reachable. It makes an unreachable plot a recorded
+                // skip instead of a hang, which is what the design already intended and what lets
+                // the job advance to the next plot or finish.
+                this.plotArrivalAttempts++;
+                if (this.plotArrivalAttempts > MaxPlotArrivalAttempts)
+                {
+                    this.plotArrivalAttempts = 0;
+                    this.strategy?.OnArrivalFailed();
+                }
+
                 this.HandleNoPath(mover);
                 return;
             }
