@@ -155,6 +155,17 @@ nothing about whether that step is reached, and a mitigation retired on the stre
 is retired on the strength of the wrong half. When retiring a mitigation because some failure is now
 impossible, state which layer the guarantee covers and check whether the failure can recur above it.
 
+**A third expiry mode, from the same ladder.** The rungs quoted above have since been re-based: the
+first rung is now the drone's *everyday* climb height, and the two above it are multiples of it,
+because at their former absolute values they climbed no more than the new ordinary rung — an
+escalation that escalated nothing. The reason is worth more than the numbers. Those lower rungs were
+substantially compensating for a base movement constraint that was itself wrong (a flying drone
+limited to a walker's one-block step; see
+`docs/solutions/logic-errors/the-pathfinder-modelled-a-flying-drone-as-a-walker.md`). So a defensive
+structure can also expire by having been built on a **defect** rather than on a danger — and that
+kind ages worst of all, because fixing the defect silently turns the mitigation into dead weight
+that still looks principled.
+
 The live comment at `EcoServerMod/AdvancedElectronics/DroneDock.cs` still carries the unqualified
 claim, so this entry's own advice — delete the expired justification rather than only changing the
 behaviour — is currently outstanding against the very comment it was written about.

@@ -163,6 +163,14 @@ plot a *recorded skip* instead of a hang. A mining drone hits this where a surve
 because a mining drone digs the shaft that makes its own destination unpathable — the exact trip
 that worked outbound fails on the return.
 
+**That motivating case was itself a bug, since fixed.** The shaft was unpathable because the
+pathfinder limited a flying drone to a walker's one-block step, not because excavation makes a
+destination inherently unreachable; see
+`docs/solutions/logic-errors/the-pathfinder-modelled-a-flying-drone-as-a-walker.md`. The fix here
+stands on its own — a cap that retires genuinely unreachable plots is still required, and Instance 3
+was surfaced by this fix routing traffic into it — but do not read "a drone cannot re-enter its own
+shaft" as a standing constraint of the system.
+
 ### Instance 3 — arrival tested only in the branch that assumes travel (`9adaba6`, `DroneLifecycle.cs`)
 
 `TickUnreachableRetry` tested for arrival only inside the moving branch:
