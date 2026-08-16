@@ -46,6 +46,23 @@ namespace AdvancedElectronics.Navigation
         }
 
         /// <summary>
+        /// What is stopping this dock mining right now, which is NOT the same question as why its
+        /// last job ended (R42).
+        ///
+        /// The server-wide halt is checked first and reported without a job, because the halt
+        /// refuses dispatch before a job is ever created -- so the state it produces is "no job,
+        /// nothing happening, nothing said". Live pass #1 spent three rounds and two restarts
+        /// chasing a parked drone whose dock was simply halted: the halt persisted across restarts
+        /// exactly as required, and the panel had no way to mention it because it only ever
+        /// rendered a finished job's end reason. A control that works but cannot be seen working is
+        /// indistinguishable from a broken mod.
+        /// </summary>
+        public static string FormatBlockedReason(bool haltedServerWide, MiningEndReason? jobEndReason) =>
+            haltedServerWide
+                ? "an administrator has halted mining server-wide"
+                : FormatStopReason(jobEndReason);
+
+        /// <summary>
         /// The composed skip line (R31): the all-zero case, a single category, and
         /// multiple categories each render distinctly, and every rendered count sums to
         /// <paramref name="skippedTotal"/>.

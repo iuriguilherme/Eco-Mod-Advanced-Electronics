@@ -148,17 +148,20 @@ namespace Eco.Mods.TechTree
             if (job != null)
             {
                 this.JobStatusDisplay = MiningReadout.FormatJobStatus(job.Status, job.WorkedCount);
-                this.StopReasonDisplay = MiningReadout.FormatStopReason(job.EndReason);
                 this.ProgressDisplay = $"worked {job.WorkedCount}, skipped {job.SkippedCount}";
                 this.SkipLineDisplay = MiningReadout.FormatSkipLine(job.SkipCountsByCategory(), job.SkippedCount);
             }
             else
             {
                 this.JobStatusDisplay = "no drone docked";
-                this.StopReasonDisplay = string.Empty;
                 this.ProgressDisplay = string.Empty;
                 this.SkipLineDisplay = string.Empty;
             }
+
+            // Outside the job branch on purpose: the halt refuses dispatch before a job exists, so
+            // the case that most needs explaining is exactly the one with no job to read an end
+            // reason from. Setting this inside the branches is what made a halted dock silent.
+            this.StopReasonDisplay = MiningReadout.FormatBlockedReason(MiningHalt.IsHalted, job?.EndReason);
 
             this.HeadroomDisplay = "measured on unload -- see the last unload result";
 

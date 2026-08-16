@@ -103,5 +103,41 @@ namespace AdvancedElectronics.Navigation.Tests
         {
             Assert.Equal(string.Empty, MiningReadout.FormatStopReason(null));
         }
+
+        // The case live pass #1 lost three rounds to: halted, no job yet, so nothing to read an
+        // end reason from. The old code rendered empty here and the dock sat silent.
+        [Fact]
+        public void Halted_WithNoJob_SaysSo()
+        {
+            var blocked = MiningReadout.FormatBlockedReason(haltedServerWide: true, jobEndReason: null);
+
+            Assert.False(string.IsNullOrWhiteSpace(blocked));
+            Assert.Contains("halted", blocked);
+        }
+
+        [Fact]
+        public void Halted_OutranksAFinishedJobsEndReason()
+        {
+            // A dock halted after a job ended for some other reason must report the halt: the end
+            // reason is history, the halt is why nothing will start again.
+            var blocked = MiningReadout.FormatBlockedReason(true, MiningEndReason.AreaGone);
+
+            Assert.NotEqual(MiningReadout.FormatStopReason(MiningEndReason.AreaGone), blocked);
+            Assert.Contains("halted", blocked);
+        }
+
+        [Fact]
+        public void NotHalted_FallsBackToTheJobsEndReason()
+        {
+            Assert.Equal(
+                MiningReadout.FormatStopReason(MiningEndReason.AreaGone),
+                MiningReadout.FormatBlockedReason(false, MiningEndReason.AreaGone));
+        }
+
+        [Fact]
+        public void NotHalted_WithNoJob_RendersEmpty()
+        {
+            Assert.Equal(string.Empty, MiningReadout.FormatBlockedReason(false, null));
+        }
     }
 }
