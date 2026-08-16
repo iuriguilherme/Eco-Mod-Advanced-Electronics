@@ -12,6 +12,7 @@ using Eco.Gameplay.Players;
 using Eco.Gameplay.Systems.Messaging.Chat.Commands;
 using Eco.Shared.IoC;
 using Eco.Shared.Items;
+using Eco.Shared.Services;
 using Eco.Shared.SharedTypes;
 
 namespace Eco.Mods.TechTree
@@ -27,6 +28,73 @@ namespace Eco.Mods.TechTree
     {
         [ChatCommand("Advanced Electronics drone commands.", ChatAuthorizationLevel.User)]
         public static void Drone(User user) { }
+
+        /// <summary>
+        /// Lists the nearest dock's linked storages, or toggles one on/off by its listed number.
+        ///
+        /// The Storage tab is meant to own this, and on a Store it does. The dock's panel has been
+        /// rendering the target list without the Take From / Put Into controls, which left "link
+        /// that stockpile yourself" impossible to actually do -- and that gap is what made
+        /// auto-linking everything look like a fix instead of the workaround it was.
+        ///
+        /// This is the fallback, not the design: it guarantees manual control exists from the
+        /// moment the vanilla default is restored, so testing is never blocked on a UI question.
+        /// Delete it once the tab's own controls are confirmed working.
+        /// </summary>
+        [ChatSubCommand(nameof(Drone), "Lists linked storages, or toggles one by number: /drone link 3", "link", ChatAuthorizationLevel.User)]
+        public static void Link(User user, int number = 0)
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null)
+            {
+                user.MsgLocStr("No drone dock you have access to was found nearby.");
+                return;
+            }
+
+            if (!dock.TryGetComponent<LinkComponent>(out var link))
+            {
+                user.MsgLocStr("That dock has no link component.", NotificationStyle.Error);
+                return;
+            }
+
+            // Every reachable target, linked or not -- an unlinked one has to be listed or it could
+            // never be turned on. GetLinkedStoragesWithSettings returns exactly that: the
+            // authorized set, each with its current settings.
+            var targets = link.GetLinkedStoragesWithSettings(user)
+                              .Where(entry => entry.Storage?.Parent != null && entry.Storage.Parent is not DroneDockObject)
+                              .ToList();
+
+            if (targets.Count == 0)
+            {
+                user.MsgLocStr("No linkable storage in range of that dock.");
+                return;
+            }
+
+            if (number < 1 || number > targets.Count)
+            {
+                user.MsgLocStr($"Linked storage for '{dock.Name}' -- /drone link <number> toggles one:");
+                for (var i = 0; i < targets.Count; i++)
+                {
+                    var (storage, settings) = targets[i];
+                    var state = settings.Output ? "LINKED" : "not linked";
+                    user.MsgLocStr($"  {i + 1}. {storage.Parent.Name} -- {state}");
+                }
+                return;
+            }
+
+            var chosen = targets[number - 1];
+            var turnOn = !chosen.Settings.Output;
+
+            // Both directions together: the drone only ever pushes cargo out, but a target the
+            // player has deliberately linked should behave like any other link, and leaving Input
+            // untouched would make the tab disagree with this command.
+            link.SetObjectInput(user, chosen.Storage, turnOn, userModified: true);
+            link.SetObjectOutput(user, chosen.Storage, turnOn, userModified: true);
+
+            user.MsgLocStr(
+                $"{chosen.Storage.Parent.Name} is now {(turnOn ? "linked" : "unlinked")} for '{dock.Name}'.",
+                NotificationStyle.Info);
+        }
 
         /// <summary>
         /// Lists the dock's survey areas with their ids (diagnostic). Bridges the gap until the
