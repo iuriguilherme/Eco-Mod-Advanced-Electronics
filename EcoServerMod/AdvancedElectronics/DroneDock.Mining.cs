@@ -187,6 +187,51 @@ namespace Eco.Mods.TechTree
         // pattern the survey side already uses for findings.
         // ---------------------------------------------------------------
 
+        // ---------------------------------------------------------------
+        // The shaft in progress. Held here rather than on the strategy because the strategy is
+        // a live object rebuilt from scratch on every load, while a half-cut shaft is exactly
+        // the state that must outlive one.
+        //
+        // Layout, flat because Eco serializes primitive lists cleanly:
+        //   [0] plot X, [1] plot Z, [2] resume index, [3..] per-column surface heights.
+        // Empty means no shaft in progress.
+        // ---------------------------------------------------------------
+
+        [Serialized] private ThreadSafeList<int> shaftInProgress = new();
+
+        /// <summary>Records the shaft currently being cut, so a restart resumes it rather than re-planning against the pit floor.</summary>
+        public void SaveShaftInProgress(PlotCoord plot, int resumeIndex, IReadOnlyList<int> surfaceHeights)
+        {
+            var flat = new ThreadSafeList<int> { plot.X, plot.Z, resumeIndex };
+            foreach (var height in surfaceHeights) flat.Add(height);
+            this.shaftInProgress = flat;
+        }
+
+        /// <summary>Forgets the shaft in progress -- the plot finished, or was skipped.</summary>
+        public void ClearShaftInProgress() => this.shaftInProgress = new ThreadSafeList<int>();
+
+        /// <summary>
+        /// The shaft in progress, or false when there is none. The surface heights are the ones
+        /// sampled when the shaft STARTED, which is the whole point: re-sampling now would
+        /// measure the hole the drone has already dug.
+        /// </summary>
+        public bool TryReadShaftInProgress(out PlotCoord plot, out int resumeIndex, out int[] surfaceHeights)
+        {
+            plot = default;
+            resumeIndex = 0;
+            surfaceHeights = null;
+
+            var flat = this.shaftInProgress;
+            if (flat == null || flat.Count < 4) return false;
+
+            plot = new PlotCoord(flat[0], flat[1]);
+            resumeIndex = flat[2];
+
+            surfaceHeights = new int[flat.Count - 3];
+            for (int i = 0; i < surfaceHeights.Length; i++) surfaceHeights[i] = flat[i + 3];
+            return true;
+        }
+
         /// <summary>
         /// The area id the persisted job was built for, so a job is not resumed against a
         /// different area than it was created for -- its ledger is keyed to the old area's

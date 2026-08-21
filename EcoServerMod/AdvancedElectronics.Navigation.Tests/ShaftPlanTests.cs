@@ -21,6 +21,44 @@ namespace AdvancedElectronics.Navigation.Tests
                 Assert.Equal(25, plan.Layers[depth].Positions.Count);
         }
 
+        // The restart case. A shaft's depths are measured per column from that column's
+        // surface, and the shaft destroys that surface as it cuts -- so re-planning from the
+        // live world mid-shaft does not reproduce the plan, it starts a NEW shaft measured
+        // from the pit floor: a fresh 3x3 mouth at the bottom of the hole, then a further
+        // TierDepth below it. Live pass: "3x3 in layers 11-18" after a mid-shaft restart.
+        [Fact]
+        public void RebuildingFromRecordedSurface_ReproducesTheSameShaft_EvenAfterTheGroundIsDug()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 40f);
+            sampler.SetHeight(2, 2, 44f); // not flat, so a shared-plane rebuild would show up
+
+            var original = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+
+            // The drone cuts ten layers; the world's idea of "surface" drops with it.
+            for (int x = 0; x < PlotSize; x++)
+            for (int z = 0; z < PlotSize; z++)
+                sampler.SetHeight(x, z, 30f);
+
+            var resampled = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+            var rebuilt = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, original.SurfaceHeights, PlotSize);
+
+            Assert.Equal(original.AllPositions(), rebuilt.AllPositions());
+            Assert.NotEqual(original.AllPositions(), resampled.AllPositions());
+
+            // The specific harm: re-sampling digs below the tier's own floor.
+            Assert.True(resampled.AllPositions().Min(p => p.Y) < original.AllPositions().Min(p => p.Y));
+        }
+
+        [Fact]
+        public void RebuildingFromRecordedSurface_RejectsHeightsOfTheWrongShape()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 10f);
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+
+            Assert.Throws<System.ArgumentException>(() =>
+                ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, plan.SurfaceHeights.Take(3).ToList(), PlotSize));
+        }
+
         [Fact]
         public void SteppedTerrain_CentreColumnsEachUseOwnSurfaceHeight()
         {

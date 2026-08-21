@@ -58,10 +58,25 @@ namespace AdvancedElectronics.Navigation
         /// <summary>Total position count across every layer.</summary>
         public int TotalPositionCount { get; }
 
-        private ShaftPlan(PlotCoord plot, IReadOnlyList<ShaftLayer> layers)
+        /// <summary>
+        /// The per-column surface heights this plan was built from, row-major over the plot
+        /// (index <c>dz * plotSize + dx</c>). Exposed so a caller can persist them and rebuild
+        /// an IDENTICAL plan later.
+        ///
+        /// This is not a convenience. A shaft's geometry is defined by the surface as it was
+        /// when the shaft began, and the shaft itself destroys that surface -- so sampling the
+        /// world again mid-shaft does not reproduce the plan, it produces a NEW shaft measured
+        /// from the pit floor. Depth is per-column and relative, so a rebuild after ten layers
+        /// re-opens a 3x3 mouth at the bottom of the hole and then digs a further tierDepth
+        /// below it, straight through the tier limit.
+        /// </summary>
+        public IReadOnlyList<int> SurfaceHeights { get; }
+
+        private ShaftPlan(PlotCoord plot, IReadOnlyList<ShaftLayer> layers, IReadOnlyList<int> surfaceHeights)
         {
             Plot = plot;
             Layers = layers;
+            SurfaceHeights = surfaceHeights;
             TotalPositionCount = layers.Sum(l => l.Positions.Count);
         }
 
@@ -76,16 +91,49 @@ namespace AdvancedElectronics.Navigation
         {
             if (sampler == null)
                 throw new ArgumentNullException(nameof(sampler));
-            if (tierDepth <= 0)
-                throw new ArgumentOutOfRangeException(nameof(tierDepth), "tierDepth must be positive.");
-            if (plotSize <= 0)
-                throw new ArgumentOutOfRangeException(nameof(plotSize), "plotSize must be positive.");
-            if (plotSize < OpeningWidth)
-                throw new ArgumentOutOfRangeException(nameof(plotSize), $"plotSize must be at least {OpeningWidth} to fit the surface opening.");
+
+            ValidateShape(tierDepth, plotSize);
+
+            // Sampled ONCE, here, and then carried by the plan. Every layer used to re-sample
+            // the same column, which was both wasteful (350 lookups where 25 suffice) and the
+            // reason the surface could not be recovered afterwards.
+            int baseX = plot.X * plotSize;
+            int baseZ = plot.Z * plotSize;
+
+            var surfaceHeights = new int[plotSize * plotSize];
+            for (int dz = 0; dz < plotSize; dz++)
+            for (int dx = 0; dx < plotSize; dx++)
+                surfaceHeights[(dz * plotSize) + dx] =
+                    (int)MathF.Round(sampler.GroundHeightAt(baseX + dx, baseZ + dz));
+
+            return Create(plot, tierDepth, surfaceHeights, plotSize);
+        }
+
+        /// <summary>
+        /// Rebuilds a plan from surface heights captured earlier (see
+        /// <see cref="SurfaceHeights"/>) rather than from the live world, so a shaft
+        /// interrupted by a server restart resumes as the SAME shaft.
+        ///
+        /// <paramref name="surfaceHeights"/> is row-major over the plot,
+        /// <c>plotSize * plotSize</c> entries, index <c>dz * plotSize + dx</c>.
+        /// </summary>
+        public static ShaftPlan Create(PlotCoord plot, int tierDepth, IReadOnlyList<int> surfaceHeights, int plotSize)
+        {
+            if (surfaceHeights == null)
+                throw new ArgumentNullException(nameof(surfaceHeights));
+
+            ValidateShape(tierDepth, plotSize);
+
+            if (surfaceHeights.Count != plotSize * plotSize)
+                throw new ArgumentException(
+                    $"Expected {plotSize * plotSize} surface heights for a {plotSize}x{plotSize} plot, got {surfaceHeights.Count}.",
+                    nameof(surfaceHeights));
 
             int baseX = plot.X * plotSize;
             int baseZ = plot.Z * plotSize;
             int rimMargin = (plotSize - OpeningWidth) / 2;
+
+            int SurfaceY(int dx, int dz) => surfaceHeights[(dz * plotSize) + dx];
 
             var layers = new List<ShaftLayer>(tierDepth);
 
@@ -95,7 +143,7 @@ namespace AdvancedElectronics.Navigation
             var surface = new List<BlockPos>(OpeningWidth * OpeningWidth);
             for (int dz = rimMargin; dz < rimMargin + OpeningWidth; dz++)
             for (int dx = rimMargin; dx < rimMargin + OpeningWidth; dx++)
-                surface.Add(SurfacePosition(sampler, baseX + dx, baseZ + dz));
+                surface.Add(new BlockPos(baseX + dx, SurfaceY(dx, dz), baseZ + dz));
             layers.Add(new ShaftLayer(0, surface));
 
             // Layers 1..tierDepth-1: the full plot width, one position per column,
@@ -105,22 +153,23 @@ namespace AdvancedElectronics.Navigation
                 var positions = new List<BlockPos>(plotSize * plotSize);
                 for (int dz = 0; dz < plotSize; dz++)
                 for (int dx = 0; dx < plotSize; dx++)
-                {
-                    int wx = baseX + dx, wz = baseZ + dz;
-                    int surfaceY = SurfaceY(sampler, wx, wz);
-                    positions.Add(new BlockPos(wx, surfaceY - depth, wz));
-                }
+                    positions.Add(new BlockPos(baseX + dx, SurfaceY(dx, dz) - depth, baseZ + dz));
+
                 layers.Add(new ShaftLayer(depth, positions));
             }
 
-            return new ShaftPlan(plot, layers);
+            return new ShaftPlan(plot, layers, surfaceHeights);
         }
 
-        private static BlockPos SurfacePosition(IWorldSampler sampler, int x, int z) =>
-            new BlockPos(x, SurfaceY(sampler, x, z), z);
-
-        private static int SurfaceY(IWorldSampler sampler, int x, int z) =>
-            (int)MathF.Round(sampler.GroundHeightAt(x, z));
+        private static void ValidateShape(int tierDepth, int plotSize)
+        {
+            if (tierDepth <= 0)
+                throw new ArgumentOutOfRangeException(nameof(tierDepth), "tierDepth must be positive.");
+            if (plotSize <= 0)
+                throw new ArgumentOutOfRangeException(nameof(plotSize), "plotSize must be positive.");
+            if (plotSize < OpeningWidth)
+                throw new ArgumentOutOfRangeException(nameof(plotSize), $"plotSize must be at least {OpeningWidth} to fit the surface opening.");
+        }
 
         /// <summary>Every position across every layer, in submission order. Recomputed per call.</summary>
         public IReadOnlyList<BlockPos> AllPositions() => Layers.SelectMany(l => l.Positions).ToList();

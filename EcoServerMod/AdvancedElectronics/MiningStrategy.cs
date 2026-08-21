@@ -88,6 +88,74 @@ namespace Eco.Mods.TechTree
             this.plotSize = plotSize;
             this.tierDepth = tierDepth;
             this.holdCapacity = holdCapacity;
+
+            this.RestoreShaftInProgress();
+        }
+
+        /// <summary>
+        /// Picks a half-cut shaft back up after a load, rebuilding its plan from the surface
+        /// heights recorded when the shaft STARTED.
+        ///
+        /// Without this the strategy came back with no shaft and re-planned from scratch on
+        /// the next parked tick -- against terrain the drone had itself excavated. Because a
+        /// shaft's depths are measured per column from that column's surface, the re-plan cut
+        /// a fresh 3x3 mouth at the pit floor and then descended a further tierDepth below it,
+        /// so a restart at layer 10 produced a narrow shaft running to layer 25 (live pass:
+        /// "3x3 in layers 11-18" after restarting mid-shaft).
+        /// </summary>
+        private void RestoreShaftInProgress()
+        {
+            if (!this.homeDock.TryReadShaftInProgress(out var plot, out var resumeIndex, out var surfaceHeights))
+                return;
+
+            if (surfaceHeights.Length != this.plotSize * this.plotSize)
+            {
+                // Saved under a different plot size; the shaft cannot be reconstructed, and
+                // re-planning it would be the bug this method exists to prevent.
+                this.homeDock.ClearShaftInProgress();
+                return;
+            }
+
+            this.currentShaftPlan = ShaftPlan.Create(plot, this.tierDepth, surfaceHeights, this.plotSize);
+            this.currentShaftPlot = plot;
+            this.shaftResumeIndex = resumeIndex;
+        }
+
+        /// <summary>Starts a shaft on <paramref name="plot"/>, sampling the surface once and recording it.</summary>
+        private void BeginShaft(PlotCoord plot)
+        {
+            this.currentShaftPlan = ShaftPlan.Create(plot, this.tierDepth, this.sampler, this.plotSize);
+            this.currentShaftPlot = plot;
+            this.shaftResumeIndex = 0;
+            this.PersistShaft();
+        }
+
+        /// <summary>Advances past a submitted layer and records the new resume point.</summary>
+        private void AdvanceShaft(int positionCount)
+        {
+            this.shaftResumeIndex += positionCount;
+            this.PersistShaft();
+        }
+
+        /// <summary>
+        /// Forgets the current shaft -- the plot finished, or was skipped. NOT called when a
+        /// full hold interrupts the shaft: that keeps its resume point on purpose, so the trip
+        /// home and back re-enters the same shaft at the same layer.
+        /// </summary>
+        private void EndShaft()
+        {
+            this.currentShaftPlan = null;
+            this.currentShaftPlot = null;
+            this.shaftResumeIndex = 0;
+            this.homeDock.ClearShaftInProgress();
+        }
+
+        private void PersistShaft()
+        {
+            if (this.currentShaftPlot == null || this.currentShaftPlan == null) return;
+
+            this.homeDock.SaveShaftInProgress(
+                this.currentShaftPlot.Value, this.shaftResumeIndex, this.currentShaftPlan.SurfaceHeights);
         }
 
         /// <summary>The job this strategy is driving -- exposed for the panel (U9), which persists its snapshot on the dock.</summary>
@@ -206,9 +274,7 @@ namespace Eco.Mods.TechTree
                 if (this.job.OutcomeOf(target) != PlotOutcome.Unworked)
                     return ParkedWorkOutcome.PlotDone;
 
-                this.currentShaftPlan = ShaftPlan.Create(target, this.tierDepth, this.sampler, this.plotSize);
-                this.currentShaftPlot = target;
-                this.shaftResumeIndex = 0;
+                this.BeginShaft(target);
             }
 
             var layers = this.currentShaftPlan.LayersFrom(this.shaftResumeIndex);
@@ -228,7 +294,7 @@ namespace Eco.Mods.TechTree
                 // Every layer of this plot is done.
                 this.job.MarkWorked(target);
                 this.homeDock.RecordMinedPlot(target, NextStampCounter());
-                this.currentShaftPlot = null;
+                this.EndShaft();
                 return ParkedWorkOutcome.PlotDone;
             }
 
@@ -243,7 +309,7 @@ namespace Eco.Mods.TechTree
             {
                 // Nothing to submit, so this layer IS finished -- advance past it or the shaft
                 // stalls on a layer of wall (AE5) or already-empty ground.
-                this.shaftResumeIndex += layer.Positions.Count;
+                this.AdvanceShaft(layer.Positions.Count);
                 return ParkedWorkOutcome.StillWorking;
             }
 
@@ -285,14 +351,14 @@ namespace Eco.Mods.TechTree
                 // names the bucket and not the cause. Live pass #2 lost two of three plots to
                 // exactly that, with the answer already computed and thrown away here.
                 this.job.MarkSkipped(target, RefusalMapping.ToSkipCategory(result.RefusalStage), result.Message);
-                this.currentShaftPlot = null;
+                this.EndShaft();
                 return ParkedWorkOutcome.PlotFailed;
             }
 
             // Only NOW is the layer finished. Advancing before submitting counted a layer whose
             // removal was then refused for room, so the resume skipped it outright -- live pass #9
             // found layers 6 and 10 unmined in every plot, exactly the two unload boundaries.
-            this.shaftResumeIndex += layer.Positions.Count;
+            this.AdvanceShaft(layer.Positions.Count);
 
             // R24/AE1: a full hold interrupts the shaft; the resume point (shaftResumeIndex)
             // lets the same shaft continue after the next unload. The plot itself stays Unworked
@@ -344,7 +410,7 @@ namespace Eco.Mods.TechTree
             if (plot == null) return;
 
             this.job.MarkSkipped(plot.Value, SkipCategory.Unreachable);
-            this.currentShaftPlot = null;
+            this.EndShaft();
             this.lastOfferedPlot = null;
         }
 
