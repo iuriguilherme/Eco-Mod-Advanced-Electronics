@@ -1058,24 +1058,83 @@ There is no CI, no lint, and no headless Eco harness. Anything touching an Eco t
 
 **Set up the test region before deploying.** A clean personal claim exercises no boundary at all. The region needs, in place before the first run: a second citizen's deed inside the assigned area with plots on either side of it, a settlement law preventing dig-or-mine with no tool filter and no citizen filter, a settlement law forbidding the plant action, a crop over a plot, a wall built from minable stone inside a shaft footprint, one unsurveyed plot, and — inside the dock's link reach — one container the stamped citizen can access and one they cannot. Also keep one dock created *before* the deploy, with a live area assignment, to prove U15's migration path.
 
-**Live pass protocol, in order.** Measure storage reach first — it can invalidate the product thesis and nothing else is worth tuning until it is known. Each negative case pairs with a positive control on an adjacent plot, so a skip is attributable rather than inferred.
+**Live pass protocol, in order.** Revised during the live pass itself — several steps as first
+written could not be performed, and the revisions are recorded here rather than only in the session
+that made them. Each negative case pairs with a positive control on an adjacent plot, so a skip is
+attributable rather than inferred.
 
-1. Place a dock, confirm it has a link tab, and count reachable containers using the **sum of both radii** — the dock's 20 plus each container's own. Record the container types used. Compare against the 14,000–57,000 item range (A8).
-2. Slot a mining drone; confirm the Mining tab and cargo tab appear and the Survey tab does not; swap to a survey drone and confirm the reverse; confirm the pre-deploy dock kept its area assignment (U6, U9, U15, AE12).
-3. Confirm a mining dock can select a survey dock's area but cannot draw or edit one, and that a survey dock the citizen lacks full access to is not offered (U8, R39).
-4. **The law test.** Run one plot under the no-filter settlement law, with an adjacent plot outside it. The drone must be refused on the first and succeed on the second. This detects a forced pack and a derived action type — **it does not detect the null-citizen or waived-authorization cases**, because a location-scoped law refuses those exactly as it refuses a correct implementation. Step 5 carries those.
-5. **The property test — equal weight to step 4.** Run the plots on either side of the second citizen's deed. The deed's plots are refused and counted under property; the neighbours succeed. This is the only step that exposes a null citizen or waived authorization.
-6. **The record test.** Enable the engine's action debug display for one plot and read the record: the stamped citizen, the mining arm as the tool, both the dig and pickup actions present, and evidence a law was consulted (U4, U5, U12).
-7. The wall, the crop, and the unsurveyed plot, each with an adjacent control (AE5, AE9, AE6). Then the crop under the plant-action law, confirming the removal is refused rather than the plant being destroyed.
-8. **The dev-tool test.** Attempt to assign with a permission-ignoring tool selected; confirm the stamp is refused (R37).
-9. **The live-revocation test.** Revoke the stamped citizen's deed access mid-job without touching the dock; confirm the next removal is refused (AE10). Then transfer the dock away from the stamped citizen and confirm the job ends at the next plot arrival (AE8).
-10. **The race test.** Build a block into a plot the drone is actively shafting; confirm it is left standing (AE11).
-11. **The storage-access test.** With both the accessible and inaccessible containers linked, confirm the unload fills only the accessible one and that headroom is reported from it alone (R43).
-12. Fill linked storage mid-run and confirm the waiting state, zero fuel drain while waiting, automatic resume, and that the drone leaves the dock again afterwards (AE1, AE2).
-13. **The halt test.** Halt from an admin account mid-job and confirm the job stops before its next removal; confirm a non-admin cannot; restart and confirm the halt persists (R42).
-14. Pick up the survey dock mid-run and confirm the job ends with a named reason and the hold is kept (AE7).
-15. **Restart, fail-closed.** Restart mid-area. Confirm the hold, the ledger, the area reference, and both plot stamps survive, and that the stamp is present and equal to the same citizen. Then confirm a job whose stamp is absent refuses to dispatch rather than running with no citizen (R36).
-16. Observe the cost signals after a full area: server tick time during a layer batch, statistics table growth, and the player-activity layer over the worked region (A7, KTD14).
+1. ~~Measure reachable storage.~~ **CLOSED without measurement.** The dock's reach is the stock
+   link component's, unmodified, and a stockpile placed outside it was correctly absent from the
+   list. A8 is answered by construction: the mod does not set the radius, so it cannot be wrong
+   about it. What the step was really guarding — "can the drone empty its hold" — is step 11.
+2. Slot a mining drone; confirm the Mining tab and cargo tab appear and the Survey tab does not;
+   swap to a survey drone and confirm the reverse; confirm the pre-deploy dock kept its area
+   assignment (U6, U9, U15, AE12). **PASSED.**
+3. Confirm a survey dock the citizen lacks full access to is not offered in the mining dock's area
+   list (R39). **PASSED.** The original step also asked to confirm a mining dock cannot draw or edit
+   a survey area; that is structurally impossible rather than a behaviour — a mining dock has no
+   `SurveyComponent`, so there is no control to try — and is not a test.
+4. **The law test.** Run one plot under the no-filter settlement law, with an adjacent plot outside
+   it. The drone must be refused on the first and succeed on the second. This detects a forced pack
+   and a derived action type — **it does not detect the null-citizen or waived-authorization
+   cases**, because a location-scoped law refuses those exactly as it refuses a correct
+   implementation. Step 5 carries those. **PASSED**, with the engine's infobox as evidence.
+5. **The property test — equal weight to step 4.** Run the plots on either side of the second
+   citizen's deed. The deed's plots are refused and counted under property; the neighbours succeed.
+   This is the only step that exposes a null citizen or waived authorization. **PASSED.**
+6. **The tool test.** (Replaces "read the action record": no in-game action-record view exists, and
+   the step as written could not be performed. What it was really asking — does the engine see our
+   arm as the tool — the law editor answers directly.)
+   Open the law editor, start a law on the dig-or-mine action, and open its tool filter. Confirm
+   **Mining Arm** is offered (R20). Then select it, scope the law over one plot with an adjacent
+   plot outside, and run the drone: refused on the law's plot, succeeds on the neighbour.
+   **First half PASSED** — the arm appears, once `[Category("Hidden")]` was removed, since "Hidden"
+   is the engine's own switch for keeping a thing out of the civics UI. Second half outstanding.
+7. The wall, the crop, and the unsurveyed plot, each with an adjacent control (AE5, AE9, AE6). Then
+   the crop under the plant-action law, confirming the removal is refused rather than the plant
+   being destroyed. **PASSED.**
+8. ~~The dev-tool test.~~ **DROPPED, and R37 with it.** Assignment is not an authorized action —
+   nothing is performed there to authorize — so a permission-ignoring tool held while clicking
+   Assign changes nothing. The runtime half was retired too: what the dock's owner happens to be
+   holding is not a property of the drone. Note for the record that the mechanism is real —
+   `AuthManager` grants OwnerAccess to any alias whose selected item sets `IgnoreAuth`, read from
+   the citizen's live toolbar — so a stamped citizen holding one does widen what the drone may do.
+   It was retired as the wrong response to that, on the maintainer's call, not as imaginary.
+9. **Untested by choice.** Revoke the stamped citizen's deed access mid-job and confirm the next
+   removal is refused (AE10); transfer the dock away and confirm the job ends at the next plot
+   arrival (AE8). The revocation half is redundant with step 5 — the removal service builds a fresh
+   pack per layer and the engine authorizes each one, so there is no cached decision to go stale.
+   The transfer half is a real mod behaviour and remains desired but unexercised.
+10. **The race test.** Recorded rather than passed: the drone paths around blocks that exist when it
+    plans, and clips through blocks built after planning. It never destroys or interacts with them,
+    so AE11 holds; the clipping is the cosmetic issue tracked with tree and stockpile clipping.
+11. **The storage test.** Confirm the drone unloads only into linked containers. **PASSING via the
+    `/drone link` chat command**, which is the workaround, not the shipping surface. The Storage
+    tab's per-target Take From / Put Into controls are the outstanding work; see the exit path in
+    `DroneDockLinkComponent.NewDefaultLinkSettings`.
+12. Fill linked storage mid-run and confirm the waiting state, zero fuel drain while waiting,
+    automatic resume, and that the drone leaves the dock again afterwards (AE1, AE2). **PASSED.**
+    The fuel half reads off the Power tab: a docked drone shows `0w (75w when operating)`, a working
+    one shows `75w`.
+13. **The halt test.** Halt from an admin account mid-job and confirm the job stops before its next
+    removal; confirm a non-admin cannot; restart and confirm the halt persists (R42). **PASSED.**
+    Documented for players in README's Server administration section.
+14. Pick up the survey dock mid-run and confirm the job ends with a named reason and the hold is
+    kept (AE7). **PASSED**, after the fixes that made a vanished area end the job instead of
+    retrying it forever.
+15. **Restart, fail-closed.** Restart mid-area. Confirm the hold, the ledger, the area reference,
+    and both plot stamps survive, and that the shaft resumes as the SAME shaft rather than
+    re-planning against the pit floor. **OPEN — must be re-run.** The first attempt looked like a
+    pass and was not: the drone resumed by cutting a fresh 3x3 shaft past the tier's depth limit.
+    The second half as written — a job whose stamp is absent refuses to dispatch — is **not
+    reachable in normal play**: it needs `StampedCitizenId == 0` or a citizen id that no longer
+    resolves, and nothing in the game produces either. The guard is verified statically instead
+    (`MiningRemovalService` refuses with "No stamped citizen -- refusing fail-closed" before
+    building any pack), and the reachable live equivalent is step 9's dock transfer.
+16. **The cost check.** Run a full area, then search the server log for `Slow world object`. The
+    engine warns by itself at 100 ms for a single object tick (`WorldObjectManager.SlowTickWarnMs`),
+    so no measurement setup is needed: `DroneDockObject` never appearing is the pass. Statistics
+    growth and the player-activity layer stay as recorded observations (A7, KTD14).
 
 ---
 
