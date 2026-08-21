@@ -307,6 +307,9 @@ namespace AdvancedElectronics.Navigation
         public PlotOutcome OutcomeOf(PlotCoord plot) =>
             _ledger.TryGetValue(plot, out var outcome) ? outcome : PlotOutcome.Unworked;
 
+        /// <summary>Every plot this job covers, whatever its outcome -- the denominator the panel reads.</summary>
+        public int PlotCount => _ledger.Count;
+
         public int WorkedCount => _ledger.Count(kv => kv.Value == PlotOutcome.Worked);
 
         public int SkippedCount => _ledger.Count(kv => kv.Value == PlotOutcome.Skipped);

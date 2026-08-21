@@ -115,6 +115,25 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
+        public void Progress_ReportsTheAreaTotalAlongsideWhatIsDone()
+        {
+            // "worked 2, skipped 1" leaves the player computing the denominator from the area list.
+            Assert.Equal(
+                "total 12, worked 2, skipped 1, current: 6/15",
+                MiningReadout.FormatProgress(totalPlots: 12, worked: 2, skipped: 1, shaftLayersDone: 6, shaftLayersTotal: 15));
+        }
+
+        [Fact]
+        public void Progress_OmitsTheShaftWhenNoneIsOpen_RatherThanShowingZeroOfZero()
+        {
+            // Between plots there is no current shaft. "current: 0/0" reads as a stalled one.
+            var line = MiningReadout.FormatProgress(totalPlots: 12, worked: 12, skipped: 0, shaftLayersDone: 0, shaftLayersTotal: 0);
+
+            Assert.Equal("total 12, worked 12, skipped 0", line);
+            Assert.DoesNotContain("current", line);
+        }
+
+        [Fact]
         public void NoEndReason_RendersEmpty()
         {
             Assert.Equal(string.Empty, MiningReadout.FormatStopReason(null));

@@ -71,6 +71,26 @@ namespace AdvancedElectronics.Navigation
                 : FormatStopReason(jobEndReason);
 
         /// <summary>
+        /// The one progress line the Mining tab keeps: how much of the area is done, and how far
+        /// into the current plot's shaft the drone has got.
+        ///
+        /// Folds what used to be two rows into one. The panel carried a row per fact — progress,
+        /// skips by category, last refusal, shaft depth, stamps, headroom — which is a debugging
+        /// surface, not a player one. All of it still exists in `/drone state`, which is where a
+        /// question like "why was that plot skipped" belongs.
+        ///
+        /// The shaft half is omitted when no shaft is open, rather than shown as 0/0: between
+        /// plots there is no current shaft, and a zero there reads as a stalled one.
+        /// </summary>
+        public static string FormatProgress(int totalPlots, int worked, int skipped, int shaftLayersDone, int shaftLayersTotal)
+        {
+            var head = $"total {totalPlots}, worked {worked}, skipped {skipped}";
+            return shaftLayersTotal > 0
+                ? $"{head}, current: {shaftLayersDone}/{shaftLayersTotal}"
+                : head;
+        }
+
+        /// <summary>
         /// Shaft depth reached and the two stamps behind the mineable decision (KTD12).
         ///
         /// The stamps are shown raw rather than as a verdict: the whole reason this row exists is
