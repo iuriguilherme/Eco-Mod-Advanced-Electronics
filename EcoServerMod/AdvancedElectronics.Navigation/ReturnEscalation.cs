@@ -84,13 +84,28 @@ namespace AdvancedElectronics.Navigation
         /// the survey drone, and non-contiguous plots being skipped -- any terrain step over one
         /// block was a wall to a machine that hovers.
         ///
-        /// 16f rather than a new number: it is the Hover rung's existing value, so the everyday
-        /// capability now matches what the ladder already considered reasonable for this drone,
-        /// and it clears MiningTierDepth (15) with a block to spare. Obstacle avoidance is
-        /// untouched -- this changes how far the drone may climb or descend, not what it may pass
-        /// through.
+        /// DERIVED from the shaft depth rather than chosen. The number the drone needs is
+        /// "deep enough to re-enter my own deepest legal excavation", and that is a tier property
+        /// -- so raising the tier without raising this would silently recreate the original bug,
+        /// one release later and much harder to recognise.
+        ///
+        /// It landed on 16 by hand first, which is 15 + 1 and therefore right by luck. Writing the
+        /// relationship down is the actual fix; the value barely moves.
+        ///
+        /// The margin covers what the depth alone does not: ground heights are compared per
+        /// column, a plot's own surface is not flat, and a pass's floor is its DEEPEST column, so
+        /// a shallower column's rim can sit a block or two above that floor.
+        ///
+        /// A hole deeper than this stays unreachable ON PURPOSE. Nothing the drone digs can exceed
+        /// the tier, so what is left is terrain the player made -- a quarry, a canyon -- and
+        /// refusing to fly a drone into an arbitrary chasm is the intended answer, not a gap.
+        /// Obstacle avoidance is untouched: this governs how far the drone may climb or descend,
+        /// not what it may pass through.
         /// </summary>
-        public const float OrdinaryMaxStepHeight = 16f;
+        public const float OrdinaryMaxStepHeight = DroneTier.MiningShaftDepth + StepHeightMargin;
+
+        /// <summary>Slack on top of the shaft depth, for per-column terrain variation within a plot.</summary>
+        private const float StepHeightMargin = 3f;
 
         private static readonly ReturnAttempt[] ladder =
         {

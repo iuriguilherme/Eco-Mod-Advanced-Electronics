@@ -31,11 +31,26 @@ namespace AdvancedElectronics.Navigation
         /// <summary>The stamped citizen no longer holds the required access (R33) or was never validly stamped.</summary>
         StampInvalid,
 
-        /// <summary>The stamped citizen has a permission-ignoring tool selected (R37).</summary>
+        /// <summary>
+        /// Retired (was R37): no code produces this any more. What the dock's owner is holding
+        /// is not a property of the drone -- the removal pack names the Mining Arm as its tool
+        /// and never reads the player's hands -- so the test guarded a path that does not
+        /// exist. Kept because the member's ordinal is persisted in job snapshots and a save
+        /// written before the retirement can still carry it; the readout keeps wording it.
+        /// </summary>
         DevToolSelected,
 
         /// <summary>An administrator halted mining server-wide (R42).</summary>
-        Halted
+        Halted,
+
+        /// <summary>
+        /// The area still exists but its geometry was redrawn, so the plot list this job was
+        /// built against no longer describes it (KTD2's change-token half).
+        ///
+        /// Appended rather than inserted: these values are persisted by ordinal in the job
+        /// snapshot, so the existing members' positions are load-bearing.
+        /// </summary>
+        AreaRedrawn
     }
 
     /// <summary>What became of one plot: still to do, worked, or abandoned with a reason (R16, R22).</summary>
@@ -265,21 +280,35 @@ namespace AdvancedElectronics.Navigation
         }
 
         /// <summary>
-        /// Working or WaitingToUnload -> Ended, carrying <paramref name="reason"/>. The
+        /// Any non-terminal state -> Ended, carrying <paramref name="reason"/>. The
         /// ledger is preserved untouched -- ending is not completion, and the worked/
         /// skipped record stays legible after the fact.
+        ///
+        /// Idle counts. It was excluded originally because ending was pictured as
+        /// interrupting work in progress, but every reason a job ends -- the area gone, a
+        /// server halt, an invalid stamp -- is equally true of a job that has not set out
+        /// yet, and Idle is exactly where a job sits when its very first dispatch fails.
+        /// Refusing to end from Idle left such a job permanently Idle-with-no-target: the
+        /// strategy reported "nothing to offer" without ever reporting exhaustion, so the
+        /// lifecycle re-dispatched it forever (live pass #14 -- a survey dock picked up
+        /// before the drone had begun, leaving the drone bobbing beside its own dock).
+        ///
+        /// Complete and Ended stay put: a finished job is not re-labelled by a late event.
         /// </summary>
         public void End(MiningEndReason reason)
         {
-            if (Status == MiningJobStatus.Working || Status == MiningJobStatus.WaitingToUnload)
-            {
-                Status = MiningJobStatus.Ended;
-                EndReason = reason;
-            }
+            if (Status == MiningJobStatus.Complete || Status == MiningJobStatus.Ended)
+                return;
+
+            Status = MiningJobStatus.Ended;
+            EndReason = reason;
         }
 
         public PlotOutcome OutcomeOf(PlotCoord plot) =>
             _ledger.TryGetValue(plot, out var outcome) ? outcome : PlotOutcome.Unworked;
+
+        /// <summary>Every plot this job covers, whatever its outcome -- the denominator the panel reads.</summary>
+        public int PlotCount => _ledger.Count;
 
         public int WorkedCount => _ledger.Count(kv => kv.Value == PlotOutcome.Worked);
 

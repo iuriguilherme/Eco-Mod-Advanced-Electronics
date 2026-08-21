@@ -39,7 +39,17 @@ namespace Eco.Mods.TechTree
     /// it is recorded during the live pass (A9).
     /// </remarks>
     [Serialized]
-    [Category("Hidden")]
+    // NOT Category("Hidden"), despite this item never being held or crafted. "Hidden" is the
+    // engine's own switch for keeping a thing out of the civics UI -- Item.Hidden is derived
+    // from it (Item.cs), ItemInfoManager syncs that flag to the client, and GameActionManager's
+    // NoLawsAttribute is literally Category("Hidden") with the comment "we make sure to
+    // automatically hide all actions that we don't want to be tracked by laws".
+    //
+    // So the tag below was doing its job and the category was cancelling it: the live pass found
+    // the Mining Arm absent from a dig-or-mine law's tool picker. R20 wants the opposite -- a
+    // settlement must be able to name this tool in a law. The cost is that an unobtainable item
+    // shows up in item listings; the benefit is that server owners can regulate the drone.
+    [Category("Tool")]
     [Tag("Excavation")]
     [LocDisplayName("Mining Arm")]
     [LocDescription("The mining drone's excavation tool. Never held or crafted.")]

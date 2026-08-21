@@ -25,7 +25,14 @@ namespace AdvancedElectronics.Navigation
         /// <summary>Whether this is the area the drone is working on.</summary>
         public bool IsAssigned { get; }
 
-        public AreaSnapshot(int position, string name, int plotCount, float coveragePercent, SurveyFinding topVisibleFinding, bool isAssigned)
+        /// <summary>
+        /// Whether the drone currently cannot get here. Only ever true for the assigned area --
+        /// reachability is a fact about a trip in progress, not a stored property of an area, so
+        /// an unassigned area has no answer to report rather than a negative one.
+        /// </summary>
+        public bool IsUnreachable { get; }
+
+        public AreaSnapshot(int position, string name, int plotCount, float coveragePercent, SurveyFinding topVisibleFinding, bool isAssigned, bool isUnreachable = false)
         {
             Position = position;
             Name = name;
@@ -33,6 +40,7 @@ namespace AdvancedElectronics.Navigation
             CoveragePercent = coveragePercent;
             TopVisibleFinding = topVisibleFinding;
             IsAssigned = isAssigned;
+            IsUnreachable = isUnreachable;
         }
     }
 
@@ -47,7 +55,44 @@ namespace AdvancedElectronics.Navigation
     public static class DockReadout
     {
         /// <summary>Marks the area the drone is assigned to. Trailing-appended, so it survives truncation last.</summary>
-        public const string AssignedMarker = "   [assigned]";
+        public const string AssignedMarker = "   <color=yellow>[assigned]</color>";
+
+        /// <summary>Marks the assigned area the drone cannot currently reach. Appended after <see cref="AssignedMarker"/>.</summary>
+        public const string UnreachableMarker = "   <color=red>[unreachable]</color>";
+
+        /// <summary>Marks an area whose plots have all been mined and none re-surveyed since.</summary>
+        public const string MinedMarker = "   <color=green>[mined]</color>";
+
+        /// <summary>Colour name for "finished" -- a fully-surveyed area, or a mined-out one.</summary>
+        private const string CompleteColor = "green";
+
+        /// <summary>Wraps a line in the finished colour, so both readouts agree on what done looks like.</summary>
+        public static string AsComplete(string text) => $"<color={CompleteColor}>{text}</color>";
+
+        public const string DockedPhrase = "docked";
+        public const string AtAreaPhrase = "at the area";
+
+        /// <summary>
+        /// Where the drone is, in words a player can act on. Both tabs render this rather than the
+        /// status enum: "EnRoute" and "OnStation" name states in a state machine, and tell someone
+        /// watching a drone nothing about what it is doing or whether to intervene.
+        /// </summary>
+        /// <param name="atAreaLabel">
+        /// What being at the area means for this drone kind -- "surveying" reads better than "at
+        /// the area" on a survey dock, where arriving and working are the same thing.
+        /// </param>
+        public static string FormatTravel(DroneStatus status, DroneTravelTarget target, string atAreaLabel = null)
+        {
+            switch (status)
+            {
+                case DroneStatus.Idle: return DockedPhrase;
+                case DroneStatus.OnStation: return atAreaLabel ?? AtAreaPhrase;
+                case DroneStatus.Unreachable: return "cannot reach the area";
+                case DroneStatus.EnRoute:
+                    return target == DroneTravelTarget.Dock ? "returning to dock" : "flying to the area";
+                default: return string.Empty;
+            }
+        }
 
         /// <summary>
         /// Formats one per-material line (R2), quantity-led: how much of the material was found, the
@@ -55,16 +100,44 @@ namespace AdvancedElectronics.Navigation
         /// meaningful for common bulk materials (rock) as well as rare ore, where a concentration
         /// ratio read as noise (KTD2/R3).
         /// </summary>
-        public static string FormatOreLine(SurveyFinding finding)
+        /// <param name="iconItemName">
+        /// Item id to draw ahead of the line as Eco text markup, or null for no icon. Passed in
+        /// rather than derived here because resolving a material to an item needs the item
+        /// registry, which is an Eco type this assembly deliberately cannot see (KTD6).
+        /// </param>
+        public static string FormatOreLine(SurveyFinding finding, string iconItemName = null)
         {
+            var icon = string.IsNullOrWhiteSpace(iconItemName) ? string.Empty : $"<icon name='{iconItemName}'> ";
+
             if (!finding.Found)
-                return $"{finding.OreType}: no data yet";
+                return $"{icon}{finding.OreType}: no data yet";
 
             var depth = finding.DepthMax > finding.DepthBelowSurface
                 ? $"depth {finding.DepthBelowSurface}-{finding.DepthMax}"
                 : $"{finding.DepthBelowSurface} blocks deep";
-            return $"{finding.OreType}: ~{finding.Count} blocks, shallowest at {finding.Position}, {depth}";
+            return $"{icon}{finding.OreType}: ~{finding.Count} blocks, shallowest at {finding.Position}, {depth}";
         }
+
+        /// <summary>
+        /// Wraps a block of readout text at a larger font size.
+        ///
+        /// PERCENT, not a bare number, and that distinction is the whole entry. The wiki's
+        /// "7 is biggest, 1 is standard" scale describes signs and chat. A component panel renders
+        /// through the client's rich-text layer, where a bare <c>&lt;size=2&gt;</c> means two
+        /// ABSOLUTE units -- microscopic, not double. The engine keeps both forms as separate
+        /// helpers (<c>RichTextUtils.Size(int)</c> emits <c>&lt;size=N&gt;</c> verbatim,
+        /// <c>Size(float)</c> emits <c>&lt;size=N%&gt;</c>), which is the tell that they are not
+        /// interchangeable.
+        ///
+        /// The first attempt shipped <c>&lt;size=2&gt;</c> and read as "the tag does nothing here".
+        /// It was doing something: shrinking the block to near-invisibility, which is also why the
+        /// icons on those lines were too small to confirm.
+        /// </summary>
+        public static string AtReadableSize(string text) =>
+            string.IsNullOrEmpty(text) ? text : $"<size={ReadableSizePercent}%>{text}</size>";
+
+        /// <summary>Findings-list font size as a percentage of default.</summary>
+        private const int ReadableSizePercent = 125;
 
         /// <summary>
         /// The "how is this area doing" fragment: coverage plus the biggest visible find. Split out
@@ -89,15 +162,36 @@ namespace AdvancedElectronics.Navigation
                 : "not surveyed yet";
         }
 
-        /// <summary>One area's line in the panel's roster: position, name, size, summary, assignment.</summary>
-        public static string FormatAreaLine(AreaSnapshot area) =>
-            $"{area.Position}. {area.Name} -- {area.PlotCount} plots, {FormatAreaSummary(area)}"
-            + (area.IsAssigned ? AssignedMarker : string.Empty);
+        /// <summary>
+        /// One area's line in the panel's roster: position, name, size, summary, assignment.
+        ///
+        /// The completed-area colour is applied HERE rather than inside
+        /// <see cref="FormatAreaSummary"/>, so it belongs to the area roster and only to the area
+        /// roster. The summary is also the shape a compact control label wants, and the findings
+        /// readout states coverage in its own words -- neither should inherit a colour because the
+        /// roster wanted one. A formatter that returns markup its callers did not ask for is how
+        /// colour leaks into surfaces nobody chose it for.
+        /// </summary>
+        public static string FormatAreaLine(AreaSnapshot area)
+        {
+            var summary = FormatAreaSummary(area);
+
+            // Coloured whole rather than just the percentage: the point is to find the finished
+            // areas by scanning the list, and a green "100%" inside an otherwise uniform line is
+            // barely easier to spot than a plain one.
+            if (area.CoveragePercent >= 100f)
+                summary = AsComplete(summary);
+
+            return $"{area.Position}. {area.Name} -- {area.PlotCount} plots, {summary}"
+                   + (area.IsAssigned ? AssignedMarker : string.Empty)
+                   + (area.IsUnreachable ? UnreachableMarker : string.Empty);
+        }
 
         /// <summary>Names the area whose findings are on screen, and where it sits in the list.</summary>
         public static string FormatViewingLine(AreaSnapshot area, int totalAreas) =>
             $"Viewing: {area.Position} of {totalAreas} -- {area.Name}"
-            + (area.IsAssigned ? AssignedMarker : string.Empty);
+            + (area.IsAssigned ? AssignedMarker : string.Empty)
+            + (area.IsUnreachable ? UnreachableMarker : string.Empty);
 
         /// <summary>
         /// The notice shown when the player has more areas than the panel has controls. Empty when

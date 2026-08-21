@@ -329,22 +329,54 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
-        public void StepExceedingMaxStepHeight_IsTreatedAsImpassable()
+        public void TerrainBetweenTheEnds_IsFlownOver_NotTreatedAsAWall()
         {
             var sampler = new FakeWorldSampler(defaultHeight: 0f);
-            // A 5-unit cliff at x=3, spanning the whole bounded search area,
-            // so with maxStepHeight=1 it behaves exactly like a solid wall -
-            // fully blocking every route between start and goal.
+            // A 5-unit cliff at x=3 spanning the whole search area, far taller than the step
+            // limit. It used to block every route, because the step limit was applied to every
+            // edge -- which is a walker's rule. The drone flies: CruiseProfile lifts the middle of
+            // the route above the highest ground on it and crosses level.
             for (int z = -30; z <= 30; z++)
                 sampler.SetHeight(3, z, 5f);
 
             var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
-            var start = new Vector3(0, 0, 0);
-            var goal = new Vector3(6, 0, 0);
 
-            var result = pathfinder.FindPath(start, goal);
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(6, 0, 0));
+
+            Assert.True(result.Found);
+            // And it genuinely went OVER rather than through: some waypoint sits above the cliff.
+            Assert.Contains(result.Waypoints, wp => wp.Y > 5f);
+        }
+
+        [Fact]
+        public void AGoalBeyondTheClimbLimit_IsStillUnreachable()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            // The destination itself sits at the bottom of a shaft deeper than the drone may
+            // descend. Passing OVER terrain is free; getting down into a specific spot is not,
+            // and that is the one thing the step limit still governs.
+            sampler.SetHeight(6, 0, -10f);
+
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 1f);
+
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(6, -10, 0));
 
             Assert.False(result.Found);
+        }
+
+        [Fact]
+        public void AGoalWithinTheClimbLimit_IsReachedEvenAtTheBottomOfAShaft()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 0f);
+            sampler.SetHeight(6, 0, -10f);
+
+            // Same shaft, a drone that can descend into it. This is the mining case: re-entering
+            // a hole the machine itself dug.
+            var pathfinder = new GridPathfinder(sampler, maxStepHeight: 12f);
+
+            var result = pathfinder.FindPath(new Vector3(0, 0, 0), new Vector3(6, -10, 0));
+
+            Assert.True(result.Found);
         }
 
         // --- AE9: fully enclosed target reports no-path, not an exception ---

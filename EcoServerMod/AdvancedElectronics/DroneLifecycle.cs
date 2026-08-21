@@ -106,16 +106,83 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private static readonly float WorkExitLeadInSeconds = AnimationSeconds(44 + 59);
 
+        /// <summary>
+        /// How long the drone waits after parking before its first removal, so the arm is out
+        /// before the ground changes. The exit transition's mirror, and the same length.
+        ///
+        /// Without it the first block went on the tick the drone arrived, while the client was
+        /// still playing the flying loop: the terrain changed and the work animation caught up
+        /// afterwards. The survey drone had the same gap and nobody could see it, because a
+        /// survey changes nothing in the world to be early against.
+        /// </summary>
+        private static readonly float WorkEntryLeadInSeconds = AnimationSeconds(44 + 59);
+
         private readonly DroneStateMachine stateMachine = new DroneStateMachine();
 
         private string lastKnownAssignedArea;
         private float secondsSinceLastReturnRetry;
+
+        // Deliberately NOT serialized: it must read false on every load, because that is exactly
+        // when the state machine and the drone's persisted position can disagree.
+        private bool hasReconciledPositionAfterLoad;
+
+        // How many dispatches in a row have failed to get the drone moving, and how long it has
+        // been parked since the budget ran out. See CannotReachAssignedArea.
+        private int consecutiveDispatchFailures;
+        private float secondsSinceDispatchBlocked;
+
+        /// <summary>
+        /// How many failed dispatches in a row before the drone stops trying. Small on purpose:
+        /// a dispatch that fails from the pad fails for a reason that will not change between one
+        /// tick and the next, and the whole point is to notice that quickly rather than to
+        /// persevere.
+        /// </summary>
+        private const int MaxConsecutiveDispatchFailures = 3;
+
+        /// <summary>
+        /// How many plots one dispatch may probe before giving up for this tick. Comfortably above
+        /// the 40-plot area cap, so in practice it bounds a pathological case rather than a real
+        /// one -- an entirely unreachable area costs one pathfind per plot, once, and is then
+        /// parked by the dispatch budget rather than re-probed every tick.
+        /// </summary>
+        private const int MaxPlotsProbedPerDispatch = 64;
+
+        /// <summary>
+        /// Whether the current assignment has ever got the drone moving toward a plot. Separates
+        /// "this area cannot be entered at all" from "the plots that are left cannot be entered",
+        /// which want different reports: the first is the area's problem, the second is the tail
+        /// of an otherwise normal run.
+        /// </summary>
+        private bool reachedAssignedAreaOnce;
+
+        /// <summary>
+        /// How long a blocked drone waits before trying once more. Long, because the only thing
+        /// that can change the answer is the world -- terrain filled in, an obstruction removed --
+        /// and none of that happens on a tick boundary.
+        /// </summary>
+        private const float BlockedDispatchRetryIntervalSeconds = 60f;
+
+        /// <summary>
+        /// True once the drone has given up reaching its assigned area for now: it is parked at
+        /// its dock, still assigned, and no longer retrying every tick.
+        ///
+        /// This exists because "parked" and "cannot get there" are different facts and the status
+        /// enum only carries one of them. Without it the panel had to choose between reporting the
+        /// physical truth (Idle, at the dock) and the useful one (unreachable), and the code that
+        /// flip-flopped between them is what the player saw as a drone docking and undocking
+        /// once a second forever.
+        /// </summary>
+        public bool CannotReachAssignedArea => this.consecutiveDispatchFailures >= MaxConsecutiveDispatchFailures;
 
         // The current job strategy (KTD3) -- what "one tick's work" at a parked plot means,
         // and which plot is next. Recreated fresh on every (re)dispatch (see DispatchToArea),
         // which is what resets its internal plot-list progress; the lifecycle itself keeps
         // no plot-list state of its own.
         private IJobStrategy strategy;
+
+        // The plot whose work lead-in has already played, so the arm is not re-deployed on every
+        // tick of the same plot. Null whenever the drone is not parked and working.
+        private PlotCoord? workEntryPlot;
 
         // How many consecutive arrival attempts at the CURRENT target plot have failed. Owned
         // by the lifecycle (KTD3: "the lifecycle keeps... the arrival-attempt counter and its
@@ -129,6 +196,9 @@ namespace Eco.Mods.TechTree
 
         /// <summary>Current lifecycle status (R15) -- Idle/EnRoute/Surveying/Unreachable.</summary>
         public DroneStatus Status => this.stateMachine.Status;
+
+        /// <summary>What the drone is travelling toward -- the half of EnRoute that says which way.</summary>
+        public DroneTravelTarget TravelTarget => this.stateMachine.TravelTarget;
 
         /// <summary>
         /// True while the drone is doing work that costs fuel, dock parts, and its own condition
@@ -243,24 +313,70 @@ namespace Eco.Mods.TechTree
             {
                 this.lastKnownAssignedArea = assignedToken;
 
+                // A new assignment is a fresh chance: whatever made the last one unreachable
+                // says nothing about this one.
+                this.consecutiveDispatchFailures = 0;
+                this.secondsSinceDispatchBlocked = 0f;
+                this.reachedAssignedAreaOnce = false;
+
                 if (!string.IsNullOrWhiteSpace(assignedToken))
                 {
                     // Idle/Surveying/EnRoute -> EnRoute to the newly-assigned area (R13
                     // reassignment re-paths immediately from the drone's current position).
                     this.DispatchToArea(mover);
                 }
-                else if (this.stateMachine.Status == DroneStatus.OnStation ||
-                         (this.stateMachine.Status == DroneStatus.EnRoute && this.stateMachine.TravelTarget == DroneTravelTarget.District))
+                else
                 {
-                    // Area unassigned while actively pursuing one -- start the return-to-dock
-                    // leg (R6: Surveying -> EnRoute(dock) -> Idle). DroneTravelTarget.District
-                    // is the state machine's generic "toward the assigned region" target.
-                    this.BeginReturnToDock(mover, viaDistrictCleared: true);
+                    // Unassigned. Drop the strategy: it describes work on an area this dock no
+                    // longer has, and leaving it alive is what let R24's idle-at-dock resume
+                    // re-dispatch a drone that had just been told to stop.
+                    this.strategy = null;
+
+                    if (this.stateMachine.Status == DroneStatus.OnStation ||
+                        (this.stateMachine.Status == DroneStatus.EnRoute && this.stateMachine.TravelTarget == DroneTravelTarget.District))
+                    {
+                        // Area unassigned while actively pursuing one -- start the return-to-dock
+                        // leg (R6: Surveying -> EnRoute(dock) -> Idle). DroneTravelTarget.District
+                        // is the state machine's generic "toward the assigned region" target.
+                        this.BeginReturnToDock(mover, viaDistrictCleared: true);
+                    }
+                    else
+                    {
+                        // Idle/EnRoute(dock)/Unreachable: nothing was in progress to interrupt,
+                        // but the drone may be sitting somewhere it should not be -- settle it.
+                        this.SettleAtDockIfHome(mover);
+                    }
                 }
-                // else: unassigned while already Idle/EnRoute(dock)/Unreachable -- nothing
-                // was in progress to interrupt.
 
                 return;
+            }
+
+            // Reconcile the freshly-loaded state machine against where the drone physically is.
+            //
+            // The drone's POSITION is serialized; the state machine is not -- it is a plain field
+            // and comes back Idle, which means "parked at the dock with nothing to do". A drone
+            // that was out working when the server saved therefore loads believing it is home
+            // while hovering over its work area, and nothing ever contradicts that: with no
+            // assignment the change-detection above sees null == null and takes no branch, and
+            // Idle's own branch only acts on a drone that IS at its dock.
+            //
+            // An assigned drone is rescued by accident -- its token reads as a change against the
+            // null field and re-dispatches it -- which is why this only ever showed up on
+            // unassigned drones, left hovering over someone else's excavation until picked up by
+            // hand.
+            //
+            // Placed after the change-detection so a dispatch always wins: that branch returns
+            // before this point, and by the next tick the drone is EnRoute rather than Idle.
+            if (!this.hasReconciledPositionAfterLoad)
+            {
+                this.hasReconciledPositionAfterLoad = true;
+
+                if (this.stateMachine.Status == DroneStatus.Idle && !this.IsAtHomeDock())
+                {
+                    this.LastDispatchNote = "returning to dock after a server restart left it away";
+                    this.BeginReturnToDock(mover, viaDistrictCleared: false);
+                    return;
+                }
             }
 
             switch (this.stateMachine.Status)
@@ -310,7 +426,17 @@ namespace Eco.Mods.TechTree
                     // condition, not a terminal state -- after an unload, ask the SAME
                     // strategy instance for its next target rather than waiting for the
                     // assigned-area token to change (which would also reset shaft progress).
-                    if (this.strategy != null && !this.strategy.IsComplete && this.IsAtHomeDock())
+                    //
+                    // Gated on there still BEING an assignment. Without that, unassigning a drone
+                    // whose strategy had not finished put it in a loop: it flew home, reached
+                    // Idle, was re-dispatched by this branch, failed to resolve an area it no
+                    // longer had, went Unreachable, and settled hovering over its own pad. It
+                    // burned no fuel and looked docked to the panel, so the only visible symptom
+                    // was that the docking animation never played -- Unreachable is not Idle, and
+                    // the animator's at-home flag requires Idle.
+                    if (this.strategy != null && !this.strategy.IsComplete && this.IsAtHomeDock()
+                        && !string.IsNullOrWhiteSpace(assignedToken)
+                        && this.DispatchBudgetAllowsRetry())
                         this.DispatchToArea(mover);
                     break;
             }
@@ -412,10 +538,7 @@ namespace Eco.Mods.TechTree
             // if nothing changed. See AnimationStateRepushIntervalSeconds: a state that never
             // changes again reaches nobody who was not already holding the object when it was
             // first written.
-            var manager = ServiceHolder<IWorldObjectManager>.Obj;
-            var deltaTime = manager != null && manager.TickDeltaTime > 0f
-                ? manager.TickDeltaTime
-                : FallbackTickDeltaSeconds;
+            var deltaTime = TickDeltaSeconds();
 
             this.secondsSinceAnimationRepush += deltaTime;
             if (this.secondsSinceAnimationRepush >= AnimationStateRepushIntervalSeconds)
@@ -497,19 +620,44 @@ namespace Eco.Mods.TechTree
 
             // Only build a fresh strategy when there is none, or the previous one finished --
             // a resume dispatch (R24: idle-at-dock with an unfinished job) reuses the SAME
-            // instance so shaft/sweep progress survives the round trip home. A genuinely new
-            // assignment always presents as a token change, which is the only other caller of
-            // this method, so the two cases cannot be confused with each other.
+            // instance so shaft/sweep progress survives the round trip home.
+            //
             // IsExhausted, not IsComplete: a full hold reads complete (there is nothing to offer
             // right now) but must NOT discard the strategy, or the resume trip rebuilds the shaft
             // plan against the excavated floor and starts a second shaft inside the first.
-            var needsFreshStrategy = this.strategy == null || this.strategy.IsExhausted;
+            //
+            // ...and the third condition, which those two used to be assumed to cover. A
+            // strategy captures its area reference at construction, so one built for a previous
+            // area keeps consulting THAT area however many times the dock is reassigned. An
+            // unfinished strategy is neither null nor exhausted, so assigning a new area reused
+            // it wholesale: the drone flew to the new area's plots and asked the old area
+            // whether they were surveyed. Reassigning was therefore useless as a recovery from
+            // any stuck job -- the exact remedy a player reaches for first.
+            //
+            // Compared by area id rather than by the assignment token, because the token also
+            // changes on a plain server restart (this field is not serialized), and rebuilding
+            // there would discard a ledger the restart is supposed to preserve.
+            var assignedAreaId = this.HomeDock.AssignedMiningArea?.AreaId;
+            var strategyIsForAnotherArea =
+                assignedAreaId != null &&
+                this.strategy is MiningStrategy builtStrategy &&
+                builtStrategy.SourceAreaId != assignedAreaId.Value;
 
-            var area = this.CurrentTargetArea(out var noAreaReason);
+            var needsFreshStrategy =
+                this.strategy == null || this.strategy.IsExhausted || strategyIsForAnotherArea;
+
+            var area = this.CurrentTargetArea(out var noAreaReason, out var terminalReason);
             if (area == null)
             {
                 this.LastDispatchNote = noAreaReason;
-                this.HandleNoPath(mover);
+
+                // A vanished or redrawn area is not a routing failure and must not be retried
+                // like one.
+                if (terminalReason != null)
+                    this.EndJobForMissingArea(mover, terminalReason.Value);
+                else
+                    this.FailDispatch(mover);
+
                 return;
             }
 
@@ -522,61 +670,107 @@ namespace Eco.Mods.TechTree
             if (this.strategy == null)
             {
                 this.LastDispatchNote = "no job strategy for this drone's declared tool";
-                this.HandleNoPath(mover);
+                this.FailDispatch(mover);
                 return;
             }
 
-            var destination = ResolveDestinationInArea(area, this.Parent.Position);
-            if (destination == null)
-            {
-                this.LastDispatchNote = "assigned area has no plot to target";
-                this.HandleNoPath(mover);
-                return;
-            }
-
-            var target = destination.Value;
-            // The dock's columns are exempt on the way OUT as well as the way home: the
-            // drone starts parked on the pad, and every pad cell reports occupied, so
-            // without this its first step off the dock has nowhere legal to go. The
-            // target itself is not in the set, so this cannot make an occupied
-            // destination legal -- a survey point inside someone's building still fails.
+            // Ask the STRATEGY where to go, not the area.
             //
-            // Leaving the dock climbs before it travels (climbOnDeparture): the pad sits below
-            // travelling altitude, so without a climb leg of its own the drone would gain that
-            // height on the diagonal of its first horizontal step -- in a fraction of a second,
-            // which is what read as a jump. Only from the dock; a drone lifting off a work area
-            // is already at the height its route continues from.
-            if (!mover.SetDestination(target, this.HomeDock.OccupiedColumns,
-                                      climbOnDeparture: this.IsAtHomeDock()))
-            {
-                this.LastDispatchNote = $"no path from {this.Parent.Position.X:F0},{this.Parent.Position.Z:F0} to area point {target.X:F0},{target.Z:F0}";
+            // This used to path to the nearest plot centre in the whole area, which had two
+            // consequences. A mining drone flew to whichever plot was closest whether or not it
+            // had been surveyed, ignoring the survey/mined freshness its own NextPlot enforces.
+            // And a plot the pathfinder could not enter was chosen again on every dispatch, since
+            // retiring it in the strategy changed nothing about what "nearest" meant -- so one
+            // walled-off plot stalled the entire area.
+            //
+            // Now each unreachable plot is retired here and the next one tried, in the strategy's
+            // own order. Retired immediately rather than after MaxPlotArrivalAttempts: within a
+            // single tick the world and the drone's position are both fixed, so re-asking the
+            // pathfinder the same question can only get the same answer. The plot-to-plot hop in
+            // TickOnStation keeps its own retry count, where the drone HAS moved in between.
+            Vector3? started = null;
+            var plotsProbed = 0;
 
-                // Count it against the SAME cap the plot-to-plot hop uses, and retire the plot when
-                // it runs out. Without this an outbound path failure was uncounted and had no exit:
-                // dispatch fails -> HandleNoPath -> Unreachable -> the retry attempts the RETURN
-                // leg, which trivially succeeds because the drone is already at its dock -> Idle ->
-                // R24's idle-at-dock resume dispatches again -> fails again. The drone hovers over
-                // the dock flickering Idle/Unreachable forever, the plot stays Unworked, and
-                // unassigning does not help because the loop is not driven by the assignment.
+            while (this.strategy.TryGetNextTarget(out var plot))
+            {
+                if (++plotsProbed > MaxPlotsProbedPerDispatch) break;
+
+                var centre = new PlotPos(plot.X, plot.Z).CenterWorldPos;
+                var candidate = new Vector3(centre.x, this.Parent.Position.Y, centre.y);
+
+                // The dock's columns are exempt on the way OUT as well as the way home: the
+                // drone starts parked on the pad, and every pad cell reports occupied, so
+                // without this its first step off the dock has nowhere legal to go. The
+                // target itself is not in the set, so this cannot make an occupied
+                // destination legal -- a survey point inside someone's building still fails.
                 //
-                // A mining drone hits this where a survey drone never did: it digs the shaft that
-                // makes its own destination unpathable, so the exact trip that worked on the way
-                // out fails on the way back (live pass #7 -- "dispatched to area point 302,617"
-                // then "no path ... to area point 302,617", six layers apart).
-                //
-                // This does not make the plot reachable. It makes an unreachable plot a recorded
-                // skip instead of a hang, which is what the design already intended and what lets
-                // the job advance to the next plot or finish.
-                this.plotArrivalAttempts++;
-                if (this.plotArrivalAttempts > MaxPlotArrivalAttempts)
+                // Leaving the dock climbs before it travels (climbOnDeparture): the pad sits below
+                // travelling altitude, so without a climb leg of its own the drone would gain that
+                // height on the diagonal of its first horizontal step -- in a fraction of a second,
+                // which is what read as a jump. Only from the dock; a drone lifting off a work area
+                // is already at the height its route continues from.
+                if (mover.SetDestination(candidate, this.HomeDock.OccupiedColumns,
+                                         climbOnDeparture: this.IsAtHomeDock()))
                 {
-                    this.plotArrivalAttempts = 0;
-                    this.strategy?.OnArrivalFailed();
+                    started = candidate;
+                    break;
                 }
 
-                this.HandleNoPath(mover);
+                this.strategy.OnArrivalFailed();
+            }
+
+            if (started == null)
+            {
+                // Nothing to go to. Before reading that as a failure, ask the strategy whether it
+                // had anything to offer in the first place.
+                //
+                // Assigning a mining drone to an already-mined area is a legitimate question --
+                // "is there anything left here, or does it need re-surveying?" -- and the answer
+                // is a completed job and a docked drone, not a no-path. MiningJob.TryComplete
+                // already reaches Complete on the first tick (no plot is surveyed-fresh, so none
+                // is offered); it was the lifecycle that turned that answer into Unreachable by
+                // treating an empty target list as a routing failure.
+                //
+                // A full hold lands here too and wants the same handling: the drone belongs at its
+                // dock, not routed through no-path. Only the wording differs.
+                if (this.strategy.IsComplete)
+                {
+                    this.LastDispatchNote = this.strategy.IsExhausted
+                        ? "nothing left to mine here -- re-survey the area to go deeper"
+                        : "hold full -- returning to unload";
+
+                    this.HomeDock.PersistMiningJob();
+
+                    if (this.IsAtHomeDock()) this.SettleAtDockIfHome(mover);
+                    else this.BeginReturnToDock(mover, viaDistrictCleared: true);
+
+                    return;
+                }
+
+                // Nothing was reachable. Which of two things that means depends on whether this
+                // assignment has EVER got the drone somewhere.
+                if (plotsProbed > 0 && !this.reachedAssignedAreaOnce)
+                {
+                    // Every plot tried, none reachable, and none ever was. That is a property of
+                    // the area rather than a run of bad luck, so it is reported at once instead of
+                    // after three rounds of the same discovery.
+                    this.LastDispatchNote = "no plot in the assigned area can be reached";
+                    this.consecutiveDispatchFailures = MaxConsecutiveDispatchFailures;
+                    this.HandleNoPath(mover);
+                    return;
+                }
+
+                this.LastDispatchNote = plotsProbed > 0
+                    ? "every remaining plot is unreachable"
+                    : "assigned area has no plot to target";
+
+                this.FailDispatch(mover);
                 return;
             }
+
+            var target = started.Value;
+            this.reachedAssignedAreaOnce = true;
+            this.plotArrivalAttempts = 0;
 
             // Hold on the pad until the take-off sequence has played. The path is already
             // computed, so a failure above is still reported now rather than after the wait.
@@ -584,6 +778,57 @@ namespace Eco.Mods.TechTree
             mover.HoldFor(this.IsAtHomeDock() ? TakeOffLeadInSeconds : WorkExitLeadInSeconds);
 
             this.LastDispatchNote = $"dispatched to area point {target.X:F0},{target.Z:F0}";
+        }
+
+        /// <summary>Seconds since the last tick, or a plausible fallback when the manager has not measured one yet.</summary>
+        private static float TickDeltaSeconds()
+        {
+            var manager = ServiceHolder<IWorldObjectManager>.Obj;
+            return manager != null && manager.TickDeltaTime > 0f
+                ? manager.TickDeltaTime
+                : FallbackTickDeltaSeconds;
+        }
+
+        /// <summary>
+        /// Whether the idle-at-dock resume may try again this tick.
+        ///
+        /// Always yes until the budget runs out; after that, once per
+        /// <see cref="BlockedDispatchRetryIntervalSeconds"/>. The slow retry matters: the only
+        /// thing that can turn an unreachable area reachable is the world changing -- a pit filled
+        /// in, an obstruction cleared -- so giving up permanently would need a player to notice and
+        /// reassign, while retrying every tick is the loop this exists to stop.
+        /// </summary>
+        private bool DispatchBudgetAllowsRetry()
+        {
+            if (!this.CannotReachAssignedArea) return true;
+
+            this.secondsSinceDispatchBlocked += TickDeltaSeconds();
+            if (this.secondsSinceDispatchBlocked < BlockedDispatchRetryIntervalSeconds) return false;
+
+            // Spend the wait and allow exactly one attempt. If it fails it lands back here with a
+            // fresh timer rather than a shorter one.
+            this.secondsSinceDispatchBlocked = 0f;
+            return true;
+        }
+
+        /// <summary>
+        /// A dispatch attempt failed to get the drone moving. Spends one unit of the budget, then
+        /// hands off to the ordinary no-path handling.
+        ///
+        /// The budget is what makes the loop terminate. Every failure path here ends the same way
+        /// -- Unreachable, an immediate return leg that trivially succeeds because the drone never
+        /// left its dock, arrival, Idle -- and Idle at the dock with an unfinished job is a
+        /// dispatch condition (R24). So the drone re-dispatched, failed identically, and cycled
+        /// once a second forever: red [unreachable], then idle, then red again.
+        ///
+        /// Previous fixes each removed a CAUSE of the first failure. None of them removed the
+        /// cycle, so the next cause to come along reproduced it exactly -- most recently a survey
+        /// drone pointed at a plot inside an eighteen-layer pit.
+        /// </summary>
+        private void FailDispatch(DroneMoverComponent mover)
+        {
+            this.consecutiveDispatchFailures++;
+            this.HandleNoPath(mover);
         }
 
         /// <summary>
@@ -600,7 +845,7 @@ namespace Eco.Mods.TechTree
 
         /// <summary>The job kind this drone's declared tool selects (KTD3), or null for an undeclared/unrecognised tool.</summary>
         private DroneJobKind? CurrentJobKind() =>
-            this.Parent is IDroneToolbearer bearer ? DroneJobSelection.SelectFor(bearer.Tool) : null;
+            this.Parent is IDroneToolbearer bearer ? bearer.Job : null;
 
         /// <summary>The change-detection token for whichever assignment this drone's job kind reads (U10).</summary>
         private string CurrentAssignedToken() =>
@@ -614,9 +859,28 @@ namespace Eco.Mods.TechTree
         /// (KTD2's three-outcome policy -- a not-yet-resolved or already-invalidated
         /// reference reports no area, same as an unresolved survey assignment).
         /// </summary>
-        private SurveyArea CurrentTargetArea(out string noAreaReason)
+        private SurveyArea CurrentTargetArea(out string noAreaReason) =>
+            this.CurrentTargetArea(out noAreaReason, out _);
+
+        /// <summary>
+        /// As <see cref="CurrentTargetArea(out string)"/>, but also reports the reason the
+        /// assignment is <em>terminally</em> unusable, rather than merely unresolved this tick.
+        ///
+        /// Runs the same <see cref="AreaResolutionPolicy"/> the mining strategy runs, and that
+        /// agreement is the point. This method used to test only the lookup signal while the
+        /// strategy tested the signal AND the change token, so the two disagreed about what a
+        /// live assignment is: the looser test decided whether to fly, the stricter one decided
+        /// whether to work, and a drone cleared to fly but not to work parks on its plot
+        /// forever with the mining animation running and a job that never leaves Idle.
+        ///
+        /// KTD2's three outcomes exist to separate deletion from a load-ordering miss; folding
+        /// both into a bare null also made a deleted area read as a routing failure, and
+        /// routing failures are retried forever by design.
+        /// </summary>
+        private SurveyArea CurrentTargetArea(out string noAreaReason, out MiningEndReason? terminalReason)
         {
             noAreaReason = null;
+            terminalReason = null;
 
             if (this.CurrentJobKind() == DroneJobKind.Mining)
             {
@@ -627,13 +891,35 @@ namespace Eco.Mods.TechTree
                     return null;
                 }
 
-                if (reference.Resolve(out _, out var miningEntry) != AreaLookupSignal.Found)
-                {
-                    noAreaReason = "assigned mining area did not resolve";
-                    return null;
-                }
+                var signal = reference.Resolve(out _, out var miningEntry);
+                var outcome = AreaResolutionPolicy.Resolve(
+                    signal,
+                    reference.StoredChangeToken,
+                    miningEntry == null ? null : MiningAreaRef.CurrentChangeToken(miningEntry));
 
-                return miningEntry.ToSurveyArea();
+                switch (outcome)
+                {
+                    case AreaResolutionOutcome.StillValid:
+                        return miningEntry.ToSurveyArea();
+
+                    case AreaResolutionOutcome.Invalidated:
+                        if (signal == AreaLookupSignal.ConfirmedGone)
+                        {
+                            noAreaReason = "assigned mining area is gone";
+                            terminalReason = MiningEndReason.AreaGone;
+                        }
+                        else
+                        {
+                            noAreaReason = "assigned mining area was redrawn";
+                            terminalReason = MiningEndReason.AreaRedrawn;
+                        }
+
+                        return null;
+
+                    default:
+                        noAreaReason = "assigned mining area did not resolve";
+                        return null;
+                }
             }
 
             var entry = this.HomeDock.AssignedSurveyArea;
@@ -650,8 +936,12 @@ namespace Eco.Mods.TechTree
         /// The v1 mining tier's shaft depth (R12, KD4) -- matches the survey drone's own
         /// sensor reach, which is not a coincidence: a plot is worth the same depth to
         /// either drone kind at this tier.
+        ///
+        /// Read from <see cref="DroneTier"/> rather than declared here, because the pathfinder's
+        /// step height is derived from the same number and the two must not drift: a drone whose
+        /// shaft is deeper than its descent limit cannot re-enter the hole it just dug.
         /// </summary>
-        private const int MiningTierDepth = 15;
+        private const int MiningTierDepth = DroneTier.MiningShaftDepth;
 
         /// <summary>
         /// Approximate hold capacity in items (KTD5: roughly 400-500 items per trip across
@@ -666,11 +956,24 @@ namespace Eco.Mods.TechTree
         {
             if (this.CurrentJobKind() == DroneJobKind.Mining)
             {
+                // A job's ledger is keyed to its area's plots, so it cannot be carried across a
+                // reassignment -- the outcomes would be recorded against plot coordinates from
+                // a different area. Zero reads as "unknown" (a save predating the field) and
+                // resumes, because discarding real progress is worse than resuming a job whose
+                // area cannot be confirmed.
+                var assignedAreaId = this.HomeDock.AssignedMiningArea?.AreaId ?? 0;
+                var jobIsForAnotherArea =
+                    this.HomeDock.MiningJobAreaId != 0 && this.HomeDock.MiningJobAreaId != assignedAreaId;
+
                 var job = this.HomeDock.MiningJob;
-                if (job == null || job.Status == MiningJobStatus.Complete || job.Status == MiningJobStatus.Ended)
+                if (job == null
+                    || job.Status == MiningJobStatus.Complete
+                    || job.Status == MiningJobStatus.Ended
+                    || jobIsForAnotherArea)
                 {
                     job = new MiningJob(area.EnumeratePlots());
                     this.HomeDock.MiningJob = job;
+                    this.HomeDock.MiningJobAreaId = assignedAreaId;
                 }
 
                 if (this.HomeDock.AssignedMiningArea == null
@@ -700,35 +1003,32 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// The point inside <paramref name="area"/> nearest <paramref name="anchor"/>, by
-        /// enumerating the area's
-        /// own plots and converting each to its world center via
-        /// <see cref="PlotPos.CenterWorldPos"/>. Returns the anchor unchanged when it is already
-        /// inside the area. No distance cap; keeps the anchor's Y (the pathfinder is
-        /// ground-following, so only X/Z matter).
+        /// The assigned area is terminally unusable -- confirmed gone (AE7: the survey dock
+        /// that published it was picked up, or the area was deleted) or redrawn under the job.
+        /// Ends the job with a named reason and brings the drone home; the hold is left
+        /// untouched, so what it already mined is kept.
+        ///
+        /// Deliberately NOT <see cref="HandleNoPath"/>. Routing that back through the
+        /// no-path path is what produced the observed hang: Unreachable, an immediate return
+        /// leg to the dock the drone was already standing on, arrival, Idle, and then R24's
+        /// idle-at-dock resume dispatching straight back into the same missing area. The job
+        /// never ended, so the strategy never read complete, so the resume never stopped --
+        /// the drone bobbed beside its dock indefinitely while the panel showed an idle job
+        /// with no stop reason.
         /// </summary>
-        private static Vector3? ResolveDestinationInArea(SurveyArea area, Vector3 anchor)
+        private void EndJobForMissingArea(DroneMoverComponent mover, MiningEndReason reason)
         {
-            if (area.ContainsWorldColumn((int)MathF.Round(anchor.X), (int)MathF.Round(anchor.Z), PlotUtil.PropertyPlotLength))
-                return anchor;
+            this.HomeDock.MiningJob?.End(reason);
+            this.HomeDock.PersistMiningJob();
 
-            var bestDistanceSq = float.MaxValue;
-            Vector3? best = null;
-
-            foreach (var plot in area.EnumeratePlots())
+            if (this.IsAtHomeDock())
             {
-                var center = new PlotPos(plot.X, plot.Z).CenterWorldPos;
-                var dx = center.x - anchor.X;
-                var dz = center.y - anchor.Z;
-                var distanceSq = (dx * dx) + (dz * dz);
-                if (distanceSq >= bestDistanceSq)
-                    continue;
-
-                bestDistanceSq = distanceSq;
-                best = new Vector3(center.x, anchor.Y, center.y);
+                // Already home. Settle in place rather than flying a zero-length return leg.
+                this.SettleAtDockIfHome(mover);
+                return;
             }
 
-            return best;
+            this.BeginReturnToDock(mover, viaDistrictCleared: true);
         }
 
         /// <summary>
@@ -872,18 +1172,13 @@ namespace Eco.Mods.TechTree
             // the dock it just set out from.
             if (this.IsAtHomeDock())
             {
-                this.stateMachine.OnReturnedToDock();
-                this.strategy?.OnArrivedHome();
-                this.ResetReturnLadder(mover);
+                this.SettleAtDockIfHome(mover);
                 return;
             }
 
             if (mover.IsMoving) return; // a return leg is in flight; let it fly.
 
-            var manager = ServiceHolder<IWorldObjectManager>.Obj;
-            var deltaTime = manager != null && manager.TickDeltaTime > 0f
-                ? manager.TickDeltaTime
-                : FallbackTickDeltaSeconds;
+            var deltaTime = TickDeltaSeconds();
 
             this.secondsSinceLastReturnRetry += deltaTime;
             if (this.secondsSinceLastReturnRetry < ReturnRetryIntervalSeconds)
@@ -891,6 +1186,48 @@ namespace Eco.Mods.TechTree
 
             this.secondsSinceLastReturnRetry = 0f;
             this.AttemptReturnLegOnly(mover);
+        }
+
+        /// <summary>
+        /// How far off the park point the drone may sit before settling snaps it down. Squared,
+        /// to keep the comparison off the square root.
+        /// </summary>
+        private const float ParkSnapToleranceSquared = 0.25f * 0.25f;
+
+        /// <summary>
+        /// Turns a drone that is home in POSITION into one that is home in every sense: parked on
+        /// the pad, Idle, return ladder reset. No-op when it is not at the dock.
+        ///
+        /// A flown return leg lands by itself -- its final waypoint IS the park position. The paths
+        /// that END at the dock without flying one do not: a no-path result stops the mover wherever
+        /// the drone happens to be, and an unassignment while already home never moves it at all.
+        /// Both leave it at travelling altitude above the pad, where the panel reads docked and the
+        /// model hovers.
+        ///
+        /// Snapping rather than pathing down, deliberately. The drone is already over its own dock;
+        /// a landing leg here would ask the pathfinder to route into the dock's own occupied columns
+        /// to travel a metre or two, which is the case that produced no-path results in the first
+        /// place.
+        /// </summary>
+        private void SettleAtDockIfHome(DroneMoverComponent mover)
+        {
+            if (!this.IsAtHomeDock()) return;
+
+            var park = this.HomeDock.DroneParkPosition;
+            var here = this.Parent.Position;
+            var dx = here.X - park.X;
+            var dy = here.Y - park.Y;
+            var dz = here.Z - park.Z;
+
+            if ((dx * dx) + (dy * dy) + (dz * dz) > ParkSnapToleranceSquared)
+                mover.TeleportTo(park);
+            else
+                mover.Stop();
+
+            this.stateMachine.OnReturnedToDock();
+            this.strategy?.OnArrivedHome();
+            this.ResetReturnLadder(mover);
+            this.workEntryPlot = null;
         }
 
         /// <summary>
@@ -993,6 +1330,7 @@ namespace Eco.Mods.TechTree
             if (!dronePlot.Equals(plot))
             {
                 // Travelling to this plot's centre. Keep going while already moving.
+                this.workEntryPlot = null;
                 if (mover.IsMoving)
                     return;
 
@@ -1017,6 +1355,18 @@ namespace Eco.Mods.TechTree
                 }
                 return;
             }
+
+            // Arm out before the ground changes. Arming is per plot, not per area: every hop
+            // stows the arm on the way out (see the WorkExitLeadInSeconds hold above), so every
+            // arrival has to deploy it again.
+            if (this.workEntryPlot == null || !this.workEntryPlot.Value.Equals(plot))
+            {
+                this.workEntryPlot = plot;
+                mover.HoldFor(WorkEntryLeadInSeconds);
+                return;
+            }
+
+            if (mover.IsHolding) return;
 
             this.plotArrivalAttempts = 0;
             var outcome = this.strategy.TickParkedWork();

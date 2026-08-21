@@ -145,6 +145,42 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
+        public void EndingFromIdle_EndsTheJob_SoAJobThatNeverSetOutCanStillStop()
+        {
+            // The state a job sits in until its first dispatch succeeds. A job whose area was
+            // deleted before it ever set out must be able to end here, or it reports itself
+            // neither finished nor stoppable and the lifecycle re-dispatches it forever.
+            var job = new MiningJob(new[] { P00, P10 });
+
+            Assert.Equal(MiningJobStatus.Idle, job.Status);
+            job.End(MiningEndReason.AreaGone);
+
+            Assert.Equal(MiningJobStatus.Ended, job.Status);
+            Assert.Equal(MiningEndReason.AreaGone, job.EndReason);
+        }
+
+        [Fact]
+        public void EndingFromTerminalStates_IsIgnored_SoAFinishedJobIsNotRelabelled()
+        {
+            var completed = new MiningJob(new[] { P00 });
+            completed.Dispatch();
+            completed.MarkWorked(P00);
+            Assert.True(completed.TryComplete(AllSurveyed));
+
+            completed.End(MiningEndReason.AreaGone);
+            Assert.Equal(MiningJobStatus.Complete, completed.Status);
+            Assert.Null(completed.EndReason);
+
+            var ended = new MiningJob(new[] { P00 });
+            ended.Dispatch();
+            ended.End(MiningEndReason.Halted);
+            ended.End(MiningEndReason.AreaGone);
+
+            Assert.Equal(MiningJobStatus.Ended, ended.Status);
+            Assert.Equal(MiningEndReason.Halted, ended.EndReason);
+        }
+
+        [Fact]
         public void ReMarkingAlreadyWorkedPlot_IsIdempotent_DoesNotInflateCount()
         {
             var job = new MiningJob(new[] { P00 });
@@ -194,6 +230,24 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal(PlotOutcome.Skipped, rehydrated.OutcomeOf(P10));
             Assert.Equal(job.SkipCountsByCategory()[SkipCategory.Property], rehydrated.SkipCountsByCategory()[SkipCategory.Property]);
         }
+
+        [Fact]
+        public void AFreshJobOverAnAlreadyMinedArea_CompletesImmediatelyWithNothingWorked()
+        {
+            // The player's "is there anything left here?" check: assign a mining drone to an area
+            // it already worked out and let it answer. Nothing is surveyed-fresh, so nothing is
+            // offered, and the job is finished on its first tick rather than idle with no target.
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+
+            Assert.True(job.TryComplete(NoneSurveyed));
+            Assert.Equal(MiningJobStatus.Complete, job.Status);
+            Assert.Equal(0, job.WorkedCount);
+            Assert.Equal(0, job.SkippedCount);
+            Assert.Null(job.NextPlot(NoneSurveyed));
+        }
+
+        private static bool NoneSurveyed(PlotCoord plot) => false;
 
         [Fact]
         public void TryComplete_NoOp_WhenNotWorking()

@@ -201,6 +201,9 @@ namespace Eco.Mods.TechTree
         /// <summary>The mining arm. A class constant, never stored.</summary>
         public DroneTool Tool => DroneTool.Mining;
 
+        /// <summary>Mining -- the one drone whose arm and job happen to agree.</summary>
+        public DroneJobKind Job => DroneJobKind.Mining;
+
         /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
         partial void ModsPreInitialize();
         /// <summary>Hook for mods to customize WorldObject after initialization.</summary>

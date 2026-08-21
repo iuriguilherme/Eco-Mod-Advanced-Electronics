@@ -58,69 +58,148 @@ namespace AdvancedElectronics.Navigation
         /// <summary>Total position count across every layer.</summary>
         public int TotalPositionCount { get; }
 
+        /// <summary>
+        /// The deepest Y this plan reaches, or null for an empty plan. This is the pass's floor:
+        /// the caller records it when the shaft starts, so a shaft interrupted and re-planned
+        /// against the excavated ground still stops where the original pass would have.
+        /// </summary>
+        public int? FloorY { get; }
+
         private ShaftPlan(PlotCoord plot, IReadOnlyList<ShaftLayer> layers)
         {
             Plot = plot;
             Layers = layers;
             TotalPositionCount = layers.Sum(l => l.Positions.Count);
+            FloorY = layers.SelectMany(l => l.Positions).Select(p => (int?)p.Y).Min();
         }
 
         /// <summary>
-        /// Builds the shaft plan for <paramref name="plot"/>. <paramref name="tierDepth"/> is the
-        /// drone tier's total layer count (KD4 — a tier property, not a caller-chosen value).
-        /// <paramref name="plotSize"/> is the mod's plot width in world blocks — the same value
-        /// <see cref="PlotCoord.FromWorldColumn"/> quantizes against (KTD7), so plot-to-world
-        /// conversion here and everywhere else in the mod agree.
+        /// Builds a pass over <paramref name="plot"/>: every block standing in the plot's 5x5
+        /// column volume, from each column's CURRENT top down to one shared floor.
+        ///
+        /// One rule, replacing the three special cases that used to live here (virgin ground,
+        /// repeat pass, resumed pass). Each of those was a different answer to "what counts as the
+        /// surface", and each got a different case wrong.
+        ///
+        /// What the rule guarantees is the shape: a clean 5x5 shaft with a flat bottom, and the
+        /// 3x3 entrance at the top as its only exception. It follows that anything standing in the
+        /// volume is removed rather than stepped over -- residue left by an earlier pass that cut
+        /// the wrong width, and backfill, which is real: minable rock never comes back, but a
+        /// player can drop dirt, sand or crushed ore into a pit, per block and in any shape.
+        ///
+        /// The floor is <c>lowest column - (tierDepth - 1)</c>, so a pass always advances the
+        /// shaft by its tier while levelling whatever is above. On a flat virgin plot this is
+        /// exactly the old plan -- 9 + 14*25 = 359 positions, the figure the Problem Frame quotes.
+        /// On a sloped virgin plot it removes MORE than the old per-column version did, because
+        /// the high side is cut down to the low side's floor rather than each column keeping its
+        /// own depth. That is the "5x5 top to bottom" guarantee costing what it costs.
+        ///
+        /// Rim columns keep their topmost block and centre columns do not: that difference IS the
+        /// entrance (KD13), and it survives every pass, so the mouth stays 3x3 no matter how many
+        /// times the plot is deepened or refilled.
+        ///
+        /// <paramref name="floorY"/> overrides the computed floor, for a pass re-planned mid-cut
+        /// after a restart: recomputing it against ground the drone has already excavated would
+        /// spend another full tier below the pit floor.
         /// </summary>
-        public static ShaftPlan Create(PlotCoord plot, int tierDepth, IWorldSampler sampler, int plotSize)
+        public static ShaftPlan Create(
+            PlotCoord plot, int tierDepth, IWorldSampler sampler, int plotSize, int? floorY = null)
         {
             if (sampler == null)
                 throw new ArgumentNullException(nameof(sampler));
+
+            ValidateShape(tierDepth, plotSize);
+
+            int baseX = plot.X * plotSize;
+            int baseZ = plot.Z * plotSize;
+            int rimMargin = (plotSize - OpeningWidth) / 2;
+
+            // Sampled ONCE. Every layer used to re-sample the same column: 350 lookups for a
+            // 5x5x15 shaft where 25 suffice.
+            var surfaceHeights = new int[plotSize * plotSize];
+            var lowest = int.MaxValue;
+            var lowestRim = int.MaxValue;
+
+            for (int dz = 0; dz < plotSize; dz++)
+            for (int dx = 0; dx < plotSize; dx++)
+            {
+                var height = (int)MathF.Round(sampler.GroundHeightAt(baseX + dx, baseZ + dz));
+                surfaceHeights[(dz * plotSize) + dx] = height;
+
+                if (height < lowest) lowest = height;
+
+                if (IsRim(dx, dz, rimMargin) && height < lowestRim) lowestRim = height;
+            }
+
+            // Two different references, and using one for both is a trap.
+            //
+            // The ENTRANCE is the lowest rim column, which is stable across passes: the rim is
+            // never cut below its lip, so on virgin ground its tops are the original surface, and
+            // afterwards they ARE the entrance this returns. Measuring it from the whole plot
+            // instead would drop it by a tier on every pass and eat the plot from the top down.
+            //
+            // The FLOOR is a tier below the lowest column of all, which is the pit floor once one
+            // exists -- so a pass advances the shaft rather than re-cutting where it already is.
+            var entranceLevel = lowestRim;
+            var floor = floorY ?? (lowest - (tierDepth - 1));
+
+            // Grouped by height, so a layer is a horizontal slice and stays the unit one game-action
+            // pack covers (KTD14). Slices are ragged by construction now -- a column whose top is
+            // already below a given height simply contributes nothing to it.
+            var byHeight = new Dictionary<int, List<BlockPos>>();
+            var highest = int.MinValue;
+
+            for (int dz = 0; dz < plotSize; dz++)
+            for (int dx = 0; dx < plotSize; dx++)
+            {
+                var isRim = IsRim(dx, dz, rimMargin);
+                var top = surfaceHeights[(dz * plotSize) + dx];
+
+                for (var y = top; y >= floor; y--)
+                {
+                    // The rim keeps exactly ONE block, and it is at the entrance level -- the same
+                    // height for all sixteen of them, not each column's own surface.
+                    //
+                    // Per-column was the obvious reading of "leave the rim standing" and it makes
+                    // a jagged lip on any slope: the mouth sits at a different height on each side,
+                    // and because every layer below is measured from the same tops, that unevenness
+                    // is copied all the way down. Pinning it to the lowest original surface means
+                    // the ground above is mined away first and the entrance comes out level, which
+                    // is what a player building a pit would do by hand.
+                    if (isRim && y == entranceLevel) continue;
+
+                    if (!byHeight.TryGetValue(y, out var slice))
+                        byHeight[y] = slice = new List<BlockPos>(plotSize * plotSize);
+
+                    slice.Add(new BlockPos(baseX + dx, y, baseZ + dz));
+                    if (y > highest) highest = y;
+                }
+            }
+
+            var layers = new List<ShaftLayer>(byHeight.Count);
+            var depth = 0;
+
+            for (var y = highest; y >= floor; y--)
+                if (byHeight.TryGetValue(y, out var slice))
+                    layers.Add(new ShaftLayer(depth++, slice));
+
+            return new ShaftPlan(plot, layers);
+        }
+
+        /// <summary>True for the columns outside the centre opening -- the ring that forms the lip.</summary>
+        private static bool IsRim(int dx, int dz, int rimMargin) =>
+            dx < rimMargin || dx >= rimMargin + OpeningWidth ||
+            dz < rimMargin || dz >= rimMargin + OpeningWidth;
+
+        private static void ValidateShape(int tierDepth, int plotSize)
+        {
             if (tierDepth <= 0)
                 throw new ArgumentOutOfRangeException(nameof(tierDepth), "tierDepth must be positive.");
             if (plotSize <= 0)
                 throw new ArgumentOutOfRangeException(nameof(plotSize), "plotSize must be positive.");
             if (plotSize < OpeningWidth)
                 throw new ArgumentOutOfRangeException(nameof(plotSize), $"plotSize must be at least {OpeningWidth} to fit the surface opening.");
-
-            int baseX = plot.X * plotSize;
-            int baseZ = plot.Z * plotSize;
-            int rimMargin = (plotSize - OpeningWidth) / 2;
-
-            var layers = new List<ShaftLayer>(tierDepth);
-
-            // Layer 0: the 3x3 surface opening, one position per centre column at that
-            // column's own topmost block. Rim columns (outside the centre square)
-            // contribute nothing here — they are left standing (KD13).
-            var surface = new List<BlockPos>(OpeningWidth * OpeningWidth);
-            for (int dz = rimMargin; dz < rimMargin + OpeningWidth; dz++)
-            for (int dx = rimMargin; dx < rimMargin + OpeningWidth; dx++)
-                surface.Add(SurfacePosition(sampler, baseX + dx, baseZ + dz));
-            layers.Add(new ShaftLayer(0, surface));
-
-            // Layers 1..tierDepth-1: the full plot width, one position per column,
-            // each column's own surface minus this layer's depth.
-            for (int depth = 1; depth < tierDepth; depth++)
-            {
-                var positions = new List<BlockPos>(plotSize * plotSize);
-                for (int dz = 0; dz < plotSize; dz++)
-                for (int dx = 0; dx < plotSize; dx++)
-                {
-                    int wx = baseX + dx, wz = baseZ + dz;
-                    int surfaceY = SurfaceY(sampler, wx, wz);
-                    positions.Add(new BlockPos(wx, surfaceY - depth, wz));
-                }
-                layers.Add(new ShaftLayer(depth, positions));
-            }
-
-            return new ShaftPlan(plot, layers);
         }
-
-        private static BlockPos SurfacePosition(IWorldSampler sampler, int x, int z) =>
-            new BlockPos(x, SurfaceY(sampler, x, z), z);
-
-        private static int SurfaceY(IWorldSampler sampler, int x, int z) =>
-            (int)MathF.Round(sampler.GroundHeightAt(x, z));
 
         /// <summary>Every position across every layer, in submission order. Recomputed per call.</summary>
         public IReadOnlyList<BlockPos> AllPositions() => Layers.SelectMany(l => l.Positions).ToList();

@@ -23,24 +23,28 @@ namespace Eco.Mods.TechTree
     /// The dock's single "Survey" tab: manage areas, choose which one the drone works on, and read
     /// any area's findings.
     ///
-    /// ONE button on the whole panel, and it is the map manager — a genuine commit action opening a
-    /// richer surface. Everything else is a value: assignment and the findings cursor are steppers.
-    /// That is the design constraint this panel is built around, and it is what collapses the layout
-    /// back to a single pane. An earlier split into Areas and Results existed only to host a second
-    /// button; with no second button there is nothing for the split to buy.
+    /// ONE selector and three buttons, mirroring the mining tab. The selector chooses which area you
+    /// are looking at AND which one Assign acts on; assignment happens only when a button is pressed.
     ///
-    /// Two things about BigButton drive that. It is the panel's COMMIT control — fixed size, not
-    /// groupable, meant to appear once — so at ~70px it costs 3.2 standard rows and leaves the
-    /// horizontal axis empty. And RPC methods render AFTER all properties whatever the declaration
-    /// order, so a button cannot serve as a top anchor even when you want one.
+    /// This panel was built around a one-button rule, and that rule has been retired deliberately.
+    /// The rule bought a compact layout and cost correctness: with assignment living on the stepper
+    /// itself, moving the stepper to read a neighbouring area's findings reassigned the working drone
+    /// to it. A player cannot browse without disturbing the drone, and no amount of layout thrift is
+    /// worth that. Three BigButtons cost roughly ten standard rows; the panel wears it.
     ///
-    /// Assignment is a stepper rather than a control per area, for a reason beyond layout: N controls
-    /// cannot share one field. The client writes back EVERY editable member as a batch on any
-    /// interaction, in declaration order, so one click on a per-area checkbox arrived as pos1=true
+    /// What the button budget was protecting against is still true and still shapes this file.
+    /// BigButton is the panel's COMMIT control — fixed size, not groupable — so at ~70px each costs
+    /// 3.2 standard rows and leaves the horizontal axis empty. And RPC methods render AFTER all
+    /// properties whatever the declaration order, so no button can serve as a top anchor.
+    ///
+    /// Selection is ONE stepper rather than a control per area, for a reason beyond layout: N
+    /// controls cannot share one field. The client writes back EVERY editable member as a batch on
+    /// any interaction, in declaration order, so one click on a per-area checkbox arrived as pos1=true
     /// followed by pos2..pos6=false and the trailing writes unassigned what the first one set —
     /// measured as six setter calls per click, dock left at id 0. Comparing against derived state to
     /// make the siblings no-ops did not save it. One member holding the value has no sibling to stomp
-    /// it, and costs one row whatever the area count.
+    /// it, and costs one row whatever the area count. That batch write-back is also why assignment
+    /// must not live in a setter at all: an RPC fires once, on purpose, when the player asks for it.
     ///
     /// Members render one per row in declaration order, so the order below IS the reading order. The
     /// numbered list sits above the steppers because their values are positions and mean nothing
@@ -53,8 +57,8 @@ namespace Eco.Mods.TechTree
         private const int MaxAreaPlots = 40; // v1 tier cap (R1b); drone-tier-owned later.
 
         /// <summary>
-        /// How many survey areas one dock may hold. A product number, not a layout budget: with both
-        /// assignment and viewing on steppers, nothing costs a row per area except the list text.
+        /// How many survey areas one dock may hold. A product number, not a layout budget: with one
+        /// selector serving both viewing and assignment, nothing costs a row per area except the list text.
         ///
         /// Ten fits: the panel measures roughly 552px against a ~605px viewport at ten areas. The
         /// worst case — ten areas AND one fully surveyed area reporting every material the drone
@@ -94,7 +98,7 @@ namespace Eco.Mods.TechTree
         private int viewIndex;
 
         // ---------------------------------------------------------------
-        // Assign
+        // Status and area list
         // ---------------------------------------------------------------
 
         /// <summary>
@@ -104,60 +108,42 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("String")]
         public string DroneStatus { get; private set; } = "none docked";
 
+        /// <summary>
+        /// Names the assigned area. Directly under the status on purpose: the two answer one
+        /// question between them -- what is the drone doing, and to what -- and reading them apart
+        /// meant scrolling past the whole area roster to find the second half.
+        /// </summary>
+        [SyncToView, Autogen, UITypeName("String")]
+        public string AssignedArea { get; private set; } = string.Empty;
+
         // StringTitle, not LinedHeader. LinedHeader and SectionHeader render the MEMBER NAME and
         // discard the value -- an earlier build of this tab showed "Assign Header" on screen.
         // StringTitle and GeneralHeader are the two that render what you assign.
         [SyncToView, Autogen, UITypeName("StringTitle")]
-        public string AssignHeader { get; private set; } = "Assign an area";
+        public string AssignHeader { get; private set; } = "Areas";
 
         /// <summary>The dock's numbered area list — what the position numbers below refer to.</summary>
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string AreasDisplay { get; private set; } = string.Empty;
 
-        /// <summary>
-        /// The area the drone works on, by position in the list above. Zero means unassigned, which
-        /// is why the range starts there — without it the player could start the drone but never stop
-        /// it, and an unassign control would cost a row for the inverse of an action already here.
-        ///
-        /// Derived from the dock rather than stored: the getter asks where the assigned area sits, so
-        /// a reassignment from chat or the map editor shows up here without this class tracking it.
-        /// `[Serialized, Eco]` is required for the write path — the attribute's decomposed forms
-        /// (`[SyncToView, Autogen, AutoRPC]`, `[Eco(false)]`) render and refresh but drop every write.
-        /// </summary>
-        [Serialized, Eco, Range(0, MaxSurveyAreas), UITypeName("Int32")]
-        public int AssignedPosition
-        {
-            get
-            {
-                if (this.Parent is not DroneDockObject dock) return 0;
-                var area = dock.AssignedSurveyArea;
-                return area == null ? 0 : dock.SurveyAreas.IndexOf(area) + 1;
-            }
-            set
-            {
-                if (!this.ready) return;                       // deserialization, not a player
-                if (this.Parent is not DroneDockObject dock) return;
-                if (this.AssignedPosition == value) return;    // batch write-back of an unchanged value
-
-                dock.AssignSurveyArea(
-                    value <= 0 || value > dock.SurveyAreas.Count ? 0 : dock.SurveyAreas[value - 1].Id);
-
-                this.RefreshAll();
-            }
-        }
-
-        /// <summary>Names the assigned area, so the position number above is not read on its own.</summary>
-        [SyncToView, Autogen, UITypeName("String")]
-        public string AssignedDisplay { get; private set; } = string.Empty;
-
         // ---------------------------------------------------------------
-        // Findings
+        // Selection and findings
         // ---------------------------------------------------------------
 
         [SyncToView, Autogen, UITypeName("StringTitle")]
-        public string FindingsHeader { get; private set; } = "Findings";
+        public string FindingsHeader { get; private set; } = "Selected area";
 
-        /// <summary>Which area's findings are shown, by position. Independent of assignment.</summary>
+        /// <summary>
+        /// The selected area, by position: whose findings are shown below, AND what
+        /// <see cref="AssignSelectedArea"/> acts on. One selector for both, matching the mining
+        /// tab's Browse Position.
+        ///
+        /// Selecting is deliberately inert with respect to the drone. This used to be two
+        /// controls, and the assigning one wrote through on every change -- so scrolling the list
+        /// to look at a neighbouring area's findings reassigned the working drone to it. Moving
+        /// the selection now changes only what you are LOOKING at; the Assign and Unassign
+        /// buttons are the only things that change what the drone does.
+        /// </summary>
         [Serialized, Eco, Range(1, MaxSurveyAreas), UITypeName("Int32")]
         public int ViewPosition
         {
@@ -212,7 +198,7 @@ namespace Eco.Mods.TechTree
         public string ResultsDisplay { get; private set; } = string.Empty;
 
         // ---------------------------------------------------------------
-        // The one button. Declared last because that is where it renders anyway.
+        // Buttons. Declared last because that is where they render anyway.
         // ---------------------------------------------------------------
 
         [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Manage Areas on Map")]
@@ -221,6 +207,28 @@ namespace Eco.Mods.TechTree
             if (this.Parent is not DroneDockObject dock) return;
             await SurveyAreaPicker.ManageAreas(player, dock, MaxAreaPlots);
             this.RefreshAll();
+        }
+
+        /// <summary>
+        /// Sends the drone to the area currently selected above (R13 -- reassignment re-paths
+        /// immediately). Assigning is an explicit act, which is the whole point of this button
+        /// existing: the selector used to assign as a side effect of being moved.
+        /// </summary>
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Assign Selected Area")]
+        public void AssignSelectedArea(Player player)
+        {
+            if (this.Parent is not DroneDockObject dock) return;
+
+            if (this.viewIndex < 0 || this.viewIndex >= dock.SurveyAreas.Count)
+            {
+                player?.MsgLocStr("No area is selected to assign.", NotificationStyle.Error);
+                return;
+            }
+
+            var area = dock.SurveyAreas[this.viewIndex];
+            dock.AssignSurveyArea(area.Id);
+            this.RefreshAll();
+            player?.MsgLocStr($"Survey area '{area.Name}' assigned.", NotificationStyle.Info);
         }
 
         /// <summary>
@@ -268,14 +276,13 @@ namespace Eco.Mods.TechTree
 
             this.DroneStatus     = BuildDroneStatus(dock);
             this.AreasDisplay    = this.BuildAreasText(dock);
-            this.AssignedDisplay = BuildAssignedText(dock);
+            this.AssignedArea = BuildAssignedText(dock);
             this.ViewingDisplay  = this.BuildViewingText(dock);
             this.ResultsDisplay  = this.BuildResultsText(dock);
 
             this.Changed(nameof(this.DroneStatus));
             this.Changed(nameof(this.AreasDisplay));
-            this.Changed(nameof(this.AssignedDisplay));
-            this.Changed(nameof(this.AssignedPosition));
+            this.Changed(nameof(this.AssignedArea));
             this.Changed(nameof(this.ViewingDisplay));
             this.Changed(nameof(this.ResultsDisplay));
             this.Changed(nameof(this.ViewPosition));
@@ -301,11 +308,44 @@ namespace Eco.Mods.TechTree
                 case DockStopReason.BrokenDrone: return "stopped -- the drone needs repair";
             }
 
-            // ToString(), not interpolation: Status is an AdvancedElectronics.Navigation.DroneStatus
-            // enum, which this component's own DroneStatus property shadows by name.
-            return drone.TryGetComponent<DroneLifecycle>(out var lifecycle)
-                ? lifecycle.Status.ToString()
-                : "docked";
+            if (!drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
+                return "docked";
+
+            // A drone that has given up reaching its area is parked, so its status enum reads
+            // Idle -- which is the physical truth and a useless thing to tell the player. Say the
+            // useful half instead; the enum keeps the other one.
+            if (lifecycle.CannotReachAssignedArea)
+                return "docked -- cannot reach the assigned area";
+
+            // Words, not the enum. "EnRoute" and "OnStation" name states in a state machine; they
+            // tell someone watching a drone nothing about what it is doing or whether to step in.
+            // "surveying" rather than the shared "at the area", because on a survey dock arriving
+            // and working are the same thing.
+            var travel = DockReadout.FormatTravel(lifecycle.Status, lifecycle.TravelTarget, atAreaLabel: "surveying");
+
+            // A docked drone with an area still assigned has not finished -- it is between plots,
+            // or waiting to set out -- and saying only "docked" invites the player to reassign it.
+            if (travel == DockReadout.DockedPhrase && dock.AssignedSurveyAreaId != 0)
+                return "docked -- waiting to set out";
+
+            return travel;
+        }
+
+        /// <summary>True when this dock's drone is currently reporting that it cannot reach its area.</summary>
+        private static bool DroneReportsUnreachable(DroneDockObject dock)
+        {
+            var drone = dock.SpawnedDrone;
+            return drone != null
+                   && !drone.IsDestroyed
+                   && drone.TryGetComponent<DroneLifecycle>(out var lifecycle)
+                   // Either actively failing to get there, or parked having given up. Both are
+                   // "the drone cannot reach this area", and only counting the first made the
+                   // marker blink in time with the retry loop.
+                   //
+                   // Fully qualified: this class has its own string property called DroneStatus,
+                   // which shadows the enum type of the same name.
+                   && (lifecycle.Status == AdvancedElectronics.Navigation.DroneStatus.Unreachable
+                       || lifecycle.CannotReachAssignedArea);
         }
 
         private string BuildAreasText(DroneDockObject dock)
@@ -318,14 +358,14 @@ namespace Eco.Mods.TechTree
             foreach (var area in dock.SurveyAreas)
                 sb.Append(DockReadout.FormatAreaLine(Snapshot(area, position++, dock))).Append('\n');
 
-            return sb.ToString();
+            return DockReadout.AtReadableSize(sb.ToString());
         }
 
         private static string BuildAssignedText(DroneDockObject dock)
         {
             var area = dock.AssignedSurveyArea;
             return area == null
-                ? "none -- set the number above to pick an area, 0 to stop"
+                ? "none -- select an area below, then Assign Selected Area"
                 : $"{dock.SurveyAreas.IndexOf(area) + 1} -- {area.Name}";
         }
 
@@ -344,7 +384,7 @@ namespace Eco.Mods.TechTree
 
             var entry = this.ViewedArea(dock);
             if (entry == null)
-                return "Draw an area on the map, then set the assign number to survey it.";
+                return "Draw an area on the map, then select it above and click Assign Selected Area.";
 
             var sb = new StringBuilder();
 
@@ -368,7 +408,7 @@ namespace Eco.Mods.TechTree
             else
             {
                 foreach (var f in findings)
-                    sb.Append(DockReadout.FormatOreLine(f)).Append('\n');
+                    sb.Append(DockReadout.FormatOreLine(f, SurveyMaterials.IconItemName(f.OreType))).Append('\n');
                 sb.Append("Coverage: ").Append(entry.CoveragePercent.ToString("F0")).Append("%\n");
             }
 
@@ -379,7 +419,9 @@ namespace Eco.Mods.TechTree
             if (dock.MaterialFilter.Count > 0)
                 sb.Append("Filtered to: ").Append(string.Join(", ", dock.MaterialFilter)).Append('\n');
 
-            return sb.ToString();
+            // Sized as one block rather than per line: the markup nests across newlines, and a
+            // single wrap cannot leave a line behind at the default size the way N wraps can.
+            return DockReadout.AtReadableSize(sb.ToString());
         }
 
         /// <summary>
@@ -411,9 +453,15 @@ namespace Eco.Mods.TechTree
                 .OrderByDescending(f => f.Count)
                 .FirstOrDefault();
 
+            var isAssigned = area.Id == dock.AssignedSurveyAreaId;
+
+            // Unreachable is a property of the trip, not the area, so only the assigned one can
+            // report it -- and only while the drone that would make the trip actually says so.
+            var isUnreachable = isAssigned && DroneReportsUnreachable(dock);
+
             return new AreaSnapshot(
                 position, area.Name, area.PlotCount, area.CoveragePercent, top,
-                area.Id == dock.AssignedSurveyAreaId);
+                isAssigned, isUnreachable);
         }
 
         // --- Material filter ---

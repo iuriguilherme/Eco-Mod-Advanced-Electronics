@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using AdvancedElectronics.Navigation;
 using Xunit;
 
@@ -87,15 +89,173 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.NotEqual(empty, full);
         }
 
+        // Driven off the enum rather than a hand-listed set, so adding a reason without
+        // wording it fails here instead of silently rendering its bare enum name at a player.
+        public static IEnumerable<object[]> AllEndReasons() =>
+            Enum.GetValues(typeof(MiningEndReason)).Cast<MiningEndReason>().Select(r => new object[] { r });
+
         [Theory]
-        [InlineData(MiningEndReason.AreaGone)]
-        [InlineData(MiningEndReason.Unassigned)]
-        [InlineData(MiningEndReason.StampInvalid)]
-        [InlineData(MiningEndReason.DevToolSelected)]
-        [InlineData(MiningEndReason.Halted)]
-        public void EveryEndReason_RendersDistinctWording(MiningEndReason reason)
+        [MemberData(nameof(AllEndReasons))]
+        public void EveryEndReason_RendersWording(MiningEndReason reason)
         {
-            Assert.False(string.IsNullOrWhiteSpace(MiningReadout.FormatStopReason(reason)));
+            var wording = MiningReadout.FormatStopReason(reason);
+
+            Assert.False(string.IsNullOrWhiteSpace(wording));
+            Assert.NotEqual(reason.ToString(), wording); // the default branch's fallback
+        }
+
+        [Fact]
+        public void EveryEndReason_RendersDistinctWording()
+        {
+            var wordings = Enum.GetValues(typeof(MiningEndReason)).Cast<MiningEndReason>()
+                .Select(r => MiningReadout.FormatStopReason(r))
+                .ToList();
+
+            Assert.Equal(wordings.Count, wordings.Distinct().Count());
+        }
+
+        private static readonly PlotCoord[] TwoPlots = { new PlotCoord(0, 0), new PlotCoord(1, 0) };
+
+        [Fact]
+        public void OfferedArea_CarriesBothMarkers_WhenAMinedAreaIsStillAssigned()
+        {
+            // A real state, not a contradiction: the pass finished and nobody unassigned it.
+            var line = MiningReadout.FormatOfferedAreaLine(1, "Survey Dock", "North Ridge", 12,
+                isAssigned: true, isMined: true);
+
+            Assert.Contains(DockReadout.AssignedMarker, line);
+            Assert.Contains(DockReadout.MinedMarker, line);
+            Assert.StartsWith("<color=green>", line);
+        }
+
+        [Fact]
+        public void OfferedArea_WithNothingSpecial_CarriesNoMarkup()
+        {
+            var line = MiningReadout.FormatOfferedAreaLine(2, "Survey Dock", "Creek Bend", 8,
+                isAssigned: false, isMined: false);
+
+            Assert.Equal("2. Survey Dock -- Creek Bend (8 plots)", line);
+        }
+
+        [Fact]
+        public void MinedOut_NeedsEveryPlotMined_AndNoneReSurveyedSince()
+        {
+            long Surveyed(PlotCoord p) => 100;
+
+            // Both plots mined after their survey: nothing to do here.
+            Assert.True(PlotFreshness.IsMinedOut(TwoPlots, Surveyed, _ => 200));
+
+            // One plot never mined: the area still has work.
+            Assert.False(PlotFreshness.IsMinedOut(TwoPlots, Surveyed, p => p.X == 0 ? 200 : 0));
+
+            // Mined, then re-surveyed to open the next tier: a whole pass is waiting.
+            Assert.False(PlotFreshness.IsMinedOut(TwoPlots, p => p.X == 0 ? 300 : 100, _ => 200));
+        }
+
+        [Fact]
+        public void MinedOut_IsFalseForAnAreaNobodyHasTouched()
+        {
+            // Both stamps 0 means no plot is mineable, which is "nothing to do" -- and reading
+            // that as "nothing left" would paint an untouched area green.
+            Assert.False(PlotFreshness.IsMinedOut(TwoPlots, _ => 0, _ => 0));
+            Assert.False(PlotFreshness.IsMinedOut(System.Array.Empty<PlotCoord>(), _ => 0, _ => 0));
+        }
+
+        [Fact]
+        public void JobStatus_WithNoAssignment_ReportsWhereTheDroneIs()
+        {
+            // The reported bug: unassigning left "working" on screen while the drone flew home.
+            // Between jobs the job word says nothing; where it is IS the status.
+            var flying = MiningReadout.FormatJobStatus(
+                MiningJobStatus.Ended, workedCount: 3, hasAssignment: false, travel: "returning to dock");
+
+            Assert.Equal("returning to dock", flying);
+            Assert.Equal(
+                "docked",
+                MiningReadout.FormatJobStatus(MiningJobStatus.Ended, 3, hasAssignment: false, travel: "docked"));
+        }
+
+        [Fact]
+        public void JobStatus_WithAnAssignment_ComposesBothHalves()
+        {
+            Assert.Equal(
+                "complete -- returning to dock",
+                MiningReadout.FormatJobStatus(MiningJobStatus.Complete, 4, hasAssignment: true, travel: "returning to dock"));
+        }
+
+        [Fact]
+        public void JobStatus_DropsTravelThatRepeatsTheJobWord()
+        {
+            // "working -- at the area" is noise: being at the area is what working means.
+            Assert.Equal(
+                "working",
+                MiningReadout.FormatJobStatus(MiningJobStatus.Working, 1, hasAssignment: true, travel: "at the area"));
+
+            Assert.Equal(
+                "idle -- waiting to set out",
+                MiningReadout.FormatJobStatus(MiningJobStatus.Idle, 0, hasAssignment: true, travel: "docked"));
+        }
+
+        [Theory]
+        [InlineData(DroneStatus.Idle, DroneTravelTarget.None, "docked")]
+        [InlineData(DroneStatus.OnStation, DroneTravelTarget.None, "at the area")]
+        [InlineData(DroneStatus.Unreachable, DroneTravelTarget.Dock, "cannot reach the area")]
+        [InlineData(DroneStatus.EnRoute, DroneTravelTarget.Dock, "returning to dock")]
+        [InlineData(DroneStatus.EnRoute, DroneTravelTarget.District, "flying to the area")]
+        public void Travel_NamesEachPlaceTheDroneCanBe(DroneStatus status, DroneTravelTarget target, string expected)
+        {
+            Assert.Equal(expected, DockReadout.FormatTravel(status, target));
+        }
+
+        [Fact]
+        public void Travel_LetsTheCallerNameWhatBeingAtTheAreaMeans()
+        {
+            // On a survey dock, arriving and working are the same thing, so "at the area" is a
+            // worse word than "surveying". Only that one state differs between the two docks.
+            Assert.Equal(
+                "surveying",
+                DockReadout.FormatTravel(DroneStatus.OnStation, DroneTravelTarget.None, atAreaLabel: "surveying"));
+
+            Assert.Equal(
+                "returning to dock",
+                DockReadout.FormatTravel(DroneStatus.EnRoute, DroneTravelTarget.Dock, atAreaLabel: "surveying"));
+        }
+
+        [Fact]
+        public void Travel_NeverRendersARawStateMachineName()
+        {
+            // "EnRoute" and "OnStation" name states in a state machine. A player watching a drone
+            // learns nothing from either.
+            foreach (DroneStatus status in Enum.GetValues(typeof(DroneStatus)))
+            foreach (DroneTravelTarget target in Enum.GetValues(typeof(DroneTravelTarget)))
+            {
+                var text = DockReadout.FormatTravel(status, target);
+                if (string.IsNullOrEmpty(text)) continue;
+
+                Assert.NotEqual(status.ToString(), text);
+                Assert.DoesNotContain("EnRoute", text);
+                Assert.DoesNotContain("OnStation", text);
+            }
+        }
+
+        [Fact]
+        public void Progress_ReportsTheAreaTotalAlongsideWhatIsDone()
+        {
+            // "worked 2, skipped 1" leaves the player computing the denominator from the area list,
+            // and a bare "6/15" leaves them guessing what is being counted.
+            Assert.Equal(
+                "total: 12 plots, worked: 2, skipped: 1, current: 6/15 layers",
+                MiningReadout.FormatProgress(totalPlots: 12, worked: 2, skipped: 1, shaftLayersDone: 6, shaftLayersTotal: 15));
+        }
+
+        [Fact]
+        public void Progress_OmitsTheShaftWhenNoneIsOpen_RatherThanShowingZeroOfZero()
+        {
+            // Between plots there is no current shaft. "current: 0/0" reads as a stalled one.
+            var line = MiningReadout.FormatProgress(totalPlots: 12, worked: 12, skipped: 0, shaftLayersDone: 0, shaftLayersTotal: 0);
+
+            Assert.Equal("total: 12 plots, worked: 12, skipped: 0", line);
+            Assert.DoesNotContain("current", line);
         }
 
         [Fact]

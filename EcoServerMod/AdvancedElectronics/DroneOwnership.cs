@@ -49,6 +49,18 @@ namespace Eco.Mods.TechTree
     {
         /// <summary>The arm this drone's class carries. Constant for the class.</summary>
         DroneTool Tool { get; }
+
+        /// <summary>
+        /// The job this drone's class runs. Constant for the class, and deliberately SEPARATE
+        /// from <see cref="Tool"/>.
+        ///
+        /// The two were one value, with the job derived from the arm. That made the arm a
+        /// load-bearing choice: the survey drone had to declare the harvest arm because harvest
+        /// mapped to the survey job, and giving it the mining arm for looks would have handed it
+        /// a mining job. Which arm the art shows and which work the drone does are unrelated
+        /// facts, and each drone now states both.
+        /// </summary>
+        DroneJobKind Job { get; }
     }
 
     /// <summary>

@@ -45,45 +45,39 @@ namespace Eco.Mods.TechTree
         private bool ready;
         private int browseIndex;
 
-        [SyncToView, Autogen, UITypeName("String")]
-        public string AssignedAreaDisplay { get; private set; } = string.Empty;
+        // Four rows, not nine. The member NAME is the row label, so these read "Assigned Area",
+        // "Current Owner", "Job Status", "Progress".
+        //
+        // What was dropped -- stop reason, skips by category, last refusal, shaft depth with its
+        // two stamps, and a static headroom note -- was a debugging surface that had grown on a
+        // player-facing panel, one row per fact discovered during a live pass. Every one of them
+        // is still printed by `/drone state`, which is where "why was that plot skipped" belongs.
+        // Nothing was lost, and the headroom row carried no data at all: it was a fixed sentence.
 
         [SyncToView, Autogen, UITypeName("String")]
-        public string StampedCitizenDisplay { get; private set; } = string.Empty;
+        public string AssignedArea { get; private set; } = string.Empty;
+
+        /// <summary>The citizen every removal is performed as, and who is accountable for it (R18).</summary>
+        [SyncToView, Autogen, UITypeName("String")]
+        public string CurrentOwner { get; private set; } = string.Empty;
 
         [SyncToView, Autogen, UITypeName("String")]
-        public string JobStatusDisplay { get; private set; } = string.Empty;
+        public string JobStatus { get; private set; } = string.Empty;
 
+        /// <summary>Area progress and the current plot's shaft depth, on one line.</summary>
         [SyncToView, Autogen, UITypeName("String")]
-        public string StopReasonDisplay { get; private set; } = string.Empty;
-
-        [SyncToView, Autogen, UITypeName("String")]
-        public string ProgressDisplay { get; private set; } = string.Empty;
-
-        [SyncToView, Autogen, UITypeName("String")]
-        public string SkipLineDisplay { get; private set; } = string.Empty;
-
-        /// <summary>The engine's own wording for the last refusal -- what "obstructed" will not tell you.</summary>
-        [SyncToView, Autogen, UITypeName("String")]
-        public string LastRefusalDisplay { get; private set; } = string.Empty;
-
-        /// <summary>Shaft depth reached, and the two stamps behind the mineable decision.</summary>
-        [SyncToView, Autogen, UITypeName("String")]
-        public string ShaftProgressDisplay { get; private set; } = string.Empty;
-
-        [SyncToView, Autogen, UITypeName("String")]
-        public string HeadroomDisplay { get; private set; } = string.Empty;
+        public string Progress { get; private set; } = string.Empty;
 
         [SyncToView, Autogen, UITypeName("StringTitle")]
-        public string BrowseHeader { get; private set; } = "Browse a survey dock's " + DroneDockObject.DroneAreaLabel + "s";
+        public string BrowseHeader { get; private set; } = "Available mining areas";
 
-        /// <summary>The offered survey docks and their areas, numbered -- what the position below refers to.</summary>
+        /// <summary>The offered survey docks and their areas, numbered -- what the selector below refers to.</summary>
         [SyncToView, Autogen, UITypeName("StringDisplay")]
-        public string BrowseAreasDisplay { get; private set; } = string.Empty;
+        public string AvailableAreas { get; private set; } = string.Empty;
 
-        /// <summary>Browse cursor, by position in the offered list. View-only -- it never assigns anything (R40).</summary>
+        /// <summary>Selection cursor, by position in the offered list. View-only -- it never assigns anything (R40).</summary>
         [Serialized, Eco, Range(0, MaxBrowsePositions), UITypeName("Int32")]
-        public int BrowsePosition
+        public int SelectArea
         {
             get => this.browseIndex + 1;
             set
@@ -97,8 +91,8 @@ namespace Eco.Mods.TechTree
             }
         }
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Assign Browsed Area")]
-        public void AssignBrowsedArea(Player player)
+        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Assign Selected Area")]
+        public void AssignSelectedArea(Player player)
         {
             if (this.Parent is not DroneDockObject dock) return;
 
@@ -185,54 +179,104 @@ namespace Eco.Mods.TechTree
             var offered = this.OfferedAreas().ToList();
             this.browseIndex = DockReadout.ClampCursor(this.browseIndex, offered.Count);
 
-            this.BrowseAreasDisplay = offered.Count == 0
-                ? "No survey docks with an area were found."
-                : string.Join("\n", offered.Select((o, i) => $"{i + 1}. {o.Dock.Name} -- {o.Area.Name} ({o.Area.PlotCount} plots)"));
+            var assigned = dock.AssignedMiningArea;
 
-            var reference = dock.AssignedMiningArea;
-            this.AssignedAreaDisplay = reference == null ? "none" : this.DescribeAssignment(dock, reference);
+            this.AvailableAreas = DockReadout.AtReadableSize(offered.Count == 0
+                ? "No survey docks with an area were found."
+                : string.Join("\n", offered.Select((o, i) => MiningReadout.FormatOfferedAreaLine(
+                    i + 1, o.Dock.Name, o.Area.Name, o.Area.PlotCount,
+                    isAssigned: assigned != null
+                                && assigned.OwningDockId == o.Dock.ObjectID
+                                && assigned.AreaId == o.Area.Id,
+                    isMined: IsMinedOut(dock, o.Area)))));
+
+            var reference = assigned;
+            this.AssignedArea = reference == null ? "none" : this.DescribeAssignment(dock, reference);
 
             var citizen = dock.StampedCitizen;
-            this.StampedCitizenDisplay = citizen == null ? "unstamped" : citizen.Name;
+            this.CurrentOwner = citizen == null ? "unstamped" : citizen.Name;
 
             var job = dock.MiningJob;
 
+            var travel = TravelPhrase(dock);
+
             if (job != null)
             {
-                this.JobStatusDisplay = MiningReadout.FormatJobStatus(job.Status, job.WorkedCount, reference != null);
-                this.ProgressDisplay = $"worked {job.WorkedCount}, skipped {job.SkippedCount}";
-                this.SkipLineDisplay = MiningReadout.FormatSkipLine(job.SkipCountsByCategory(), job.SkippedCount);
+                // The halt refuses dispatch before a job exists, so a blocked reason has to be
+                // able to speak with no job present -- setting it only inside this branch is what
+                // made a halted dock silent. Folded into the status line now that the tab has no
+                // row of its own for it.
+                this.JobStatus = MiningReadout.FormatJobStatus(job.Status, job.WorkedCount, reference != null, travel);
+
+                // The shaft half only while one is actually being cut. A finished or abandoned job
+                // keeps its last layer counts, and reporting them next to "returning to dock" reads
+                // as a shaft still in progress.
+                var cutting = job.Status == MiningJobStatus.Working || job.Status == MiningJobStatus.WaitingToUnload;
+
+                // And nothing at all once the area is gone. The counts describe work on an area
+                // this dock is no longer pointed at, so leaving them up meant an unassigned dock
+                // still reporting a plot tally from the job it had just been taken off.
+                this.Progress = reference == null
+                    ? string.Empty
+                    : MiningReadout.FormatProgress(
+                        job.PlotCount, job.WorkedCount, job.SkippedCount,
+                        cutting ? job.ShaftLayersDone : 0,
+                        cutting ? job.ShaftLayersTotal : 0);
             }
             else
             {
-                this.JobStatusDisplay = "no drone docked";
-                this.ProgressDisplay = string.Empty;
-                this.SkipLineDisplay = string.Empty;
+                this.JobStatus = string.IsNullOrEmpty(travel) ? "no drone docked" : travel;
+                this.Progress = string.Empty;
             }
 
-            this.LastRefusalDisplay = MiningReadout.FormatRefusalDetail(job?.LastRefusalDetail);
-            this.ShaftProgressDisplay = job == null
-                ? string.Empty
-                : MiningReadout.FormatShaftProgress(job.ShaftLayersDone, job.ShaftLayersTotal, job.TargetSurveyedStamp, job.TargetMinedStamp);
+            var blocked = MiningReadout.FormatBlockedReason(MiningHalt.IsHalted, job?.EndReason);
+            if (!string.IsNullOrWhiteSpace(blocked))
+                this.JobStatus = blocked;
 
-            // Outside the job branch on purpose: the halt refuses dispatch before a job exists, so
-            // the case that most needs explaining is exactly the one with no job to read an end
-            // reason from. Setting this inside the branches is what made a halted dock silent.
-            this.StopReasonDisplay = MiningReadout.FormatBlockedReason(MiningHalt.IsHalted, job?.EndReason);
+            this.Changed(nameof(this.AssignedArea));
+            this.Changed(nameof(this.CurrentOwner));
+            this.Changed(nameof(this.JobStatus));
+            this.Changed(nameof(this.Progress));
+            this.Changed(nameof(this.AvailableAreas));
+            this.Changed(nameof(this.SelectArea));
+        }
 
-            this.HeadroomDisplay = "measured on unload -- see the last unload result";
+        /// <summary>Where this dock's drone is, or empty when there is no drone to ask.</summary>
+        private static string TravelPhrase(DroneDockObject dock)
+        {
+            var drone = dock.SpawnedDrone;
+            if (drone == null || drone.IsDestroyed) return string.Empty;
 
-            this.Changed(nameof(this.AssignedAreaDisplay));
-            this.Changed(nameof(this.StampedCitizenDisplay));
-            this.Changed(nameof(this.JobStatusDisplay));
-            this.Changed(nameof(this.StopReasonDisplay));
-            this.Changed(nameof(this.ProgressDisplay));
-            this.Changed(nameof(this.SkipLineDisplay));
-            this.Changed(nameof(this.LastRefusalDisplay));
-            this.Changed(nameof(this.ShaftProgressDisplay));
-            this.Changed(nameof(this.HeadroomDisplay));
-            this.Changed(nameof(this.BrowseAreasDisplay));
-            this.Changed(nameof(this.BrowsePosition));
+            return drone.TryGetComponent<DroneLifecycle>(out var lifecycle)
+                ? DockReadout.FormatTravel(lifecycle.Status, lifecycle.TravelTarget)
+                : string.Empty;
+        }
+
+        /// <summary>
+        /// Whether THIS dock has nothing left to mine in <paramref name="area"/>: every plot mined
+        /// at least once, none re-surveyed since.
+        ///
+        /// Read per dock, not per area, because the mined stamps live on the mining dock while the
+        /// surveyed stamps live on the area (KTD12). Two mining docks pointed at one survey area
+        /// therefore answer this differently, and each is right about itself.
+        /// </summary>
+        private static bool IsMinedOut(DroneDockObject dock, SurveyAreaEntry area)
+        {
+            // A completed job is the stronger signal and has to be checked first, because a plot
+            // the job SKIPPED never gets a mined stamp -- it was refused by law, or by property, or
+            // could not be reached, so nothing was removed and nothing was recorded. Judging by
+            // stamps alone, an area finished with one skip stays unmarked forever, which is the
+            // opposite of what the marker is for: the job's own verdict was "nothing left here".
+            if (dock.MiningJob?.Status == MiningJobStatus.Complete && dock.MiningJobAreaId == area.Id)
+                return true;
+
+            // Otherwise fall back to the stamps, which is what answers for an area this dock
+            // worked under an earlier job it no longer holds.
+            var surveyed = area.ReadSurveyedStamps();
+            var mined = dock.ReadMinedStamps();
+
+            return PlotFreshness.IsMinedOut(
+                area.ToSurveyArea().EnumeratePlots(), surveyed.StampFor, mined.StampFor);
         }
 
         private string DescribeAssignment(DroneDockObject dock, MiningAreaRef reference)

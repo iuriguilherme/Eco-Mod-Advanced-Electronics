@@ -211,23 +211,25 @@ Quick smoke test:
 
 1. Craft a **Drone Dock** and a **Survey Drone** (both at the Electric Machinist Table)
    and place the dock.
-2. Open the dock, **Areas** tab, click **Manage Areas on Map**. Draw one or more survey
+2. Open the dock, **Survey** tab, click **Manage Areas on Map**. Draw one or more survey
    areas, name them, confirm.
-3. Click **Assign Area 1**. The assignment line updates; clicking the same button again
-   unassigns.
+3. Set **View Position** to the area you want, then click **Assign Selected Area**. The
+   assignment line updates. **Unassign Area** stops the drone.
 4. Insert the Survey Drone item into the dock's slot — a drone spawns beside the dock and
    heads for the assigned area. Removing the item destroys the drone and resets its state.
-5. Watch the **Areas** tab for drone status, then the **Results** tab for what it found:
-   one area at a time (Previous/Next Area), with per-material quantity, location and
-   depth. **Material Targets** narrows the display; leave it empty to show everything.
+5. Watch the same tab for drone status and findings: the selector chooses which area you
+   are reading, with per-material quantity, location and depth. **Material Targets**
+   narrows the display; leave it empty to show everything.
+
+Moving the selector only changes what you are **looking at** — it never reassigns a
+working drone. Assign and Unassign are the only controls that change what the drone does.
 
 Findings persist with their area — reassigning the drone elsewhere and back does not lose
 them. Redrawing an area's geometry deliberately clears its findings (it is effectively a
 different area); renaming does not.
 
-Diagnostics available in chat: `/drone areas`, `/drone assignarea <id>` (the fallback for
-areas past the sixth assign button), `/drone results`, `/drone filter [material]`,
-`/drone state`, `/drone tags`.
+Diagnostics available in chat: `/drone areas`, `/drone assignarea <id>`, `/drone results`,
+`/drone filter [material]`, `/drone state`, `/drone tags`.
 
 The full owner-run verification protocol (all flows and acceptance checks, with verdict
 tables to fill in) is `docs/protocols/2026-07-survey-drone-manual-protocol.md`.
@@ -240,13 +242,41 @@ Known open items from code review are tracked on
 one to verify early: a server restart with a drone deployed strands it (dock/drone
 pairing state is not yet persisted).
 
+## Server administration
+
+### Stopping every mining drone at once
+
+```
+/drone haltmining on     # every mining job on the server stops before its next removal
+/drone haltmining off    # jobs resume
+```
+
+Admin-only, and server-wide by design — it is not a permission on any one dock. Mining
+drones delete terrain automatically and unattended, so a server owner needs one lever that
+reaches docks they have no access to, without hunting down their owners.
+
+What it does and does not do:
+
+- A running job stops **before its next block removal**, not mid-pack — nothing is left
+  half-removed. The drone finishes travelling, declines to mine, and returns to its dock.
+- The halt **survives a restart**. It stays on until someone turns it off.
+- The dock's Mining tab reports *"an administrator halted mining"* as the stop reason, so
+  the owner can see why their drone came home rather than filing it as a bug.
+- Surveying is unaffected. Only mining halts.
+- Nothing already mined is refunded or reverted, and hold contents are kept.
+
+Everything else about the drones follows ordinary Eco authorization: access on the
+property and on the dock object. This command is the one exception, and it exists because
+a server owner's ability to stop automated excavation should not depend on who owns it.
+
 ## Development
 
 - Server code: `EcoServerMod/README.md` (projects, version pinning, building).
 - Client assets: `docs/guides/2026-07-survey-drone-unity-prefab-guide.md` (keyboard-only
   prefab workflow, name-matching rules).
-- Tests: `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` (124 tests over
-  the pure navigation/survey/lifecycle core — no Eco dependency, so they run anywhere).
+- Tests: `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` (229 tests over
+  the pure navigation/survey/mining/lifecycle core — no Eco dependency, so they run
+  anywhere).
 - Documented learnings: `docs/solutions/` — solutions to past problems, organized by
   category with YAML frontmatter.
 - Shared vocabulary: `CONCEPTS.md`.

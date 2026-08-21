@@ -36,6 +36,9 @@ namespace Eco.Mods.TechTree
         private PlotCoord? currentShaftPlot;
         private int shaftResumeIndex;
 
+        /// <summary>The deepest Y the current pass may reach, persisted on the dock so it survives a load.</summary>
+        private int? passFloorY;
+
         /// <summary>
         /// The plot most recently handed to the lifecycle by <see cref="TryGetNextTarget"/>,
         /// whether or not the drone ever reached it.
@@ -88,10 +91,79 @@ namespace Eco.Mods.TechTree
             this.plotSize = plotSize;
             this.tierDepth = tierDepth;
             this.holdCapacity = holdCapacity;
+
+            this.RestorePassInProgress();
+        }
+
+        /// <summary>
+        /// Picks a half-cut pass back up after a load.
+        ///
+        /// Only the plot and the pass floor are restored; the plan itself is deliberately NOT
+        /// reconstructed, because a plan is meant to describe the ground as it is now. What a
+        /// re-plan cannot re-derive is how deep this pass had already committed to going, and
+        /// without it the re-plan spends a fresh tierDepth below the pit floor -- observed live
+        /// as "3x3 in layers 11-18" after restarting around layer 10.
+        /// </summary>
+        private void RestorePassInProgress()
+        {
+            if (!this.homeDock.TryReadPassInProgress(out var plot, out var floorY)) return;
+
+            this.currentShaftPlot = plot;
+            this.passFloorY = floorY;
+        }
+
+        /// <summary>
+        /// Starts a pass on <paramref name="plot"/>: plans against the current surface, and
+        /// records the floor that plan reaches so an interrupted pass stops in the same place.
+        /// </summary>
+        private void BeginPass(PlotCoord plot)
+        {
+            this.currentShaftPlan = ShaftPlan.Create(plot, this.tierDepth, this.sampler, this.plotSize);
+            this.currentShaftPlot = plot;
+            this.shaftResumeIndex = 0;
+            this.passFloorY = this.currentShaftPlan.FloorY;
+
+            if (this.passFloorY != null)
+                this.homeDock.SavePassInProgress(plot, this.passFloorY.Value);
+        }
+
+        /// <summary>
+        /// Re-enters a pass whose plan did not survive a load: re-plans against the ground as it
+        /// is NOW, clamped to the recorded floor, and without the 3x3 surface opening -- the
+        /// mouth is already cut, and layer 0 exists to open undisturbed ground.
+        /// </summary>
+        private void ResumePass(PlotCoord plot)
+        {
+            this.currentShaftPlan = ShaftPlan.Create(
+                plot, this.tierDepth, this.sampler, this.plotSize, floorY: this.passFloorY);
+
+            this.shaftResumeIndex = 0;
+        }
+
+        /// <summary>
+        /// Forgets the current pass -- the plot finished, or was skipped. NOT called when a full
+        /// hold interrupts the shaft: that keeps its resume point on purpose, so the trip home
+        /// and back re-enters the same shaft at the same layer.
+        /// </summary>
+        private void EndPass()
+        {
+            this.currentShaftPlan = null;
+            this.currentShaftPlot = null;
+            this.shaftResumeIndex = 0;
+            this.passFloorY = null;
+            this.homeDock.ClearPassInProgress();
         }
 
         /// <summary>The job this strategy is driving -- exposed for the panel (U9), which persists its snapshot on the dock.</summary>
         public MiningJob Job => this.job;
+
+        /// <summary>
+        /// Which area this strategy was built against. The lifecycle compares it with the
+        /// dock's current assignment: a strategy captures its area reference at construction,
+        /// so one built for a previous area keeps consulting that one no matter what the dock
+        /// now says.
+        /// </summary>
+        public int SourceAreaId => this.areaRef.AreaId;
 
         public bool IsComplete =>
             this.IsExhausted || this.holdFull;
@@ -118,8 +190,17 @@ namespace Eco.Mods.TechTree
             switch (outcome)
             {
                 case AreaResolutionOutcome.Invalidated:
-                    if (this.job.Status == MiningJobStatus.Working || this.job.Status == MiningJobStatus.WaitingToUnload)
-                        this.job.End(MiningEndReason.AreaGone);
+                    // No state guard: MiningJob.End owns which states are terminal. Guarding
+                    // here for Working/WaitingToUnload meant an Idle job -- the state a job is
+                    // in until its first dispatch succeeds -- could never end against a
+                    // vanished area, and an unendable job is an undispatchable one that still
+                    // reports itself dispatchable.
+                    //
+                    // The two ways to be invalidated want different words from the panel: the
+                    // area is gone, or it still exists and was reshaped under us.
+                    this.job.End(signal == AreaLookupSignal.ConfirmedGone
+                        ? MiningEndReason.AreaGone
+                        : MiningEndReason.AreaRedrawn);
                     return null;
                 case AreaResolutionOutcome.NotYetResolved:
                     return null;
@@ -144,9 +225,10 @@ namespace Eco.Mods.TechTree
                 return false;
             }
 
-            if (!this.homeDock.RecheckStamp())
+            var stampRefusal = this.homeDock.StampRefusalReason();
+            if (stampRefusal != null)
             {
-                this.job.End(MiningEndReason.StampInvalid);
+                this.job.End(stampRefusal.Value);
                 return false;
             }
 
@@ -188,9 +270,13 @@ namespace Eco.Mods.TechTree
                 if (this.job.OutcomeOf(target) != PlotOutcome.Unworked)
                     return ParkedWorkOutcome.PlotDone;
 
-                this.currentShaftPlan = ShaftPlan.Create(target, this.tierDepth, this.sampler, this.plotSize);
-                this.currentShaftPlot = target;
-                this.shaftResumeIndex = 0;
+                this.BeginPass(target);
+            }
+            else if (this.currentShaftPlan == null)
+            {
+                // Same plot, no plan: a load happened mid-pass. Re-plan against the pit as it
+                // stands, stopping at the floor this pass had already committed to.
+                this.ResumePass(target);
             }
 
             var layers = this.currentShaftPlan.LayersFrom(this.shaftResumeIndex);
@@ -210,7 +296,7 @@ namespace Eco.Mods.TechTree
                 // Every layer of this plot is done.
                 this.job.MarkWorked(target);
                 this.homeDock.RecordMinedPlot(target, NextStampCounter());
-                this.currentShaftPlot = null;
+                this.EndPass();
                 return ParkedWorkOutcome.PlotDone;
             }
 
@@ -267,7 +353,7 @@ namespace Eco.Mods.TechTree
                 // names the bucket and not the cause. Live pass #2 lost two of three plots to
                 // exactly that, with the answer already computed and thrown away here.
                 this.job.MarkSkipped(target, RefusalMapping.ToSkipCategory(result.RefusalStage), result.Message);
-                this.currentShaftPlot = null;
+                this.EndPass();
                 return ParkedWorkOutcome.PlotFailed;
             }
 
@@ -326,7 +412,7 @@ namespace Eco.Mods.TechTree
             if (plot == null) return;
 
             this.job.MarkSkipped(plot.Value, SkipCategory.Unreachable);
-            this.currentShaftPlot = null;
+            this.EndPass();
             this.lastOfferedPlot = null;
         }
 
@@ -352,6 +438,16 @@ namespace Eco.Mods.TechTree
                 this.holdFull = true;
                 this.job.OnUnloadRefused();
             }
+
+            // A finished job retires its own assignment, matching the survey drone. Only once the
+            // cargo is actually away: unassigning with a full hold would strand the load, since the
+            // retry that empties it runs off this same hook.
+            //
+            // End() is a no-op on a Complete job, so the reason recorded stays "complete" rather
+            // than being overwritten by the unassign that follows it.
+            if (this.job.Status == MiningJobStatus.Complete && this.hold.IsEmpty
+                && this.homeDock.AssignedMiningArea != null)
+                this.homeDock.UnassignMiningArea();
         }
 
         public void OnEnded(string reason)

@@ -21,7 +21,30 @@ namespace AdvancedElectronics.Navigation
         /// status alone. Reporting "no area assigned" during the second was simply false, and live
         /// pass #6 caught it saying so with mining:5:9 assigned on the same screen.
         /// </param>
-        public static string FormatJobStatus(MiningJobStatus status, int workedCount, bool hasAssignment = false)
+        public static string FormatJobStatus(
+            MiningJobStatus status, int workedCount, bool hasAssignment = false, string travel = null)
+        {
+            var job = JobWord(status, workedCount, hasAssignment);
+
+            if (string.IsNullOrEmpty(travel)) return job;
+
+            // With no assignment the job word says nothing worth reading -- the drone is between
+            // jobs, and where it is IS the status. Unassigning used to leave "working" on screen
+            // while the drone flew home.
+            if (!hasAssignment) return travel;
+
+            // "working -- at the area" is noise: being at the area is what working means.
+            if (travel == DockReadout.AtAreaPhrase
+                && (status == MiningJobStatus.Working || status == MiningJobStatus.WaitingToUnload))
+                return job;
+
+            // Likewise for a job that has not set out -- its word already says it is at the dock.
+            if (travel == DockReadout.DockedPhrase && status == MiningJobStatus.Idle) return job;
+
+            return $"{job} -- {travel}";
+        }
+
+        private static string JobWord(MiningJobStatus status, int workedCount, bool hasAssignment)
         {
             switch (status)
             {
@@ -48,6 +71,7 @@ namespace AdvancedElectronics.Navigation
                 case MiningEndReason.StampInvalid: return "the stamped citizen no longer has access";
                 case MiningEndReason.DevToolSelected: return "the stamped citizen has a permission-ignoring tool selected";
                 case MiningEndReason.Halted: return "an administrator halted mining";
+                case MiningEndReason.AreaRedrawn: return "the source area was redrawn -- reassign it to mine the new shape";
                 default: return reason.ToString();
             }
         }
@@ -68,6 +92,50 @@ namespace AdvancedElectronics.Navigation
             haltedServerWide
                 ? "an administrator has halted mining server-wide"
                 : FormatStopReason(jobEndReason);
+
+        /// <summary>
+        /// One line of the Mining tab's offered-areas list, with the same vocabulary the survey
+        /// tab's roster uses: yellow [assigned] for the one being worked, green [mined] for one
+        /// with nothing left to do until it is re-surveyed.
+        ///
+        /// The two are not exclusive and the order matters when both apply. Assigned comes first
+        /// because it answers "what is the drone doing", which a player is looking for; mined
+        /// answers "is there anything here", which they are scanning for. A mined area that is
+        /// still assigned is a real state -- the pass finished and nobody has unassigned it -- and
+        /// showing only one of the two markers would hide it.
+        /// </summary>
+        public static string FormatOfferedAreaLine(
+            int position, string dockName, string areaName, int plotCount, bool isAssigned, bool isMined)
+        {
+            var line = $"{position}. {dockName} -- {areaName} ({plotCount} plots)";
+            if (isMined) line = DockReadout.AsComplete(line);
+
+            // Appended outside the colour wrap, so each marker keeps its own.
+            if (isAssigned) line += DockReadout.AssignedMarker;
+            if (isMined) line += DockReadout.MinedMarker;
+
+            return line;
+        }
+
+        /// <summary>
+        /// The one progress line the Mining tab keeps: how much of the area is done, and how far
+        /// into the current plot's shaft the drone has got.
+        ///
+        /// Folds what used to be two rows into one. The panel carried a row per fact — progress,
+        /// skips by category, last refusal, shaft depth, stamps, headroom — which is a debugging
+        /// surface, not a player one. All of it still exists in `/drone state`, which is where a
+        /// question like "why was that plot skipped" belongs.
+        ///
+        /// The shaft half is omitted when no shaft is open, rather than shown as 0/0: between
+        /// plots there is no current shaft, and a zero there reads as a stalled one.
+        /// </summary>
+        public static string FormatProgress(int totalPlots, int worked, int skipped, int shaftLayersDone, int shaftLayersTotal)
+        {
+            var head = $"total: {totalPlots} plots, worked: {worked}, skipped: {skipped}";
+            return shaftLayersTotal > 0
+                ? $"{head}, current: {shaftLayersDone}/{shaftLayersTotal} layers"
+                : head;
+        }
 
         /// <summary>
         /// Shaft depth reached and the two stamps behind the mineable decision (KTD12).

@@ -53,6 +53,85 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.DoesNotContain("(0, 0, 0)", line);
         }
 
+        [Fact]
+        public void OreLine_WithAnIconItem_PrefixesTheMarkupWithoutDisturbingTheLine()
+        {
+            var plain = DockReadout.FormatOreLine(Finding("Sandstone", 40, 3, 5));
+            var withIcon = DockReadout.FormatOreLine(Finding("Sandstone", 40, 3, 5), "SandstoneItem");
+
+            Assert.StartsWith("<icon name='SandstoneItem'> ", withIcon);
+            Assert.EndsWith(plain, withIcon);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void OreLine_WithNoIconItem_EmitsNoMarkup(string iconItemName)
+        {
+            // A material whose item id does not resolve loses its icon rather than rendering a
+            // broken glyph, so the absent case has to stay byte-identical to the plain line.
+            var line = DockReadout.FormatOreLine(Finding("Sandstone", 40, 3, 5), iconItemName);
+
+            Assert.DoesNotContain("<icon", line);
+            Assert.Equal(DockReadout.FormatOreLine(Finding("Sandstone", 40, 3, 5)), line);
+        }
+
+        [Fact]
+        public void AtReadableSize_UsesAPercentage_BecauseABareNumberIsAbsoluteUnitsNotAMultiplier()
+        {
+            // The distinction that cost a deploy: <size=2> is two absolute units (microscopic),
+            // while a percentage scales. The wiki's 1-7 scale describes signs and chat.
+            //
+            // Asserts the FORM, not the number -- the exact percentage is a taste setting that
+            // moved from 200 to 125 after seeing it in game, and a test that pins it turns tuning
+            // into a two-file edit for no safety.
+            var sized = DockReadout.AtReadableSize("a\nb\n");
+
+            Assert.Matches(@"^<size=\d+%>a\nb\n</size>$", sized);
+            Assert.DoesNotContain("<size=2>", sized);
+        }
+
+        [Fact]
+        public void AtReadableSize_LeavesEmptyTextAlone()
+        {
+            Assert.Equal(string.Empty, DockReadout.AtReadableSize(string.Empty));
+            Assert.Null(DockReadout.AtReadableSize(null));
+        }
+
+        [Fact]
+        public void OreLine_IsNeverColoured_SoTheFindingsListStaysDefaultText()
+        {
+            // Colour in this readout is reserved for the area roster. The findings list is plain
+            // text at every coverage level, including a fully-surveyed area.
+            var line = DockReadout.FormatOreLine(Finding("IronOre", 180, 9, 22), "IronOreItem");
+
+            Assert.DoesNotContain("<color", line);
+        }
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(50f)]
+        [InlineData(100f)]
+        public void AreaSummary_IsNeverColoured_BecauseTheRosterOwnsThatDecision(float coverage)
+        {
+            // The summary is shared with compact control labels, so it stays plain and
+            // FormatAreaLine adds the roster's colour on top.
+            var summary = DockReadout.FormatAreaSummary(Area(coverage: coverage, top: Finding("Coal", 4)));
+
+            Assert.DoesNotContain("<color", summary);
+        }
+
+        [Fact]
+        public void AreaLine_ColoursAFullySurveyedArea_AndLeavesAPartialOnePlain()
+        {
+            var complete = DockReadout.FormatAreaLine(Area(coverage: 100f, top: Finding("Coal", 4)));
+            var partial = DockReadout.FormatAreaLine(Area(coverage: 99f, top: Finding("Coal", 4)));
+
+            Assert.Contains("<color=green>", complete);
+            Assert.DoesNotContain("<color=green>", partial);
+        }
+
         // --- Area summary: the three states ---
 
         [Fact]

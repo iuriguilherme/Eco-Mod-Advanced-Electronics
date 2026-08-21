@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace AdvancedElectronics.Navigation
@@ -56,5 +57,39 @@ namespace AdvancedElectronics.Navigation
     public static class PlotFreshness
     {
         public static bool IsMineable(long surveyedStamp, long minedStamp) => surveyedStamp > minedStamp;
+
+        /// <summary>
+        /// Whether an area has been worked out for now: every plot has been mined at least once,
+        /// and none has been re-surveyed since.
+        ///
+        /// Both halves are needed and each rules out a different wrong answer. Without "mined at
+        /// least once", an area nobody has surveyed reads as mined -- both its stamps are 0, so no
+        /// plot is mineable, and "nothing to do" would be mistaken for "nothing left". Without
+        /// "none mineable", an area whose floor was re-surveyed to open the next tier still reads
+        /// as finished while a whole pass is waiting to run.
+        ///
+        /// A partially mined area is deliberately neither: it has work outstanding, so it is
+        /// reported like any other area with work outstanding.
+        /// </summary>
+        public static bool IsMinedOut(
+            IEnumerable<PlotCoord> plots,
+            Func<PlotCoord, long> surveyedStamp,
+            Func<PlotCoord, long> minedStamp)
+        {
+            if (plots == null) throw new ArgumentNullException(nameof(plots));
+            if (surveyedStamp == null) throw new ArgumentNullException(nameof(surveyedStamp));
+            if (minedStamp == null) throw new ArgumentNullException(nameof(minedStamp));
+
+            var any = false;
+            foreach (var plot in plots)
+            {
+                any = true;
+                var mined = minedStamp(plot);
+                if (mined <= 0) return false;
+                if (IsMineable(surveyedStamp(plot), mined)) return false;
+            }
+
+            return any;
+        }
     }
 }

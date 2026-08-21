@@ -58,6 +58,9 @@ namespace Eco.Mods.TechTree
     /// </summary>
     [Serialized]
     [RequireComponent(typeof(PropertyAuthComponent))]
+    // Docks are worth finding again: they are placed away from a settlement, sometimes several per
+    // player, and a drone that stops reporting is a dock you now have to walk to.
+    [RequireComponent(typeof(MinimapComponent))]
     [RequireComponent(typeof(PublicStorageComponent))]
     [RequireComponent(typeof(OccupancyRequirementComponent))]
     // SurveyComponent is no longer required here (R29, R44, R45; U15) -- the survey drone
@@ -106,12 +109,32 @@ namespace Eco.Mods.TechTree
     // mining area's output can be reached -- the vanilla Store's own radius (Engine
     // Reference), shared with the waste sorters and the largest any vanilla object takes.
     // Existing docks acquire this at the next server load (U7).
-    // The dock's own subclass, not the stock component: a dock must auto-link to storage off its
-    // deed (an unowned stockpile has no deed at all), or the hold fills and every later dig is
-    // refused for lack of room. See DroneDockLinkComponent for why that is not a permission
-    // change. MIGRATION: a dock saved before this carries a stock LinkComponent; the swap is
-    // exercised on the alpha test world rather than assumed safe.
-    [RequireComponent(typeof(DroneDockLinkComponent))]
+    // The STOCK component, not a subclass of it.
+    //
+    // Per-target Take From / Put Into controls are client UI, and the vanilla comparison that
+    // isolates them is Ashlar Basalt Fireplace against Desalinator: identical component lists
+    // apart from LinkComponent vs SharedLinkComponent, and only the Desalinator renders the
+    // controls. Crafting is a second, independent route (Robotic Assembly Line has them on a
+    // plain LinkComponent) but not the only one, so a hauling machine can have them.
+    //
+    // A mod SUBCLASS of SharedLinkComponent does not, which is why this names the stock type: the
+    // controls bind to the component's own view type and a mod-defined type has none. The header
+    // still reads "(SHARED)" either way -- SharesSettingsFor is inherited -- so the header cannot
+    // be used to tell which component an object actually carries. `/drone state` prints the type.
+    //
+    // The cost is the wide auto-link default DroneDockLinkComponent existed for: this dock now
+    // defaults like every other machine, to same-deed storage only. `/drone link` remains as a
+    // fallback. A narrow default WITH a way to link beats a wide one with none.
+    [RequireComponent(typeof(SharedLinkComponent))]
+    // The flag that turns on the Storage tab's per-target Take From / Put Into controls. Empty by
+    // design -- the engine's own comment on it reads "Client will check if a storage has this
+    // component then it will enable Input/Output mode for the UI. It currently work like a flag."
+    //
+    // Nothing else grants them: not the link component's type, not crafting, not a store. A
+    // Storage Chest and a fireplace lack it and show no controls; a Desalinator gets it via
+    // FilterComponent's own RequireComponent and does. A drone dock puts cargo into linked
+    // storage, so the flag is simply true of it.
+    [RequireComponent(typeof(InOutLinkedInventoriesComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
@@ -526,7 +549,10 @@ namespace Eco.Mods.TechTree
 
             // R26: 20-block link radius, so enough linked storage to absorb a mining
             // area's output can be reached.
-            this.GetComponent<LinkComponent>().Initialize(LinkRadius);
+            //
+            // Guarded: an NRE here aborts server startup entirely rather than degrading one dock.
+            if (this.TryGetComponent<LinkComponent>(out var link))
+                link.Initialize(LinkRadius);
 
             this.ModsPostInitialize();
             {

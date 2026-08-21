@@ -340,21 +340,44 @@ namespace Eco.Mods.TechTree
             // named cargo hold, or the link component is missing. All three are reported.
             user.MsgLocStr($"  Mining assignment: {dock.AssignedMiningAreaToken ?? "(none)"}");
             var hold = dock.GetComponent(typeof(PublicStorageComponent), DroneCargo.HoldName);
-            user.MsgLocStr($"  Mining hold '{DroneCargo.HoldName}': {(hold != null ? "present" : "MISSING (blocks mining dispatch)")}");
-            user.MsgLocStr($"  Link component: {(dock.TryGetComponent<LinkComponent>(out _) ? "present" : "MISSING (blocks mining dispatch)")}");
+            // Contents, not just presence. A finished job holds its assignment until the hold is
+            // empty -- deliberately, since unassigning with cargo aboard strands it -- so "still
+            // assigned after completing" and "cannot empty the hold" are the same observation from
+            // two ends, and only this line tells them apart.
+            var holdInventory = (hold as PublicStorageComponent)?.Storage;
+            var holdSummary = holdInventory == null
+                ? "MISSING (blocks mining dispatch)"
+                : holdInventory.IsEmpty
+                    ? "present, empty"
+                    : $"present, holding {holdInventory.GroupedStacks.Sum(s => s.Quantity)} items";
+
+            user.MsgLocStr($"  Mining hold '{DroneCargo.HoldName}': {holdSummary}");
+            // The TYPE, not just presence. A dock saved before the requirement changed still
+            // carries the old component, and it renders "(SHARED)" exactly like the stock one --
+            // so the header cannot tell them apart and neither can a screenshot. Two rounds of
+            // this were spent testing a change on an object that did not have it.
+            var links = dock.GetComponents<LinkComponent>().Select(c => c.GetType().Name).ToList();
+            user.MsgLocStr(links.Count == 0
+                ? "  Link component: MISSING (blocks mining dispatch)"
+                : $"  Link component: {string.Join(" + ", links)}");
             if (dock.MiningJob is { } miningJob)
             {
                 user.MsgLocStr($"  Mining job: {miningJob.Status}, worked {miningJob.WorkedCount}, skipped {miningJob.SkippedCount}{(miningJob.EndReason.HasValue ? $", ended: {miningJob.EndReason}" : string.Empty)}");
 
-                // The counts alone repeat the panel. The refusal text is the part that is not
-                // anywhere else: "obstructed" is the removal service's catch-all for everything
-                // that was neither law nor property, so the category names the bucket and this
-                // names the cause.
-                var skipped = miningJob.SkipCountsByCategory().Where(kv => kv.Value > 0).ToList();
-                if (skipped.Count > 0)
-                    user.MsgLocStr($"  Skips by category: {string.Join(", ", skipped.Select(kv => $"{kv.Key}={kv.Value}"))}");
-                if (!string.IsNullOrWhiteSpace(miningJob.LastRefusalDetail))
-                    user.MsgLocStr($"  Last refusal: {miningJob.LastRefusalDetail}");
+                // This is now the ONLY place these are shown -- the Mining tab dropped its row per
+                // fact, which had made a player-facing panel into a debugging surface. "Obstructed"
+                // is the removal service's catch-all for everything that was neither law nor
+                // property, so the category names the bucket and the refusal text names the cause.
+                //
+                // Through MiningReadout rather than hand-rolled here, so the wording has one
+                // definition now that the panel is no longer the other caller.
+                var skipLine = MiningReadout.FormatSkipLine(miningJob.SkipCountsByCategory(), miningJob.SkippedCount);
+                if (!string.IsNullOrWhiteSpace(skipLine))
+                    user.MsgLocStr($"  Skips: {skipLine}");
+
+                var refusal = MiningReadout.FormatRefusalDetail(miningJob.LastRefusalDetail);
+                if (!string.IsNullOrWhiteSpace(refusal))
+                    user.MsgLocStr($"  {refusal}");
 
                 var shaft = MiningReadout.FormatShaftProgress(
                     miningJob.ShaftLayersDone, miningJob.ShaftLayersTotal,

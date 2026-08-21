@@ -306,6 +306,42 @@ when that data was registered** was the blocker. "Absence of vanilla precedent" 
 distinct thing, and the weakest evidence of the four: the working `GamePickerList` on a
 `WorldObjectComponent` has no vanilla precedent at all.
 
+## `<size=N>` and `<size=N%>` are different units, and the wiki documents the other one
+
+Eco's text markup (`<size=…>`, `<b>`, `<color=…>`, `<icon name='…'>`) is documented on the wiki
+under **Chat Commands**, scoped to the surfaces it names: *"These work on signs as well as in
+chat."* There it reads *"value 7 is the biggest, value 1 is standard size"* — a small ordinal
+scale. That scale does **not** carry to a `WorldObjectComponent` panel, which renders through the
+client's rich-text layer, where a bare number is an **absolute** size.
+
+The engine keeps the two forms as separate helpers, which is the tell:
+
+```csharp
+// Eco.Shared/Utils/RichTextUtils.cs:218-219
+public static string Size(int size, object inner)      => $"<size={size}>{inner}</size>";
+public static string Size(float percent, object inner) => $"<size={percent * 100.0f:0.00}%>{inner}</size>";
+```
+
+The integer overload passes the number straight through; only the float overload emits a percent.
+Nothing translates one into the other.
+
+So `<size=2>` in a panel is **two units, not double** — it shrinks the block to near-invisibility.
+Shipped that way, the readout reported as *"the size tag does nothing here"*, and the icons on the
+same lines were *"too small to be sure"* they had rendered. Both observations were the same effect:
+the tag worked, in the wrong unit, and took the icons down with it. `<size=200%>` is the panel form.
+
+Two traps in one:
+
+- **Wrong-unit failures imitate no-op failures.** A tag that renders at 2% of intended size and a
+  tag that is ignored look identical at a glance, and the first reading was "unsupported surface" —
+  which would have closed off the working route, exactly as the tag-timing misdiagnosis above did.
+- **Collateral evidence is evidence.** "The icons are too small to confirm" was the clue that the
+  block *had* been resized. A symptom sitting next to the one under test is worth reading; here it
+  contradicted the conclusion being drawn about the surface.
+
+`<icon name='ItemId'>` does render in a `StringDisplay`, at normal size, independently of any of
+this.
+
 ## A tab name with no view makes the object vanish
 
 A client view that fails to decode does not degrade to a blank tab. It takes the object's entire

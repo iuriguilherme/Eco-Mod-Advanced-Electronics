@@ -92,9 +92,9 @@ namespace Eco.Mods.TechTree
         /// Assigns this mining dock to consume <paramref name="area"/>, published by
         /// <paramref name="sourceDock"/> (R2, R3, R5, KD15), and stamps <paramref name="actingCitizen"/>
         /// as the party accountable for it (R18, R40) -- re-stamping on every reassignment,
-        /// including to the same area. Refuses the whole call (no assignment, no stamp) if
-        /// the acting citizen has a permission-ignoring tool selected (R37) or lacks full
-        /// access on this dock (R40); returns whether it succeeded.
+        /// including to the same area. Refuses the whole call (no assignment, no stamp) if the
+        /// acting citizen lacks full access on this dock (R40) or on the dock that published
+        /// the area (R39); returns whether it succeeded.
         /// </summary>
         public bool AssignMiningArea(DroneDockObject sourceDock, SurveyAreaEntry area, User actingCitizen) =>
             this.AssignMiningArea(sourceDock, area, actingCitizen, out _);
@@ -110,12 +110,6 @@ namespace Eco.Mods.TechTree
                 if (actingCitizen == null)
                 {
                     refusalReason = "no acting citizen";
-                    return false;
-                }
-
-                if (actingCitizen.DevToolSelected)
-                {
-                    refusalReason = "put away the permission-ignoring tool first";
                     return false;
                 }
 
@@ -159,17 +153,36 @@ namespace Eco.Mods.TechTree
         {
             this.AssignedMiningArea = null;
             this.miningAssignmentEpoch++;
+
+            // A job outlives its assignment otherwise, and the panel keeps reporting "working"
+            // at whatever plot count it had reached while the drone flies home to nothing.
+            this.MiningJob?.End(MiningEndReason.Unassigned);
+            this.PersistMiningJob();
         }
 
         /// <summary>
         /// Re-checks the stamped citizen against live access (KTD9 -- at each plot arrival,
-        /// not once per dispatch): full access on this dock (R33, R40), and not a
-        /// permission-ignoring tool now selected (R37). False ends the job.
+        /// not once per dispatch): a citizen is stamped, and still holds full access on this
+        /// dock (R33, R40). False ends the job.
+        ///
+        /// R37's permission-ignoring-tool test used to live here and was retired: what the
+        /// owner happens to be holding is not a property of the drone. The removal pack names
+        /// the Mining Arm as its tool and never reads the player's hands, so a dev tool could
+        /// not reach the drone's actions in the first place -- the test guarded a path that
+        /// does not exist, while being able to stop a job from anywhere in the world the
+        /// moment the owner picked something up.
         /// </summary>
-        public bool RecheckStamp()
+        public bool RecheckStamp() => this.StampRefusalReason() == null;
+
+        /// <summary>
+        /// As <see cref="RecheckStamp"/>, but names why it failed so the job can end with a
+        /// reason the panel can print rather than stopping silently.
+        /// </summary>
+        public MiningEndReason? StampRefusalReason()
         {
             var citizen = this.StampedCitizen;
-            return citizen != null && !citizen.DevToolSelected && this.HasFullAccess(citizen);
+            if (citizen == null) return MiningEndReason.StampInvalid;
+            return this.HasFullAccess(citizen) ? null : MiningEndReason.StampInvalid;
         }
 
         // ---------------------------------------------------------------
@@ -178,6 +191,49 @@ namespace Eco.Mods.TechTree
         // snapshot (U2's ToSnapshot/FromSnapshot), the live-accumulator-plus-snapshot
         // pattern the survey side already uses for findings.
         // ---------------------------------------------------------------
+
+        // ---------------------------------------------------------------
+        // The pass in progress on one plot. Held here rather than on the strategy because the
+        // strategy is a live object rebuilt from scratch on every load, while a half-cut shaft
+        // is exactly the state that must outlive one.
+        //
+        // Only the FLOOR is kept, not the plan. A pass is re-planned against whatever ground is
+        // there now -- that is the intended behaviour, and it is what lets a second pass start
+        // from a pit floor -- so the single thing a re-plan cannot re-derive is how deep this
+        // pass was already committed to going. Layout: [0] plot X, [1] plot Z, [2] floor Y.
+        // ---------------------------------------------------------------
+
+        [Serialized] private ThreadSafeList<int> passInProgress = new();
+
+        /// <summary>Records the plot being cut and the Y its pass stops at.</summary>
+        public void SavePassInProgress(PlotCoord plot, int floorY) =>
+            this.passInProgress = new ThreadSafeList<int> { plot.X, plot.Z, floorY };
+
+        /// <summary>Forgets the pass in progress -- the plot finished, or was skipped.</summary>
+        public void ClearPassInProgress() => this.passInProgress = new ThreadSafeList<int>();
+
+        /// <summary>The plot being cut and the floor its pass stops at, or false when there is none.</summary>
+        public bool TryReadPassInProgress(out PlotCoord plot, out int floorY)
+        {
+            plot = default;
+            floorY = 0;
+
+            var flat = this.passInProgress;
+            if (flat == null || flat.Count < 3) return false;
+
+            plot = new PlotCoord(flat[0], flat[1]);
+            floorY = flat[2];
+            return true;
+        }
+
+        /// <summary>
+        /// The area id the persisted job was built for, so a job is not resumed against a
+        /// different area than it was created for -- its ledger is keyed to the old area's
+        /// plots. Zero means "unknown", which is what a save written before this field
+        /// existed carries; unknown resumes rather than discarding, since discarding a
+        /// player's real progress is the worse of the two mistakes.
+        /// </summary>
+        [Serialized] public int MiningJobAreaId { get; set; }
 
         [Serialized] private int miningJobStatusValue = -1; // -1 = no job yet
         [Serialized] private int miningJobEndReasonValue = -1;

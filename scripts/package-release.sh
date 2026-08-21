@@ -44,7 +44,7 @@
 
 set -euo pipefail
 
-VERSION="0.2.0"
+VERSION="0.3.0"
 GAME_VERSION="0.14.0.0"
 FORCE=0
 
@@ -142,56 +142,80 @@ Version ${VERSION}, built for Eco ${GAME_VERSION}.
   the whole world's load with it. That risk is inherent to updating this mod and
   does not go away because a particular release happens to be gentle.
 
-  THIS VERSION, SPECIFICALLY: unlike 0.1.0, this release does not change the
-  component set of the Drone Dock or the Survey Drone, so docks and drones placed
-  by 0.1.0 are expected to load. That is a statement about what changed in the
-  code, not a guarantee about your world -- it has not been tested against every
-  0.1.0 save, and no migration exists to rescue one that does fail.
+  *** THIS VERSION SPECIFICALLY: the Drone Dock's component set CHANGED.   ***
+  *** Remove every Drone Dock with admin tools BEFORE updating, or start   ***
+  *** a fresh world.                                                      ***
 
-  BACK UP YOUR SAVE BEFORE UPDATING. If you are coming from a release older than
-  0.1.0, the 0.1.0 warning still applies in full: remove every Drone Dock and
-  Survey Drone with admin tools first, or start a fresh world.
+  Unlike 0.2.0, this release is not a gentle one for placed objects. The dock
+  gained two components and had a third replaced: its link component is now the
+  game's own shared one, so the storage links you had configured are held by a
+  component the dock no longer declares. A component a class no longer declares
+  is stripped from placed objects at the next load, together with its contents.
 
-WHAT IS NEW IN 0.2.0
+  This was observed during development, not inferred: a dock saved before the
+  change failed to initialise afterwards. That failure is now contained to the
+  dock rather than aborting server startup, but the dock itself comes up wrong --
+  no storage links, and no link radius.
 
-  THE DRONE FLIES, AND YOU CAN SEE IT
+  Survey areas and findings live on the dock too. Removing the dock discards
+  them either way; that is the cost of this update.
 
-  - The Survey Drone has a model and a full animation set. It sits docked, picks
-    its mode, lifts off, flies, works, and settles back onto its pad, driven by
-    what the drone is actually doing on the server rather than by a loop that
-    plays regardless.
-  - It flies at altitude instead of skimming the terrain, holds itself level like
-    a helicopter rather than tilting into climbs, and changes height slowly enough
-    to see.
-  - The Drone Dock is a 4x4 pad, and the drone parks on top of it rather than
-    inside it.
+  BACK UP YOUR SAVE BEFORE UPDATING.
 
-  BATTERIES
+WHAT IS NEW IN 0.3.0
 
-  - NEW ITEM: the Battery. Crafted at the Electronics Assembly from nitric acid,
-    copper concentrate and plastic at Advanced Electronics 1. One battery runs a
-    drone for about an hour, weighs 1 kg, and stacks to five -- so a dock's two
-    fuel slots hold about ten hours of surveying and a full load fits in your
-    pack alongside everything else.
-  - THE DRONE NOW BURNS BATTERIES, NOT LIQUID FUEL. A dock with a Survey Drone
-    slotted accepts only Batteries; biodiesel and gasoline are refused. Nothing
-    else about fuelling changes -- burn rate, slot count, and the recall-when-
-    empty behaviour are the same.
-  - NEW TALENT: Sulfuric Battery, one star at Advanced Electronics 3. It unlocks
-    a second Battery recipe that halves the copper by spending sulfuric acid
-    instead. The recipe is listed at the Electronics Assembly before you learn
-    the talent, marked with the talent it needs, and the original recipe stays
-    available whether you learn it or not.
-  - The Electronics Assembly now accepts the Advanced Electronics Upgrade, which
-    reduces what both Battery recipes cost. See INSTALL step 3.
+  THE MINING DRONE
+
+  - NEW DRONE: the Mining Drone, crafted at the Robotic Assembly Line. Slot it
+    into a Drone Dock and the dock grows a Mining tab instead of the Survey one.
+  - It digs a shaft per plot: a 3x3 opening at the surface and the full 5x5
+    beneath it, fifteen layers down, and it keeps everything it breaks.
+  - IT MINES AS YOU. Every removal is performed as the citizen who assigned the
+    area, using a Mining Arm carrying the game's own excavation tag. Settlement
+    laws and private property refuse it exactly as they refuse that citizen
+    digging by hand, and a refused plot is recorded with the reason rather than
+    silently skipped. A law written against excavation tools can name the Mining
+    Arm directly.
+  - It works from a survey. A mining dock consumes areas published by a SURVEY
+    dock you own, and only mines plots that dock has actually surveyed.
+  - Survey again to go deeper. One pass takes fifteen layers; re-surveying the
+    pit floor opens the next fifteen, and repeating reaches bedrock.
+  - It unloads into linked storage and waits at the dock when there is no room,
+    rather than stopping mid-area.
+
+  LINKED STORAGE ON THE DOCK
+
+  - The dock's Storage tab now has the game's own per-target Take From / Put
+    Into controls, so you choose which containers the drone unloads into. This
+    is the standard link UI, not a mod-specific one.
+
+  ADMIN CONTROL
+
+  - NEW COMMAND: /drone haltmining on|off stops every mining drone on the
+    server. Admin-only and server-wide by design -- it reaches docks you have no
+    access to, which is the point. It survives a restart, and a halted dock says
+    so. See the Server administration notes in the source README.
+
+  THE PANELS
+
+  - The Survey tab is select-then-assign: move the selector to read any area's
+    findings, then press Assign Selected Area to send the drone. Moving the
+    selector no longer redirects a working drone, which it used to.
+  - Findings list each material with its item icon, at a larger size.
+  - Areas are marked: yellow [assigned], green [mined], red [unreachable].
+  - Drone status is written in words -- "flying to the area", "surveying",
+    "returning to dock" -- instead of internal state names.
+  - Drone Docks now appear on the minimap.
+  - A survey drone unassigns itself when its sweep finishes, so a completed area
+    does not restart on the next server load.
 
   NOT IN THIS RELEASE
 
-  - A Mining Drone and a Harvest Drone exist in the code and are visible in the
-    source, but neither is craftable: their recipes are withheld because the arm
-    they carry does not yet behave correctly in flight. They are not on any bench
-    and do not appear in the Advanced Electronics tech tree. Nothing is lost by
-    waiting -- the Survey Drone is the one this release is about.
+  - The Harvest Drone exists in the source but is not craftable.
+  - Drones do not put anything back: no backfilling spoil, and no building up a
+    safety rim around a finished pit. Both need the drone to place blocks, which
+    it cannot yet do.
+  - The Advanced Electronics Assembly is still excluded from the build.
 
   This version is also known to leave orphaned objects in the world --
   drones that outlive their dock, or objects an update no longer
@@ -226,12 +250,9 @@ UPDATING -- READ THIS
   Read the save-migration warning above first. The file side of an update is
   easy; the world side is not.
 
-  NO ACTION IS NEEDED FOR FUEL. You do not have to drain your docks before
-  updating. A dock still holding biodiesel keeps burning it after the update
-  until it is spent, then reports itself out of fuel and waits for Batteries.
-  The Battery-only restriction filters what may be ADDED to a fuel tank, never
-  what may be burned from it, so leftover fuel is used rather than stranded --
-  and you can still pull it out by hand at any time.
+  TAKE YOUR FUEL AND YOUR DRONES OUT FIRST. Removing a dock discards what is
+  inside it, batteries included, so empty the fuel slots and pull the drone item
+  out before you pick the dock up.
 
   Overwriting the AdvancedElectronics folder in place is fine -- the file names
   do not change between versions, so a copy-over replaces every shipped file.
@@ -258,39 +279,47 @@ USAGE
 
   Everything is then crafted at vanilla tables:
 
-    Robotic Assembly Line   Drone Dock, Survey Drone
+    Robotic Assembly Line   Drone Dock, Survey Drone, Mining Drone
     Electronics Assembly    Battery, Sulfuric Battery, Advanced Electronics Upgrade
     Laboratory              Advanced Electronics Skill Book, research paper
 
   The Advanced Electronics Assembly is NOT in this release -- it is excluded from
   the build while its placement is unfinished, so nothing asks you to make one.
 
-  Place the dock and open its Survey tab. Use "Manage Areas on Map" to draw survey
-  areas -- up to ten per dock. The list numbers them; set "Assigned Position" to a
-  number to send the drone there, or 0 to stop it. Insert the Survey Drone item to
-  launch.
+  SURVEYING. Place a dock and open its Survey tab. Use "Manage Areas on Map" to
+  draw survey areas -- up to ten per dock. Set "View Position" to the one you
+  want and press "Assign Selected Area"; "Unassign Area" stops the drone. Insert
+  the Survey Drone item to launch.
 
-  Findings are shown one area at a time. "View Position" chooses which area you are
-  reading and is separate from the assignment, so you can check any area without
-  redirecting the drone.
+  Moving the selector only changes which area's findings you are reading. It
+  never redirects a drone that is already working.
+
+  MINING. Place a SECOND dock and slot a Mining Drone. Its Mining tab lists the
+  areas published by your survey docks -- pick one and press "Assign Selected
+  Area". The drone mines only the plots that were surveyed, and stops when it
+  runs out of them; survey the pit floor again to send it another fifteen layers
+  deeper.
+
+  Open the mining dock's Storage tab and use Take From / Put Into to choose where
+  the drone unloads. With nothing linked it fills up and waits.
 
 KNOWN ISSUES IN THIS VERSION
-  - The drone's movement and its animation are out of step at the transitions --
-    it starts travelling before the take-off has finished playing, and lands
-    without waiting for the docking animation. The server times these by counting
-    animation frames rather than by being told when a clip starts or ends, so the
-    two drift apart wherever a clip and a movement leg are supposed to line up.
-    Cosmetic only: the drone goes where it should, and does what it should when it
-    gets there.
-  - The Drone Dock is a placeholder cube, and it currently draws about a metre
-    above the volume it actually occupies. It places and works normally.
-  - No placement preview: the Drone Dock shows no ghost outline while you are
-    holding it. It still places normally.
-  - A Survey Drone can be left orphaned in the world across a server restart --
-    alive with no dock owning it. Admins can list and remove them with
-    '/drone orphans' and '/drone orphans destroy'.
-  - An area the drone cannot reach only shows as the drone's status reading
-    "Unreachable"; the area itself is not marked.
+  - Drones fly through trees, stockpiles and other placed objects. They route
+    around whatever exists when they plan a trip, and pass straight through
+    anything built afterwards. Nothing is damaged or moved -- it is a visual
+    fault only.
+  - A drone starts travelling before its take-off animation has finished. The
+    server times these by counting animation frames rather than by being told
+    when a clip ends, so the two drift apart. Cosmetic.
+  - The Drone Dock is a placeholder cube, and it draws about a metre above the
+    volume it occupies. It places and works normally.
+  - No placement preview: the Drone Dock shows no ghost outline while you hold
+    it. It still places normally.
+  - A drone can be left orphaned in the world across a server restart -- alive
+    with no dock owning it. Admins can list and remove them with '/drone orphans'
+    and '/drone orphans destroy'.
+  - Mining a plot is not reversible from inside the mod, and a worked plot is
+    left as an open pit with a 3x3 mouth. There is no fence around it.
   - Item and skill icons are flat-colour placeholders.
 
 LICENSE
