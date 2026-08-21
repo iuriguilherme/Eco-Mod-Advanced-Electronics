@@ -4,10 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Unity client project for an Eco (Strange Loop Games) game mod: "Advanced Electronics". The actual Unity project lives in the `Eco Mod Advanced Electronics/` subfolder — the git repo is rooted there, not at this workspace root. It is a fresh Eco ModKit setup; custom mod content has not been added yet.
+An Eco (Strange Loop Games) game mod: "Advanced Electronics", currently at **v0.3.0**, targeting Eco **0.14.0.3**. The repo is rooted at the `Eco Mod Advanced Electronics/` subfolder, not at the workspace root. It is public and released — pushing is publishing.
 
-- Unity **6000.3.19f1** (HDRP 17.3.0). There is no CLI build, lint, or test — all building happens inside the Unity Editor.
-- Client side only: this project produces the visual assets (prefabs, icons, block meshes) for the mod. Matching server-side C# definitions must exist on the Eco game server, and objects match by **name** — a `WorldObject` prefab name here must equal the server object name exactly.
+The mod has **two halves that ship together**, and most work touches the server half:
+
+- **Server half — `EcoServerMod/`.** C# built against Eco's server reference assemblies: world objects, items, drone behaviour, chat commands. This is where the feature logic lives. See `EcoServerMod/README.md` for the per-project breakdown.
+- **Client half — the Unity project** (`Assets/`, `Packages/`, `ProjectSettings/`). Unity **6000.3.19f1** (HDRP 17.3.0). Produces visual assets only: prefabs, icons, block meshes. No CLI build, lint, or test — all building happens inside the Unity Editor.
+
+The two halves are bound by **name**: a `WorldObject` prefab name must equal the server class name exactly. `scripts/validate-name-match.sh` checks this headlessly, without opening Unity.
+
 - Modding reference: https://wiki.play.eco/en/Mod_Development and `Assets/EcoModKit/Docs/README.md` (step-by-step for items, world objects, block sets, emoji).
 - Documented learnings: `docs/solutions/` — solutions to past problems (bugs, best practices, workflow patterns) for this mod, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`).
 - Shared vocabulary: `CONCEPTS.md` — domain terms with project-specific meaning (survey area, plot, finding, coverage, assignment); relevant when orienting to the mod or discussing its behavior.
@@ -37,6 +42,13 @@ Full catalogue, including CRLF and path-length traps:
 
 ## Layout (inside `Eco Mod Advanced Electronics/`)
 
+Top level:
+- `EcoServerMod/` — the server mod. `AdvancedElectronics/` is the shipped mod; `AdvancedElectronics.Navigation/` is a pure-C# core (pathfinding, survey grid, drone lifecycle) with **zero Eco dependency** so it is unit-testable; `AdvancedElectronics.Navigation.Tests/` is its xUnit suite; `AdvancedElectronics.Spike/` is a kept feasibility spike, not shipped. `UserCode/` holds whole-file `.override` copies of vanilla files (the escape hatch for attributes a mod assembly cannot extend).
+- `Assets/`, `Packages/`, `ProjectSettings/` — the Unity client project.
+- `scripts/` — `gather-eco-refs.sh` (build reference assemblies from an Eco source checkout), `package-release.sh`, `validate-name-match.sh`, `deploy-usercode-overrides.sh`.
+- `docs/` — `solutions/` (documented learnings), plus `plans/`, `spikes/`, `ideation/`, `guides/`, `protocols/`.
+- `dist/`, `AssetBundles/` — build output, git-ignored. **Never clear `dist/`**: a deleted release zip is gone.
+
 Stock ModKit code — treat as vendored, do not modify:
 - `Assets/EcoModKit/` — mod-facing components (`WorldObject`, `ModkitPrefabContainer`, `BlockSetContainer`, `ChatEmoteSetOld`), editor tooling, `TemplateScene.unity`
 - `Assets/EcoLibs/` — Eco client utility libraries
@@ -47,7 +59,17 @@ Mod content goes in the scene / new asset folders, following the pattern in `Ass
 
 ## Building / exporting the mod
 
-In the Unity Editor: **Eco Tools > Mod Kit** menu (implemented in `Assets/EcoModKit/Scripts/Editor/ModKitTools.cs`):
+**Server half (CLI).** Requires reference assemblies built from an Eco source checkout, pinned by `EcoRefSha` and resolved through `EcoRefAssembliesDir` in the git-ignored `EcoServerMod/AdvancedElectronics/Local.props`. There is no NuGet package for 0.14, and the shipped dedicated server embeds its assemblies, so neither is usable as a reference source.
+
+```bash
+scripts/gather-eco-refs.sh <path-to-eco-checkout>   # once, and after a game update
+dotnet build EcoServerMod/AdvancedElectronics       # expect zero errors
+dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests
+scripts/validate-name-match.sh                      # client/server name gate
+scripts/package-release.sh                          # writes dist/
+```
+
+**Client half (Unity Editor).** **Eco Tools > Mod Kit** menu (implemented in `Assets/EcoModKit/Scripts/Editor/ModKitTools.cs`):
 - "ModKit Tools…" — tag assets into a named bundle and build all bundles to `AssetBundles/`
 - "Build Current Bundle" — export the selected scene root as a `.unity3d` bundle
 
@@ -56,4 +78,4 @@ In the Unity Editor: **Eco Tools > Mod Kit** menu (implemented in `Assets/EcoMod
 - Every asset has a paired `.meta` file — keep them together when adding/moving/deleting assets; never edit GUIDs.
 - `Library/`, `Temp/`, `Logs/`, `UserSettings/`, `obj/` are generated and git-ignored — never read them for project truth or edit them.
 - Scene (`.unity`), prefab, and `.asset` files are Unity-serialized YAML; prefer making structural changes through the Unity Editor. Only hand-edit when the change is small and well understood.
-- `.csproj` / `.sln` files are generated by Unity — do not edit.
+- The **root** `.csproj` / `.sln` files are generated by Unity — do not edit. The hand-authored ones under `EcoServerMod/` are tracked source and are edited normally.
