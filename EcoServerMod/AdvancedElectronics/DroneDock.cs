@@ -58,6 +58,9 @@ namespace Eco.Mods.TechTree
     /// </summary>
     [Serialized]
     [RequireComponent(typeof(PropertyAuthComponent))]
+    // Docks are worth finding again: they are placed away from a settlement, sometimes several per
+    // player, and a drone that stops reporting is a dock you now have to walk to.
+    [RequireComponent(typeof(MinimapComponent))]
     [RequireComponent(typeof(PublicStorageComponent))]
     [RequireComponent(typeof(OccupancyRequirementComponent))]
     // SurveyComponent is no longer required here (R29, R44, R45; U15) -- the survey drone
