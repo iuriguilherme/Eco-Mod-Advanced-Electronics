@@ -102,6 +102,25 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
+        public void OrdinaryClimbHeight_ClearsTheDroneSOwnDeepestShaft()
+        {
+            // THE invariant tying the tier to the pathfinder. A pass cuts MiningShaftDepth layers
+            // below each column's surface, so re-entering that hole is a descent of at least that
+            // much -- and more where a plot's own surface is not flat, since the pass floor is its
+            // deepest column. A step limit below this means the machine cannot path back into the
+            // hole it just dug: live pass #7, "dispatched to area point 302,617" followed by
+            // "no path ... to area point 302,617" six layers later.
+            //
+            // Asserted as a relationship, not a number. The limit was 16 by hand, which is 15 + 1
+            // and correct by luck; raising the tier without raising the limit would recreate the
+            // bug a release later, where it would be far harder to recognise.
+            Assert.True(
+                ReturnEscalation.OrdinaryMaxStepHeight > DroneTier.MiningShaftDepth,
+                $"Ordinary climb height {ReturnEscalation.OrdinaryMaxStepHeight} must exceed the " +
+                $"tier's own shaft depth {DroneTier.MiningShaftDepth}, or the drone cannot re-enter its own shaft.");
+        }
+
+        [Fact]
         public void For_returns_the_ladder_entry_for_each_tier()
         {
             foreach (var attempt in ReturnEscalation.Ladder)

@@ -892,8 +892,12 @@ namespace Eco.Mods.TechTree
         /// The v1 mining tier's shaft depth (R12, KD4) -- matches the survey drone's own
         /// sensor reach, which is not a coincidence: a plot is worth the same depth to
         /// either drone kind at this tier.
+        ///
+        /// Read from <see cref="DroneTier"/> rather than declared here, because the pathfinder's
+        /// step height is derived from the same number and the two must not drift: a drone whose
+        /// shaft is deeper than its descent limit cannot re-enter the hole it just dug.
         /// </summary>
-        private const int MiningTierDepth = 15;
+        private const int MiningTierDepth = DroneTier.MiningShaftDepth;
 
         /// <summary>
         /// Approximate hold capacity in items (KTD5: roughly 400-500 items per trip across
