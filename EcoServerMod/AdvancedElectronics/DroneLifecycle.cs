@@ -129,6 +129,22 @@ namespace Eco.Mods.TechTree
         private const int MaxConsecutiveDispatchFailures = 3;
 
         /// <summary>
+        /// How many plots one dispatch may probe before giving up for this tick. Comfortably above
+        /// the 40-plot area cap, so in practice it bounds a pathological case rather than a real
+        /// one -- an entirely unreachable area costs one pathfind per plot, once, and is then
+        /// parked by the dispatch budget rather than re-probed every tick.
+        /// </summary>
+        private const int MaxPlotsProbedPerDispatch = 64;
+
+        /// <summary>
+        /// Whether the current assignment has ever got the drone moving toward a plot. Separates
+        /// "this area cannot be entered at all" from "the plots that are left cannot be entered",
+        /// which want different reports: the first is the area's problem, the second is the tail
+        /// of an otherwise normal run.
+        /// </summary>
+        private bool reachedAssignedAreaOnce;
+
+        /// <summary>
         /// How long a blocked drone waits before trying once more. Long, because the only thing
         /// that can change the answer is the world -- terrain filled in, an obstruction removed --
         /// and none of that happens on a tick boundary.
@@ -283,6 +299,7 @@ namespace Eco.Mods.TechTree
                 // says nothing about this one.
                 this.consecutiveDispatchFailures = 0;
                 this.secondsSinceDispatchBlocked = 0f;
+                this.reachedAssignedAreaOnce = false;
 
                 if (!string.IsNullOrWhiteSpace(assignedToken))
                 {
@@ -639,61 +656,77 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
-            var destination = ResolveDestinationInArea(area, this.Parent.Position);
-            if (destination == null)
-            {
-                this.LastDispatchNote = "assigned area has no plot to target";
-                this.FailDispatch(mover);
-                return;
-            }
-
-            var target = destination.Value;
-            // The dock's columns are exempt on the way OUT as well as the way home: the
-            // drone starts parked on the pad, and every pad cell reports occupied, so
-            // without this its first step off the dock has nowhere legal to go. The
-            // target itself is not in the set, so this cannot make an occupied
-            // destination legal -- a survey point inside someone's building still fails.
+            // Ask the STRATEGY where to go, not the area.
             //
-            // Leaving the dock climbs before it travels (climbOnDeparture): the pad sits below
-            // travelling altitude, so without a climb leg of its own the drone would gain that
-            // height on the diagonal of its first horizontal step -- in a fraction of a second,
-            // which is what read as a jump. Only from the dock; a drone lifting off a work area
-            // is already at the height its route continues from.
-            if (!mover.SetDestination(target, this.HomeDock.OccupiedColumns,
-                                      climbOnDeparture: this.IsAtHomeDock()))
-            {
-                this.LastDispatchNote = $"no path from {this.Parent.Position.X:F0},{this.Parent.Position.Z:F0} to area point {target.X:F0},{target.Z:F0}";
+            // This used to path to the nearest plot centre in the whole area, which had two
+            // consequences. A mining drone flew to whichever plot was closest whether or not it
+            // had been surveyed, ignoring the survey/mined freshness its own NextPlot enforces.
+            // And a plot the pathfinder could not enter was chosen again on every dispatch, since
+            // retiring it in the strategy changed nothing about what "nearest" meant -- so one
+            // walled-off plot stalled the entire area.
+            //
+            // Now each unreachable plot is retired here and the next one tried, in the strategy's
+            // own order. Retired immediately rather than after MaxPlotArrivalAttempts: within a
+            // single tick the world and the drone's position are both fixed, so re-asking the
+            // pathfinder the same question can only get the same answer. The plot-to-plot hop in
+            // TickOnStation keeps its own retry count, where the drone HAS moved in between.
+            Vector3? started = null;
+            var plotsProbed = 0;
 
-                // Count it against the SAME cap the plot-to-plot hop uses, and retire the plot when
-                // it runs out. Without this an outbound path failure was uncounted and had no exit:
-                // dispatch fails -> HandleNoPath -> Unreachable -> the retry attempts the RETURN
-                // leg, which trivially succeeds because the drone is already at its dock -> Idle ->
-                // R24's idle-at-dock resume dispatches again -> fails again. The drone hovers over
-                // the dock flickering Idle/Unreachable forever, the plot stays Unworked, and
-                // unassigning does not help because the loop is not driven by the assignment.
+            while (this.strategy.TryGetNextTarget(out var plot))
+            {
+                if (++plotsProbed > MaxPlotsProbedPerDispatch) break;
+
+                var centre = new PlotPos(plot.X, plot.Z).CenterWorldPos;
+                var candidate = new Vector3(centre.x, this.Parent.Position.Y, centre.y);
+
+                // The dock's columns are exempt on the way OUT as well as the way home: the
+                // drone starts parked on the pad, and every pad cell reports occupied, so
+                // without this its first step off the dock has nowhere legal to go. The
+                // target itself is not in the set, so this cannot make an occupied
+                // destination legal -- a survey point inside someone's building still fails.
                 //
-                // A mining drone hits this where a survey drone never did: it digs the shaft that
-                // makes its own destination unpathable, so the exact trip that worked on the way
-                // out fails on the way back (live pass #7 -- "dispatched to area point 302,617"
-                // then "no path ... to area point 302,617", six layers apart).
-                //
-                // This does not make the plot reachable. It makes an unreachable plot a recorded
-                // skip instead of a hang, which is what the design already intended and what lets
-                // the job advance to the next plot or finish.
-                this.plotArrivalAttempts++;
-                if (this.plotArrivalAttempts > MaxPlotArrivalAttempts)
+                // Leaving the dock climbs before it travels (climbOnDeparture): the pad sits below
+                // travelling altitude, so without a climb leg of its own the drone would gain that
+                // height on the diagonal of its first horizontal step -- in a fraction of a second,
+                // which is what read as a jump. Only from the dock; a drone lifting off a work area
+                // is already at the height its route continues from.
+                if (mover.SetDestination(candidate, this.HomeDock.OccupiedColumns,
+                                         climbOnDeparture: this.IsAtHomeDock()))
                 {
-                    this.plotArrivalAttempts = 0;
-                    this.strategy?.OnArrivalFailed();
+                    started = candidate;
+                    break;
                 }
 
+                this.strategy.OnArrivalFailed();
+            }
+
+            if (started == null)
+            {
+                // Nothing was reachable. Which of two things that means depends on whether this
+                // assignment has EVER got the drone somewhere.
+                if (plotsProbed > 0 && !this.reachedAssignedAreaOnce)
+                {
+                    // Every plot tried, none reachable, and none ever was. That is a property of
+                    // the area rather than a run of bad luck, so it is reported at once instead of
+                    // after three rounds of the same discovery.
+                    this.LastDispatchNote = "no plot in the assigned area can be reached";
+                    this.consecutiveDispatchFailures = MaxConsecutiveDispatchFailures;
+                    this.HandleNoPath(mover);
+                    return;
+                }
+
+                this.LastDispatchNote = plotsProbed > 0
+                    ? "every remaining plot is unreachable"
+                    : "assigned area has no plot to target";
+
                 this.FailDispatch(mover);
                 return;
             }
 
-            // A dispatch that got the drone moving clears the budget.
-            this.consecutiveDispatchFailures = 0;
-            this.secondsSinceDispatchBlocked = 0f;
+            var target = started.Value;
+            this.reachedAssignedAreaOnce = true;
+            this.plotArrivalAttempts = 0;
 
             // Hold on the pad until the take-off sequence has played. The path is already
             // computed, so a failure above is still reported now rather than after the wait.
@@ -919,38 +952,6 @@ namespace Eco.Mods.TechTree
             return this.Parent.TryGetComponent<OreSensorComponent>(out var sensor)
                 ? new SurveyStrategy(this.HomeDock, sensor)
                 : null;
-        }
-
-        /// <summary>
-        /// The point inside <paramref name="area"/> nearest <paramref name="anchor"/>, by
-        /// enumerating the area's
-        /// own plots and converting each to its world center via
-        /// <see cref="PlotPos.CenterWorldPos"/>. Returns the anchor unchanged when it is already
-        /// inside the area. No distance cap; keeps the anchor's Y (the pathfinder is
-        /// ground-following, so only X/Z matter).
-        /// </summary>
-        private static Vector3? ResolveDestinationInArea(SurveyArea area, Vector3 anchor)
-        {
-            if (area.ContainsWorldColumn((int)MathF.Round(anchor.X), (int)MathF.Round(anchor.Z), PlotUtil.PropertyPlotLength))
-                return anchor;
-
-            var bestDistanceSq = float.MaxValue;
-            Vector3? best = null;
-
-            foreach (var plot in area.EnumeratePlots())
-            {
-                var center = new PlotPos(plot.X, plot.Z).CenterWorldPos;
-                var dx = center.x - anchor.X;
-                var dz = center.y - anchor.Z;
-                var distanceSq = (dx * dx) + (dz * dz);
-                if (distanceSq >= bestDistanceSq)
-                    continue;
-
-                bestDistanceSq = distanceSq;
-                best = new Vector3(center.x, anchor.Y, center.y);
-            }
-
-            return best;
         }
 
         /// <summary>
