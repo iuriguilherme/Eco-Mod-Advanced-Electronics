@@ -126,6 +126,15 @@ namespace Eco.Mods.TechTree
     // defaults like every other machine, to same-deed storage only. `/drone link` remains as a
     // fallback. A narrow default WITH a way to link beats a wide one with none.
     [RequireComponent(typeof(SharedLinkComponent))]
+    // The flag that turns on the Storage tab's per-target Take From / Put Into controls. Empty by
+    // design -- the engine's own comment on it reads "Client will check if a storage has this
+    // component then it will enable Input/Output mode for the UI. It currently work like a flag."
+    //
+    // Nothing else grants them: not the link component's type, not crafting, not a store. A
+    // Storage Chest and a fireplace lack it and show no controls; a Desalinator gets it via
+    // FilterComponent's own RequireComponent and does. A drone dock puts cargo into linked
+    // storage, so the flag is simply true of it.
+    [RequireComponent(typeof(InOutLinkedInventoriesComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
