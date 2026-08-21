@@ -106,6 +106,17 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private static readonly float WorkExitLeadInSeconds = AnimationSeconds(44 + 59);
 
+        /// <summary>
+        /// How long the drone waits after parking before its first removal, so the arm is out
+        /// before the ground changes. The exit transition's mirror, and the same length.
+        ///
+        /// Without it the first block went on the tick the drone arrived, while the client was
+        /// still playing the flying loop: the terrain changed and the work animation caught up
+        /// afterwards. The survey drone had the same gap and nobody could see it, because a
+        /// survey changes nothing in the world to be early against.
+        /// </summary>
+        private static readonly float WorkEntryLeadInSeconds = AnimationSeconds(44 + 59);
+
         private readonly DroneStateMachine stateMachine = new DroneStateMachine();
 
         private string lastKnownAssignedArea;
@@ -168,6 +179,10 @@ namespace Eco.Mods.TechTree
         // which is what resets its internal plot-list progress; the lifecycle itself keeps
         // no plot-list state of its own.
         private IJobStrategy strategy;
+
+        // The plot whose work lead-in has already played, so the arm is not re-deployed on every
+        // tick of the same plot. Null whenever the drone is not parked and working.
+        private PlotCoord? workEntryPlot;
 
         // How many consecutive arrival attempts at the CURRENT target plot have failed. Owned
         // by the lifecycle (KTD3: "the lifecycle keeps... the arrival-attempt counter and its
@@ -1212,6 +1227,7 @@ namespace Eco.Mods.TechTree
             this.stateMachine.OnReturnedToDock();
             this.strategy?.OnArrivedHome();
             this.ResetReturnLadder(mover);
+            this.workEntryPlot = null;
         }
 
         /// <summary>
@@ -1314,6 +1330,7 @@ namespace Eco.Mods.TechTree
             if (!dronePlot.Equals(plot))
             {
                 // Travelling to this plot's centre. Keep going while already moving.
+                this.workEntryPlot = null;
                 if (mover.IsMoving)
                     return;
 
@@ -1338,6 +1355,18 @@ namespace Eco.Mods.TechTree
                 }
                 return;
             }
+
+            // Arm out before the ground changes. Arming is per plot, not per area: every hop
+            // stows the arm on the way out (see the WorkExitLeadInSeconds hold above), so every
+            // arrival has to deploy it again.
+            if (this.workEntryPlot == null || !this.workEntryPlot.Value.Equals(plot))
+            {
+                this.workEntryPlot = plot;
+                mover.HoldFor(WorkEntryLeadInSeconds);
+                return;
+            }
+
+            if (mover.IsHolding) return;
 
             this.plotArrivalAttempts = 0;
             var outcome = this.strategy.TickParkedWork();
