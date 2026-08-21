@@ -213,14 +213,15 @@ namespace Eco.Mods.TechTree
     public partial class SurveyDroneObject : WorldObject, IDroneOwnable, IDroneToolbearer
     {
         /// <summary>
-        /// The survey drone animates with the harvest arm. A class constant, never stored.
+        /// The survey drone animates with the mining arm. A class constant, never stored.
         ///
-        /// The arm it shows is a presentation choice, not a claim about what it does -- a survey
-        /// drone neither mines nor harvests. Harvest is the one every drone falls back to while
-        /// flying, so declaring it here keeps the survey drone's arm from changing at the mode
-        /// and flight transitions the way a mining drone's does.
+        /// A presentation choice, not a claim about what it does -- a survey drone neither mines
+        /// nor harvests, and the chassis models exactly two arms, so it has to show one of them.
         /// </summary>
-        public DroneTool Tool => DroneTool.Harvest;
+        public DroneTool Tool => DroneTool.Mining;
+
+        /// <summary>Surveying, whatever arm it is holding.</summary>
+        public DroneJobKind Job => DroneJobKind.Survey;
 
         /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
         partial void ModsPreInitialize();

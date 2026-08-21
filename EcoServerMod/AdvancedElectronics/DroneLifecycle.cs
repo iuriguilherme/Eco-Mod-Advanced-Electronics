@@ -845,7 +845,7 @@ namespace Eco.Mods.TechTree
 
         /// <summary>The job kind this drone's declared tool selects (KTD3), or null for an undeclared/unrecognised tool.</summary>
         private DroneJobKind? CurrentJobKind() =>
-            this.Parent is IDroneToolbearer bearer ? DroneJobSelection.SelectFor(bearer.Tool) : null;
+            this.Parent is IDroneToolbearer bearer ? bearer.Job : null;
 
         /// <summary>The change-detection token for whichever assignment this drone's job kind reads (U10).</summary>
         private string CurrentAssignedToken() =>

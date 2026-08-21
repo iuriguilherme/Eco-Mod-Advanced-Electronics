@@ -6,8 +6,9 @@ namespace AdvancedElectronics.Navigation
     /// armless drone -- an enum rather than a pair of booleans, because "neither" and
     /// "both" are states the art cannot render and this shape cannot express.
     ///
-    /// Moved here from the Eco-coupled assembly (KTD6/U14) so <see cref="DroneJobSelection"/>
-    /// can key job-strategy selection on it without leaving the Eco-free assembly.
+    /// Presentation only. Job selection used to be derived from this value, which made the arm
+    /// load-bearing and forced the survey drone to declare an arm it did not want; a drone now
+    /// declares its job separately (IDroneToolbearer.Job).
     /// </summary>
     public enum DroneTool
     {
@@ -18,32 +19,10 @@ namespace AdvancedElectronics.Navigation
         Harvest,
     }
 
-    /// <summary>Which job strategy a drone's declared tool selects (KTD3).</summary>
+    /// <summary>Which job a drone runs (KTD3). Declared per drone class, not derived from its arm.</summary>
     public enum DroneJobKind
     {
         Survey,
         Mining
-    }
-
-    /// <summary>
-    /// Pure mapping from a drone's declared <see cref="DroneTool"/> to the job kind it
-    /// should run (KTD3, R10, R13) -- keyed on the tool the drone's class declares, never
-    /// on which component happens to be attached. The present (pre-U14) dispatch is by
-    /// component presence, which is why the harvest drone currently runs surveys: it
-    /// inherited an ore sensor from the same chassis the survey drone uses. That
-    /// component-presence dispatch is not this function's problem to fix -- the harvest
-    /// drone's own tool value already maps to <see cref="DroneJobKind.Survey"/> here,
-    /// which is what keeps its accepted (if accidental) survey behaviour unchanged; only
-    /// the mining drone's distinct tool value newly resolves to <see cref="DroneJobKind.Mining"/>.
-    /// </summary>
-    public static class DroneJobSelection
-    {
-        /// <summary>The job kind for <paramref name="tool"/>, or null for a tool value this mapping does not recognise.</summary>
-        public static DroneJobKind? SelectFor(DroneTool tool) => tool switch
-        {
-            DroneTool.Mining => DroneJobKind.Mining,
-            DroneTool.Harvest => DroneJobKind.Survey,
-            _ => null
-        };
     }
 }

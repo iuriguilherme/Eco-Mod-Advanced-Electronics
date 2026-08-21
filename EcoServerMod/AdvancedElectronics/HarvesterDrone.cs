@@ -195,6 +195,13 @@ namespace Eco.Mods.TechTree
         /// <summary>The harvest arm -- the one drone that differs. A class constant, never stored.</summary>
         public DroneTool Tool => DroneTool.Harvest;
 
+        /// <summary>
+        /// Survey, which is accidental rather than designed: this drone inherited an ore sensor
+        /// from the same chassis the survey drone uses, and surveying is what it has always done.
+        /// Recorded here as the behaviour it actually has, until a harvest job exists.
+        /// </summary>
+        public DroneJobKind Job => DroneJobKind.Survey;
+
         /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
         partial void ModsPreInitialize();
         /// <summary>Hook for mods to customize WorldObject after initialization.</summary>
