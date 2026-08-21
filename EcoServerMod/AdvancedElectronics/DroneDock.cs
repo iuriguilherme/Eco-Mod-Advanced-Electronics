@@ -117,17 +117,8 @@ namespace Eco.Mods.TechTree
     // inherit (ComponentTabName is read with inherit: true); the renderer does not.
     //
     // The cost is the wide auto-link default DroneDockLinkComponent existed for: this dock now
-    // defaults like every other machine, to same-deed storage only. That default was always a
-    // stand-in for a control the player did not have, and the trade only runs this way -- a narrow
-    // default WITH a way to link beats a wide one with none. `/drone link` remains as a fallback.
-    //
-    // NOT A SAFE MIGRATION FOR AN EXISTING WORLD, and that is accepted rather than solved.
-    // RequireComponent is re-enforced on load, but a newly-required component is not attached in
-    // time for the object's own Initialize(), so a dock saved with the old component finds no link
-    // component during startup. That threw and took the whole server down until the call below was
-    // guarded; guarded, such a dock simply comes up without its link radius. On the alpha test
-    // world an orphaned dock is an acceptable side effect -- place a fresh one to test. A world
-    // that must survive the change needs a real migration step, which is not written.
+    // defaults like every other machine, to same-deed storage only. `/drone link` remains as a
+    // fallback. A narrow default WITH a way to link beats a wide one with none.
     [RequireComponent(typeof(SharedLinkComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
@@ -544,10 +535,7 @@ namespace Eco.Mods.TechTree
             // R26: 20-block link radius, so enough linked storage to absorb a mining
             // area's output can be reached.
             //
-            // Guarded rather than dereferenced. A link component is required, so it is normally
-            // there -- but "required" is enforced by machinery that does not necessarily run
-            // before this method on a world whose saved objects predate the requirement, and an
-            // NRE here aborts server startup entirely rather than degrading one dock.
+            // Guarded: an NRE here aborts server startup entirely rather than degrading one dock.
             if (this.TryGetComponent<LinkComponent>(out var link))
                 link.Initialize(LinkRadius);
 
