@@ -21,42 +21,60 @@ namespace AdvancedElectronics.Navigation.Tests
                 Assert.Equal(25, plan.Layers[depth].Positions.Count);
         }
 
-        // The restart case. A shaft's depths are measured per column from that column's
-        // surface, and the shaft destroys that surface as it cuts -- so re-planning from the
-        // live world mid-shaft does not reproduce the plan, it starts a NEW shaft measured
-        // from the pit floor: a fresh 3x3 mouth at the bottom of the hole, then a further
-        // TierDepth below it. Live pass: "3x3 in layers 11-18" after a mid-shaft restart.
+        // The restart case. A shaft's depths are per-column and RELATIVE, and the shaft
+        // destroys the surface it was measured from -- so re-planning mid-pass against ground
+        // the drone has itself excavated spends another full TierDepth below the pit floor and
+        // re-cuts the 3x3 mouth into an opening that already exists. Live pass: "3x3 in layers
+        // 11-18" after restarting around layer 10.
+        //
+        // Re-planning is the DESIRED behaviour -- a second pass on an already-cut plot starts
+        // from the pit floor by design, gated by a fresh survey. The pass floor is the one
+        // thing a re-plan cannot re-derive, which is why it is the one thing recorded.
         [Fact]
-        public void RebuildingFromRecordedSurface_ReproducesTheSameShaft_EvenAfterTheGroundIsDug()
+        public void ReplanningMidPass_StopsAtTheRecordedFloor_InsteadOfSpendingASecondTierDepth()
         {
-            var sampler = new FakeWorldSampler(defaultHeight: 40f);
-            sampler.SetHeight(2, 2, 44f); // not flat, so a shared-plane rebuild would show up
-
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
             var original = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+            var floor = original.FloorY.Value;
 
             // The drone cuts ten layers; the world's idea of "surface" drops with it.
             for (int x = 0; x < PlotSize; x++)
             for (int z = 0; z < PlotSize; z++)
-                sampler.SetHeight(x, z, 30f);
+                sampler.SetHeight(x, z, 54f);
 
-            var resampled = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
-            var rebuilt = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, original.SurfaceHeights, PlotSize);
+            var unclamped = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+            var resumed = ShaftPlan.Create(
+                new PlotCoord(0, 0), TierDepth, sampler, PlotSize,
+                floorY: floor, includeSurfaceOpening: false);
 
-            Assert.Equal(original.AllPositions(), rebuilt.AllPositions());
-            Assert.NotEqual(original.AllPositions(), resampled.AllPositions());
-
-            // The specific harm: re-sampling digs below the tier's own floor.
-            Assert.True(resampled.AllPositions().Min(p => p.Y) < original.AllPositions().Min(p => p.Y));
+            Assert.True(unclamped.FloorY < floor);   // the defect: straight past the tier limit
+            Assert.Equal(floor, resumed.FloorY);     // the fix: stops exactly where it would have
         }
 
         [Fact]
-        public void RebuildingFromRecordedSurface_RejectsHeightsOfTheWrongShape()
+        public void ReplanningMidPass_CutsNoFreshSurfaceOpening()
         {
-            var sampler = new FakeWorldSampler(defaultHeight: 10f);
-            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+            var sampler = new FakeWorldSampler(defaultHeight: 54f);
 
-            Assert.Throws<System.ArgumentException>(() =>
-                ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, plan.SurfaceHeights.Take(3).ToList(), PlotSize));
+            var resumed = ShaftPlan.Create(
+                new PlotCoord(0, 0), TierDepth, sampler, PlotSize,
+                floorY: 50, includeSurfaceOpening: false);
+
+            // Every layer is the full plot width -- no 9-position 3x3 mouth at the pit floor.
+            Assert.All(resumed.Layers, layer => Assert.Equal(PlotSize * PlotSize, layer.Positions.Count));
+        }
+
+        [Fact]
+        public void APassWhoseFloorIsAlreadyReached_EmitsNothing()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 50f);
+
+            var resumed = ShaftPlan.Create(
+                new PlotCoord(0, 0), TierDepth, sampler, PlotSize,
+                floorY: 51, includeSurfaceOpening: false);
+
+            Assert.Empty(resumed.Layers);
+            Assert.Null(resumed.FloorY);
         }
 
         [Fact]

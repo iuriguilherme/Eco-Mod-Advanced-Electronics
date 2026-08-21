@@ -188,47 +188,36 @@ namespace Eco.Mods.TechTree
         // ---------------------------------------------------------------
 
         // ---------------------------------------------------------------
-        // The shaft in progress. Held here rather than on the strategy because the strategy is
-        // a live object rebuilt from scratch on every load, while a half-cut shaft is exactly
-        // the state that must outlive one.
+        // The pass in progress on one plot. Held here rather than on the strategy because the
+        // strategy is a live object rebuilt from scratch on every load, while a half-cut shaft
+        // is exactly the state that must outlive one.
         //
-        // Layout, flat because Eco serializes primitive lists cleanly:
-        //   [0] plot X, [1] plot Z, [2] resume index, [3..] per-column surface heights.
-        // Empty means no shaft in progress.
+        // Only the FLOOR is kept, not the plan. A pass is re-planned against whatever ground is
+        // there now -- that is the intended behaviour, and it is what lets a second pass start
+        // from a pit floor -- so the single thing a re-plan cannot re-derive is how deep this
+        // pass was already committed to going. Layout: [0] plot X, [1] plot Z, [2] floor Y.
         // ---------------------------------------------------------------
 
-        [Serialized] private ThreadSafeList<int> shaftInProgress = new();
+        [Serialized] private ThreadSafeList<int> passInProgress = new();
 
-        /// <summary>Records the shaft currently being cut, so a restart resumes it rather than re-planning against the pit floor.</summary>
-        public void SaveShaftInProgress(PlotCoord plot, int resumeIndex, IReadOnlyList<int> surfaceHeights)
-        {
-            var flat = new ThreadSafeList<int> { plot.X, plot.Z, resumeIndex };
-            foreach (var height in surfaceHeights) flat.Add(height);
-            this.shaftInProgress = flat;
-        }
+        /// <summary>Records the plot being cut and the Y its pass stops at.</summary>
+        public void SavePassInProgress(PlotCoord plot, int floorY) =>
+            this.passInProgress = new ThreadSafeList<int> { plot.X, plot.Z, floorY };
 
-        /// <summary>Forgets the shaft in progress -- the plot finished, or was skipped.</summary>
-        public void ClearShaftInProgress() => this.shaftInProgress = new ThreadSafeList<int>();
+        /// <summary>Forgets the pass in progress -- the plot finished, or was skipped.</summary>
+        public void ClearPassInProgress() => this.passInProgress = new ThreadSafeList<int>();
 
-        /// <summary>
-        /// The shaft in progress, or false when there is none. The surface heights are the ones
-        /// sampled when the shaft STARTED, which is the whole point: re-sampling now would
-        /// measure the hole the drone has already dug.
-        /// </summary>
-        public bool TryReadShaftInProgress(out PlotCoord plot, out int resumeIndex, out int[] surfaceHeights)
+        /// <summary>The plot being cut and the floor its pass stops at, or false when there is none.</summary>
+        public bool TryReadPassInProgress(out PlotCoord plot, out int floorY)
         {
             plot = default;
-            resumeIndex = 0;
-            surfaceHeights = null;
+            floorY = 0;
 
-            var flat = this.shaftInProgress;
-            if (flat == null || flat.Count < 4) return false;
+            var flat = this.passInProgress;
+            if (flat == null || flat.Count < 3) return false;
 
             plot = new PlotCoord(flat[0], flat[1]);
-            resumeIndex = flat[2];
-
-            surfaceHeights = new int[flat.Count - 3];
-            for (int i = 0; i < surfaceHeights.Length; i++) surfaceHeights[i] = flat[i + 3];
+            floorY = flat[2];
             return true;
         }
 

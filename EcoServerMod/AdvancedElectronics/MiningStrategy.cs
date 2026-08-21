@@ -36,6 +36,9 @@ namespace Eco.Mods.TechTree
         private PlotCoord? currentShaftPlot;
         private int shaftResumeIndex;
 
+        /// <summary>The deepest Y the current pass may reach, persisted on the dock so it survives a load.</summary>
+        private int? passFloorY;
+
         /// <summary>
         /// The plot most recently handed to the lifecycle by <see cref="TryGetNextTarget"/>,
         /// whether or not the drone ever reached it.
@@ -89,73 +92,67 @@ namespace Eco.Mods.TechTree
             this.tierDepth = tierDepth;
             this.holdCapacity = holdCapacity;
 
-            this.RestoreShaftInProgress();
+            this.RestorePassInProgress();
         }
 
         /// <summary>
-        /// Picks a half-cut shaft back up after a load, rebuilding its plan from the surface
-        /// heights recorded when the shaft STARTED.
+        /// Picks a half-cut pass back up after a load.
         ///
-        /// Without this the strategy came back with no shaft and re-planned from scratch on
-        /// the next parked tick -- against terrain the drone had itself excavated. Because a
-        /// shaft's depths are measured per column from that column's surface, the re-plan cut
-        /// a fresh 3x3 mouth at the pit floor and then descended a further tierDepth below it,
-        /// so a restart at layer 10 produced a narrow shaft running to layer 25 (live pass:
-        /// "3x3 in layers 11-18" after restarting mid-shaft).
+        /// Only the plot and the pass floor are restored; the plan itself is deliberately NOT
+        /// reconstructed, because a plan is meant to describe the ground as it is now. What a
+        /// re-plan cannot re-derive is how deep this pass had already committed to going, and
+        /// without it the re-plan spends a fresh tierDepth below the pit floor -- observed live
+        /// as "3x3 in layers 11-18" after restarting around layer 10.
         /// </summary>
-        private void RestoreShaftInProgress()
+        private void RestorePassInProgress()
         {
-            if (!this.homeDock.TryReadShaftInProgress(out var plot, out var resumeIndex, out var surfaceHeights))
-                return;
+            if (!this.homeDock.TryReadPassInProgress(out var plot, out var floorY)) return;
 
-            if (surfaceHeights.Length != this.plotSize * this.plotSize)
-            {
-                // Saved under a different plot size; the shaft cannot be reconstructed, and
-                // re-planning it would be the bug this method exists to prevent.
-                this.homeDock.ClearShaftInProgress();
-                return;
-            }
-
-            this.currentShaftPlan = ShaftPlan.Create(plot, this.tierDepth, surfaceHeights, this.plotSize);
             this.currentShaftPlot = plot;
-            this.shaftResumeIndex = resumeIndex;
+            this.passFloorY = floorY;
         }
 
-        /// <summary>Starts a shaft on <paramref name="plot"/>, sampling the surface once and recording it.</summary>
-        private void BeginShaft(PlotCoord plot)
+        /// <summary>
+        /// Starts a pass on <paramref name="plot"/>: plans against the current surface, and
+        /// records the floor that plan reaches so an interrupted pass stops in the same place.
+        /// </summary>
+        private void BeginPass(PlotCoord plot)
         {
             this.currentShaftPlan = ShaftPlan.Create(plot, this.tierDepth, this.sampler, this.plotSize);
             this.currentShaftPlot = plot;
             this.shaftResumeIndex = 0;
-            this.PersistShaft();
-        }
+            this.passFloorY = this.currentShaftPlan.FloorY;
 
-        /// <summary>Advances past a submitted layer and records the new resume point.</summary>
-        private void AdvanceShaft(int positionCount)
-        {
-            this.shaftResumeIndex += positionCount;
-            this.PersistShaft();
+            if (this.passFloorY != null)
+                this.homeDock.SavePassInProgress(plot, this.passFloorY.Value);
         }
 
         /// <summary>
-        /// Forgets the current shaft -- the plot finished, or was skipped. NOT called when a
-        /// full hold interrupts the shaft: that keeps its resume point on purpose, so the trip
-        /// home and back re-enters the same shaft at the same layer.
+        /// Re-enters a pass whose plan did not survive a load: re-plans against the ground as it
+        /// is NOW, clamped to the recorded floor, and without the 3x3 surface opening -- the
+        /// mouth is already cut, and layer 0 exists to open undisturbed ground.
         /// </summary>
-        private void EndShaft()
+        private void ResumePass(PlotCoord plot)
+        {
+            this.currentShaftPlan = ShaftPlan.Create(
+                plot, this.tierDepth, this.sampler, this.plotSize,
+                floorY: this.passFloorY, includeSurfaceOpening: false);
+
+            this.shaftResumeIndex = 0;
+        }
+
+        /// <summary>
+        /// Forgets the current pass -- the plot finished, or was skipped. NOT called when a full
+        /// hold interrupts the shaft: that keeps its resume point on purpose, so the trip home
+        /// and back re-enters the same shaft at the same layer.
+        /// </summary>
+        private void EndPass()
         {
             this.currentShaftPlan = null;
             this.currentShaftPlot = null;
             this.shaftResumeIndex = 0;
-            this.homeDock.ClearShaftInProgress();
-        }
-
-        private void PersistShaft()
-        {
-            if (this.currentShaftPlot == null || this.currentShaftPlan == null) return;
-
-            this.homeDock.SaveShaftInProgress(
-                this.currentShaftPlot.Value, this.shaftResumeIndex, this.currentShaftPlan.SurfaceHeights);
+            this.passFloorY = null;
+            this.homeDock.ClearPassInProgress();
         }
 
         /// <summary>The job this strategy is driving -- exposed for the panel (U9), which persists its snapshot on the dock.</summary>
@@ -274,7 +271,13 @@ namespace Eco.Mods.TechTree
                 if (this.job.OutcomeOf(target) != PlotOutcome.Unworked)
                     return ParkedWorkOutcome.PlotDone;
 
-                this.BeginShaft(target);
+                this.BeginPass(target);
+            }
+            else if (this.currentShaftPlan == null)
+            {
+                // Same plot, no plan: a load happened mid-pass. Re-plan against the pit as it
+                // stands, stopping at the floor this pass had already committed to.
+                this.ResumePass(target);
             }
 
             var layers = this.currentShaftPlan.LayersFrom(this.shaftResumeIndex);
@@ -294,7 +297,7 @@ namespace Eco.Mods.TechTree
                 // Every layer of this plot is done.
                 this.job.MarkWorked(target);
                 this.homeDock.RecordMinedPlot(target, NextStampCounter());
-                this.EndShaft();
+                this.EndPass();
                 return ParkedWorkOutcome.PlotDone;
             }
 
@@ -309,7 +312,7 @@ namespace Eco.Mods.TechTree
             {
                 // Nothing to submit, so this layer IS finished -- advance past it or the shaft
                 // stalls on a layer of wall (AE5) or already-empty ground.
-                this.AdvanceShaft(layer.Positions.Count);
+                this.shaftResumeIndex += layer.Positions.Count;
                 return ParkedWorkOutcome.StillWorking;
             }
 
@@ -351,14 +354,14 @@ namespace Eco.Mods.TechTree
                 // names the bucket and not the cause. Live pass #2 lost two of three plots to
                 // exactly that, with the answer already computed and thrown away here.
                 this.job.MarkSkipped(target, RefusalMapping.ToSkipCategory(result.RefusalStage), result.Message);
-                this.EndShaft();
+                this.EndPass();
                 return ParkedWorkOutcome.PlotFailed;
             }
 
             // Only NOW is the layer finished. Advancing before submitting counted a layer whose
             // removal was then refused for room, so the resume skipped it outright -- live pass #9
             // found layers 6 and 10 unmined in every plot, exactly the two unload boundaries.
-            this.AdvanceShaft(layer.Positions.Count);
+            this.shaftResumeIndex += layer.Positions.Count;
 
             // R24/AE1: a full hold interrupts the shaft; the resume point (shaftResumeIndex)
             // lets the same shaft continue after the next unload. The plot itself stays Unworked
@@ -410,7 +413,7 @@ namespace Eco.Mods.TechTree
             if (plot == null) return;
 
             this.job.MarkSkipped(plot.Value, SkipCategory.Unreachable);
-            this.EndShaft();
+            this.EndPass();
             this.lastOfferedPlot = null;
         }
 
