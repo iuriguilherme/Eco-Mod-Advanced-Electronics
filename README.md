@@ -8,10 +8,12 @@ drawn on the map, and dispatches to prospect that area for materials. The dock's
 has two tabs — **Areas** (draw and manage areas, assign the drone) and **Results** (what
 was found, one area at a time, filtered to the materials you care about).
 
-Built and tested against **Eco 0.14.0.0**. There is no `Eco.ReferenceAssemblies` package for
-0.14 and the shipped server is a single-file bundle with its managed assemblies embedded, so
-the reference assemblies are built from a pinned source checkout instead — see
-`scripts/gather-eco-refs.sh` and `EcoRefSha` in the csproj.
+Live-tested against **Eco 0.14.0.3**; the reference assemblies it compiles against are older,
+pinned by `EcoRefSha`. Those are two different things and both are deliberate — the pin keeps
+builds reproducible, and the server the mod actually runs on is what proves it works. There is
+no `Eco.ReferenceAssemblies` package for 0.14 and the shipped server is a single-file bundle
+with its managed assemblies embedded, so the reference assemblies are built from a pinned
+source checkout instead — see `scripts/gather-eco-refs.sh` and `EcoRefSha` in the csproj.
 
 **Mod page:** [mod.io/g/eco/m/advanced-electronics](https://mod.io/g/eco/m/advanced-electronics)
 — released builds are published there. This repository is the source; you only need to

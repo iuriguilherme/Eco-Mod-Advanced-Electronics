@@ -45,7 +45,10 @@
 set -euo pipefail
 
 VERSION="0.3.0"
-GAME_VERSION="0.14.0.0"
+# The version this is BUILT AND TESTED AGAINST, which is what the filename and the README
+# claim. 0.3.0 shipped labelled 0.14.0.0 and was in fact live-tested on 0.14.0.3; corrected
+# here rather than by re-cutting a released zip.
+GAME_VERSION="0.14.0.3"
 FORCE=0
 
 while [ $# -gt 0 ]; do
