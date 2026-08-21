@@ -93,6 +93,14 @@ namespace Eco.Mods.TechTree
         /// <summary>The job this strategy is driving -- exposed for the panel (U9), which persists its snapshot on the dock.</summary>
         public MiningJob Job => this.job;
 
+        /// <summary>
+        /// Which area this strategy was built against. The lifecycle compares it with the
+        /// dock's current assignment: a strategy captures its area reference at construction,
+        /// so one built for a previous area keeps consulting that one no matter what the dock
+        /// now says.
+        /// </summary>
+        public int SourceAreaId => this.areaRef.AreaId;
+
         public bool IsComplete =>
             this.IsExhausted || this.holdFull;
 

@@ -187,6 +187,15 @@ namespace Eco.Mods.TechTree
         // pattern the survey side already uses for findings.
         // ---------------------------------------------------------------
 
+        /// <summary>
+        /// The area id the persisted job was built for, so a job is not resumed against a
+        /// different area than it was created for -- its ledger is keyed to the old area's
+        /// plots. Zero means "unknown", which is what a save written before this field
+        /// existed carries; unknown resumes rather than discarding, since discarding a
+        /// player's real progress is the worse of the two mistakes.
+        /// </summary>
+        [Serialized] public int MiningJobAreaId { get; set; }
+
         [Serialized] private int miningJobStatusValue = -1; // -1 = no job yet
         [Serialized] private int miningJobEndReasonValue = -1;
         [Serialized] private ThreadSafeList<int> miningJobLedger = new();

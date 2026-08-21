@@ -497,13 +497,31 @@ namespace Eco.Mods.TechTree
 
             // Only build a fresh strategy when there is none, or the previous one finished --
             // a resume dispatch (R24: idle-at-dock with an unfinished job) reuses the SAME
-            // instance so shaft/sweep progress survives the round trip home. A genuinely new
-            // assignment always presents as a token change, which is the only other caller of
-            // this method, so the two cases cannot be confused with each other.
+            // instance so shaft/sweep progress survives the round trip home.
+            //
             // IsExhausted, not IsComplete: a full hold reads complete (there is nothing to offer
             // right now) but must NOT discard the strategy, or the resume trip rebuilds the shaft
             // plan against the excavated floor and starts a second shaft inside the first.
-            var needsFreshStrategy = this.strategy == null || this.strategy.IsExhausted;
+            //
+            // ...and the third condition, which those two used to be assumed to cover. A
+            // strategy captures its area reference at construction, so one built for a previous
+            // area keeps consulting THAT area however many times the dock is reassigned. An
+            // unfinished strategy is neither null nor exhausted, so assigning a new area reused
+            // it wholesale: the drone flew to the new area's plots and asked the old area
+            // whether they were surveyed. Reassigning was therefore useless as a recovery from
+            // any stuck job -- the exact remedy a player reaches for first.
+            //
+            // Compared by area id rather than by the assignment token, because the token also
+            // changes on a plain server restart (this field is not serialized), and rebuilding
+            // there would discard a ledger the restart is supposed to preserve.
+            var assignedAreaId = this.HomeDock.AssignedMiningArea?.AreaId;
+            var strategyIsForAnotherArea =
+                assignedAreaId != null &&
+                this.strategy is MiningStrategy builtStrategy &&
+                builtStrategy.SourceAreaId != assignedAreaId.Value;
+
+            var needsFreshStrategy =
+                this.strategy == null || this.strategy.IsExhausted || strategyIsForAnotherArea;
 
             var area = this.CurrentTargetArea(out var noAreaReason, out var terminalReason);
             if (area == null)
@@ -714,11 +732,24 @@ namespace Eco.Mods.TechTree
         {
             if (this.CurrentJobKind() == DroneJobKind.Mining)
             {
+                // A job's ledger is keyed to its area's plots, so it cannot be carried across a
+                // reassignment -- the outcomes would be recorded against plot coordinates from
+                // a different area. Zero reads as "unknown" (a save predating the field) and
+                // resumes, because discarding real progress is worse than resuming a job whose
+                // area cannot be confirmed.
+                var assignedAreaId = this.HomeDock.AssignedMiningArea?.AreaId ?? 0;
+                var jobIsForAnotherArea =
+                    this.HomeDock.MiningJobAreaId != 0 && this.HomeDock.MiningJobAreaId != assignedAreaId;
+
                 var job = this.HomeDock.MiningJob;
-                if (job == null || job.Status == MiningJobStatus.Complete || job.Status == MiningJobStatus.Ended)
+                if (job == null
+                    || job.Status == MiningJobStatus.Complete
+                    || job.Status == MiningJobStatus.Ended
+                    || jobIsForAnotherArea)
                 {
                     job = new MiningJob(area.EnumeratePlots());
                     this.HomeDock.MiningJob = job;
+                    this.HomeDock.MiningJobAreaId = assignedAreaId;
                 }
 
                 if (this.HomeDock.AssignedMiningArea == null
