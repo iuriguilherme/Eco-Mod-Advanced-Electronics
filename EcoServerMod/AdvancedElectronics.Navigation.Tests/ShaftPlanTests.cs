@@ -43,9 +43,8 @@ namespace AdvancedElectronics.Navigation.Tests
                 sampler.SetHeight(x, z, 54f);
 
             var unclamped = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
-            var resumed = ShaftPlan.Create(
-                new PlotCoord(0, 0), TierDepth, sampler, PlotSize,
-                floorY: floor, includeSurfaceOpening: false);
+            var resumed = ShaftPlan.CreateContinuation(
+                new PlotCoord(0, 0), TierDepth, sampler, PlotSize, floorY: floor);
 
             Assert.True(unclamped.FloorY < floor);   // the defect: straight past the tier limit
             Assert.Equal(floor, resumed.FloorY);     // the fix: stops exactly where it would have
@@ -56,9 +55,8 @@ namespace AdvancedElectronics.Navigation.Tests
         {
             var sampler = new FakeWorldSampler(defaultHeight: 54f);
 
-            var resumed = ShaftPlan.Create(
-                new PlotCoord(0, 0), TierDepth, sampler, PlotSize,
-                floorY: 50, includeSurfaceOpening: false);
+            var resumed = ShaftPlan.CreateContinuation(
+                new PlotCoord(0, 0), TierDepth, sampler, PlotSize, floorY: 50);
 
             // Every layer is the full plot width -- no 9-position 3x3 mouth at the pit floor.
             Assert.All(resumed.Layers, layer => Assert.Equal(PlotSize * PlotSize, layer.Positions.Count));
@@ -69,12 +67,52 @@ namespace AdvancedElectronics.Navigation.Tests
         {
             var sampler = new FakeWorldSampler(defaultHeight: 50f);
 
-            var resumed = ShaftPlan.Create(
-                new PlotCoord(0, 0), TierDepth, sampler, PlotSize,
-                floorY: 51, includeSurfaceOpening: false);
+            var resumed = ShaftPlan.CreateContinuation(
+                new PlotCoord(0, 0), TierDepth, sampler, PlotSize, floorY: 51);
 
             Assert.Empty(resumed.Layers);
             Assert.Null(resumed.FloorY);
+        }
+
+        // The second-pass case. KD13 leaves the rim standing, so after one pass the sixteen rim
+        // columns still report their ORIGINAL surface while the centre nine report the pit floor
+        // fourteen blocks down. Planned per column, a "layer" of that plot stops being a
+        // horizontal slice: the rim positions land in mid-air above the pit and drop out as
+        // empty, and the shaft narrows to 3x3 for every pass after the first.
+        [Fact]
+        public void AContinuationLevelsTheColumns_SoARepeatPassStaysFullWidth()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+
+            // The state one pass leaves behind: centre 3x3 cut to the floor, rim still at surface.
+            for (int dx = 1; dx <= 3; dx++)
+            for (int dz = 1; dz <= 3; dz++)
+                sampler.SetHeight(dx, dz, 49f);
+
+            var continuation = ShaftPlan.CreateContinuation(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+
+            // Every layer is a full horizontal slice, and every slice sits at ONE height.
+            Assert.All(continuation.Layers, layer =>
+            {
+                Assert.Equal(PlotSize * PlotSize, layer.Positions.Count);
+                Assert.Single(layer.Positions.Select(p => p.Y).Distinct());
+            });
+
+            // Measured from the pit floor, not from the rim fifteen blocks above it.
+            Assert.Equal(49, continuation.Layers[0].Positions[0].Y);
+        }
+
+        [Fact]
+        public void AFirstPassStillUsesPerColumnSurfaces()
+        {
+            // The levelling is for holes, not for hills: virgin sloped ground must keep following
+            // each column's own surface, which is what KD13 asks for.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(0, 0, 60f);
+
+            var virgin = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+
+            Assert.True(virgin.Layers[1].Positions.Select(p => p.Y).Distinct().Count() > 1);
         }
 
         [Fact]

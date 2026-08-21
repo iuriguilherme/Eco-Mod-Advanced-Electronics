@@ -84,6 +84,22 @@ namespace AdvancedElectronics.Navigation
             Create(plot, tierDepth, sampler, plotSize, floorY: null, includeSurfaceOpening: true);
 
         /// <summary>
+        /// A pass into a plot that already contains a shaft: a repeat pass after a fresh survey,
+        /// or a pass re-planned mid-cut after a restart.
+        ///
+        /// Differs from <see cref="Create(PlotCoord,int,IWorldSampler,int)"/> in two ways, both
+        /// because the ground is no longer terrain but a hole. Every column is levelled to the
+        /// LOWEST of them, so a layer is a horizontal slice of the pit rather than a per-column
+        /// depth measured from surfaces fourteen blocks apart. And there is no 3x3 opening: the
+        /// mouth was cut by the first pass, and cutting another into an open floor only removes
+        /// nine of the twenty-five blocks that layer should take.
+        /// </summary>
+        public static ShaftPlan CreateContinuation(
+            PlotCoord plot, int tierDepth, IWorldSampler sampler, int plotSize, int? floorY = null) =>
+            Create(plot, tierDepth, sampler, plotSize,
+                   floorY, includeSurfaceOpening: false, levelToLowestColumn: true);
+
+        /// <summary>
         /// Builds the shaft plan for <paramref name="plot"/> against the CURRENT surface, which
         /// is what the caller wants every time: a plot is re-planned from whatever ground is
         /// there now, and a second pass over an already-cut plot legitimately starts at the pit
@@ -103,7 +119,7 @@ namespace AdvancedElectronics.Navigation
         /// </summary>
         public static ShaftPlan Create(
             PlotCoord plot, int tierDepth, IWorldSampler sampler, int plotSize,
-            int? floorY, bool includeSurfaceOpening)
+            int? floorY, bool includeSurfaceOpening, bool levelToLowestColumn = false)
         {
             if (sampler == null)
                 throw new ArgumentNullException(nameof(sampler));
@@ -121,6 +137,27 @@ namespace AdvancedElectronics.Navigation
             for (int dx = 0; dx < plotSize; dx++)
                 surfaceHeights[(dz * plotSize) + dx] =
                     (int)MathF.Round(sampler.GroundHeightAt(baseX + dx, baseZ + dz));
+
+            // A continuation levels every column to the LOWEST of them, and that is the whole
+            // point of the flag. Per-column depth is right for virgin ground, where the surface
+            // is terrain; it is nonsense once the plot contains a hole, because the rim columns
+            // keep their original surface (KD13 leaves the rim standing, so the previous pass
+            // never removed their topmost block) while the centre columns report the pit floor
+            // fourteen blocks lower.
+            //
+            // Measured per column, a "layer" of that plot is not a horizontal slice at all: the
+            // centre nine descend into fresh rock while the sixteen rim positions land in the air
+            // above the pit, classify as empty, and are dropped. The visible result is a shaft
+            // that narrows to 3x3 the moment a plot is mined a second time -- exactly what a
+            // repeat pass produced.
+            if (levelToLowestColumn)
+            {
+                var lowest = surfaceHeights[0];
+                foreach (var height in surfaceHeights)
+                    if (height < lowest) lowest = height;
+
+                for (var i = 0; i < surfaceHeights.Length; i++) surfaceHeights[i] = lowest;
+            }
 
             int SurfaceY(int dx, int dz) => surfaceHeights[(dz * plotSize) + dx];
             // Inclusive: FloorY is a position the pass was going to remove, not a boundary
