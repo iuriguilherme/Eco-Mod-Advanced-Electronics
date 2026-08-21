@@ -87,7 +87,25 @@ namespace Eco.Mods.TechTree
 
         public void OnArrivedHome()
         {
-            // The survey drone has nothing to unload.
+            // Nothing to unload. What a survey drone does on arriving home is retire the
+            // assignment it just finished, so a completed sweep does not sit assigned forever --
+            // and, in particular, does not resume on the next server start as though there were
+            // still work to do.
+            //
+            // Gated on the SWEEP being finished, not on coverage reaching 100%, and that
+            // distinction is load-bearing. Coverage is sticky: findings belong to the area, not to
+            // the drone's current target, so DroneDock.ClearSurveyData is called on delete and on
+            // redraw but deliberately NOT on reassignment. An area swept once therefore reads 100%
+            // forever. Retiring on coverage would make it impossible to re-survey: assigning it
+            // again would unassign again on the next tick, and re-surveying is exactly what the
+            // survey/mine/survey cycle needs in order to write fresh stamps and let mining go
+            // another tier deeper.
+            //
+            // A sweep that finished with plots skipped as unreachable also counts as finished.
+            // The coverage figure will show it fell short, which is the player's cue to act;
+            // staying assigned would only mean retrying the same unreachable plots.
+            if (this.IsComplete && this.homeDock.AssignedSurveyAreaId != 0)
+                this.homeDock.AssignSurveyArea(0);
         }
 
         public void OnEnded(string reason)
