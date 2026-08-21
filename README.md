@@ -211,23 +211,25 @@ Quick smoke test:
 
 1. Craft a **Drone Dock** and a **Survey Drone** (both at the Electric Machinist Table)
    and place the dock.
-2. Open the dock, **Areas** tab, click **Manage Areas on Map**. Draw one or more survey
+2. Open the dock, **Survey** tab, click **Manage Areas on Map**. Draw one or more survey
    areas, name them, confirm.
-3. Click **Assign Area 1**. The assignment line updates; clicking the same button again
-   unassigns.
+3. Set **View Position** to the area you want, then click **Assign Selected Area**. The
+   assignment line updates. **Unassign Area** stops the drone.
 4. Insert the Survey Drone item into the dock's slot — a drone spawns beside the dock and
    heads for the assigned area. Removing the item destroys the drone and resets its state.
-5. Watch the **Areas** tab for drone status, then the **Results** tab for what it found:
-   one area at a time (Previous/Next Area), with per-material quantity, location and
-   depth. **Material Targets** narrows the display; leave it empty to show everything.
+5. Watch the same tab for drone status and findings: the selector chooses which area you
+   are reading, with per-material quantity, location and depth. **Material Targets**
+   narrows the display; leave it empty to show everything.
+
+Moving the selector only changes what you are **looking at** — it never reassigns a
+working drone. Assign and Unassign are the only controls that change what the drone does.
 
 Findings persist with their area — reassigning the drone elsewhere and back does not lose
 them. Redrawing an area's geometry deliberately clears its findings (it is effectively a
 different area); renaming does not.
 
-Diagnostics available in chat: `/drone areas`, `/drone assignarea <id>` (the fallback for
-areas past the sixth assign button), `/drone results`, `/drone filter [material]`,
-`/drone state`, `/drone tags`.
+Diagnostics available in chat: `/drone areas`, `/drone assignarea <id>`, `/drone results`,
+`/drone filter [material]`, `/drone state`, `/drone tags`.
 
 The full owner-run verification protocol (all flows and acceptance checks, with verdict
 tables to fill in) is `docs/protocols/2026-07-survey-drone-manual-protocol.md`.
