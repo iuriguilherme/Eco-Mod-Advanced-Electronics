@@ -78,10 +78,19 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
-        public void AtReadableSize_WrapsTheWholeBlockOnce_AndLeavesEmptyTextAlone()
+        public void AtReadableSize_UsesAPercentage_BecauseABareNumberIsAbsoluteUnitsNotAMultiplier()
         {
-            // Eco's sizes count DOWN from 7, so 2 is one step above standard, not near-minimum.
-            Assert.Equal("<size=2>a\nb\n</size>", DockReadout.AtReadableSize("a\nb\n"));
+            // The distinction that cost a deploy: <size=2> is two absolute units (microscopic),
+            // while <size=200%> is double. The wiki's 1-7 scale describes signs and chat.
+            var sized = DockReadout.AtReadableSize("a\nb\n");
+
+            Assert.Equal("<size=200%>a\nb\n</size>", sized);
+            Assert.DoesNotContain("<size=2>", sized);
+        }
+
+        [Fact]
+        public void AtReadableSize_LeavesEmptyTextAlone()
+        {
             Assert.Equal(string.Empty, DockReadout.AtReadableSize(string.Empty));
             Assert.Null(DockReadout.AtReadableSize(null));
         }

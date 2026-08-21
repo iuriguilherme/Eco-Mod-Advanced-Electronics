@@ -347,8 +347,7 @@ namespace Eco.Mods.TechTree
 
             var entry = this.ViewedArea(dock);
             if (entry == null)
-                return DockReadout.AtReadableSize(
-                    "Draw an area on the map, then select it above and click Assign Selected Area.");
+                return "Draw an area on the map, then select it above and click Assign Selected Area.";
 
             var sb = new StringBuilder();
 

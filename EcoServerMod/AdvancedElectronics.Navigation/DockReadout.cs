@@ -74,12 +74,25 @@ namespace AdvancedElectronics.Navigation
         }
 
         /// <summary>
-        /// Wraps a block of readout text at a larger font size. Eco's markup counts DOWN from 7
-        /// (biggest) to 1 (standard), so this is one step up from default -- enough to read a
-        /// findings list at a glance without pushing the panel past the fold.
+        /// Wraps a block of readout text at a larger font size.
+        ///
+        /// PERCENT, not a bare number, and that distinction is the whole entry. The wiki's
+        /// "7 is biggest, 1 is standard" scale describes signs and chat. A component panel renders
+        /// through the client's rich-text layer, where a bare <c>&lt;size=2&gt;</c> means two
+        /// ABSOLUTE units -- microscopic, not double. The engine keeps both forms as separate
+        /// helpers (<c>RichTextUtils.Size(int)</c> emits <c>&lt;size=N&gt;</c> verbatim,
+        /// <c>Size(float)</c> emits <c>&lt;size=N%&gt;</c>), which is the tell that they are not
+        /// interchangeable.
+        ///
+        /// The first attempt shipped <c>&lt;size=2&gt;</c> and read as "the tag does nothing here".
+        /// It was doing something: shrinking the block to near-invisibility, which is also why the
+        /// icons on those lines were too small to confirm.
         /// </summary>
         public static string AtReadableSize(string text) =>
-            string.IsNullOrEmpty(text) ? text : $"<size=2>{text}</size>";
+            string.IsNullOrEmpty(text) ? text : $"<size={ReadableSizePercent}%>{text}</size>";
+
+        /// <summary>Findings-list font size as a percentage of default.</summary>
+        private const int ReadableSizePercent = 200;
 
         /// <summary>
         /// The "how is this area doing" fragment: coverage plus the biggest visible find. Split out
