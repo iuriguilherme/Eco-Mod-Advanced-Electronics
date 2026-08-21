@@ -106,12 +106,22 @@ namespace Eco.Mods.TechTree
     // mining area's output can be reached -- the vanilla Store's own radius (Engine
     // Reference), shared with the waste sorters and the largest any vanilla object takes.
     // Existing docks acquire this at the next server load (U7).
-    // The dock's own subclass, not the stock component: a dock must auto-link to storage off its
-    // deed (an unowned stockpile has no deed at all), or the hold fills and every later dig is
-    // refused for lack of room. See DroneDockLinkComponent for why that is not a permission
-    // change. MIGRATION: a dock saved before this carries a stock LinkComponent; the swap is
-    // exercised on the alpha test world rather than assumed safe.
-    [RequireComponent(typeof(DroneDockLinkComponent))]
+    // The STOCK component, not a subclass of it, and that is the whole point.
+    //
+    // The dock's Storage tab rendered "LINKABLE INVENTORIES (PERSONAL)" with no per-target Take
+    // From / Put Into controls, while a vanilla Store beside it rendered "(SHARED)" with them.
+    // Changing the base class from LinkComponent to SharedLinkComponent did not move it, which
+    // leaves the subclass itself as the difference: those controls are client UI bound to the
+    // component's own view type, and a mod-defined type has none, so the client falls back to
+    // rendering members generically. Server-side attributes cannot fix that -- the tab name does
+    // inherit (ComponentTabName is read with inherit: true), the renderer does not.
+    //
+    // The cost is the wide auto-link default that DroneDockLinkComponent existed for: this dock
+    // now defaults exactly like every other machine, to same-deed storage only. That default was
+    // always a stand-in for a control the player did not have, and the trade only makes sense in
+    // this direction -- a narrow default WITH a way to link beats a wide one with none.
+    // `/drone link` stays as the fallback until the tab is confirmed working.
+    [RequireComponent(typeof(SharedLinkComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {

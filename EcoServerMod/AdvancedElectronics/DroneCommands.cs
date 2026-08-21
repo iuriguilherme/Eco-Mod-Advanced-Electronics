@@ -340,7 +340,18 @@ namespace Eco.Mods.TechTree
             // named cargo hold, or the link component is missing. All three are reported.
             user.MsgLocStr($"  Mining assignment: {dock.AssignedMiningAreaToken ?? "(none)"}");
             var hold = dock.GetComponent(typeof(PublicStorageComponent), DroneCargo.HoldName);
-            user.MsgLocStr($"  Mining hold '{DroneCargo.HoldName}': {(hold != null ? "present" : "MISSING (blocks mining dispatch)")}");
+            // Contents, not just presence. A finished job holds its assignment until the hold is
+            // empty -- deliberately, since unassigning with cargo aboard strands it -- so "still
+            // assigned after completing" and "cannot empty the hold" are the same observation from
+            // two ends, and only this line tells them apart.
+            var holdInventory = (hold as PublicStorageComponent)?.Storage;
+            var holdSummary = holdInventory == null
+                ? "MISSING (blocks mining dispatch)"
+                : holdInventory.IsEmpty
+                    ? "present, empty"
+                    : $"present, holding {holdInventory.GroupedStacks.Sum(s => s.Quantity)} items";
+
+            user.MsgLocStr($"  Mining hold '{DroneCargo.HoldName}': {holdSummary}");
             user.MsgLocStr($"  Link component: {(dock.TryGetComponent<LinkComponent>(out _) ? "present" : "MISSING (blocks mining dispatch)")}");
             if (dock.MiningJob is { } miningJob)
             {
