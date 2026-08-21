@@ -145,6 +145,42 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
+        public void EndingFromIdle_EndsTheJob_SoAJobThatNeverSetOutCanStillStop()
+        {
+            // The state a job sits in until its first dispatch succeeds. A job whose area was
+            // deleted before it ever set out must be able to end here, or it reports itself
+            // neither finished nor stoppable and the lifecycle re-dispatches it forever.
+            var job = new MiningJob(new[] { P00, P10 });
+
+            Assert.Equal(MiningJobStatus.Idle, job.Status);
+            job.End(MiningEndReason.AreaGone);
+
+            Assert.Equal(MiningJobStatus.Ended, job.Status);
+            Assert.Equal(MiningEndReason.AreaGone, job.EndReason);
+        }
+
+        [Fact]
+        public void EndingFromTerminalStates_IsIgnored_SoAFinishedJobIsNotRelabelled()
+        {
+            var completed = new MiningJob(new[] { P00 });
+            completed.Dispatch();
+            completed.MarkWorked(P00);
+            Assert.True(completed.TryComplete(AllSurveyed));
+
+            completed.End(MiningEndReason.AreaGone);
+            Assert.Equal(MiningJobStatus.Complete, completed.Status);
+            Assert.Null(completed.EndReason);
+
+            var ended = new MiningJob(new[] { P00 });
+            ended.Dispatch();
+            ended.End(MiningEndReason.Halted);
+            ended.End(MiningEndReason.AreaGone);
+
+            Assert.Equal(MiningJobStatus.Ended, ended.Status);
+            Assert.Equal(MiningEndReason.Halted, ended.EndReason);
+        }
+
+        [Fact]
         public void ReMarkingAlreadyWorkedPlot_IsIdempotent_DoesNotInflateCount()
         {
             var job = new MiningJob(new[] { P00 });

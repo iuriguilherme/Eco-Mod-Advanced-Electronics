@@ -265,17 +265,28 @@ namespace AdvancedElectronics.Navigation
         }
 
         /// <summary>
-        /// Working or WaitingToUnload -> Ended, carrying <paramref name="reason"/>. The
+        /// Any non-terminal state -> Ended, carrying <paramref name="reason"/>. The
         /// ledger is preserved untouched -- ending is not completion, and the worked/
         /// skipped record stays legible after the fact.
+        ///
+        /// Idle counts. It was excluded originally because ending was pictured as
+        /// interrupting work in progress, but every reason a job ends -- the area gone, a
+        /// server halt, an invalid stamp -- is equally true of a job that has not set out
+        /// yet, and Idle is exactly where a job sits when its very first dispatch fails.
+        /// Refusing to end from Idle left such a job permanently Idle-with-no-target: the
+        /// strategy reported "nothing to offer" without ever reporting exhaustion, so the
+        /// lifecycle re-dispatched it forever (live pass #14 -- a survey dock picked up
+        /// before the drone had begun, leaving the drone bobbing beside its own dock).
+        ///
+        /// Complete and Ended stay put: a finished job is not re-labelled by a late event.
         /// </summary>
         public void End(MiningEndReason reason)
         {
-            if (Status == MiningJobStatus.Working || Status == MiningJobStatus.WaitingToUnload)
-            {
-                Status = MiningJobStatus.Ended;
-                EndReason = reason;
-            }
+            if (Status == MiningJobStatus.Complete || Status == MiningJobStatus.Ended)
+                return;
+
+            Status = MiningJobStatus.Ended;
+            EndReason = reason;
         }
 
         public PlotOutcome OutcomeOf(PlotCoord plot) =>

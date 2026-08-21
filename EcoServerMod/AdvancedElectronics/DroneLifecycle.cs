@@ -505,11 +505,17 @@ namespace Eco.Mods.TechTree
             // plan against the excavated floor and starts a second shaft inside the first.
             var needsFreshStrategy = this.strategy == null || this.strategy.IsExhausted;
 
-            var area = this.CurrentTargetArea(out var noAreaReason);
+            var area = this.CurrentTargetArea(out var noAreaReason, out var assignmentGone);
             if (area == null)
             {
                 this.LastDispatchNote = noAreaReason;
-                this.HandleNoPath(mover);
+
+                // A vanished area is not a routing failure and must not be retried like one.
+                if (assignmentGone)
+                    this.EndJobForMissingArea(mover);
+                else
+                    this.HandleNoPath(mover);
+
                 return;
             }
 
@@ -614,9 +620,23 @@ namespace Eco.Mods.TechTree
         /// (KTD2's three-outcome policy -- a not-yet-resolved or already-invalidated
         /// reference reports no area, same as an unresolved survey assignment).
         /// </summary>
-        private SurveyArea CurrentTargetArea(out string noAreaReason)
+        private SurveyArea CurrentTargetArea(out string noAreaReason) =>
+            this.CurrentTargetArea(out noAreaReason, out _);
+
+        /// <summary>
+        /// As <see cref="CurrentTargetArea(out string)"/>, but also reports whether the
+        /// assignment is <em>terminally</em> gone rather than merely unresolved this tick.
+        ///
+        /// KTD2 computes three outcomes precisely so that deletion can be told apart from a
+        /// load-ordering miss, and this method used to throw the distinction away -- both
+        /// non-Found signals collapsed into a bare null, which the caller could only read as
+        /// "no path". A deleted area therefore presented as a routing failure, and routing
+        /// failures are retried forever by design.
+        /// </summary>
+        private SurveyArea CurrentTargetArea(out string noAreaReason, out bool assignmentGone)
         {
             noAreaReason = null;
+            assignmentGone = false;
 
             if (this.CurrentJobKind() == DroneJobKind.Mining)
             {
@@ -627,13 +647,20 @@ namespace Eco.Mods.TechTree
                     return null;
                 }
 
-                if (reference.Resolve(out _, out var miningEntry) != AreaLookupSignal.Found)
+                switch (reference.Resolve(out _, out var miningEntry))
                 {
-                    noAreaReason = "assigned mining area did not resolve";
-                    return null;
-                }
+                    case AreaLookupSignal.Found:
+                        return miningEntry.ToSurveyArea();
 
-                return miningEntry.ToSurveyArea();
+                    case AreaLookupSignal.ConfirmedGone:
+                        noAreaReason = "assigned mining area is gone";
+                        assignmentGone = true;
+                        return null;
+
+                    default:
+                        noAreaReason = "assigned mining area did not resolve";
+                        return null;
+                }
             }
 
             var entry = this.HomeDock.AssignedSurveyArea;
@@ -729,6 +756,36 @@ namespace Eco.Mods.TechTree
             }
 
             return best;
+        }
+
+        /// <summary>
+        /// The assigned area is confirmed gone (AE7: the survey dock that published it was
+        /// picked up, or the area was deleted). Ends the job with a named reason and brings
+        /// the drone home -- the hold is left untouched, so what it already mined is kept.
+        ///
+        /// Deliberately NOT <see cref="HandleNoPath"/>. Routing that back through the
+        /// no-path path is what produced the observed hang: Unreachable, an immediate return
+        /// leg to the dock the drone was already standing on, arrival, Idle, and then R24's
+        /// idle-at-dock resume dispatching straight back into the same missing area. The job
+        /// never ended, so the strategy never read complete, so the resume never stopped --
+        /// the drone bobbed beside its dock indefinitely while the panel showed an idle job
+        /// with no stop reason.
+        /// </summary>
+        private void EndJobForMissingArea(DroneMoverComponent mover)
+        {
+            this.HomeDock.MiningJob?.End(MiningEndReason.AreaGone);
+            this.HomeDock.PersistMiningJob();
+
+            if (this.IsAtHomeDock())
+            {
+                // Already home. Settle in place rather than flying a zero-length return leg.
+                mover.Stop();
+                this.stateMachine.OnReturnedToDock();
+                this.ResetReturnLadder(mover);
+                return;
+            }
+
+            this.BeginReturnToDock(mover, viaDistrictCleared: true);
         }
 
         /// <summary>

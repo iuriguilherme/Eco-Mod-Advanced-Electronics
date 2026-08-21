@@ -118,8 +118,12 @@ namespace Eco.Mods.TechTree
             switch (outcome)
             {
                 case AreaResolutionOutcome.Invalidated:
-                    if (this.job.Status == MiningJobStatus.Working || this.job.Status == MiningJobStatus.WaitingToUnload)
-                        this.job.End(MiningEndReason.AreaGone);
+                    // No state guard: MiningJob.End owns which states are terminal. Guarding
+                    // here for Working/WaitingToUnload meant an Idle job -- the state a job is
+                    // in until its first dispatch succeeds -- could never end against a
+                    // vanished area, and an unendable job is an undispatchable one that still
+                    // reports itself dispatchable.
+                    this.job.End(MiningEndReason.AreaGone);
                     return null;
                 case AreaResolutionOutcome.NotYetResolved:
                     return null;
