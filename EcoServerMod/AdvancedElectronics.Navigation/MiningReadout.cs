@@ -34,34 +34,14 @@ namespace AdvancedElectronics.Navigation
             if (!hasAssignment) return travel;
 
             // "working -- at the area" is noise: being at the area is what working means.
-            if (travel == AtArea && (status == MiningJobStatus.Working || status == MiningJobStatus.WaitingToUnload))
+            if (travel == DockReadout.AtAreaPhrase
+                && (status == MiningJobStatus.Working || status == MiningJobStatus.WaitingToUnload))
                 return job;
 
             // Likewise for a job that has not set out -- its word already says it is at the dock.
-            if (travel == Docked && status == MiningJobStatus.Idle) return job;
+            if (travel == DockReadout.DockedPhrase && status == MiningJobStatus.Idle) return job;
 
             return $"{job} -- {travel}";
-        }
-
-        private const string Docked = "docked";
-        private const string AtArea = "at the area";
-
-        /// <summary>
-        /// Where the drone physically is, in the panel's words. Kept apart from the job status
-        /// because MiningJob deliberately carries no travelling state (KTD10); the two are
-        /// composed by the caller rather than merged into one enum.
-        /// </summary>
-        public static string FormatTravel(DroneStatus status, DroneTravelTarget target)
-        {
-            switch (status)
-            {
-                case DroneStatus.Idle: return Docked;
-                case DroneStatus.OnStation: return AtArea;
-                case DroneStatus.Unreachable: return "cannot reach the area";
-                case DroneStatus.EnRoute:
-                    return target == DroneTravelTarget.Dock ? "returning to dock" : "flying to the area";
-                default: return string.Empty;
-            }
         }
 
         private static string JobWord(MiningJobStatus status, int workedCount, bool hasAssignment)

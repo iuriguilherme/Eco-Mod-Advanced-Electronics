@@ -204,7 +204,38 @@ namespace AdvancedElectronics.Navigation.Tests
         [InlineData(DroneStatus.EnRoute, DroneTravelTarget.District, "flying to the area")]
         public void Travel_NamesEachPlaceTheDroneCanBe(DroneStatus status, DroneTravelTarget target, string expected)
         {
-            Assert.Equal(expected, MiningReadout.FormatTravel(status, target));
+            Assert.Equal(expected, DockReadout.FormatTravel(status, target));
+        }
+
+        [Fact]
+        public void Travel_LetsTheCallerNameWhatBeingAtTheAreaMeans()
+        {
+            // On a survey dock, arriving and working are the same thing, so "at the area" is a
+            // worse word than "surveying". Only that one state differs between the two docks.
+            Assert.Equal(
+                "surveying",
+                DockReadout.FormatTravel(DroneStatus.OnStation, DroneTravelTarget.None, atAreaLabel: "surveying"));
+
+            Assert.Equal(
+                "returning to dock",
+                DockReadout.FormatTravel(DroneStatus.EnRoute, DroneTravelTarget.Dock, atAreaLabel: "surveying"));
+        }
+
+        [Fact]
+        public void Travel_NeverRendersARawStateMachineName()
+        {
+            // "EnRoute" and "OnStation" name states in a state machine. A player watching a drone
+            // learns nothing from either.
+            foreach (DroneStatus status in Enum.GetValues(typeof(DroneStatus)))
+            foreach (DroneTravelTarget target in Enum.GetValues(typeof(DroneTravelTarget)))
+            {
+                var text = DockReadout.FormatTravel(status, target);
+                if (string.IsNullOrEmpty(text)) continue;
+
+                Assert.NotEqual(status.ToString(), text);
+                Assert.DoesNotContain("EnRoute", text);
+                Assert.DoesNotContain("OnStation", text);
+            }
         }
 
         [Fact]

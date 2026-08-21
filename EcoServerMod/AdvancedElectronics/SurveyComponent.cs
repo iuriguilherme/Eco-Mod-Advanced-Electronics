@@ -108,6 +108,14 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("String")]
         public string DroneStatus { get; private set; } = "none docked";
 
+        /// <summary>
+        /// Names the assigned area. Directly under the status on purpose: the two answer one
+        /// question between them -- what is the drone doing, and to what -- and reading them apart
+        /// meant scrolling past the whole area roster to find the second half.
+        /// </summary>
+        [SyncToView, Autogen, UITypeName("String")]
+        public string AssignedArea { get; private set; } = string.Empty;
+
         // StringTitle, not LinedHeader. LinedHeader and SectionHeader render the MEMBER NAME and
         // discard the value -- an earlier build of this tab showed "Assign Header" on screen.
         // StringTitle and GeneralHeader are the two that render what you assign.
@@ -117,10 +125,6 @@ namespace Eco.Mods.TechTree
         /// <summary>The dock's numbered area list — what the position numbers below refer to.</summary>
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string AreasDisplay { get; private set; } = string.Empty;
-
-        /// <summary>Names the assigned area, so the selector below is not read on its own.</summary>
-        [SyncToView, Autogen, UITypeName("String")]
-        public string AssignedDisplay { get; private set; } = string.Empty;
 
         // ---------------------------------------------------------------
         // Selection and findings
@@ -272,13 +276,13 @@ namespace Eco.Mods.TechTree
 
             this.DroneStatus     = BuildDroneStatus(dock);
             this.AreasDisplay    = this.BuildAreasText(dock);
-            this.AssignedDisplay = BuildAssignedText(dock);
+            this.AssignedArea = BuildAssignedText(dock);
             this.ViewingDisplay  = this.BuildViewingText(dock);
             this.ResultsDisplay  = this.BuildResultsText(dock);
 
             this.Changed(nameof(this.DroneStatus));
             this.Changed(nameof(this.AreasDisplay));
-            this.Changed(nameof(this.AssignedDisplay));
+            this.Changed(nameof(this.AssignedArea));
             this.Changed(nameof(this.ViewingDisplay));
             this.Changed(nameof(this.ResultsDisplay));
             this.Changed(nameof(this.ViewPosition));
@@ -313,9 +317,18 @@ namespace Eco.Mods.TechTree
             if (lifecycle.CannotReachAssignedArea)
                 return "docked -- cannot reach the assigned area";
 
-            // ToString(), not interpolation: Status is an AdvancedElectronics.Navigation.DroneStatus
-            // enum, which this component's own DroneStatus property shadows by name.
-            return lifecycle.Status.ToString();
+            // Words, not the enum. "EnRoute" and "OnStation" name states in a state machine; they
+            // tell someone watching a drone nothing about what it is doing or whether to step in.
+            // "surveying" rather than the shared "at the area", because on a survey dock arriving
+            // and working are the same thing.
+            var travel = DockReadout.FormatTravel(lifecycle.Status, lifecycle.TravelTarget, atAreaLabel: "surveying");
+
+            // A docked drone with an area still assigned has not finished -- it is between plots,
+            // or waiting to set out -- and saying only "docked" invites the player to reassign it.
+            if (travel == DockReadout.DockedPhrase && dock.AssignedSurveyAreaId != 0)
+                return "docked -- waiting to set out";
+
+            return travel;
         }
 
         /// <summary>True when this dock's drone is currently reporting that it cannot reach its area.</summary>

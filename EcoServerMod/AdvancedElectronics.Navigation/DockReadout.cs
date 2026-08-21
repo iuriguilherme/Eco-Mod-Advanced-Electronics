@@ -69,6 +69,31 @@ namespace AdvancedElectronics.Navigation
         /// <summary>Wraps a line in the finished colour, so both readouts agree on what done looks like.</summary>
         public static string AsComplete(string text) => $"<color={CompleteColor}>{text}</color>";
 
+        public const string DockedPhrase = "docked";
+        public const string AtAreaPhrase = "at the area";
+
+        /// <summary>
+        /// Where the drone is, in words a player can act on. Both tabs render this rather than the
+        /// status enum: "EnRoute" and "OnStation" name states in a state machine, and tell someone
+        /// watching a drone nothing about what it is doing or whether to intervene.
+        /// </summary>
+        /// <param name="atAreaLabel">
+        /// What being at the area means for this drone kind -- "surveying" reads better than "at
+        /// the area" on a survey dock, where arriving and working are the same thing.
+        /// </param>
+        public static string FormatTravel(DroneStatus status, DroneTravelTarget target, string atAreaLabel = null)
+        {
+            switch (status)
+            {
+                case DroneStatus.Idle: return DockedPhrase;
+                case DroneStatus.OnStation: return atAreaLabel ?? AtAreaPhrase;
+                case DroneStatus.Unreachable: return "cannot reach the area";
+                case DroneStatus.EnRoute:
+                    return target == DroneTravelTarget.Dock ? "returning to dock" : "flying to the area";
+                default: return string.Empty;
+            }
+        }
+
         /// <summary>
         /// Formats one per-material line (R2), quantity-led: how much of the material was found, the
         /// shallowest block to dig, and the depth range. Quantity is the headline because it is

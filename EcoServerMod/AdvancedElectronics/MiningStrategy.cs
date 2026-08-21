@@ -438,6 +438,16 @@ namespace Eco.Mods.TechTree
                 this.holdFull = true;
                 this.job.OnUnloadRefused();
             }
+
+            // A finished job retires its own assignment, matching the survey drone. Only once the
+            // cargo is actually away: unassigning with a full hold would strand the load, since the
+            // retry that empties it runs off this same hook.
+            //
+            // End() is a no-op on a Complete job, so the reason recorded stays "complete" rather
+            // than being overwritten by the unassign that follows it.
+            if (this.job.Status == MiningJobStatus.Complete && this.hold.IsEmpty
+                && this.homeDock.AssignedMiningArea != null)
+                this.homeDock.UnassignMiningArea();
         }
 
         public void OnEnded(string reason)

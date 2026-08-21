@@ -248,7 +248,7 @@ namespace Eco.Mods.TechTree
             if (drone == null || drone.IsDestroyed) return string.Empty;
 
             return drone.TryGetComponent<DroneLifecycle>(out var lifecycle)
-                ? MiningReadout.FormatTravel(lifecycle.Status, lifecycle.TravelTarget)
+                ? DockReadout.FormatTravel(lifecycle.Status, lifecycle.TravelTarget)
                 : string.Empty;
         }
 
@@ -262,6 +262,16 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private static bool IsMinedOut(DroneDockObject dock, SurveyAreaEntry area)
         {
+            // A completed job is the stronger signal and has to be checked first, because a plot
+            // the job SKIPPED never gets a mined stamp -- it was refused by law, or by property, or
+            // could not be reached, so nothing was removed and nothing was recorded. Judging by
+            // stamps alone, an area finished with one skip stays unmarked forever, which is the
+            // opposite of what the marker is for: the job's own verdict was "nothing left here".
+            if (dock.MiningJob?.Status == MiningJobStatus.Complete && dock.MiningJobAreaId == area.Id)
+                return true;
+
+            // Otherwise fall back to the stamps, which is what answers for an area this dock
+            // worked under an earlier job it no longer holds.
             var surveyed = area.ReadSurveyedStamps();
             var mined = dock.ReadMinedStamps();
 
