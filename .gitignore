@@ -132,6 +132,15 @@ EcoServerMod/**/Local.props
 # not versioned here.
 /dist/
 
+# Unity HDRP template leftovers — created by the project template, not by us and not
+# by the ModKit. This project builds an asset bundle from a scene root via
+# Eco Tools > Mod Kit, never a player, so Unity's build list serves no purpose here.
+# Kept on disk so the Editor stays happy; just not versioned.
+/Assets/OutdoorsScene.unity
+/Assets/OutdoorsScene.unity.meta
+/Assets/Settings/SkyandFogSettingsProfile.asset
+/Assets/Settings/SkyandFogSettingsProfile.asset.meta
+
 # ---------------------------------------------------------------------------
 # Third-party content — deliberately NOT redistributed here.
 #
