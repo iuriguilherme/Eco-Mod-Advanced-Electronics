@@ -111,6 +111,10 @@ namespace Eco.Mods.TechTree
         private string lastKnownAssignedArea;
         private float secondsSinceLastReturnRetry;
 
+        // Deliberately NOT serialized: it must read false on every load, because that is exactly
+        // when the state machine and the drone's persisted position can disagree.
+        private bool hasReconciledPositionAfterLoad;
+
         // The current job strategy (KTD3) -- what "one tick's work" at a parked plot means,
         // and which plot is next. Recreated fresh on every (re)dispatch (see DispatchToArea),
         // which is what resets its internal plot-list progress; the lifecycle itself keeps
@@ -261,6 +265,34 @@ namespace Eco.Mods.TechTree
                 // was in progress to interrupt.
 
                 return;
+            }
+
+            // Reconcile the freshly-loaded state machine against where the drone physically is.
+            //
+            // The drone's POSITION is serialized; the state machine is not -- it is a plain field
+            // and comes back Idle, which means "parked at the dock with nothing to do". A drone
+            // that was out working when the server saved therefore loads believing it is home
+            // while hovering over its work area, and nothing ever contradicts that: with no
+            // assignment the change-detection above sees null == null and takes no branch, and
+            // Idle's own branch only acts on a drone that IS at its dock.
+            //
+            // An assigned drone is rescued by accident -- its token reads as a change against the
+            // null field and re-dispatches it -- which is why this only ever showed up on
+            // unassigned drones, left hovering over someone else's excavation until picked up by
+            // hand.
+            //
+            // Placed after the change-detection so a dispatch always wins: that branch returns
+            // before this point, and by the next tick the drone is EnRoute rather than Idle.
+            if (!this.hasReconciledPositionAfterLoad)
+            {
+                this.hasReconciledPositionAfterLoad = true;
+
+                if (this.stateMachine.Status == DroneStatus.Idle && !this.IsAtHomeDock())
+                {
+                    this.LastDispatchNote = "returning to dock after a server restart left it away";
+                    this.BeginReturnToDock(mover, viaDistrictCleared: false);
+                    return;
+                }
             }
 
             switch (this.stateMachine.Status)
