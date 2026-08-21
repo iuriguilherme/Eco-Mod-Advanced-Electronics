@@ -369,6 +369,14 @@ because it is vanilla, not because the tab name is special. A generated view is 
 it renders scalars, and an inventory is not one. Vanilla itself routes around this: `SortingComponent`
 uses a generated view and syncs item *type IDs* and progress rather than an inventory.
 
+**Scope that claim to slot rendering.** It is about whether a draggable slot is drawn at all, and it
+does not generalise to everything a stock tab contains. A third cause of "renders less than vanilla"
+is not about component type in either direction: an optional part of an otherwise-correct tab can be
+gated by the *presence* of a separate empty engine component — declared, synced, carrying no state or
+behaviour. That failure has no missing view and no broken object; the tab draws, minus one control.
+Reading component types instead of component *sets* cost four falsified theories here. See
+`docs/solutions/conventions/an-empty-marker-component-is-a-client-ui-feature-flag.md`.
+
 **Isolate by timeline, not by theory.** Both fixes attempted here targeted the wrong variable
 because the symptom is identical whatever caused it, and there is no error text to read. What
 settled it was a screenshot showing the dock rendering *with* a visibly broken tab in an earlier
@@ -579,6 +587,9 @@ var tagsNames = ControllerManager.TypeToTags?.Invoke(controllerType);
   open, with nothing logged server-side.
 - `docs/solutions/best-practices/ship-the-readout-not-just-the-data.md` — why the readout surface
   is part of the feature; this doc is the constraint list that surface must fit inside.
+- `docs/solutions/conventions/an-empty-marker-component-is-a-client-ui-feature-flag.md` — the
+  inverse question: a surface that renders correctly but without an optional control, gated by an
+  empty engine component the mod had simply not declared. No mod-defined view is involved.
 - `docs/solutions/workflow-issues/tracing-beats-theorising-on-invariant-failures.md` — the same
   "observe, don't assume" discipline applied to a pathfinding invariant; here applied to client
   rendering.
