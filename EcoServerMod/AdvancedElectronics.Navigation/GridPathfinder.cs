@@ -181,7 +181,7 @@ namespace AdvancedElectronics.Navigation
                     }
                     else if (!IsWalkable(neighbor, exempt))
                         continue;
-                    if (!IsStepAllowed(current, neighbor))
+                    if (!IsStepAllowed(current, neighbor, startColumn, goalColumn))
                         continue;
 
                     float tentativeG = gScore[current] + 1f;
@@ -234,8 +234,31 @@ namespace AdvancedElectronics.Navigation
             return true;
         }
 
-        private bool IsStepAllowed(GridColumn from, GridColumn to)
+        /// <summary>
+        /// Whether the drone may take this edge, given how far it can climb or descend.
+        ///
+        /// Applied at the ENDS ONLY -- leaving the start column, or entering the goal column.
+        /// Everything between them is exempt, because the drone does not traverse it at ground
+        /// level: <see cref="CruiseProfile"/> lifts the middle of the route to a single altitude
+        /// above the highest ground on it and flies straight across. A pit halfway along is
+        /// something the drone passes over, so its depth is not the drone's problem.
+        ///
+        /// Gating every edge -- which is what this did -- made a deep pit a WALL rather than a
+        /// feature to fly over, for both drone kinds. Routes detoured around one, and a pit deeper
+        /// than the limit could not be entered at all. The clearance comment two methods up
+        /// already asserted the intended behaviour ("Height is what governs terrain, and the
+        /// cruise profile already lifts the route over it"); the search had simply never been
+        /// changed to match the profile that replaced terrain-tracing flight.
+        ///
+        /// The ends still count, and that is the whole remaining constraint: the drone has to get
+        /// DOWN into wherever it is going and back OUT of wherever it started, and
+        /// <see cref="ReturnEscalation.OrdinaryMaxStepHeight"/> is what says how far that may be.
+        /// </summary>
+        private bool IsStepAllowed(GridColumn from, GridColumn to, GridColumn start, GridColumn goal)
         {
+            var isEndpointStep = from.Equals(start) || to.Equals(goal);
+            if (!isEndpointStep) return true;
+
             float fromHeight = _sampler.GroundHeightAt(from.X, from.Z);
             float toHeight = _sampler.GroundHeightAt(to.X, to.Z);
             return MathF.Abs(toHeight - fromHeight) <= _maxStepHeight;
