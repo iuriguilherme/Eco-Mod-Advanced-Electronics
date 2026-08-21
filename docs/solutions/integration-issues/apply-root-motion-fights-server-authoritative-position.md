@@ -72,9 +72,10 @@ wasn't carried to the prefabs" — the uncheck landed on the scene *instance* ra
 prefab asset. The scene still carries the flag as a per-instance override — serialized as a
 `propertyPath: m_ApplyRootMotion` / `value: 0` pair rather than an inline field, at
 `Assets/Art/AdvancedElectronics/Scenes/AdvancedElectronicsScene.unity:457`, `:754` and `:985` —
-while the superseded prefab copies kept in the tree still carry
-`m_ApplyRootMotion: 1` (`Assets/Art/AdvancedElectronics/Prefabs/OldHarvestDroneObject.prefab:883`,
-`OldMiningDroneObject.prefab:883`). A manual checkbox is also undone by the next re-import: the
+while the superseded `OldHarvestDroneObject.prefab` and `OldMiningDroneObject.prefab` copies still
+carried `m_ApplyRootMotion: 1` at `:883`. (Those two were kept in the tree when this was written and
+have since been deleted, in `aac18e3` — the contrast is recorded here, not reproducible from the
+working tree.) A manual checkbox is also undone by the next re-import: the
 FBX importer turns root motion on by default, so every regenerated drone gets it back.
 
 ## Solution

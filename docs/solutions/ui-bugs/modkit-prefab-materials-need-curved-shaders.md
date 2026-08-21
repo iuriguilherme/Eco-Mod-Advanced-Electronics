@@ -49,7 +49,7 @@ ModKit also ships Fade/Particle/4-channel variants alongside it).
 
 1. Create a material on that shader (Standard-style properties: `_Color`, `_MainTex`,
    `_Metallic`, `_Glossiness`). This project's:
-   `Assets/Art/AdvancedElectronics/AdvancedElectronicsPlaceholder.mat`, `m_Shader`
+   `Assets/Art/AdvancedElectronics/Materials/AdvancedElectronicsPlaceholder.mat`, `m_Shader`
    pointing at the CurvedStandard shader's GUID `b317ea5cc069fde4f94662eac4cb8f1e`.
 2. Point every renderer's material slot in the mod prefabs at it (both prefabs'
    `m_Materials` entries repointed from the dangling GUID).

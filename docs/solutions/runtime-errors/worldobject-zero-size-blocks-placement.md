@@ -56,7 +56,7 @@ Set the prefab's `WorldObject.size` to the object's block footprint (`(1,1,1)` f
 single-block object), and harden the prefab-finishing tool so it can never leave `size` at
 zero again.
 
-Prefab change (`Assets/Art/AdvancedElectronics/DroneDockObject.prefab` and
+Prefab change (`Assets/Art/AdvancedElectronics/Prefabs/DroneDockObject.prefab` and
 `SurveyDroneObject.prefab`), on the `WorldObject` component:
 
 ```yaml
