@@ -153,6 +153,11 @@ namespace Eco.Mods.TechTree
         {
             this.AssignedMiningArea = null;
             this.miningAssignmentEpoch++;
+
+            // A job outlives its assignment otherwise, and the panel keeps reporting "working"
+            // at whatever plot count it had reached while the drone flies home to nothing.
+            this.MiningJob?.End(MiningEndReason.Unassigned);
+            this.PersistMiningJob();
         }
 
         /// <summary>

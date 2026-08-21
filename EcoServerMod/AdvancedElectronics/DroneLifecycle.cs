@@ -182,6 +182,9 @@ namespace Eco.Mods.TechTree
         /// <summary>Current lifecycle status (R15) -- Idle/EnRoute/Surveying/Unreachable.</summary>
         public DroneStatus Status => this.stateMachine.Status;
 
+        /// <summary>What the drone is travelling toward -- the half of EnRoute that says which way.</summary>
+        public DroneTravelTarget TravelTarget => this.stateMachine.TravelTarget;
+
         /// <summary>
         /// True while the drone is doing work that costs fuel, dock parts, and its own condition
         /// (R9): travelling to the assigned area, or surveying it. The dock-bound leg is

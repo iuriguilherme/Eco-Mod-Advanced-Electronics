@@ -198,19 +198,29 @@ namespace Eco.Mods.TechTree
 
             var job = dock.MiningJob;
 
+            var travel = TravelPhrase(dock);
+
             if (job != null)
             {
                 // The halt refuses dispatch before a job exists, so a blocked reason has to be
                 // able to speak with no job present -- setting it only inside this branch is what
                 // made a halted dock silent. Folded into the status line now that the tab has no
                 // row of its own for it.
-                this.JobStatus = MiningReadout.FormatJobStatus(job.Status, job.WorkedCount, reference != null);
+                this.JobStatus = MiningReadout.FormatJobStatus(job.Status, job.WorkedCount, reference != null, travel);
+
+                // The shaft half only while one is actually being cut. A finished or abandoned job
+                // keeps its last layer counts, and reporting them next to "returning to dock" reads
+                // as a shaft still in progress.
+                var cutting = job.Status == MiningJobStatus.Working || job.Status == MiningJobStatus.WaitingToUnload;
+
                 this.Progress = MiningReadout.FormatProgress(
-                    job.PlotCount, job.WorkedCount, job.SkippedCount, job.ShaftLayersDone, job.ShaftLayersTotal);
+                    job.PlotCount, job.WorkedCount, job.SkippedCount,
+                    cutting ? job.ShaftLayersDone : 0,
+                    cutting ? job.ShaftLayersTotal : 0);
             }
             else
             {
-                this.JobStatus = "no drone docked";
+                this.JobStatus = string.IsNullOrEmpty(travel) ? "no drone docked" : travel;
                 this.Progress = string.Empty;
             }
 
@@ -224,6 +234,17 @@ namespace Eco.Mods.TechTree
             this.Changed(nameof(this.Progress));
             this.Changed(nameof(this.AvailableAreas));
             this.Changed(nameof(this.SelectArea));
+        }
+
+        /// <summary>Where this dock's drone is, or empty when there is no drone to ask.</summary>
+        private static string TravelPhrase(DroneDockObject dock)
+        {
+            var drone = dock.SpawnedDrone;
+            if (drone == null || drone.IsDestroyed) return string.Empty;
+
+            return drone.TryGetComponent<DroneLifecycle>(out var lifecycle)
+                ? MiningReadout.FormatTravel(lifecycle.Status, lifecycle.TravelTarget)
+                : string.Empty;
         }
 
         /// <summary>

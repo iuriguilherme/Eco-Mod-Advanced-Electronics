@@ -162,6 +162,52 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
+        public void JobStatus_WithNoAssignment_ReportsWhereTheDroneIs()
+        {
+            // The reported bug: unassigning left "working" on screen while the drone flew home.
+            // Between jobs the job word says nothing; where it is IS the status.
+            var flying = MiningReadout.FormatJobStatus(
+                MiningJobStatus.Ended, workedCount: 3, hasAssignment: false, travel: "returning to dock");
+
+            Assert.Equal("returning to dock", flying);
+            Assert.Equal(
+                "docked",
+                MiningReadout.FormatJobStatus(MiningJobStatus.Ended, 3, hasAssignment: false, travel: "docked"));
+        }
+
+        [Fact]
+        public void JobStatus_WithAnAssignment_ComposesBothHalves()
+        {
+            Assert.Equal(
+                "complete -- returning to dock",
+                MiningReadout.FormatJobStatus(MiningJobStatus.Complete, 4, hasAssignment: true, travel: "returning to dock"));
+        }
+
+        [Fact]
+        public void JobStatus_DropsTravelThatRepeatsTheJobWord()
+        {
+            // "working -- at the area" is noise: being at the area is what working means.
+            Assert.Equal(
+                "working",
+                MiningReadout.FormatJobStatus(MiningJobStatus.Working, 1, hasAssignment: true, travel: "at the area"));
+
+            Assert.Equal(
+                "idle -- waiting to set out",
+                MiningReadout.FormatJobStatus(MiningJobStatus.Idle, 0, hasAssignment: true, travel: "docked"));
+        }
+
+        [Theory]
+        [InlineData(DroneStatus.Idle, DroneTravelTarget.None, "docked")]
+        [InlineData(DroneStatus.OnStation, DroneTravelTarget.None, "at the area")]
+        [InlineData(DroneStatus.Unreachable, DroneTravelTarget.Dock, "cannot reach the area")]
+        [InlineData(DroneStatus.EnRoute, DroneTravelTarget.Dock, "returning to dock")]
+        [InlineData(DroneStatus.EnRoute, DroneTravelTarget.District, "flying to the area")]
+        public void Travel_NamesEachPlaceTheDroneCanBe(DroneStatus status, DroneTravelTarget target, string expected)
+        {
+            Assert.Equal(expected, MiningReadout.FormatTravel(status, target));
+        }
+
+        [Fact]
         public void Progress_ReportsTheAreaTotalAlongsideWhatIsDone()
         {
             // "worked 2, skipped 1" leaves the player computing the denominator from the area list,
