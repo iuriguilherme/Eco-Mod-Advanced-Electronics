@@ -99,6 +99,39 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Null(DockReadout.AtReadableSize(null));
         }
 
+        [Fact]
+        public void OreLine_IsNeverColoured_SoTheFindingsListStaysDefaultText()
+        {
+            // Colour in this readout is reserved for the area roster. The findings list is plain
+            // text at every coverage level, including a fully-surveyed area.
+            var line = DockReadout.FormatOreLine(Finding("IronOre", 180, 9, 22), "IronOreItem");
+
+            Assert.DoesNotContain("<color", line);
+        }
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(50f)]
+        [InlineData(100f)]
+        public void AreaSummary_IsNeverColoured_BecauseTheRosterOwnsThatDecision(float coverage)
+        {
+            // The summary is shared with compact control labels, so it stays plain and
+            // FormatAreaLine adds the roster's colour on top.
+            var summary = DockReadout.FormatAreaSummary(Area(coverage: coverage, top: Finding("Coal", 4)));
+
+            Assert.DoesNotContain("<color", summary);
+        }
+
+        [Fact]
+        public void AreaLine_ColoursAFullySurveyedArea_AndLeavesAPartialOnePlain()
+        {
+            var complete = DockReadout.FormatAreaLine(Area(coverage: 100f, top: Finding("Coal", 4)));
+            var partial = DockReadout.FormatAreaLine(Area(coverage: 99f, top: Finding("Coal", 4)));
+
+            Assert.Contains("<color=green>", complete);
+            Assert.DoesNotContain("<color=green>", partial);
+        }
+
         // --- Area summary: the three states ---
 
         [Fact]

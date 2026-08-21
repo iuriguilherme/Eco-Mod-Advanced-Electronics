@@ -121,28 +121,40 @@ namespace AdvancedElectronics.Navigation
         {
             var top = area.TopVisibleFinding;
 
-            // A finished area is coloured whole rather than just its percentage: the point is to
-            // find the done ones by scanning the list, and a green "100%" buried in an otherwise
-            // uniform line is barely easier to spot than a plain one.
-            var complete = area.CoveragePercent >= 100f;
-
-            string Colored(string text) => complete ? $"<color={CompleteColor}>{text}</color>" : text;
-
             if (top.Found)
-                return Colored($"{area.CoveragePercent:F0}% surveyed, most {top.OreType} (~{top.Count} blocks)");
+                return $"{area.CoveragePercent:F0}% surveyed, most {top.OreType} (~{top.Count} blocks)";
 
             // Order matters. A zero-coverage area with nothing visible has not been looked at;
             // saying "nothing matching" there would report a result the drone never produced.
             return area.CoveragePercent > 0f
-                ? Colored($"{area.CoveragePercent:F0}% surveyed, nothing matching")
+                ? $"{area.CoveragePercent:F0}% surveyed, nothing matching"
                 : "not surveyed yet";
         }
 
-        /// <summary>One area's line in the panel's roster: position, name, size, summary, assignment.</summary>
-        public static string FormatAreaLine(AreaSnapshot area) =>
-            $"{area.Position}. {area.Name} -- {area.PlotCount} plots, {FormatAreaSummary(area)}"
-            + (area.IsAssigned ? AssignedMarker : string.Empty)
-            + (area.IsUnreachable ? UnreachableMarker : string.Empty);
+        /// <summary>
+        /// One area's line in the panel's roster: position, name, size, summary, assignment.
+        ///
+        /// The completed-area colour is applied HERE rather than inside
+        /// <see cref="FormatAreaSummary"/>, so it belongs to the area roster and only to the area
+        /// roster. The summary is also the shape a compact control label wants, and the findings
+        /// readout states coverage in its own words -- neither should inherit a colour because the
+        /// roster wanted one. A formatter that returns markup its callers did not ask for is how
+        /// colour leaks into surfaces nobody chose it for.
+        /// </summary>
+        public static string FormatAreaLine(AreaSnapshot area)
+        {
+            var summary = FormatAreaSummary(area);
+
+            // Coloured whole rather than just the percentage: the point is to find the finished
+            // areas by scanning the list, and a green "100%" inside an otherwise uniform line is
+            // barely easier to spot than a plain one.
+            if (area.CoveragePercent >= 100f)
+                summary = $"<color={CompleteColor}>{summary}</color>";
+
+            return $"{area.Position}. {area.Name} -- {area.PlotCount} plots, {summary}"
+                   + (area.IsAssigned ? AssignedMarker : string.Empty)
+                   + (area.IsUnreachable ? UnreachableMarker : string.Empty);
+        }
 
         /// <summary>Names the area whose findings are on screen, and where it sits in the list.</summary>
         public static string FormatViewingLine(AreaSnapshot area, int totalAreas) =>
