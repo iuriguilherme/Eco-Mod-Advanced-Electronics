@@ -106,22 +106,17 @@ namespace Eco.Mods.TechTree
     // mining area's output can be reached -- the vanilla Store's own radius (Engine
     // Reference), shared with the waste sorters and the largest any vanilla object takes.
     // Existing docks acquire this at the next server load (U7).
-    // The STOCK component, not a subclass of it, and that is the whole point.
+    // The dock's own subclass, not the stock component: a dock must auto-link to storage off its
+    // deed (an unowned stockpile has no deed at all), or the hold fills and every later dig is
+    // refused for lack of room. See DroneDockLinkComponent for why that is not a permission change.
     //
-    // The dock's Storage tab rendered "LINKABLE INVENTORIES (PERSONAL)" with no per-target Take
-    // From / Put Into controls, while a vanilla Store beside it rendered "(SHARED)" with them.
-    // Changing the base class from LinkComponent to SharedLinkComponent did not move it, which
-    // leaves the subclass itself as the difference: those controls are client UI bound to the
-    // component's own view type, and a mod-defined type has none, so the client falls back to
-    // rendering members generically. Server-side attributes cannot fix that -- the tab name does
-    // inherit (ComponentTabName is read with inherit: true), the renderer does not.
-    //
-    // The cost is the wide auto-link default that DroneDockLinkComponent existed for: this dock
-    // now defaults exactly like every other machine, to same-deed storage only. That default was
-    // always a stand-in for a control the player did not have, and the trade only makes sense in
-    // this direction -- a narrow default WITH a way to link beats a wide one with none.
-    // `/drone link` stays as the fallback until the tab is confirmed working.
-    [RequireComponent(typeof(SharedLinkComponent))]
+    // SWAPPING THIS TO THE STOCK SharedLinkComponent CRASHES AN EXISTING WORLD ON BOOT, and the
+    // reason is worth keeping: RequireComponent is re-enforced on load, but a newly-required
+    // component is not attached in time for the object's own Initialize(), so the
+    // GetComponent<LinkComponent>() below returned null and DroneDockObject.Initialize() threw
+    // before the server finished starting. Changing which component type a saved object is
+    // required to have is a migration, not an edit.
+    [RequireComponent(typeof(DroneDockLinkComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
@@ -536,7 +531,13 @@ namespace Eco.Mods.TechTree
 
             // R26: 20-block link radius, so enough linked storage to absorb a mining
             // area's output can be reached.
-            this.GetComponent<LinkComponent>().Initialize(LinkRadius);
+            //
+            // Guarded rather than dereferenced. A link component is required, so it is normally
+            // there -- but "required" is enforced by machinery that does not necessarily run
+            // before this method on a world whose saved objects predate the requirement, and an
+            // NRE here aborts server startup entirely rather than degrading one dock.
+            if (this.TryGetComponent<LinkComponent>(out var link))
+                link.Initialize(LinkRadius);
 
             this.ModsPostInitialize();
             {
