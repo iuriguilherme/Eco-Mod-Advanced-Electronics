@@ -352,7 +352,14 @@ namespace Eco.Mods.TechTree
                     : $"present, holding {holdInventory.GroupedStacks.Sum(s => s.Quantity)} items";
 
             user.MsgLocStr($"  Mining hold '{DroneCargo.HoldName}': {holdSummary}");
-            user.MsgLocStr($"  Link component: {(dock.TryGetComponent<LinkComponent>(out _) ? "present" : "MISSING (blocks mining dispatch)")}");
+            // The TYPE, not just presence. A dock saved before the requirement changed still
+            // carries the old component, and it renders "(SHARED)" exactly like the stock one --
+            // so the header cannot tell them apart and neither can a screenshot. Two rounds of
+            // this were spent testing a change on an object that did not have it.
+            var links = dock.GetComponents<LinkComponent>().Select(c => c.GetType().Name).ToList();
+            user.MsgLocStr(links.Count == 0
+                ? "  Link component: MISSING (blocks mining dispatch)"
+                : $"  Link component: {string.Join(" + ", links)}");
             if (dock.MiningJob is { } miningJob)
             {
                 user.MsgLocStr($"  Mining job: {miningJob.Status}, worked {miningJob.WorkedCount}, skipped {miningJob.SkippedCount}{(miningJob.EndReason.HasValue ? $", ended: {miningJob.EndReason}" : string.Empty)}");

@@ -106,15 +106,18 @@ namespace Eco.Mods.TechTree
     // mining area's output can be reached -- the vanilla Store's own radius (Engine
     // Reference), shared with the waste sorters and the largest any vanilla object takes.
     // Existing docks acquire this at the next server load (U7).
-    // The STOCK component, not a subclass of it, and that is the whole point.
+    // The STOCK component, not a subclass of it.
     //
-    // The dock's Storage tab rendered "LINKABLE INVENTORIES (PERSONAL)" with no per-target Take
-    // From / Put Into controls, while a vanilla Store beside it rendered "(SHARED)" with them.
-    // Changing the base class from LinkComponent to SharedLinkComponent did not move it, which
-    // leaves the subclass itself as the difference: those controls are client UI bound to the
-    // component's own view type, and a mod-defined type has none, so the client falls back to
-    // rendering members generically. No server-side attribute reaches that -- the tab NAME does
-    // inherit (ComponentTabName is read with inherit: true); the renderer does not.
+    // Per-target Take From / Put Into controls are client UI, and the vanilla comparison that
+    // isolates them is Ashlar Basalt Fireplace against Desalinator: identical component lists
+    // apart from LinkComponent vs SharedLinkComponent, and only the Desalinator renders the
+    // controls. Crafting is a second, independent route (Robotic Assembly Line has them on a
+    // plain LinkComponent) but not the only one, so a hauling machine can have them.
+    //
+    // A mod SUBCLASS of SharedLinkComponent does not, which is why this names the stock type: the
+    // controls bind to the component's own view type and a mod-defined type has none. The header
+    // still reads "(SHARED)" either way -- SharesSettingsFor is inherited -- so the header cannot
+    // be used to tell which component an object actually carries. `/drone state` prints the type.
     //
     // The cost is the wide auto-link default DroneDockLinkComponent existed for: this dock now
     // defaults like every other machine, to same-deed storage only. `/drone link` remains as a
