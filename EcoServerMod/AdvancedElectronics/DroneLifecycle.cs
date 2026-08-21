@@ -115,6 +115,38 @@ namespace Eco.Mods.TechTree
         // when the state machine and the drone's persisted position can disagree.
         private bool hasReconciledPositionAfterLoad;
 
+        // How many dispatches in a row have failed to get the drone moving, and how long it has
+        // been parked since the budget ran out. See CannotReachAssignedArea.
+        private int consecutiveDispatchFailures;
+        private float secondsSinceDispatchBlocked;
+
+        /// <summary>
+        /// How many failed dispatches in a row before the drone stops trying. Small on purpose:
+        /// a dispatch that fails from the pad fails for a reason that will not change between one
+        /// tick and the next, and the whole point is to notice that quickly rather than to
+        /// persevere.
+        /// </summary>
+        private const int MaxConsecutiveDispatchFailures = 3;
+
+        /// <summary>
+        /// How long a blocked drone waits before trying once more. Long, because the only thing
+        /// that can change the answer is the world -- terrain filled in, an obstruction removed --
+        /// and none of that happens on a tick boundary.
+        /// </summary>
+        private const float BlockedDispatchRetryIntervalSeconds = 60f;
+
+        /// <summary>
+        /// True once the drone has given up reaching its assigned area for now: it is parked at
+        /// its dock, still assigned, and no longer retrying every tick.
+        ///
+        /// This exists because "parked" and "cannot get there" are different facts and the status
+        /// enum only carries one of them. Without it the panel had to choose between reporting the
+        /// physical truth (Idle, at the dock) and the useful one (unreachable), and the code that
+        /// flip-flopped between them is what the player saw as a drone docking and undocking
+        /// once a second forever.
+        /// </summary>
+        public bool CannotReachAssignedArea => this.consecutiveDispatchFailures >= MaxConsecutiveDispatchFailures;
+
         // The current job strategy (KTD3) -- what "one tick's work" at a parked plot means,
         // and which plot is next. Recreated fresh on every (re)dispatch (see DispatchToArea),
         // which is what resets its internal plot-list progress; the lifecycle itself keeps
@@ -247,6 +279,11 @@ namespace Eco.Mods.TechTree
             {
                 this.lastKnownAssignedArea = assignedToken;
 
+                // A new assignment is a fresh chance: whatever made the last one unreachable
+                // says nothing about this one.
+                this.consecutiveDispatchFailures = 0;
+                this.secondsSinceDispatchBlocked = 0f;
+
                 if (!string.IsNullOrWhiteSpace(assignedToken))
                 {
                     // Idle/Surveying/EnRoute -> EnRoute to the newly-assigned area (R13
@@ -363,7 +400,8 @@ namespace Eco.Mods.TechTree
                     // was that the docking animation never played -- Unreachable is not Idle, and
                     // the animator's at-home flag requires Idle.
                     if (this.strategy != null && !this.strategy.IsComplete && this.IsAtHomeDock()
-                        && !string.IsNullOrWhiteSpace(assignedToken))
+                        && !string.IsNullOrWhiteSpace(assignedToken)
+                        && this.DispatchBudgetAllowsRetry())
                         this.DispatchToArea(mover);
                     break;
             }
@@ -465,10 +503,7 @@ namespace Eco.Mods.TechTree
             // if nothing changed. See AnimationStateRepushIntervalSeconds: a state that never
             // changes again reaches nobody who was not already holding the object when it was
             // first written.
-            var manager = ServiceHolder<IWorldObjectManager>.Obj;
-            var deltaTime = manager != null && manager.TickDeltaTime > 0f
-                ? manager.TickDeltaTime
-                : FallbackTickDeltaSeconds;
+            var deltaTime = TickDeltaSeconds();
 
             this.secondsSinceAnimationRepush += deltaTime;
             if (this.secondsSinceAnimationRepush >= AnimationStateRepushIntervalSeconds)
@@ -586,7 +621,7 @@ namespace Eco.Mods.TechTree
                 if (terminalReason != null)
                     this.EndJobForMissingArea(mover, terminalReason.Value);
                 else
-                    this.HandleNoPath(mover);
+                    this.FailDispatch(mover);
 
                 return;
             }
@@ -600,7 +635,7 @@ namespace Eco.Mods.TechTree
             if (this.strategy == null)
             {
                 this.LastDispatchNote = "no job strategy for this drone's declared tool";
-                this.HandleNoPath(mover);
+                this.FailDispatch(mover);
                 return;
             }
 
@@ -608,7 +643,7 @@ namespace Eco.Mods.TechTree
             if (destination == null)
             {
                 this.LastDispatchNote = "assigned area has no plot to target";
-                this.HandleNoPath(mover);
+                this.FailDispatch(mover);
                 return;
             }
 
@@ -652,9 +687,13 @@ namespace Eco.Mods.TechTree
                     this.strategy?.OnArrivalFailed();
                 }
 
-                this.HandleNoPath(mover);
+                this.FailDispatch(mover);
                 return;
             }
+
+            // A dispatch that got the drone moving clears the budget.
+            this.consecutiveDispatchFailures = 0;
+            this.secondsSinceDispatchBlocked = 0f;
 
             // Hold on the pad until the take-off sequence has played. The path is already
             // computed, so a failure above is still reported now rather than after the wait.
@@ -662,6 +701,57 @@ namespace Eco.Mods.TechTree
             mover.HoldFor(this.IsAtHomeDock() ? TakeOffLeadInSeconds : WorkExitLeadInSeconds);
 
             this.LastDispatchNote = $"dispatched to area point {target.X:F0},{target.Z:F0}";
+        }
+
+        /// <summary>Seconds since the last tick, or a plausible fallback when the manager has not measured one yet.</summary>
+        private static float TickDeltaSeconds()
+        {
+            var manager = ServiceHolder<IWorldObjectManager>.Obj;
+            return manager != null && manager.TickDeltaTime > 0f
+                ? manager.TickDeltaTime
+                : FallbackTickDeltaSeconds;
+        }
+
+        /// <summary>
+        /// Whether the idle-at-dock resume may try again this tick.
+        ///
+        /// Always yes until the budget runs out; after that, once per
+        /// <see cref="BlockedDispatchRetryIntervalSeconds"/>. The slow retry matters: the only
+        /// thing that can turn an unreachable area reachable is the world changing -- a pit filled
+        /// in, an obstruction cleared -- so giving up permanently would need a player to notice and
+        /// reassign, while retrying every tick is the loop this exists to stop.
+        /// </summary>
+        private bool DispatchBudgetAllowsRetry()
+        {
+            if (!this.CannotReachAssignedArea) return true;
+
+            this.secondsSinceDispatchBlocked += TickDeltaSeconds();
+            if (this.secondsSinceDispatchBlocked < BlockedDispatchRetryIntervalSeconds) return false;
+
+            // Spend the wait and allow exactly one attempt. If it fails it lands back here with a
+            // fresh timer rather than a shorter one.
+            this.secondsSinceDispatchBlocked = 0f;
+            return true;
+        }
+
+        /// <summary>
+        /// A dispatch attempt failed to get the drone moving. Spends one unit of the budget, then
+        /// hands off to the ordinary no-path handling.
+        ///
+        /// The budget is what makes the loop terminate. Every failure path here ends the same way
+        /// -- Unreachable, an immediate return leg that trivially succeeds because the drone never
+        /// left its dock, arrival, Idle -- and Idle at the dock with an unfinished job is a
+        /// dispatch condition (R24). So the drone re-dispatched, failed identically, and cycled
+        /// once a second forever: red [unreachable], then idle, then red again.
+        ///
+        /// Previous fixes each removed a CAUSE of the first failure. None of them removed the
+        /// cycle, so the next cause to come along reproduced it exactly -- most recently a survey
+        /// drone pointed at a plot inside an eighteen-layer pit.
+        /// </summary>
+        private void FailDispatch(DroneMoverComponent mover)
+        {
+            this.consecutiveDispatchFailures++;
+            this.HandleNoPath(mover);
         }
 
         /// <summary>
@@ -1039,10 +1129,7 @@ namespace Eco.Mods.TechTree
 
             if (mover.IsMoving) return; // a return leg is in flight; let it fly.
 
-            var manager = ServiceHolder<IWorldObjectManager>.Obj;
-            var deltaTime = manager != null && manager.TickDeltaTime > 0f
-                ? manager.TickDeltaTime
-                : FallbackTickDeltaSeconds;
+            var deltaTime = TickDeltaSeconds();
 
             this.secondsSinceLastReturnRetry += deltaTime;
             if (this.secondsSinceLastReturnRetry < ReturnRetryIntervalSeconds)

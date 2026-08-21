@@ -304,11 +304,18 @@ namespace Eco.Mods.TechTree
                 case DockStopReason.BrokenDrone: return "stopped -- the drone needs repair";
             }
 
+            if (!drone.TryGetComponent<DroneLifecycle>(out var lifecycle))
+                return "docked";
+
+            // A drone that has given up reaching its area is parked, so its status enum reads
+            // Idle -- which is the physical truth and a useless thing to tell the player. Say the
+            // useful half instead; the enum keeps the other one.
+            if (lifecycle.CannotReachAssignedArea)
+                return "docked -- cannot reach the assigned area";
+
             // ToString(), not interpolation: Status is an AdvancedElectronics.Navigation.DroneStatus
             // enum, which this component's own DroneStatus property shadows by name.
-            return drone.TryGetComponent<DroneLifecycle>(out var lifecycle)
-                ? lifecycle.Status.ToString()
-                : "docked";
+            return lifecycle.Status.ToString();
         }
 
         /// <summary>True when this dock's drone is currently reporting that it cannot reach its area.</summary>
@@ -318,9 +325,14 @@ namespace Eco.Mods.TechTree
             return drone != null
                    && !drone.IsDestroyed
                    && drone.TryGetComponent<DroneLifecycle>(out var lifecycle)
+                   // Either actively failing to get there, or parked having given up. Both are
+                   // "the drone cannot reach this area", and only counting the first made the
+                   // marker blink in time with the retry loop.
+                   //
                    // Fully qualified: this class has its own string property called DroneStatus,
                    // which shadows the enum type of the same name.
-                   && lifecycle.Status == AdvancedElectronics.Navigation.DroneStatus.Unreachable;
+                   && (lifecycle.Status == AdvancedElectronics.Navigation.DroneStatus.Unreachable
+                       || lifecycle.CannotReachAssignedArea);
         }
 
         private string BuildAreasText(DroneDockObject dock)
