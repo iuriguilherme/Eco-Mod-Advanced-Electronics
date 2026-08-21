@@ -118,15 +118,29 @@ namespace AdvancedElectronics.Navigation
             // 5x5x15 shaft where 25 suffice.
             var surfaceHeights = new int[plotSize * plotSize];
             var lowest = int.MaxValue;
+            var lowestRim = int.MaxValue;
 
             for (int dz = 0; dz < plotSize; dz++)
             for (int dx = 0; dx < plotSize; dx++)
             {
                 var height = (int)MathF.Round(sampler.GroundHeightAt(baseX + dx, baseZ + dz));
                 surfaceHeights[(dz * plotSize) + dx] = height;
+
                 if (height < lowest) lowest = height;
+
+                if (IsRim(dx, dz, rimMargin) && height < lowestRim) lowestRim = height;
             }
 
+            // Two different references, and using one for both is a trap.
+            //
+            // The ENTRANCE is the lowest rim column, which is stable across passes: the rim is
+            // never cut below its lip, so on virgin ground its tops are the original surface, and
+            // afterwards they ARE the entrance this returns. Measuring it from the whole plot
+            // instead would drop it by a tier on every pass and eat the plot from the top down.
+            //
+            // The FLOOR is a tier below the lowest column of all, which is the pit floor once one
+            // exists -- so a pass advances the shaft rather than re-cutting where it already is.
+            var entranceLevel = lowestRim;
             var floor = floorY ?? (lowest - (tierDepth - 1));
 
             // Grouped by height, so a layer is a horizontal slice and stays the unit one game-action
@@ -138,17 +152,22 @@ namespace AdvancedElectronics.Navigation
             for (int dz = 0; dz < plotSize; dz++)
             for (int dx = 0; dx < plotSize; dx++)
             {
-                var isRim = dx < rimMargin || dx >= rimMargin + OpeningWidth
-                         || dz < rimMargin || dz >= rimMargin + OpeningWidth;
-
-                // The rim keeps its topmost block; the centre does not. That one line is the 3x3
-                // entrance, and applying it on every pass is what keeps the mouth from widening
-                // when a refilled plot is mined again.
-                var top = isRim ? surfaceHeights[(dz * plotSize) + dx] - 1
-                                : surfaceHeights[(dz * plotSize) + dx];
+                var isRim = IsRim(dx, dz, rimMargin);
+                var top = surfaceHeights[(dz * plotSize) + dx];
 
                 for (var y = top; y >= floor; y--)
                 {
+                    // The rim keeps exactly ONE block, and it is at the entrance level -- the same
+                    // height for all sixteen of them, not each column's own surface.
+                    //
+                    // Per-column was the obvious reading of "leave the rim standing" and it makes
+                    // a jagged lip on any slope: the mouth sits at a different height on each side,
+                    // and because every layer below is measured from the same tops, that unevenness
+                    // is copied all the way down. Pinning it to the lowest original surface means
+                    // the ground above is mined away first and the entrance comes out level, which
+                    // is what a player building a pit would do by hand.
+                    if (isRim && y == entranceLevel) continue;
+
                     if (!byHeight.TryGetValue(y, out var slice))
                         byHeight[y] = slice = new List<BlockPos>(plotSize * plotSize);
 
@@ -166,6 +185,11 @@ namespace AdvancedElectronics.Navigation
 
             return new ShaftPlan(plot, layers);
         }
+
+        /// <summary>True for the columns outside the centre opening -- the ring that forms the lip.</summary>
+        private static bool IsRim(int dx, int dz, int rimMargin) =>
+            dx < rimMargin || dx >= rimMargin + OpeningWidth ||
+            dz < rimMargin || dz >= rimMargin + OpeningWidth;
 
         private static void ValidateShape(int tierDepth, int plotSize)
         {

@@ -53,9 +53,62 @@ namespace AdvancedElectronics.Navigation.Tests
             var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
             var refilled = plan.AllPositions().Where(p => p.X == 0 && p.Z == 0).Select(p => p.Y).ToList();
 
-            Assert.Contains(54, refilled);
-            Assert.DoesNotContain(55, refilled); // its lip, which is the entrance rim
+            // Everything the fill added is cut back down to the entrance level...
+            Assert.Contains(55, refilled);
+            Assert.Contains(50, refilled);
+
+            // ...but not the lip itself, which is where the entrance is and stays.
+            Assert.DoesNotContain(49, refilled);
             Assert.Equal(plan.FloorY, refilled.Min());
+        }
+
+        [Fact]
+        public void TheEntranceIsLevel_EvenOnASlope()
+        {
+            // A per-column lip is jagged on a slope, and because every layer below was measured
+            // from those same tops, the unevenness was copied all the way down. The entrance is
+            // pinned to the lowest rim column instead: the ground above it is mined away first.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(0, 0, 70f);
+            sampler.SetHeight(4, 4, 67f);
+
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+
+            // 64 is the lowest rim column, so that is the entrance. Every rim column is cut down
+            // THROUGH its own surface to reach it, and keeps only the block at 64 itself.
+            for (var x = 0; x < PlotSize; x++)
+            for (var z = 0; z < PlotSize; z++)
+            {
+                if (x != 0 && x != 4 && z != 0 && z != 4) continue;
+
+                var cut = plan.AllPositions().Where(p => p.X == x && p.Z == z).Select(p => p.Y).ToHashSet();
+
+                Assert.DoesNotContain(64, cut); // the lip, at one height for all sixteen
+                Assert.Contains(63, cut);       // the shaft continues below it
+            }
+
+            // The two raised columns lose everything above the entrance.
+            var raised = plan.AllPositions().Where(p => p.X == 0 && p.Z == 0).Select(p => p.Y).ToList();
+            Assert.Contains(70, raised);
+            Assert.Contains(65, raised);
+        }
+
+        [Fact]
+        public void TheEntranceHoldsItsLevelAcrossPasses()
+        {
+            // Measured from the whole plot, the entrance would drop by a tier every pass and eat
+            // the plot from the top down. The rim is never cut below its lip, so reading the level
+            // off the rim makes it stable: after one pass the rim tops ARE the entrance.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            for (int dx = 1; dx <= 3; dx++)
+            for (int dz = 1; dz <= 3; dz++)
+                sampler.SetHeight(dx, dz, 49f);
+
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+            var rimCut = plan.AllPositions().Where(p => p.X == 0 && p.Z == 0).Select(p => p.Y).ToList();
+
+            Assert.DoesNotContain(64, rimCut); // the lip stays where the first pass put it
+            Assert.Contains(63, rimCut);
         }
 
         [Fact]
