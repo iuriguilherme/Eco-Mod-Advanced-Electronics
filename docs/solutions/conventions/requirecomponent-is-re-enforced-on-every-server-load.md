@@ -1,6 +1,7 @@
 ---
 title: "[RequireComponent] is re-enforced on every server load — detaching one deletes it, and its contents, from objects already placed"
 date: 2026-08-10
+last_updated: 2026-08-21
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -11,8 +12,9 @@ applies_when:
   - "Adding a component to a WorldObject class that servers already have instances of"
   - "A component owns an inventory and its declaration is about to change"
   - "A component renders nothing at all AND logs nothing"
+  - "Swapping a required component for its base type, its subclass, or a sibling"
   - "Installing components dynamically rather than by attribute"
-tags: [eco-modding, worldobject, requirecomponent, validatecomponents, save-data, release-hygiene, serialization, migration, silent-failure]
+tags: [eco-modding, worldobject, requirecomponent, validatecomponents, save-data, release-hygiene, serialization, migration, silent-failure, server-startup]
 related_components: [EcoServerMod/AdvancedElectronics]
 ---
 
@@ -82,7 +84,7 @@ declaration without a `[MayHaveComponent]` bridge is a save-data loss, not a cle
 
 **Adding a `[RequireComponent]` to a shipped class does reach objects that already exist.** The
 missing component is constructed and attached during the same pass
-(`WorldObject.cs:491-496`):
+(`WorldObject.cs:492-496`):
 
 ```csharp
 foreach (var entry in componentsSet)
@@ -95,6 +97,42 @@ foreach (var entry in componentsSet)
 
 A probe or feature component added to a class therefore lands on every one of that class's instances
 in the world — after a restart. Before the restart it lands on none of them.
+
+**Swapping a required component for its base or subclass is a third case, and it is neither of the
+first two.** Add-and-remove happen in one pass with two different notions of type identity, so
+reasoning about them separately gives the wrong answer. `HasWantedComponent` matches by
+**assignability** and so an existing subclass instance can satisfy a newly required base type
+(`WorldObject.cs:485-486`); `Unwanted` and the superseded-key scan match by **exact `(Type, Name)`**
+(`:481-483`, `:508-509`). Three guards in the engine exist for this case specifically:
+
+- Additions run **before** removals, "so a component replaced by a newly required derived type finds
+  its successor below" (`WorldObject.cs:489`).
+- A required entry counts as satisfied only by a component that will survive the removal pass, "so a
+  doomed component can't mask a missing one" (`:485-486`).
+- **A superseded instance hands its state to the survivor before it is dropped**
+  (`WorldObject.cs:513-520`):
+
+```csharp
+var survivor = this.Components.FirstOrDefault(x => x != null && x != superseded && !Superseded(x) && superseded.GetType().IsAssignableFrom(x.GetType()));
+if (survivor == null) continue;
+survivor.AbsorbSuperseded(superseded);
+Log.WriteLineLoc($"Removed duplicate {superseded.GetType().Name} from {this.Name} at {this.Position3i}, state merged into {survivor.GetType().Name}.");
+```
+
+That is the one path on which a component's state is **not** destroyed, and unlike everything else in
+this document it announces itself in the server log. `AbsorbSuperseded` is what decides how much
+actually survives, and it is the component's own implementation — do not assume a full transfer.
+
+**A swap is still not risk-free, and the reason is not established.** Changing the Drone Dock from
+`[RequireComponent(typeof(DroneDockLinkComponent))]` to the stock base
+`[RequireComponent(typeof(SharedLinkComponent))]` aborted server startup on 2026-08-20, with an NRE
+from a bare `GetComponent<LinkComponent>()` dereference in the dock's own `Initialize()` — a link
+component of any kind should have been present by then, and was not. **The mechanism is unresolved;
+do not repeat an explanation for it.** Two facts survive regardless of the cause: `Initialize()` runs
+on every saved object at every start, so an exception there aborts the whole server rather than
+degrading one object; and `TryGetComponent` costs one line and converts that abort into one degraded
+object. Guard every component dereference in `Initialize()` before shipping a swap. See
+`docs/solutions/conventions/an-empty-marker-component-is-a-client-ui-feature-flag.md`.
 
 **"After a restart" is the whole subtlety.** Both effects are invisible until the world reloads,
 because nothing rewrites a live object's component list mid-session. That is what makes the
@@ -136,7 +174,9 @@ mention at all (if the probe had owned an inventory, that inventory is gone too)
 
 Both errors have the same shape: they treat a serialized instance as the record of record. In Eco it
 is not. The type is the record of record, and the save is reconciled to it at load. Anything a mod
-persists inside a component lives exactly as long as that component stays declared.
+persists inside a component lives exactly as long as that component stays declared — with one
+exception, the base/derived swap above, where the engine hands the state to the survivor instead of
+dropping it.
 
 The asymmetry is what makes this high severity. Being wrong about the add direction costs a wasted
 deploy and a confusing debugging session. Being wrong about the remove direction costs someone
@@ -165,6 +205,8 @@ What a restart does to an object, by direction of the change:
 |---|---|---|
 | `[RequireComponent(T)]` added | nothing | `T` constructed and attached to every instance |
 | `[RequireComponent(T)]` removed | nothing | `T` removed from every instance, its state destroyed |
+| `T` swapped for a base or subclass of `T` | nothing | survivor kept, superseded instance's state absorbed into it, one log line written |
+| `T` swapped for an unrelated sibling type | nothing | no absorption path — treat as remove plus add, state destroyed |
 | `T` installed dynamically, undeclared | works | removed as stray, contents included |
 | `T` installed dynamically, declared via `IDeclaresMayHaveComponents` / `[MayHaveComponent]` | works | preserved |
 
@@ -204,6 +246,9 @@ git show <release-commit>:EcoServerMod/AdvancedElectronics/DroneDock.cs \
 - `docs/solutions/runtime-errors/naming-a-component-hides-it-from-its-vanilla-consumer.md` — the
   `(Type, Name)` pair is a component's identity here too; validation matches on both, so a rename is
   a delete plus an add.
+- `docs/solutions/conventions/an-empty-marker-component-is-a-client-ui-feature-flag.md` — the swap
+  that produced the startup crash above, and four falsified theories about why a stock tab rendered
+  without its controls. Reading component *types* instead of component *sets* is the shared mistake.
 - `docs/solutions/runtime-errors/initialize-exception-leaves-a-half-built-worldobject.md` — the other
   way a WorldObject ends up with fewer components than its class declares. That one throws partway
   through and leaves evidence; this one is a deliberate, silent removal.

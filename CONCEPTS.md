@@ -97,6 +97,13 @@ narrowing what a class declares can delete player inventory at the next restart 
 changing what new objects get. A class can opt a component out of that sweep, which is how a
 mod keeps a tab whose contents must survive across a declaration change.
 
+One case escapes that destruction: replacing a component with a **base or derived type of itself**.
+The engine recognises the two as the same lineage, keeps whichever survives the sweep, and hands the
+displaced one's state to it before dropping it — the only reconciliation path that announces itself
+in the server log. How much actually carries over is the component's own decision, so a lineage swap
+is safer than an outright removal without being free. A swap to an unrelated type gets no such
+treatment and is a removal plus an addition.
+
 The client-side half is a **template**, not a per-object asset: the client holds one inactive copy
 and instantiates an enabled clone for each World Object the server reports. A template shipped
 active breaks that cloning, and the failure looks like a rendering glitch rather than a packaging
@@ -135,6 +142,25 @@ unremovable objects also cannot see it, so there is no in-game recovery. It is c
 shape rather than logic — a component tab the client has no view for, or a component deriving a
 client-drawn base the client cannot resolve — which is why it appears the moment an object is
 placed, on every instance, rather than intermittently.
+
+### Capability Flag
+An engine component with an empty body whose only job is to be present. It has no state, no logic
+and no server behaviour; the client reads the object's component list, sees the type, and enables an
+optional part of a tab it was already drawing.
+
+The tell is the declaration shape — `{}`, `[ForceCreateView]` so it reaches the client despite
+syncing nothing, usually `[NoIcon]`. `InOutLinkedInventoriesComponent` is the worked example: without
+it the Storage tab lists linkable inventories but draws no per-target Take From / Put Into controls,
+and the engine's own comment on the type says it "works like a flag".
+
+Two consequences for a [[World Object]] declared here. First, the flag is almost never in the vanilla
+object's own attribute block — `[RequireComponent]` is recursive, so the effective component set is a
+transitive closure and a capability usually arrives through some other component's requirements.
+Comparing two objects' visible attribute lists compares the wrong thing. Second, adding one to a live
+object changes its component set, which is a [[Panel Rebuild]] for everyone with that window open.
+
+Distinct from an [[Unrendered Object]], where a declaration stops the client drawing anything: here
+the surface renders correctly and only an affordance is absent, with no error on either side.
 
 ### Animated State
 A named value the server pushes to a placed object's client half so the client can react to what the
