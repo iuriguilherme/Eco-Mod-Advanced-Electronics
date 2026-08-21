@@ -338,6 +338,18 @@ namespace AdvancedElectronics.Navigation
         ///
         /// Endpoints keep their ground-relative height: the drone still lands where it was going,
         /// including at the bottom of a shaft. Only the travel between them is lifted.
+        ///
+        /// KEPT DELIBERATELY, and it is worth knowing the alternative exists before "fixing" it.
+        /// The drone does not technically need to descend to work a plot: arrival is tested on
+        /// X/Z alone (DroneLifecycle.TickOnStation quantizes only the horizontal position), and
+        /// both surveying and mining address world coordinates rather than anything relative to
+        /// the drone's body. Parking at cruise altitude over the plot would work identically and
+        /// save the descent.
+        ///
+        /// The maintainer weighed that live and chose to keep the descent: a machine should be
+        /// near what it is affecting. It is the less convenient option and was chosen anyway, so
+        /// a later change that lifts the endpoints for convenience is reversing a decision rather
+        /// than fixing an oversight -- do it on purpose, not in passing.
         /// </summary>
         private List<Vector3> CruiseProfile(List<GridColumn> columns)
         {
