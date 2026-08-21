@@ -25,7 +25,14 @@ namespace AdvancedElectronics.Navigation
         /// <summary>Whether this is the area the drone is working on.</summary>
         public bool IsAssigned { get; }
 
-        public AreaSnapshot(int position, string name, int plotCount, float coveragePercent, SurveyFinding topVisibleFinding, bool isAssigned)
+        /// <summary>
+        /// Whether the drone currently cannot get here. Only ever true for the assigned area --
+        /// reachability is a fact about a trip in progress, not a stored property of an area, so
+        /// an unassigned area has no answer to report rather than a negative one.
+        /// </summary>
+        public bool IsUnreachable { get; }
+
+        public AreaSnapshot(int position, string name, int plotCount, float coveragePercent, SurveyFinding topVisibleFinding, bool isAssigned, bool isUnreachable = false)
         {
             Position = position;
             Name = name;
@@ -33,6 +40,7 @@ namespace AdvancedElectronics.Navigation
             CoveragePercent = coveragePercent;
             TopVisibleFinding = topVisibleFinding;
             IsAssigned = isAssigned;
+            IsUnreachable = isUnreachable;
         }
     }
 
@@ -47,7 +55,13 @@ namespace AdvancedElectronics.Navigation
     public static class DockReadout
     {
         /// <summary>Marks the area the drone is assigned to. Trailing-appended, so it survives truncation last.</summary>
-        public const string AssignedMarker = "   [assigned]";
+        public const string AssignedMarker = "   <color=yellow>[assigned]</color>";
+
+        /// <summary>Marks the assigned area the drone cannot currently reach. Appended after <see cref="AssignedMarker"/>.</summary>
+        public const string UnreachableMarker = "   <color=red>[unreachable]</color>";
+
+        /// <summary>Colour name for a fully-surveyed area, so the completed ones can be picked out of a list at a glance.</summary>
+        private const string CompleteColor = "green";
 
         /// <summary>
         /// Formats one per-material line (R2), quantity-led: how much of the material was found, the
@@ -92,7 +106,7 @@ namespace AdvancedElectronics.Navigation
             string.IsNullOrEmpty(text) ? text : $"<size={ReadableSizePercent}%>{text}</size>";
 
         /// <summary>Findings-list font size as a percentage of default.</summary>
-        private const int ReadableSizePercent = 200;
+        private const int ReadableSizePercent = 125;
 
         /// <summary>
         /// The "how is this area doing" fragment: coverage plus the biggest visible find. Split out
@@ -107,25 +121,34 @@ namespace AdvancedElectronics.Navigation
         {
             var top = area.TopVisibleFinding;
 
+            // A finished area is coloured whole rather than just its percentage: the point is to
+            // find the done ones by scanning the list, and a green "100%" buried in an otherwise
+            // uniform line is barely easier to spot than a plain one.
+            var complete = area.CoveragePercent >= 100f;
+
+            string Colored(string text) => complete ? $"<color={CompleteColor}>{text}</color>" : text;
+
             if (top.Found)
-                return $"{area.CoveragePercent:F0}% surveyed, most {top.OreType} (~{top.Count} blocks)";
+                return Colored($"{area.CoveragePercent:F0}% surveyed, most {top.OreType} (~{top.Count} blocks)");
 
             // Order matters. A zero-coverage area with nothing visible has not been looked at;
             // saying "nothing matching" there would report a result the drone never produced.
             return area.CoveragePercent > 0f
-                ? $"{area.CoveragePercent:F0}% surveyed, nothing matching"
+                ? Colored($"{area.CoveragePercent:F0}% surveyed, nothing matching")
                 : "not surveyed yet";
         }
 
         /// <summary>One area's line in the panel's roster: position, name, size, summary, assignment.</summary>
         public static string FormatAreaLine(AreaSnapshot area) =>
             $"{area.Position}. {area.Name} -- {area.PlotCount} plots, {FormatAreaSummary(area)}"
-            + (area.IsAssigned ? AssignedMarker : string.Empty);
+            + (area.IsAssigned ? AssignedMarker : string.Empty)
+            + (area.IsUnreachable ? UnreachableMarker : string.Empty);
 
         /// <summary>Names the area whose findings are on screen, and where it sits in the list.</summary>
         public static string FormatViewingLine(AreaSnapshot area, int totalAreas) =>
             $"Viewing: {area.Position} of {totalAreas} -- {area.Name}"
-            + (area.IsAssigned ? AssignedMarker : string.Empty);
+            + (area.IsAssigned ? AssignedMarker : string.Empty)
+            + (area.IsUnreachable ? UnreachableMarker : string.Empty);
 
         /// <summary>
         /// The notice shown when the player has more areas than the panel has controls. Empty when

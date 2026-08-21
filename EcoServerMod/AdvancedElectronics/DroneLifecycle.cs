@@ -253,16 +253,28 @@ namespace Eco.Mods.TechTree
                     // reassignment re-paths immediately from the drone's current position).
                     this.DispatchToArea(mover);
                 }
-                else if (this.stateMachine.Status == DroneStatus.OnStation ||
-                         (this.stateMachine.Status == DroneStatus.EnRoute && this.stateMachine.TravelTarget == DroneTravelTarget.District))
+                else
                 {
-                    // Area unassigned while actively pursuing one -- start the return-to-dock
-                    // leg (R6: Surveying -> EnRoute(dock) -> Idle). DroneTravelTarget.District
-                    // is the state machine's generic "toward the assigned region" target.
-                    this.BeginReturnToDock(mover, viaDistrictCleared: true);
+                    // Unassigned. Drop the strategy: it describes work on an area this dock no
+                    // longer has, and leaving it alive is what let R24's idle-at-dock resume
+                    // re-dispatch a drone that had just been told to stop.
+                    this.strategy = null;
+
+                    if (this.stateMachine.Status == DroneStatus.OnStation ||
+                        (this.stateMachine.Status == DroneStatus.EnRoute && this.stateMachine.TravelTarget == DroneTravelTarget.District))
+                    {
+                        // Area unassigned while actively pursuing one -- start the return-to-dock
+                        // leg (R6: Surveying -> EnRoute(dock) -> Idle). DroneTravelTarget.District
+                        // is the state machine's generic "toward the assigned region" target.
+                        this.BeginReturnToDock(mover, viaDistrictCleared: true);
+                    }
+                    else
+                    {
+                        // Idle/EnRoute(dock)/Unreachable: nothing was in progress to interrupt,
+                        // but the drone may be sitting somewhere it should not be -- settle it.
+                        this.SettleAtDockIfHome(mover);
+                    }
                 }
-                // else: unassigned while already Idle/EnRoute(dock)/Unreachable -- nothing
-                // was in progress to interrupt.
 
                 return;
             }
@@ -342,7 +354,16 @@ namespace Eco.Mods.TechTree
                     // condition, not a terminal state -- after an unload, ask the SAME
                     // strategy instance for its next target rather than waiting for the
                     // assigned-area token to change (which would also reset shaft progress).
-                    if (this.strategy != null && !this.strategy.IsComplete && this.IsAtHomeDock())
+                    //
+                    // Gated on there still BEING an assignment. Without that, unassigning a drone
+                    // whose strategy had not finished put it in a loop: it flew home, reached
+                    // Idle, was re-dispatched by this branch, failed to resolve an area it no
+                    // longer had, went Unreachable, and settled hovering over its own pad. It
+                    // burned no fuel and looked docked to the panel, so the only visible symptom
+                    // was that the docking animation never played -- Unreachable is not Idle, and
+                    // the animator's at-home flag requires Idle.
+                    if (this.strategy != null && !this.strategy.IsComplete && this.IsAtHomeDock()
+                        && !string.IsNullOrWhiteSpace(assignedToken))
                         this.DispatchToArea(mover);
                     break;
             }
@@ -864,9 +885,7 @@ namespace Eco.Mods.TechTree
             if (this.IsAtHomeDock())
             {
                 // Already home. Settle in place rather than flying a zero-length return leg.
-                mover.Stop();
-                this.stateMachine.OnReturnedToDock();
-                this.ResetReturnLadder(mover);
+                this.SettleAtDockIfHome(mover);
                 return;
             }
 
@@ -1014,9 +1033,7 @@ namespace Eco.Mods.TechTree
             // the dock it just set out from.
             if (this.IsAtHomeDock())
             {
-                this.stateMachine.OnReturnedToDock();
-                this.strategy?.OnArrivedHome();
-                this.ResetReturnLadder(mover);
+                this.SettleAtDockIfHome(mover);
                 return;
             }
 
@@ -1033,6 +1050,47 @@ namespace Eco.Mods.TechTree
 
             this.secondsSinceLastReturnRetry = 0f;
             this.AttemptReturnLegOnly(mover);
+        }
+
+        /// <summary>
+        /// How far off the park point the drone may sit before settling snaps it down. Squared,
+        /// to keep the comparison off the square root.
+        /// </summary>
+        private const float ParkSnapToleranceSquared = 0.25f * 0.25f;
+
+        /// <summary>
+        /// Turns a drone that is home in POSITION into one that is home in every sense: parked on
+        /// the pad, Idle, return ladder reset. No-op when it is not at the dock.
+        ///
+        /// A flown return leg lands by itself -- its final waypoint IS the park position. The paths
+        /// that END at the dock without flying one do not: a no-path result stops the mover wherever
+        /// the drone happens to be, and an unassignment while already home never moves it at all.
+        /// Both leave it at travelling altitude above the pad, where the panel reads docked and the
+        /// model hovers.
+        ///
+        /// Snapping rather than pathing down, deliberately. The drone is already over its own dock;
+        /// a landing leg here would ask the pathfinder to route into the dock's own occupied columns
+        /// to travel a metre or two, which is the case that produced no-path results in the first
+        /// place.
+        /// </summary>
+        private void SettleAtDockIfHome(DroneMoverComponent mover)
+        {
+            if (!this.IsAtHomeDock()) return;
+
+            var park = this.HomeDock.DroneParkPosition;
+            var here = this.Parent.Position;
+            var dx = here.X - park.X;
+            var dy = here.Y - park.Y;
+            var dz = here.Z - park.Z;
+
+            if ((dx * dx) + (dy * dy) + (dz * dz) > ParkSnapToleranceSquared)
+                mover.TeleportTo(park);
+            else
+                mover.Stop();
+
+            this.stateMachine.OnReturnedToDock();
+            this.strategy?.OnArrivedHome();
+            this.ResetReturnLadder(mover);
         }
 
         /// <summary>

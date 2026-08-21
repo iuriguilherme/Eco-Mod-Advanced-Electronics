@@ -81,10 +81,14 @@ namespace AdvancedElectronics.Navigation.Tests
         public void AtReadableSize_UsesAPercentage_BecauseABareNumberIsAbsoluteUnitsNotAMultiplier()
         {
             // The distinction that cost a deploy: <size=2> is two absolute units (microscopic),
-            // while <size=200%> is double. The wiki's 1-7 scale describes signs and chat.
+            // while a percentage scales. The wiki's 1-7 scale describes signs and chat.
+            //
+            // Asserts the FORM, not the number -- the exact percentage is a taste setting that
+            // moved from 200 to 125 after seeing it in game, and a test that pins it turns tuning
+            // into a two-file edit for no safety.
             var sized = DockReadout.AtReadableSize("a\nb\n");
 
-            Assert.Equal("<size=200%>a\nb\n</size>", sized);
+            Assert.Matches(@"^<size=\d+%>a\nb\n</size>$", sized);
             Assert.DoesNotContain("<size=2>", sized);
         }
 

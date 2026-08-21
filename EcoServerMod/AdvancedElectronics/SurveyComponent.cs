@@ -311,6 +311,18 @@ namespace Eco.Mods.TechTree
                 : "docked";
         }
 
+        /// <summary>True when this dock's drone is currently reporting that it cannot reach its area.</summary>
+        private static bool DroneReportsUnreachable(DroneDockObject dock)
+        {
+            var drone = dock.SpawnedDrone;
+            return drone != null
+                   && !drone.IsDestroyed
+                   && drone.TryGetComponent<DroneLifecycle>(out var lifecycle)
+                   // Fully qualified: this class has its own string property called DroneStatus,
+                   // which shadows the enum type of the same name.
+                   && lifecycle.Status == AdvancedElectronics.Navigation.DroneStatus.Unreachable;
+        }
+
         private string BuildAreasText(DroneDockObject dock)
         {
             if (dock.SurveyAreas.Count == 0)
@@ -321,7 +333,7 @@ namespace Eco.Mods.TechTree
             foreach (var area in dock.SurveyAreas)
                 sb.Append(DockReadout.FormatAreaLine(Snapshot(area, position++, dock))).Append('\n');
 
-            return sb.ToString();
+            return DockReadout.AtReadableSize(sb.ToString());
         }
 
         private static string BuildAssignedText(DroneDockObject dock)
@@ -416,9 +428,15 @@ namespace Eco.Mods.TechTree
                 .OrderByDescending(f => f.Count)
                 .FirstOrDefault();
 
+            var isAssigned = area.Id == dock.AssignedSurveyAreaId;
+
+            // Unreachable is a property of the trip, not the area, so only the assigned one can
+            // report it -- and only while the drone that would make the trip actually says so.
+            var isUnreachable = isAssigned && DroneReportsUnreachable(dock);
+
             return new AreaSnapshot(
                 position, area.Name, area.PlotCount, area.CoveragePercent, top,
-                area.Id == dock.AssignedSurveyAreaId);
+                isAssigned, isUnreachable);
         }
 
         // --- Material filter ---
