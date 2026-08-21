@@ -92,9 +92,9 @@ namespace Eco.Mods.TechTree
         /// Assigns this mining dock to consume <paramref name="area"/>, published by
         /// <paramref name="sourceDock"/> (R2, R3, R5, KD15), and stamps <paramref name="actingCitizen"/>
         /// as the party accountable for it (R18, R40) -- re-stamping on every reassignment,
-        /// including to the same area. Refuses the whole call (no assignment, no stamp) if
-        /// the acting citizen has a permission-ignoring tool selected (R37) or lacks full
-        /// access on this dock (R40); returns whether it succeeded.
+        /// including to the same area. Refuses the whole call (no assignment, no stamp) if the
+        /// acting citizen lacks full access on this dock (R40) or on the dock that published
+        /// the area (R39); returns whether it succeeded.
         /// </summary>
         public bool AssignMiningArea(DroneDockObject sourceDock, SurveyAreaEntry area, User actingCitizen) =>
             this.AssignMiningArea(sourceDock, area, actingCitizen, out _);
@@ -110,12 +110,6 @@ namespace Eco.Mods.TechTree
                 if (actingCitizen == null)
                 {
                     refusalReason = "no acting citizen";
-                    return false;
-                }
-
-                if (actingCitizen.DevToolSelected)
-                {
-                    refusalReason = "put away the permission-ignoring tool first";
                     return false;
                 }
 
@@ -163,22 +157,26 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// Re-checks the stamped citizen against live access (KTD9 -- at each plot arrival,
-        /// not once per dispatch): full access on this dock (R33, R40), and not a
-        /// permission-ignoring tool now selected (R37). False ends the job.
+        /// not once per dispatch): a citizen is stamped, and still holds full access on this
+        /// dock (R33, R40). False ends the job.
+        ///
+        /// R37's permission-ignoring-tool test used to live here and was retired: what the
+        /// owner happens to be holding is not a property of the drone. The removal pack names
+        /// the Mining Arm as its tool and never reads the player's hands, so a dev tool could
+        /// not reach the drone's actions in the first place -- the test guarded a path that
+        /// does not exist, while being able to stop a job from anywhere in the world the
+        /// moment the owner picked something up.
         /// </summary>
         public bool RecheckStamp() => this.StampRefusalReason() == null;
 
         /// <summary>
-        /// As <see cref="RecheckStamp"/>, but names WHICH check failed so the job can end
-        /// with a reason the panel can print. The two failures want opposite responses from
-        /// the player -- restore the citizen's access, versus put the dev tool away -- and a
-        /// bare false told them apart from neither.
+        /// As <see cref="RecheckStamp"/>, but names why it failed so the job can end with a
+        /// reason the panel can print rather than stopping silently.
         /// </summary>
         public MiningEndReason? StampRefusalReason()
         {
             var citizen = this.StampedCitizen;
             if (citizen == null) return MiningEndReason.StampInvalid;
-            if (citizen.DevToolSelected) return MiningEndReason.DevToolSelected;
             return this.HasFullAccess(citizen) ? null : MiningEndReason.StampInvalid;
         }
 

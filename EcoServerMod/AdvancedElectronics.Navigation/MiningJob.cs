@@ -31,7 +31,13 @@ namespace AdvancedElectronics.Navigation
         /// <summary>The stamped citizen no longer holds the required access (R33) or was never validly stamped.</summary>
         StampInvalid,
 
-        /// <summary>The stamped citizen has a permission-ignoring tool selected (R37).</summary>
+        /// <summary>
+        /// Retired (was R37): no code produces this any more. What the dock's owner is holding
+        /// is not a property of the drone -- the removal pack names the Mining Arm as its tool
+        /// and never reads the player's hands -- so the test guarded a path that does not
+        /// exist. Kept because the member's ordinal is persisted in job snapshots and a save
+        /// written before the retirement can still carry it; the readout keeps wording it.
+        /// </summary>
         DevToolSelected,
 
         /// <summary>An administrator halted mining server-wide (R42).</summary>
