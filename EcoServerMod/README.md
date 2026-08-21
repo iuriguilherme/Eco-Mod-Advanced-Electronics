@@ -6,11 +6,12 @@ assemblies and deploy to an Eco dedicated server.
 
 ## Projects
 
-- `AdvancedElectronics/` — the real mod (server half of the survey-drone feature).
-  Registers the craftable `DroneDock` WorldObject and craftable `SurveyDroneItem`;
-  inserting the drone item into the dock spawns a `SurveyDrone` WorldObject that
-  self-navigates to its assigned district (`/drone district <name>`), surveys ore
-  density, and reports back through the dock's readout. A clean sibling of the spike
+- `AdvancedElectronics/` — the real mod (server half of the drone feature). Registers the craftable
+  `DroneDock` WorldObject plus the `SurveyDroneItem` and `MiningDroneItem`, all three crafted at the
+  Robotic Assembly Line. Slotting a drone item into the dock spawns a WorldObject that self-navigates
+  to an area the player drew on the map, and the dock grows a **Survey** or **Mining** tab to match.
+  Survey drones report ore density and depth; mining drones dig the surveyed plots and unload into
+  storage linked through the dock's Storage tab. A clean sibling of the spike
   (KTD1: the spike is a reference, not a base class), reusing its proven csproj shape,
   version pin, and registration pattern by imitation, not inheritance. References
   `AdvancedElectronics.Navigation` — deploying the mod means deploying both DLLs.
@@ -24,6 +25,11 @@ assemblies and deploy to an Eco dedicated server.
   commands probe the questions blocking the survey-drone plan; results are recorded in
   `docs/spikes/2026-07-survey-drone-spike.md`. Kept as reference/documentation — not
   part of the shipped mod, deploy it only to re-run the probes.
+- `UserCode/` — whole-file `.override` copies of vanilla server files, not a build project. The
+  Robotic Assembly Line only accepts plugin modules its own `[AllowPluginModules]` names, and a mod
+  assembly cannot add to that attribute, so Eco's escape hatch is a same-path override under
+  `Mods/UserCode/`. Installed and refreshed by `scripts/deploy-usercode-overrides.sh`, which must be
+  re-run after a game update.
 
 ## Version matching
 
@@ -64,7 +70,7 @@ Then:
 
 ```bash
 dotnet build EcoServerMod/AdvancedElectronics          # the mod (also builds Navigation)
-dotnet test  EcoServerMod/AdvancedElectronics.Navigation.Tests   # 124-test suite, no Eco dependency
+dotnet test  EcoServerMod/AdvancedElectronics.Navigation.Tests   # 260-test suite, no Eco dependency
 dotnet build EcoServerMod/AdvancedElectronics.Spike    # optional -- reference probes only
 ```
 
@@ -110,7 +116,13 @@ To re-run the spike probes instead, deploy `AdvancedElectronics.Spike.dll` the s
 the server (`/admin add <you>` or server config); the real mod's `/drone` command only
 requires normal user auth.
 
-## Object-UI picker findings (spike Q3, UI half)
+## Object-UI picker findings (spike Q3, UI half) — historical
+
+> **Superseded as a design decision, kept as API evidence.** This section records what was and was
+> not available for object UI in **0.13.0.4**, and its conclusion — that district assignment had to
+> be a chat command — no longer describes the mod. Areas are drawn on the map through
+> `SurveyAreaPicker` and assigned from the dock's own tab; districts are not used at all. The
+> negative findings below are still useful if you go looking for a dropdown picker, so they stay.
 
 Recorded during implementation against the 0.13.0.4 reference assemblies:
 
@@ -152,8 +164,12 @@ against the raw DLLs (`Eco.Gameplay.dll`, `Eco.Mods.dll`) rather than a decompil
   `Eco.Core.Systems.UnserializedEntry` (registrar-managed civics infrastructure), not
   anything attachable to a plain WorldObject's own right-click UI. Wiring it would mean
   building law/civics machinery, well outside this unit's bounded-effort scope.
-- **Net finding (unchanged conclusion, corrected reasoning):** still no cheap,
-  WorldObject-attachable, auto-generated single-selection district picker found in
-  0.13.0.4. U4's `/drone district <name>` chat command remains the shipped mechanism
-  (KTD4) — this was a bounded look, not an open-ended one, per the plan's own framing
-  for this probe.
+- **Net finding:** no cheap, WorldObject-attachable, auto-generated single-selection picker was
+  found in 0.13.0.4. This was a bounded look, not an open-ended one, per the plan's own framing for
+  this probe.
+- **What shipped instead.** The chat command this probe concluded with was a stopgap and is gone.
+  Area selection is now a map picker (`SurveyAreaPicker`) reached from a **Manage Areas on Map**
+  button on the dock, with a numeric selector plus **Assign Selected Area** for choosing among the
+  ten areas a dock can hold. Districts play no part. The general lesson — that the client draws only
+  what a server declaration names, from a fixed template vocabulary — is written up in
+  `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md`.

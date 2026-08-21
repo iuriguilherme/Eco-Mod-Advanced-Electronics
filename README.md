@@ -2,11 +2,21 @@
 
 # Advanced Electronics — Eco mod
 
-A mod for [Eco](https://play.eco) (Strange Loop Games) adding a **survey drone**: a
-craftable flying drone that a player pairs to a **Drone Dock**, assigns to a survey area
-drawn on the map, and dispatches to prospect that area for materials. The dock's window
-has two tabs — **Areas** (draw and manage areas, assign the drone) and **Results** (what
-was found, one area at a time, filtered to the materials you care about).
+A mod for [Eco](https://play.eco) (Strange Loop Games) adding **autonomous drones**: craftable
+flying machines that a player slots into a **Drone Dock** and assigns to an area drawn on the map,
+which they then fly out to and work unattended.
+
+Two drones ship:
+
+- **Survey Drone** — prospects an assigned area and reports what is under it, per material, with
+  quantity, location and depth.
+- **Mining Drone** — digs out the plots a survey dock has already surveyed, fifteen layers down,
+  and unloads what it breaks into storage you link to the dock. **It mines as you**: every removal
+  is performed as the citizen who assigned the area, so settlement laws and private property refuse
+  it exactly as they would refuse that citizen digging by hand.
+
+The dock's window grows a **Survey** or **Mining** tab depending on which drone is slotted, plus a
+standard **Storage** tab whose Take From / Put Into controls choose where a mining drone unloads.
 
 Live-tested against **Eco 0.14.0.3**; the reference assemblies it compiles against are older,
 pinned by `EcoRefSha`. Those are two different things and both are deliberate — the pin keeps
@@ -42,9 +52,12 @@ from mod.io and follow [Installing a release](#installing-a-release).
 |---|---|
 | `EcoServerMod/AdvancedElectronics/` | Server half of the mod (.NET 10 class library) — WorldObjects, items, recipes, chat commands, drone logic. See `EcoServerMod/README.md` for build details. |
 | `EcoServerMod/AdvancedElectronics.Navigation/` | Pure-C# navigation core (A* pathfinder, survey grid, lifecycle state machine) — unit-tested, zero Eco dependency, shipped alongside the mod DLL. |
+| `EcoServerMod/AdvancedElectronics.Navigation.Tests/` | xUnit suite over the navigation core — no Eco dependency, so it runs from a bare clone with only a .NET SDK. |
 | `EcoServerMod/AdvancedElectronics.Spike/` | Feasibility-spike reference project (kept deliberately as documentation of live-verified Eco API findings — not part of the shipped mod). |
+| `EcoServerMod/UserCode/` | Whole-file `.override` copies of vanilla server files — Eco's escape hatch for attributes a mod assembly cannot extend. Installed by `scripts/deploy-usercode-overrides.sh`. |
 | Repo root (Unity project) | Client half: Unity **6000.3.19f1** ModKit project that builds the asset bundle (dock/drone prefabs, item icon). |
-| `AssetBundles/` | Bundle build output (git-ignored — rebuild it locally, see step 2). |
+| `scripts/` | Reference-assembly gathering, release packaging, the client/server name-match gate, UserCode override install. |
+| `AssetBundles/`, `dist/` | Build output (git-ignored — rebuild locally, see step 2). |
 | `docs/` | Plans, spike findings, manual test protocol, documented learnings (`docs/solutions/`). |
 | `CONCEPTS.md` | Shared domain vocabulary (survey area, plot, finding, coverage, assignment). |
 
@@ -211,10 +224,10 @@ Restart the Eco server and check the mods listing (server UI or console) for
 
 Quick smoke test:
 
-1. Craft a **Drone Dock** and a **Survey Drone** (both at the Electric Machinist Table)
-   and place the dock.
+1. Craft a **Drone Dock**, a **Survey Drone** and a **Mining Drone** (all three at the
+   Robotic Assembly Line) and place the dock.
 2. Open the dock, **Survey** tab, click **Manage Areas on Map**. Draw one or more survey
-   areas, name them, confirm.
+   areas, name them, confirm. A dock holds at most ten.
 3. Set **View Position** to the area you want, then click **Assign Selected Area**. The
    assignment line updates. **Unassign Area** stops the drone.
 4. Insert the Survey Drone item into the dock's slot — a drone spawns beside the dock and
@@ -230,19 +243,27 @@ Findings persist with their area — reassigning the drone elsewhere and back do
 them. Redrawing an area's geometry deliberately clears its findings (it is effectively a
 different area); renaming does not.
 
-Diagnostics available in chat: `/drone areas`, `/drone assignarea <id>`, `/drone results`,
-`/drone filter [material]`, `/drone state`, `/drone tags`.
+To mine what you surveyed, place a **second** dock and slot a Mining Drone. Its **Mining** tab
+lists the areas published by survey docks you own; pick one and press **Assign Selected Area**. The
+drone mines only plots that were actually surveyed, and skips ones it cannot reach. One pass takes
+fifteen layers — re-survey the pit floor to send it another fifteen deeper. Open that dock's
+**Storage** tab and use **Take From / Put Into** to choose where it unloads; with nothing linked it
+fills up and waits at the dock.
+
+Diagnostics available in chat: `/drone areas`, `/drone assignarea <id>`, `/drone survey`,
+`/drone filter [material]`, `/drone status`, `/drone tags`, `/drone link [n]`, `/drone animwatch`.
+Admin-only: `/drone haltmining <on|off>`, `/drone orphans [destroy]`.
 
 The full owner-run verification protocol (all flows and acceptance checks, with verdict
 tables to fill in) is `docs/protocols/2026-07-survey-drone-manual-protocol.md`.
 
-**Heads-up for the first live run:** several Eco API behaviors could not be verified
-offline (the reference assemblies ship with method bodies stripped) and are marked with
-`ASSUMPTION` comments in the server code — the manual protocol is what confirms them.
-Known open items from code review are tracked on
-[PR #1](https://github.com/iuriguilherme/Eco-Mod-Advanced-Electronics/pull/1), including
-one to verify early: a server restart with a drone deployed strands it (dock/drone
-pairing state is not yet persisted).
+**Heads-up for the first live run:** several Eco API behaviors cannot be verified offline (the
+reference assemblies ship with method bodies stripped) and are marked with `ASSUMPTION` comments in
+the server code — the manual protocol is what confirms them.
+
+Dock and drone state **does** survive a restart, including a mining job resumed mid-shaft; that was
+verified live for 0.3.0. What can still go wrong across a restart is a drone left orphaned with no
+dock owning it — `/drone orphans destroy` removes those.
 
 ## Server administration
 
@@ -276,7 +297,7 @@ a server owner's ability to stop automated excavation should not depend on who o
 - Server code: `EcoServerMod/README.md` (projects, version pinning, building).
 - Client assets: `docs/guides/2026-07-survey-drone-unity-prefab-guide.md` (keyboard-only
   prefab workflow, name-matching rules).
-- Tests: `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` (229 tests over
+- Tests: `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` (260 tests over
   the pure navigation/survey/mining/lifecycle core — no Eco dependency, so they run
   anywhere).
 - Documented learnings: `docs/solutions/` — solutions to past problems, organized by
@@ -298,10 +319,21 @@ overrides.
 
 ## Known limitations
 
-- **Picking up a Drone Dock discards its survey areas and findings.** The dock item is
-  stackable, so replacing it creates a fresh world object rather than restoring the old
-  one's state. Tracked in `docs/ideation/2026-07-26-survey-system-improvements.md`.
-- Assign buttons cover the first six areas; beyond that use `/drone assignarea <id>`.
+- **Drones fly through trees, stockpiles and other placed objects.** They route around whatever
+  exists when they plan a trip and pass straight through anything built afterwards. Nothing is
+  damaged or moved — a visual fault only.
+- **A drone starts travelling before its take-off animation finishes.** The server times these by
+  counting animation frames rather than being told when a clip ends, so the two drift. Cosmetic.
+- **The Drone Dock is a placeholder cube**, drawn about a metre above the volume it occupies, with
+  no ghost outline while you hold it. It places and works normally. Item and skill icons are
+  flat-colour placeholders too.
+- **Mining is not reversible from inside the mod.** A worked plot is left as an open pit with a 3×3
+  mouth, and there is no fence around it. Drones cannot place blocks, so there is no backfilling
+  and no safety rim.
+- **A drone can be left orphaned across a restart** — alive with no dock owning it. Admins clear
+  these with `/drone orphans` and `/drone orphans destroy`.
+- The Harvest Drone exists in the source but is not craftable, and the Advanced Electronics
+  Assembly is excluded from the build.
 
 ## License
 
