@@ -347,7 +347,8 @@ namespace Eco.Mods.TechTree
 
             var entry = this.ViewedArea(dock);
             if (entry == null)
-                return "Draw an area on the map, then set the assign number to survey it.";
+                return DockReadout.AtReadableSize(
+                    "Draw an area on the map, then select it above and click Assign Selected Area.");
 
             var sb = new StringBuilder();
 
@@ -371,7 +372,7 @@ namespace Eco.Mods.TechTree
             else
             {
                 foreach (var f in findings)
-                    sb.Append(DockReadout.FormatOreLine(f)).Append('\n');
+                    sb.Append(DockReadout.FormatOreLine(f, SurveyMaterials.IconItemName(f.OreType))).Append('\n');
                 sb.Append("Coverage: ").Append(entry.CoveragePercent.ToString("F0")).Append("%\n");
             }
 
@@ -382,7 +383,9 @@ namespace Eco.Mods.TechTree
             if (dock.MaterialFilter.Count > 0)
                 sb.Append("Filtered to: ").Append(string.Join(", ", dock.MaterialFilter)).Append('\n');
 
-            return sb.ToString();
+            // Sized as one block rather than per line: the markup nests across newlines, and a
+            // single wrap cannot leave a line behind at the default size the way N wraps can.
+            return DockReadout.AtReadableSize(sb.ToString());
         }
 
         /// <summary>

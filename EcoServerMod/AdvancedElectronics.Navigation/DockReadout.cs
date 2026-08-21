@@ -55,16 +55,31 @@ namespace AdvancedElectronics.Navigation
         /// meaningful for common bulk materials (rock) as well as rare ore, where a concentration
         /// ratio read as noise (KTD2/R3).
         /// </summary>
-        public static string FormatOreLine(SurveyFinding finding)
+        /// <param name="iconItemName">
+        /// Item id to draw ahead of the line as Eco text markup, or null for no icon. Passed in
+        /// rather than derived here because resolving a material to an item needs the item
+        /// registry, which is an Eco type this assembly deliberately cannot see (KTD6).
+        /// </param>
+        public static string FormatOreLine(SurveyFinding finding, string iconItemName = null)
         {
+            var icon = string.IsNullOrWhiteSpace(iconItemName) ? string.Empty : $"<icon name='{iconItemName}'> ";
+
             if (!finding.Found)
-                return $"{finding.OreType}: no data yet";
+                return $"{icon}{finding.OreType}: no data yet";
 
             var depth = finding.DepthMax > finding.DepthBelowSurface
                 ? $"depth {finding.DepthBelowSurface}-{finding.DepthMax}"
                 : $"{finding.DepthBelowSurface} blocks deep";
-            return $"{finding.OreType}: ~{finding.Count} blocks, shallowest at {finding.Position}, {depth}";
+            return $"{icon}{finding.OreType}: ~{finding.Count} blocks, shallowest at {finding.Position}, {depth}";
         }
+
+        /// <summary>
+        /// Wraps a block of readout text at a larger font size. Eco's markup counts DOWN from 7
+        /// (biggest) to 1 (standard), so this is one step up from default -- enough to read a
+        /// findings list at a glance without pushing the panel past the fold.
+        /// </summary>
+        public static string AtReadableSize(string text) =>
+            string.IsNullOrEmpty(text) ? text : $"<size=2>{text}</size>";
 
         /// <summary>
         /// The "how is this area doing" fragment: coverage plus the biggest visible find. Split out

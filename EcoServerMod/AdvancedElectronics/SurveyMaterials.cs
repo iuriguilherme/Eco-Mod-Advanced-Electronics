@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Eco.Gameplay.Items;
 using Eco.World.Blocks;
 
 namespace Eco.Mods.TechTree
@@ -64,6 +65,24 @@ namespace Eco.Mods.TechTree
 
             // Diggable is broader than we want (dirt, grass, gravel), so keep the curated set.
             return Block.Get<Diggable>(blockType) != null && IsSurveyedDiggable(name);
+        }
+
+        /// <summary>
+        /// The item id to draw an <c>&lt;icon name='...'&gt;</c> for a recorded material, or null
+        /// when no such item exists.
+        ///
+        /// Findings persist the BLOCK's name minus "Block" ("SandstoneBlock" -> "Sandstone"), and
+        /// the markup wants an ITEM id, so the two are bridged by convention: append "Item" and
+        /// ask the registry whether it is real. Checked rather than assumed -- the convention holds
+        /// for every material the drone currently reports, and a future one that breaks it should
+        /// lose its icon, not render a broken glyph.
+        /// </summary>
+        public static string IconItemName(string materialName)
+        {
+            if (string.IsNullOrWhiteSpace(materialName)) return null;
+
+            var candidate = materialName + "Item";
+            return Item.Get(candidate) != null ? candidate : null;
         }
 
         public static bool IsSurveyedDiggable(string materialName) =>

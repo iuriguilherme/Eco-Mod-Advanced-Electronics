@@ -53,6 +53,39 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.DoesNotContain("(0, 0, 0)", line);
         }
 
+        [Fact]
+        public void OreLine_WithAnIconItem_PrefixesTheMarkupWithoutDisturbingTheLine()
+        {
+            var plain = DockReadout.FormatOreLine(Finding("Sandstone", 40, 3, 5));
+            var withIcon = DockReadout.FormatOreLine(Finding("Sandstone", 40, 3, 5), "SandstoneItem");
+
+            Assert.StartsWith("<icon name='SandstoneItem'> ", withIcon);
+            Assert.EndsWith(plain, withIcon);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void OreLine_WithNoIconItem_EmitsNoMarkup(string iconItemName)
+        {
+            // A material whose item id does not resolve loses its icon rather than rendering a
+            // broken glyph, so the absent case has to stay byte-identical to the plain line.
+            var line = DockReadout.FormatOreLine(Finding("Sandstone", 40, 3, 5), iconItemName);
+
+            Assert.DoesNotContain("<icon", line);
+            Assert.Equal(DockReadout.FormatOreLine(Finding("Sandstone", 40, 3, 5)), line);
+        }
+
+        [Fact]
+        public void AtReadableSize_WrapsTheWholeBlockOnce_AndLeavesEmptyTextAlone()
+        {
+            // Eco's sizes count DOWN from 7, so 2 is one step above standard, not near-minimum.
+            Assert.Equal("<size=2>a\nb\n</size>", DockReadout.AtReadableSize("a\nb\n"));
+            Assert.Equal(string.Empty, DockReadout.AtReadableSize(string.Empty));
+            Assert.Null(DockReadout.AtReadableSize(null));
+        }
+
         // --- Area summary: the three states ---
 
         [Fact]
