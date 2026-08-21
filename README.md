@@ -240,13 +240,41 @@ Known open items from code review are tracked on
 one to verify early: a server restart with a drone deployed strands it (dock/drone
 pairing state is not yet persisted).
 
+## Server administration
+
+### Stopping every mining drone at once
+
+```
+/drone haltmining on     # every mining job on the server stops before its next removal
+/drone haltmining off    # jobs resume
+```
+
+Admin-only, and server-wide by design — it is not a permission on any one dock. Mining
+drones delete terrain automatically and unattended, so a server owner needs one lever that
+reaches docks they have no access to, without hunting down their owners.
+
+What it does and does not do:
+
+- A running job stops **before its next block removal**, not mid-pack — nothing is left
+  half-removed. The drone finishes travelling, declines to mine, and returns to its dock.
+- The halt **survives a restart**. It stays on until someone turns it off.
+- The dock's Mining tab reports *"an administrator halted mining"* as the stop reason, so
+  the owner can see why their drone came home rather than filing it as a bug.
+- Surveying is unaffected. Only mining halts.
+- Nothing already mined is refunded or reverted, and hold contents are kept.
+
+Everything else about the drones follows ordinary Eco authorization: access on the
+property and on the dock object. This command is the one exception, and it exists because
+a server owner's ability to stop automated excavation should not depend on who owns it.
+
 ## Development
 
 - Server code: `EcoServerMod/README.md` (projects, version pinning, building).
 - Client assets: `docs/guides/2026-07-survey-drone-unity-prefab-guide.md` (keyboard-only
   prefab workflow, name-matching rules).
-- Tests: `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` (124 tests over
-  the pure navigation/survey/lifecycle core — no Eco dependency, so they run anywhere).
+- Tests: `dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests` (229 tests over
+  the pure navigation/survey/mining/lifecycle core — no Eco dependency, so they run
+  anywhere).
 - Documented learnings: `docs/solutions/` — solutions to past problems, organized by
   category with YAML frontmatter.
 - Shared vocabulary: `CONCEPTS.md`.
