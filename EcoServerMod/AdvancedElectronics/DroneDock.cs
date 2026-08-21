@@ -106,17 +106,29 @@ namespace Eco.Mods.TechTree
     // mining area's output can be reached -- the vanilla Store's own radius (Engine
     // Reference), shared with the waste sorters and the largest any vanilla object takes.
     // Existing docks acquire this at the next server load (U7).
-    // The dock's own subclass, not the stock component: a dock must auto-link to storage off its
-    // deed (an unowned stockpile has no deed at all), or the hold fills and every later dig is
-    // refused for lack of room. See DroneDockLinkComponent for why that is not a permission change.
+    // The STOCK component, not a subclass of it, and that is the whole point.
     //
-    // SWAPPING THIS TO THE STOCK SharedLinkComponent CRASHES AN EXISTING WORLD ON BOOT, and the
-    // reason is worth keeping: RequireComponent is re-enforced on load, but a newly-required
-    // component is not attached in time for the object's own Initialize(), so the
-    // GetComponent<LinkComponent>() below returned null and DroneDockObject.Initialize() threw
-    // before the server finished starting. Changing which component type a saved object is
-    // required to have is a migration, not an edit.
-    [RequireComponent(typeof(DroneDockLinkComponent))]
+    // The dock's Storage tab rendered "LINKABLE INVENTORIES (PERSONAL)" with no per-target Take
+    // From / Put Into controls, while a vanilla Store beside it rendered "(SHARED)" with them.
+    // Changing the base class from LinkComponent to SharedLinkComponent did not move it, which
+    // leaves the subclass itself as the difference: those controls are client UI bound to the
+    // component's own view type, and a mod-defined type has none, so the client falls back to
+    // rendering members generically. No server-side attribute reaches that -- the tab NAME does
+    // inherit (ComponentTabName is read with inherit: true); the renderer does not.
+    //
+    // The cost is the wide auto-link default DroneDockLinkComponent existed for: this dock now
+    // defaults like every other machine, to same-deed storage only. That default was always a
+    // stand-in for a control the player did not have, and the trade only runs this way -- a narrow
+    // default WITH a way to link beats a wide one with none. `/drone link` remains as a fallback.
+    //
+    // NOT A SAFE MIGRATION FOR AN EXISTING WORLD, and that is accepted rather than solved.
+    // RequireComponent is re-enforced on load, but a newly-required component is not attached in
+    // time for the object's own Initialize(), so a dock saved with the old component finds no link
+    // component during startup. That threw and took the whole server down until the call below was
+    // guarded; guarded, such a dock simply comes up without its link radius. On the alpha test
+    // world an orphaned dock is an acceptable side effect -- place a fresh one to test. A world
+    // that must survive the change needs a real migration step, which is not written.
+    [RequireComponent(typeof(SharedLinkComponent))]
     [Tag("Usable")]
     public partial class DroneDockObject : WorldObject, IRepresentsItem
     {
