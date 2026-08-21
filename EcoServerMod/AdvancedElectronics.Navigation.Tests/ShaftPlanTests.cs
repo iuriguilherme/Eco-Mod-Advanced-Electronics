@@ -21,15 +21,77 @@ namespace AdvancedElectronics.Navigation.Tests
                 Assert.Equal(25, plan.Layers[depth].Positions.Count);
         }
 
-        // The restart case. A shaft's depths are per-column and RELATIVE, and the shaft
-        // destroys the surface it was measured from -- so re-planning mid-pass against ground
-        // the drone has itself excavated spends another full TierDepth below the pit floor and
-        // re-cuts the 3x3 mouth into an opening that already exists. Live pass: "3x3 in layers
-        // 11-18" after restarting around layer 10.
-        //
-        // Re-planning is the DESIRED behaviour -- a second pass on an already-cut plot starts
-        // from the pit floor by design, gated by a fresh survey. The pass floor is the one
-        // thing a re-plan cannot re-derive, which is why it is the one thing recorded.
+        // --- One rule: clear the 5x5 volume from each column's top down to a shared floor ---
+
+        [Fact]
+        public void ResidualBlocksLeftByAnEarlierPass_AreRemovedRatherThanSteppedOver()
+        {
+            // The reported state: earlier passes cut only the centre 3x3, so the rim columns still
+            // stand at the original surface while the centre is fifteen blocks down. A plan that
+            // starts at the pit floor never touches them and the shaft stays 3x3 forever.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            for (int dx = 1; dx <= 3; dx++)
+            for (int dz = 1; dz <= 3; dz++)
+                sampler.SetHeight(dx, dz, 49f);
+
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+            var rim = plan.AllPositions().Where(p => p.X == 0 && p.Z == 0).Select(p => p.Y).ToList();
+
+            Assert.Contains(63, rim);
+            Assert.Contains(50, rim);
+            Assert.Equal(plan.FloorY, rim.Min());
+        }
+
+        [Fact]
+        public void BackfillIsRemovedPerBlock_NotPerLayer()
+        {
+            // Minable rock never returns, but a player can drop dirt or crushed ore back into a
+            // pit -- one column, part of a layer, any shape. Whatever stands in the volume goes.
+            var sampler = new FakeWorldSampler(defaultHeight: 49f);
+            sampler.SetHeight(0, 0, 55f);
+
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+            var refilled = plan.AllPositions().Where(p => p.X == 0 && p.Z == 0).Select(p => p.Y).ToList();
+
+            Assert.Contains(54, refilled);
+            Assert.DoesNotContain(55, refilled); // its lip, which is the entrance rim
+            Assert.Equal(plan.FloorY, refilled.Min());
+        }
+
+        [Fact]
+        public void EveryColumnEndsOnTheSameFloor()
+        {
+            // The flat bottom is the "5x5 top to bottom" guarantee. Ragged tops, one floor.
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(2, 2, 49f);
+            sampler.SetHeight(4, 4, 58f);
+
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+
+            var floors = plan.AllPositions()
+                .GroupBy(p => (p.X, p.Z))
+                .Select(g => g.Min(p => p.Y))
+                .Distinct()
+                .ToList();
+
+            Assert.Single(floors);
+            Assert.Equal(plan.FloorY, floors[0]);
+        }
+
+        [Fact]
+        public void EveryLayerIsOneDescendingHorizontalSlice()
+        {
+            var sampler = new FakeWorldSampler(defaultHeight: 64f);
+            sampler.SetHeight(2, 2, 49f);
+
+            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
+
+            Assert.All(plan.Layers, layer => Assert.Single(layer.Positions.Select(p => p.Y).Distinct()));
+
+            var heights = plan.Layers.Select(l => l.Positions[0].Y).ToList();
+            Assert.Equal(heights.OrderByDescending(y => y).ToList(), heights);
+        }
+
         [Fact]
         public void ReplanningMidPass_StopsAtTheRecordedFloor_InsteadOfSpendingASecondTierDepth()
         {
@@ -37,29 +99,15 @@ namespace AdvancedElectronics.Navigation.Tests
             var original = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
             var floor = original.FloorY.Value;
 
-            // The drone cuts ten layers; the world's idea of "surface" drops with it.
             for (int x = 0; x < PlotSize; x++)
             for (int z = 0; z < PlotSize; z++)
                 sampler.SetHeight(x, z, 54f);
 
             var unclamped = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
-            var resumed = ShaftPlan.CreateContinuation(
-                new PlotCoord(0, 0), TierDepth, sampler, PlotSize, floorY: floor);
+            var resumed = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize, floorY: floor);
 
-            Assert.True(unclamped.FloorY < floor);   // the defect: straight past the tier limit
-            Assert.Equal(floor, resumed.FloorY);     // the fix: stops exactly where it would have
-        }
-
-        [Fact]
-        public void ReplanningMidPass_CutsNoFreshSurfaceOpening()
-        {
-            var sampler = new FakeWorldSampler(defaultHeight: 54f);
-
-            var resumed = ShaftPlan.CreateContinuation(
-                new PlotCoord(0, 0), TierDepth, sampler, PlotSize, floorY: 50);
-
-            // Every layer is the full plot width -- no 9-position 3x3 mouth at the pit floor.
-            Assert.All(resumed.Layers, layer => Assert.Equal(PlotSize * PlotSize, layer.Positions.Count));
+            Assert.True(unclamped.FloorY < floor);
+            Assert.Equal(floor, resumed.FloorY);
         }
 
         [Fact]
@@ -67,96 +115,39 @@ namespace AdvancedElectronics.Navigation.Tests
         {
             var sampler = new FakeWorldSampler(defaultHeight: 50f);
 
-            var resumed = ShaftPlan.CreateContinuation(
-                new PlotCoord(0, 0), TierDepth, sampler, PlotSize, floorY: 51);
+            var resumed = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize, floorY: 51);
 
             Assert.Empty(resumed.Layers);
             Assert.Null(resumed.FloorY);
         }
 
-        // The second-pass case. KD13 leaves the rim standing, so after one pass the sixteen rim
-        // columns still report their ORIGINAL surface while the centre nine report the pit floor
-        // fourteen blocks down. Planned per column, a "layer" of that plot stops being a
-        // horizontal slice: the rim positions land in mid-air above the pit and drop out as
-        // empty, and the shaft narrows to 3x3 for every pass after the first.
         [Fact]
-        public void AContinuationLevelsTheColumns_SoARepeatPassStaysFullWidth()
+        public void SteppedVirginTerrain_KeepsEachColumnsOwnTop()
         {
-            var sampler = new FakeWorldSampler(defaultHeight: 64f);
-
-            // The state one pass leaves behind: centre 3x3 cut to the floor, rim still at surface.
-            for (int dx = 1; dx <= 3; dx++)
-            for (int dz = 1; dz <= 3; dz++)
-                sampler.SetHeight(dx, dz, 49f);
-
-            var continuation = ShaftPlan.CreateContinuation(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
-
-            // Every layer is a full horizontal slice, and every slice sits at ONE height.
-            Assert.All(continuation.Layers, layer =>
-            {
-                Assert.Equal(PlotSize * PlotSize, layer.Positions.Count);
-                Assert.Single(layer.Positions.Select(p => p.Y).Distinct());
-            });
-
-            // Measured from the pit floor, not from the rim fifteen blocks above it.
-            Assert.Equal(49, continuation.Layers[0].Positions[0].Y);
-        }
-
-        [Fact]
-        public void AFirstPassStillUsesPerColumnSurfaces()
-        {
-            // The levelling is for holes, not for hills: virgin sloped ground must keep following
-            // each column's own surface, which is what KD13 asks for.
-            var sampler = new FakeWorldSampler(defaultHeight: 64f);
-            sampler.SetHeight(0, 0, 60f);
-
-            var virgin = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
-
-            Assert.True(virgin.Layers[1].Positions.Select(p => p.Y).Distinct().Count() > 1);
-        }
-
-        [Fact]
-        public void SteppedTerrain_CentreColumnsEachUseOwnSurfaceHeight()
-        {
+            // Tops follow the terrain; only the floor is shared. Cutting the high side down to a
+            // shared plane is deliberate -- it is what "5x5 top to bottom" costs on a slope.
             var sampler = new FakeWorldSampler(defaultHeight: 10f);
-            // Three different heights across the centre 3x3 (world columns 1..3, plot size 5).
             sampler.SetHeight(1, 1, 10f);
             sampler.SetHeight(2, 2, 20f);
             sampler.SetHeight(3, 3, 30f);
 
             var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
-            var surface = plan.Layers[0].Positions;
+            var tops = plan.AllPositions().GroupBy(p => (p.X, p.Z)).ToDictionary(g => g.Key, g => g.Max(p => p.Y));
 
-            Assert.Contains(surface, p => p.X == 1 && p.Z == 1 && p.Y == 10);
-            Assert.Contains(surface, p => p.X == 2 && p.Z == 2 && p.Y == 20);
-            Assert.Contains(surface, p => p.X == 3 && p.Z == 3 && p.Y == 30);
-        }
-
-        [Fact]
-        public void BelowSurface_EachColumnDescendsFromItsOwnSurface_NotASharedPlane()
-        {
-            var sampler = new FakeWorldSampler(defaultHeight: 10f);
-            sampler.SetHeight(0, 0, 10f); // low column
-            sampler.SetHeight(1, 0, 20f); // high column
-
-            var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
-            var secondLayer = plan.Layers[1].Positions; // one below each column's own surface
-
-            var low = secondLayer.Single(p => p.X == 0 && p.Z == 0);
-            var high = secondLayer.Single(p => p.X == 1 && p.Z == 0);
-
-            Assert.Equal(9, low.Y);
-            Assert.Equal(19, high.Y);
+            Assert.Equal(10, tops[(1, 1)]);
+            Assert.Equal(20, tops[(2, 2)]);
+            Assert.Equal(30, tops[(3, 3)]);
         }
 
         [Fact]
         public void RimColumns_ContributeNoSurfacePosition()
         {
+            // The rim keeping its topmost block IS the entrance (KD13), and it holds on every
+            // pass -- otherwise mining a refilled plot again widens the mouth.
             var sampler = new FakeWorldSampler(defaultHeight: 10f);
             var plan = ShaftPlan.Create(new PlotCoord(0, 0), TierDepth, sampler, PlotSize);
             var surface = plan.Layers[0].Positions;
 
-            // Rim = the 16 columns outside the centre 3x3 (world columns 0 and 4 on either axis).
             Assert.DoesNotContain(surface, p => p.X == 0 || p.X == 4 || p.Z == 0 || p.Z == 4);
             Assert.Equal(9, surface.Count);
         }

@@ -74,52 +74,36 @@ namespace AdvancedElectronics.Navigation
         }
 
         /// <summary>
-        /// Builds the shaft plan for <paramref name="plot"/>. <paramref name="tierDepth"/> is the
-        /// drone tier's total layer count (KD4 — a tier property, not a caller-chosen value).
-        /// <paramref name="plotSize"/> is the mod's plot width in world blocks — the same value
-        /// <see cref="PlotCoord.FromWorldColumn"/> quantizes against (KTD7), so plot-to-world
-        /// conversion here and everywhere else in the mod agree.
-        /// </summary>
-        public static ShaftPlan Create(PlotCoord plot, int tierDepth, IWorldSampler sampler, int plotSize) =>
-            Create(plot, tierDepth, sampler, plotSize, floorY: null, includeSurfaceOpening: true);
-
-        /// <summary>
-        /// A pass into a plot that already contains a shaft: a repeat pass after a fresh survey,
-        /// or a pass re-planned mid-cut after a restart.
+        /// Builds a pass over <paramref name="plot"/>: every block standing in the plot's 5x5
+        /// column volume, from each column's CURRENT top down to one shared floor.
         ///
-        /// Differs from <see cref="Create(PlotCoord,int,IWorldSampler,int)"/> in two ways, both
-        /// because the ground is no longer terrain but a hole. Every column is levelled to the
-        /// LOWEST of them, so a layer is a horizontal slice of the pit rather than a per-column
-        /// depth measured from surfaces fourteen blocks apart. And there is no 3x3 opening: the
-        /// mouth was cut by the first pass, and cutting another into an open floor only removes
-        /// nine of the twenty-five blocks that layer should take.
-        /// </summary>
-        public static ShaftPlan CreateContinuation(
-            PlotCoord plot, int tierDepth, IWorldSampler sampler, int plotSize, int? floorY = null) =>
-            Create(plot, tierDepth, sampler, plotSize,
-                   floorY, includeSurfaceOpening: false, levelToLowestColumn: true);
-
-        /// <summary>
-        /// Builds the shaft plan for <paramref name="plot"/> against the CURRENT surface, which
-        /// is what the caller wants every time: a plot is re-planned from whatever ground is
-        /// there now, and a second pass over an already-cut plot legitimately starts at the pit
-        /// floor (gated by a fresh survey).
+        /// One rule, replacing the three special cases that used to live here (virgin ground,
+        /// repeat pass, resumed pass). Each of those was a different answer to "what counts as the
+        /// surface", and each got a different case wrong.
         ///
-        /// The two extra parameters are what keep a re-plan from turning into a second full
-        /// shaft. Depths here are per-column and RELATIVE, so re-planning mid-pass against
-        /// ground the drone has itself excavated would spend another <paramref name="tierDepth"/>
-        /// below the pit floor and re-cut the 3x3 mouth into an opening that already exists --
-        /// observed live as "3x3 in layers 11-18" after a restart around layer 10.
+        /// What the rule guarantees is the shape: a clean 5x5 shaft with a flat bottom, and the
+        /// 3x3 entrance at the top as its only exception. It follows that anything standing in the
+        /// volume is removed rather than stepped over -- residue left by an earlier pass that cut
+        /// the wrong width, and backfill, which is real: minable rock never comes back, but a
+        /// player can drop dirt, sand or crushed ore into a pit, per block and in any shape.
         ///
-        /// <paramref name="floorY"/> clamps the plan to the floor the pass was going to reach
-        /// anyway (see <see cref="FloorY"/>); positions at or below it are dropped, and layers
-        /// left empty are dropped with them. <paramref name="includeSurfaceOpening"/> is false
-        /// when re-entering a shaft already cut, because layer 0 exists to open undisturbed
-        /// ground.
+        /// The floor is <c>lowest column - (tierDepth - 1)</c>, so a pass always advances the
+        /// shaft by its tier while levelling whatever is above. On a flat virgin plot this is
+        /// exactly the old plan -- 9 + 14*25 = 359 positions, the figure the Problem Frame quotes.
+        /// On a sloped virgin plot it removes MORE than the old per-column version did, because
+        /// the high side is cut down to the low side's floor rather than each column keeping its
+        /// own depth. That is the "5x5 top to bottom" guarantee costing what it costs.
+        ///
+        /// Rim columns keep their topmost block and centre columns do not: that difference IS the
+        /// entrance (KD13), and it survives every pass, so the mouth stays 3x3 no matter how many
+        /// times the plot is deepened or refilled.
+        ///
+        /// <paramref name="floorY"/> overrides the computed floor, for a pass re-planned mid-cut
+        /// after a restart: recomputing it against ground the drone has already excavated would
+        /// spend another full tier below the pit floor.
         /// </summary>
         public static ShaftPlan Create(
-            PlotCoord plot, int tierDepth, IWorldSampler sampler, int plotSize,
-            int? floorY, bool includeSurfaceOpening, bool levelToLowestColumn = false)
+            PlotCoord plot, int tierDepth, IWorldSampler sampler, int plotSize, int? floorY = null)
         {
             if (sampler == null)
                 throw new ArgumentNullException(nameof(sampler));
@@ -133,76 +117,52 @@ namespace AdvancedElectronics.Navigation
             // Sampled ONCE. Every layer used to re-sample the same column: 350 lookups for a
             // 5x5x15 shaft where 25 suffice.
             var surfaceHeights = new int[plotSize * plotSize];
+            var lowest = int.MaxValue;
+
             for (int dz = 0; dz < plotSize; dz++)
             for (int dx = 0; dx < plotSize; dx++)
-                surfaceHeights[(dz * plotSize) + dx] =
-                    (int)MathF.Round(sampler.GroundHeightAt(baseX + dx, baseZ + dz));
-
-            // A continuation levels every column to the LOWEST of them, and that is the whole
-            // point of the flag. Per-column depth is right for virgin ground, where the surface
-            // is terrain; it is nonsense once the plot contains a hole, because the rim columns
-            // keep their original surface (KD13 leaves the rim standing, so the previous pass
-            // never removed their topmost block) while the centre columns report the pit floor
-            // fourteen blocks lower.
-            //
-            // Measured per column, a "layer" of that plot is not a horizontal slice at all: the
-            // centre nine descend into fresh rock while the sixteen rim positions land in the air
-            // above the pit, classify as empty, and are dropped. The visible result is a shaft
-            // that narrows to 3x3 the moment a plot is mined a second time -- exactly what a
-            // repeat pass produced.
-            if (levelToLowestColumn)
             {
-                var lowest = surfaceHeights[0];
-                foreach (var height in surfaceHeights)
-                    if (height < lowest) lowest = height;
-
-                for (var i = 0; i < surfaceHeights.Length; i++) surfaceHeights[i] = lowest;
+                var height = (int)MathF.Round(sampler.GroundHeightAt(baseX + dx, baseZ + dz));
+                surfaceHeights[(dz * plotSize) + dx] = height;
+                if (height < lowest) lowest = height;
             }
 
-            int SurfaceY(int dx, int dz) => surfaceHeights[(dz * plotSize) + dx];
-            // Inclusive: FloorY is a position the pass was going to remove, not a boundary
-            // below it. On stepped terrain it is the deepest column's floor, so a resumed pass
-            // can take a shallower column one or two blocks past where its own layer would have
-            // ended -- bounded by the terrain step, and preferable to stopping short.
-            bool WithinPass(int y) => floorY == null || y >= floorY.Value;
+            var floor = floorY ?? (lowest - (tierDepth - 1));
 
-            var layers = new List<ShaftLayer>(tierDepth);
+            // Grouped by height, so a layer is a horizontal slice and stays the unit one game-action
+            // pack covers (KTD14). Slices are ragged by construction now -- a column whose top is
+            // already below a given height simply contributes nothing to it.
+            var byHeight = new Dictionary<int, List<BlockPos>>();
+            var highest = int.MinValue;
 
-            // Layer 0: the 3x3 surface opening, one position per centre column at that
-            // column's own topmost block. Rim columns (outside the centre square)
-            // contribute nothing here — they are left standing (KD13).
-            if (includeSurfaceOpening)
+            for (int dz = 0; dz < plotSize; dz++)
+            for (int dx = 0; dx < plotSize; dx++)
             {
-                var surface = new List<BlockPos>(OpeningWidth * OpeningWidth);
-                for (int dz = rimMargin; dz < rimMargin + OpeningWidth; dz++)
-                for (int dx = rimMargin; dx < rimMargin + OpeningWidth; dx++)
+                var isRim = dx < rimMargin || dx >= rimMargin + OpeningWidth
+                         || dz < rimMargin || dz >= rimMargin + OpeningWidth;
+
+                // The rim keeps its topmost block; the centre does not. That one line is the 3x3
+                // entrance, and applying it on every pass is what keeps the mouth from widening
+                // when a refilled plot is mined again.
+                var top = isRim ? surfaceHeights[(dz * plotSize) + dx] - 1
+                                : surfaceHeights[(dz * plotSize) + dx];
+
+                for (var y = top; y >= floor; y--)
                 {
-                    int y = SurfaceY(dx, dz);
-                    if (WithinPass(y)) surface.Add(new BlockPos(baseX + dx, y, baseZ + dz));
-                }
+                    if (!byHeight.TryGetValue(y, out var slice))
+                        byHeight[y] = slice = new List<BlockPos>(plotSize * plotSize);
 
-                if (surface.Count > 0) layers.Add(new ShaftLayer(0, surface));
+                    slice.Add(new BlockPos(baseX + dx, y, baseZ + dz));
+                    if (y > highest) highest = y;
+                }
             }
 
-            // Layers 1..tierDepth-1: the full plot width, one position per column,
-            // each column's own surface minus this layer's depth.
-            //
-            // A re-entered shaft starts at depth 0 instead, because its "surface" IS the floor
-            // the previous pass stopped on: the block under the drone's feet is the next one to
-            // remove, not one already gone.
-            int firstDepth = includeSurfaceOpening ? 1 : 0;
-            for (int depth = firstDepth; depth < tierDepth; depth++)
-            {
-                var positions = new List<BlockPos>(plotSize * plotSize);
-                for (int dz = 0; dz < plotSize; dz++)
-                for (int dx = 0; dx < plotSize; dx++)
-                {
-                    int y = SurfaceY(dx, dz) - depth;
-                    if (WithinPass(y)) positions.Add(new BlockPos(baseX + dx, y, baseZ + dz));
-                }
+            var layers = new List<ShaftLayer>(byHeight.Count);
+            var depth = 0;
 
-                if (positions.Count > 0) layers.Add(new ShaftLayer(depth, positions));
-            }
+            for (var y = highest; y >= floor; y--)
+                if (byHeight.TryGetValue(y, out var slice))
+                    layers.Add(new ShaftLayer(depth++, slice));
 
             return new ShaftPlan(plot, layers);
         }

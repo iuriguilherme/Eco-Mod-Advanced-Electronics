@@ -118,15 +118,7 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void BeginPass(PlotCoord plot)
         {
-            // A plot with a mined stamp already holds a shaft, so this pass continues one rather
-            // than opening one. Planned per column against a hole, the rim positions land in the
-            // air above the pit and get dropped as empty, and the shaft narrows to 3x3 from the
-            // second pass onward.
-            var previouslyMined = this.homeDock.ReadMinedStamps().StampFor(plot) > 0;
-
-            this.currentShaftPlan = previouslyMined
-                ? ShaftPlan.CreateContinuation(plot, this.tierDepth, this.sampler, this.plotSize)
-                : ShaftPlan.Create(plot, this.tierDepth, this.sampler, this.plotSize);
+            this.currentShaftPlan = ShaftPlan.Create(plot, this.tierDepth, this.sampler, this.plotSize);
             this.currentShaftPlot = plot;
             this.shaftResumeIndex = 0;
             this.passFloorY = this.currentShaftPlan.FloorY;
@@ -142,7 +134,7 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void ResumePass(PlotCoord plot)
         {
-            this.currentShaftPlan = ShaftPlan.CreateContinuation(
+            this.currentShaftPlan = ShaftPlan.Create(
                 plot, this.tierDepth, this.sampler, this.plotSize, floorY: this.passFloorY);
 
             this.shaftResumeIndex = 0;

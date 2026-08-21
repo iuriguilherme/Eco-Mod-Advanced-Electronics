@@ -213,10 +213,15 @@ namespace Eco.Mods.TechTree
                 // as a shaft still in progress.
                 var cutting = job.Status == MiningJobStatus.Working || job.Status == MiningJobStatus.WaitingToUnload;
 
-                this.Progress = MiningReadout.FormatProgress(
-                    job.PlotCount, job.WorkedCount, job.SkippedCount,
-                    cutting ? job.ShaftLayersDone : 0,
-                    cutting ? job.ShaftLayersTotal : 0);
+                // And nothing at all once the area is gone. The counts describe work on an area
+                // this dock is no longer pointed at, so leaving them up meant an unassigned dock
+                // still reporting a plot tally from the job it had just been taken off.
+                this.Progress = reference == null
+                    ? string.Empty
+                    : MiningReadout.FormatProgress(
+                        job.PlotCount, job.WorkedCount, job.SkippedCount,
+                        cutting ? job.ShaftLayersDone : 0,
+                        cutting ? job.ShaftLayersTotal : 0);
             }
             else
             {
