@@ -12,6 +12,29 @@ Unity client project for an Eco (Strange Loop Games) game mod: "Advanced Electro
 - Documented learnings: `docs/solutions/` — solutions to past problems (bugs, best practices, workflow patterns) for this mod, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`).
 - Shared vocabulary: `CONCEPTS.md` — domain terms with project-specific meaning (survey area, plot, finding, coverage, assignment); relevant when orienting to the mod or discussing its behavior.
 
+## Environment
+
+Development happens on **Windows**, and unless a session says otherwise that is the machine you are
+on. Two shells are reachable: PowerShell and **Git Bash**. Default to Git Bash; reach for PowerShell
+only when a command genuinely needs it (Windows-specific cmdlets, registry, `icacls`).
+
+The two take different syntax, and picking the wrong one usually fails *silently* rather than
+erroring:
+
+- **PowerShell here-strings (`@'…'@`) are not Bash.** In Bash they are ordinary text, so they end up
+  as literal `@` lines inside whatever you were building. In Bash, use a quoted heredoc (`<<'EOF'`).
+- **Never pass a multi-line git message with `-m`.** Use `-F -` and a quoted heredoc, on `git commit`,
+  `git tag -a`, `git notes`, and `gh --body-file -` alike. The quoted delimiter also keeps `$`,
+  backticks and `!` literal.
+- **Read the message back with `%B` before pushing**: `git log -1 --format='--- %h%n%B'`. Subject-only
+  views (`--oneline`, `%s`) fold a stray leading token into the subject and hide anything after the
+  trailer, so they render this corruption as plausible.
+- **Keep heredocs short.** A very long one through the Bash tool fails with a misleading
+  `unexpected EOF while looking for matching` quote error; split the work or use the file-write tool.
+
+Full catalogue, including CRLF and path-length traps:
+`docs/solutions/developer-experience/two-shells-one-repo-windows-toolchain-traps.md`.
+
 ## Layout (inside `Eco Mod Advanced Electronics/`)
 
 Stock ModKit code — treat as vendored, do not modify:
