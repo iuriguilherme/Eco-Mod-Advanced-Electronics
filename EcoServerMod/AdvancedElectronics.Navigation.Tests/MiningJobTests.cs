@@ -232,6 +232,24 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
+        public void AFreshJobOverAnAlreadyMinedArea_CompletesImmediatelyWithNothingWorked()
+        {
+            // The player's "is there anything left here?" check: assign a mining drone to an area
+            // it already worked out and let it answer. Nothing is surveyed-fresh, so nothing is
+            // offered, and the job is finished on its first tick rather than idle with no target.
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+
+            Assert.True(job.TryComplete(NoneSurveyed));
+            Assert.Equal(MiningJobStatus.Complete, job.Status);
+            Assert.Equal(0, job.WorkedCount);
+            Assert.Equal(0, job.SkippedCount);
+            Assert.Null(job.NextPlot(NoneSurveyed));
+        }
+
+        private static bool NoneSurveyed(PlotCoord plot) => false;
+
+        [Fact]
         public void TryComplete_NoOp_WhenNotWorking()
         {
             var job = new MiningJob(new[] { P00 });

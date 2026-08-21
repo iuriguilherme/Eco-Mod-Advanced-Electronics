@@ -703,6 +703,32 @@ namespace Eco.Mods.TechTree
 
             if (started == null)
             {
+                // Nothing to go to. Before reading that as a failure, ask the strategy whether it
+                // had anything to offer in the first place.
+                //
+                // Assigning a mining drone to an already-mined area is a legitimate question --
+                // "is there anything left here, or does it need re-surveying?" -- and the answer
+                // is a completed job and a docked drone, not a no-path. MiningJob.TryComplete
+                // already reaches Complete on the first tick (no plot is surveyed-fresh, so none
+                // is offered); it was the lifecycle that turned that answer into Unreachable by
+                // treating an empty target list as a routing failure.
+                //
+                // A full hold lands here too and wants the same handling: the drone belongs at its
+                // dock, not routed through no-path. Only the wording differs.
+                if (this.strategy.IsComplete)
+                {
+                    this.LastDispatchNote = this.strategy.IsExhausted
+                        ? "nothing left to mine here -- re-survey the area to go deeper"
+                        : "hold full -- returning to unload";
+
+                    this.HomeDock.PersistMiningJob();
+
+                    if (this.IsAtHomeDock()) this.SettleAtDockIfHome(mover);
+                    else this.BeginReturnToDock(mover, viaDistrictCleared: true);
+
+                    return;
+                }
+
                 // Nothing was reachable. Which of two things that means depends on whether this
                 // assignment has EVER got the drone somewhere.
                 if (plotsProbed > 0 && !this.reachedAssignedAreaOnce)
