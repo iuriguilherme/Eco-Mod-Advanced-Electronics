@@ -123,7 +123,12 @@ namespace Eco.Mods.TechTree
                     // in until its first dispatch succeeds -- could never end against a
                     // vanished area, and an unendable job is an undispatchable one that still
                     // reports itself dispatchable.
-                    this.job.End(MiningEndReason.AreaGone);
+                    //
+                    // The two ways to be invalidated want different words from the panel: the
+                    // area is gone, or it still exists and was reshaped under us.
+                    this.job.End(signal == AreaLookupSignal.ConfirmedGone
+                        ? MiningEndReason.AreaGone
+                        : MiningEndReason.AreaRedrawn);
                     return null;
                 case AreaResolutionOutcome.NotYetResolved:
                     return null;
@@ -148,9 +153,10 @@ namespace Eco.Mods.TechTree
                 return false;
             }
 
-            if (!this.homeDock.RecheckStamp())
+            var stampRefusal = this.homeDock.StampRefusalReason();
+            if (stampRefusal != null)
             {
-                this.job.End(MiningEndReason.StampInvalid);
+                this.job.End(stampRefusal.Value);
                 return false;
             }
 

@@ -166,10 +166,20 @@ namespace Eco.Mods.TechTree
         /// not once per dispatch): full access on this dock (R33, R40), and not a
         /// permission-ignoring tool now selected (R37). False ends the job.
         /// </summary>
-        public bool RecheckStamp()
+        public bool RecheckStamp() => this.StampRefusalReason() == null;
+
+        /// <summary>
+        /// As <see cref="RecheckStamp"/>, but names WHICH check failed so the job can end
+        /// with a reason the panel can print. The two failures want opposite responses from
+        /// the player -- restore the citizen's access, versus put the dev tool away -- and a
+        /// bare false told them apart from neither.
+        /// </summary>
+        public MiningEndReason? StampRefusalReason()
         {
             var citizen = this.StampedCitizen;
-            return citizen != null && !citizen.DevToolSelected && this.HasFullAccess(citizen);
+            if (citizen == null) return MiningEndReason.StampInvalid;
+            if (citizen.DevToolSelected) return MiningEndReason.DevToolSelected;
+            return this.HasFullAccess(citizen) ? null : MiningEndReason.StampInvalid;
         }
 
         // ---------------------------------------------------------------

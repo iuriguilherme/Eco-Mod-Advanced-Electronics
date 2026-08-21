@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using AdvancedElectronics.Navigation;
 using Xunit;
 
@@ -87,15 +89,29 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.NotEqual(empty, full);
         }
 
+        // Driven off the enum rather than a hand-listed set, so adding a reason without
+        // wording it fails here instead of silently rendering its bare enum name at a player.
+        public static IEnumerable<object[]> AllEndReasons() =>
+            Enum.GetValues(typeof(MiningEndReason)).Cast<MiningEndReason>().Select(r => new object[] { r });
+
         [Theory]
-        [InlineData(MiningEndReason.AreaGone)]
-        [InlineData(MiningEndReason.Unassigned)]
-        [InlineData(MiningEndReason.StampInvalid)]
-        [InlineData(MiningEndReason.DevToolSelected)]
-        [InlineData(MiningEndReason.Halted)]
-        public void EveryEndReason_RendersDistinctWording(MiningEndReason reason)
+        [MemberData(nameof(AllEndReasons))]
+        public void EveryEndReason_RendersWording(MiningEndReason reason)
         {
-            Assert.False(string.IsNullOrWhiteSpace(MiningReadout.FormatStopReason(reason)));
+            var wording = MiningReadout.FormatStopReason(reason);
+
+            Assert.False(string.IsNullOrWhiteSpace(wording));
+            Assert.NotEqual(reason.ToString(), wording); // the default branch's fallback
+        }
+
+        [Fact]
+        public void EveryEndReason_RendersDistinctWording()
+        {
+            var wordings = Enum.GetValues(typeof(MiningEndReason)).Cast<MiningEndReason>()
+                .Select(r => MiningReadout.FormatStopReason(r))
+                .ToList();
+
+            Assert.Equal(wordings.Count, wordings.Distinct().Count());
         }
 
         [Fact]

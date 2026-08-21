@@ -505,14 +505,15 @@ namespace Eco.Mods.TechTree
             // plan against the excavated floor and starts a second shaft inside the first.
             var needsFreshStrategy = this.strategy == null || this.strategy.IsExhausted;
 
-            var area = this.CurrentTargetArea(out var noAreaReason, out var assignmentGone);
+            var area = this.CurrentTargetArea(out var noAreaReason, out var terminalReason);
             if (area == null)
             {
                 this.LastDispatchNote = noAreaReason;
 
-                // A vanished area is not a routing failure and must not be retried like one.
-                if (assignmentGone)
-                    this.EndJobForMissingArea(mover);
+                // A vanished or redrawn area is not a routing failure and must not be retried
+                // like one.
+                if (terminalReason != null)
+                    this.EndJobForMissingArea(mover, terminalReason.Value);
                 else
                     this.HandleNoPath(mover);
 
@@ -624,19 +625,24 @@ namespace Eco.Mods.TechTree
             this.CurrentTargetArea(out noAreaReason, out _);
 
         /// <summary>
-        /// As <see cref="CurrentTargetArea(out string)"/>, but also reports whether the
-        /// assignment is <em>terminally</em> gone rather than merely unresolved this tick.
+        /// As <see cref="CurrentTargetArea(out string)"/>, but also reports the reason the
+        /// assignment is <em>terminally</em> unusable, rather than merely unresolved this tick.
         ///
-        /// KTD2 computes three outcomes precisely so that deletion can be told apart from a
-        /// load-ordering miss, and this method used to throw the distinction away -- both
-        /// non-Found signals collapsed into a bare null, which the caller could only read as
-        /// "no path". A deleted area therefore presented as a routing failure, and routing
-        /// failures are retried forever by design.
+        /// Runs the same <see cref="AreaResolutionPolicy"/> the mining strategy runs, and that
+        /// agreement is the point. This method used to test only the lookup signal while the
+        /// strategy tested the signal AND the change token, so the two disagreed about what a
+        /// live assignment is: the looser test decided whether to fly, the stricter one decided
+        /// whether to work, and a drone cleared to fly but not to work parks on its plot
+        /// forever with the mining animation running and a job that never leaves Idle.
+        ///
+        /// KTD2's three outcomes exist to separate deletion from a load-ordering miss; folding
+        /// both into a bare null also made a deleted area read as a routing failure, and
+        /// routing failures are retried forever by design.
         /// </summary>
-        private SurveyArea CurrentTargetArea(out string noAreaReason, out bool assignmentGone)
+        private SurveyArea CurrentTargetArea(out string noAreaReason, out MiningEndReason? terminalReason)
         {
             noAreaReason = null;
-            assignmentGone = false;
+            terminalReason = null;
 
             if (this.CurrentJobKind() == DroneJobKind.Mining)
             {
@@ -647,14 +653,29 @@ namespace Eco.Mods.TechTree
                     return null;
                 }
 
-                switch (reference.Resolve(out _, out var miningEntry))
+                var signal = reference.Resolve(out _, out var miningEntry);
+                var outcome = AreaResolutionPolicy.Resolve(
+                    signal,
+                    reference.StoredChangeToken,
+                    miningEntry == null ? null : MiningAreaRef.CurrentChangeToken(miningEntry));
+
+                switch (outcome)
                 {
-                    case AreaLookupSignal.Found:
+                    case AreaResolutionOutcome.StillValid:
                         return miningEntry.ToSurveyArea();
 
-                    case AreaLookupSignal.ConfirmedGone:
-                        noAreaReason = "assigned mining area is gone";
-                        assignmentGone = true;
+                    case AreaResolutionOutcome.Invalidated:
+                        if (signal == AreaLookupSignal.ConfirmedGone)
+                        {
+                            noAreaReason = "assigned mining area is gone";
+                            terminalReason = MiningEndReason.AreaGone;
+                        }
+                        else
+                        {
+                            noAreaReason = "assigned mining area was redrawn";
+                            terminalReason = MiningEndReason.AreaRedrawn;
+                        }
+
                         return null;
 
                     default:
@@ -759,9 +780,10 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// The assigned area is confirmed gone (AE7: the survey dock that published it was
-        /// picked up, or the area was deleted). Ends the job with a named reason and brings
-        /// the drone home -- the hold is left untouched, so what it already mined is kept.
+        /// The assigned area is terminally unusable -- confirmed gone (AE7: the survey dock
+        /// that published it was picked up, or the area was deleted) or redrawn under the job.
+        /// Ends the job with a named reason and brings the drone home; the hold is left
+        /// untouched, so what it already mined is kept.
         ///
         /// Deliberately NOT <see cref="HandleNoPath"/>. Routing that back through the
         /// no-path path is what produced the observed hang: Unreachable, an immediate return
@@ -771,9 +793,9 @@ namespace Eco.Mods.TechTree
         /// the drone bobbed beside its dock indefinitely while the panel showed an idle job
         /// with no stop reason.
         /// </summary>
-        private void EndJobForMissingArea(DroneMoverComponent mover)
+        private void EndJobForMissingArea(DroneMoverComponent mover, MiningEndReason reason)
         {
-            this.HomeDock.MiningJob?.End(MiningEndReason.AreaGone);
+            this.HomeDock.MiningJob?.End(reason);
             this.HomeDock.PersistMiningJob();
 
             if (this.IsAtHomeDock())

@@ -35,7 +35,16 @@ namespace AdvancedElectronics.Navigation
         DevToolSelected,
 
         /// <summary>An administrator halted mining server-wide (R42).</summary>
-        Halted
+        Halted,
+
+        /// <summary>
+        /// The area still exists but its geometry was redrawn, so the plot list this job was
+        /// built against no longer describes it (KTD2's change-token half).
+        ///
+        /// Appended rather than inserted: these values are persisted by ordinal in the job
+        /// snapshot, so the existing members' positions are load-bearing.
+        /// </summary>
+        AreaRedrawn
     }
 
     /// <summary>What became of one plot: still to do, worked, or abandoned with a reason (R16, R22).</summary>
