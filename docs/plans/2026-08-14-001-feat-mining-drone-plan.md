@@ -280,11 +280,21 @@ Deferred for later:
 - Backfilling unwanted spoil, and crushing rock into a placeable form so it can be backfilled at all.
 - Ending a shaft early once the wanted material has run out.
 - Placing a fence on the rim a worked plot leaves behind.
+- **Completing the shaft entrance where the ring has a gap.** The entrance is levelled by mining
+  (the rim keeps one block, at the lowest rim column's height), which is enough on ground that had
+  a surface to begin with. A rim column that was already excavated leaves a hole in the ring, and
+  closing it needs a block placed rather than removed. Grouped with backfill above deliberately:
+  both want the same missing capability — a placement action, a material source, and the
+  authorization pass redone for a verb this mod has never performed — so they should be planned and
+  built together rather than one of them arriving alone. A10 records the vanilla precedent.
+  Constructed blocks are the better material for the ring than dirt: `EcoBlockClassifier` already
+  refuses form-bearing blocks, so an adobe rim cannot be mined away by a later pass over the same
+  plot, while a dirt one can.
 - Any curator-facing lever over drone *output*. None ships here, so the only response to a balance complaint is a new release. R42's halt is deliberately not that lever: it stops mining entirely and tunes nothing, and it exists because the terrain change is irreversible and the authorization path cannot be unit-tested.
 
 Accepted for this delivery:
 
-- A worked plot is permanent and unguarded: no backfill and no rim fence ship here, so the terrain change cannot be reversed from inside the mod.
+- A worked plot is permanent and unguarded: no backfill and no rim fence ship here, so the terrain change cannot be reversed from inside the mod. The entrance ring is levelled but may have gaps where a rim column was already excavated before the drone arrived.
 - Natural ground beneath a standing structure is removed. The drone never deconstructs anything, but a build can be left over a void, so the protection is "the drone does not demolish", not "builds are unaffected".
 - Plants over worked ground are destroyed and yield nothing (KD18). A player who plants over ore loses the crop and gets no compensating item.
 - Drone removals count toward contracts and work parties, because the engine passes every performed action through them. A player can have a drone fulfil a paid mining contract while offline.
