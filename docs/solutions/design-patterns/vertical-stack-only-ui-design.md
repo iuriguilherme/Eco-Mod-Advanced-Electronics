@@ -1,7 +1,7 @@
 ---
 title: Designing a usable panel when the only primitive is a vertical stack
 date: 2026-07-27
-last_updated: 2026-07-31
+last_updated: 2026-08-21
 category: design-patterns
 module: EcoServerMod
 problem_type: design_pattern
@@ -99,21 +99,42 @@ Originally this read "split before you accept scrolling", which is the wrong tri
 applied, rows stop scaling with object count and length rarely forces a split. What forces one is
 `BigButton`: it is the panel's commit control, so a panel wants at most one, and a second genuine
 action needs its own pane to live in. This panel split into Areas and Results, then collapsed back to
-a single tab the moment assignment stopped needing a button of its own — the split's only remaining
-job had been hosting one.
+a single Survey tab the moment assignment stopped needing a button of its own — the split's only
+remaining job had been hosting one. The dock carries a second tab again today (**Mining**), but that
+one is a different job on a different drone, not a second commit action on the same work.
+
+> **This rule is currently violated in shipped code, and the constraint is still in force**
+> (owner-restated 2026-08-21: two and three buttons per pane is "not good UI at all"). The Survey tab
+> declares three `BigButton`s — Manage Areas on Map, Assign Selected Area, Unassign Area
+> (`EcoServerMod/AdvancedElectronics/SurveyComponent.cs:204`, `:217`, `:240`) — and Mining declares
+> two (`MiningComponent.cs:94`, `:118`). Each costs about 3.2 standard rows and leaves roughly
+> two-thirds of the panel width dead; the measurements are in
+> `docs/ideation/2026-07-31-dock-ui-palette.html`.
+>
+> The intended repair is rule 3 applied once more: Assign and Unassign are not two commits, they are
+> one piece of state, so a single `Boolean` costs one row instead of 6.4 and reads as state rather
+> than as two commands. That leaves Survey with exactly one commit button and Mining with none.
 
 Note also that **RPC methods render after all properties**, whatever the declaration order, so a
 button always lands at the bottom of its pane. That is why rule 1's "put fixed anchors first" cannot
 be satisfied with a button.
 
-**5. Show one item at a time with prev/next, not all items at once.**
+**5. Show one item at a time behind a cursor, not all items at once.**
 Rendering every area's findings makes panel length proportional to area count. A cursor — one line
-naming the current item, plus Previous/Next — keeps length constant. Note the cursor should be
-**independent of any assignment state**, so reading item B does not disturb what the machine is
-doing to item A.
+naming the current item — keeps length constant. The cursor must be **independent of any assignment
+state**, so reading item B does not disturb what the machine is doing to item A.
 
-**6. Size a fixed control pool by real use, not by tidiness.**
-When a compile-time pool stands in for a dynamic list, the cap is a **product** decision. Here the
+Prev/Next buttons were the first shape tried and are not the one that shipped: two buttons cost two
+rows and are two more commit-shaped controls. What shipped is a single `Int32` stepper with a
+`Range` — a two-button cursor in one row (`SurveyComponent.cs:147`, `MiningComponent.cs:79`). Read
+this rule as "one cursor control", not "Previous and Next".
+
+**6. If a fixed control pool is unavoidable, size it by real use, not by tidiness.**
+Rule 3 usually removes the need for a pool entirely, and it did here — the six-button assign pool
+described below no longer exists, replaced by the one stepper plus one commit button in rule 5. Keep
+this rule for the cases where a pool genuinely cannot collapse to a single control.
+
+When a compile-time pool stands in for a dynamic list, the cap is a **product** decision. The
 motivating late-game setup is one survey area per resource — coal, iron ore, limestone, gold ore,
 copper ore, each in a different biome — which is five. The pool is six: five plus a spare. A cap of
 four would have fit an appealing "no scrolling ever" rule and broken the actual workflow. Fitting
@@ -124,7 +145,9 @@ say so in the panel.
 **7. Gate controls that have nothing to act on.**
 Bind each pooled control's visibility to a synced bool so unused positions do not render as dead
 rows, and push the change explicitly or the client never re-evaluates. A pool of six costs six rows
-only when six objects exist.
+only when six objects exist. This pairs with rule 6 and, like it, has no live instance here any
+more — `VisibilityParam` survives only in the detached `UIShowcaseComponent`. It applies again the
+moment a pool does.
 
 **8. A filter must cost fewer rows than the noise it removes.**
 An earlier attempt added one toggle button per material to filter the readout. It shipped, worked,
@@ -183,46 +206,51 @@ polish does.
 
 ## Examples
 
-The dock's Areas tab, ordered so the anchor never moves
-(`EcoServerMod/AdvancedElectronics/SurveyAreasComponent.cs`):
+The dock's Survey tab as it ships today (`EcoServerMod/AdvancedElectronics/SurveyComponent.cs`).
+Note the ordering consequence of rule 4's closing note — RPC methods render after all properties
+whatever their declaration order, so the file declares the buttons last because that is where they
+land anyway:
 
 ```csharp
-// 1. Fixed anchor FIRST -- the text below changes length as areas are added and surveyed.
-[RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Manage Areas on Map")]
-public async Task ManageAreasOnMap(Player player) { ... }   // one row replaces Create/Edit/View/Delete
+// Readouts first: header, the numbered area list, drone status.
+[SyncToView, Autogen, UITypeName("StringTitle")]
+public string AssignHeader { get; private set; } = "Areas";
 
-// 2. Assignment line, drone status, numbered area list -- variable length, so it sits below.
 [SyncToView, Autogen, UITypeName("StringDisplay")]
 public string AreasDisplay { get; private set; } = string.Empty;
 
-// 3. One toggle per area, gated so unused positions do not render.
-[SyncToView] public bool AreaExists1() => this.AreaCount() >= 1;
+// ONE cursor, not a pool -- rules 3 and 5. It picks what you are LOOKING at and nothing else;
+// an earlier build assigned on change, so scrolling to read a neighbour reassigned the drone.
+[Serialized, Eco, Range(1, MaxSurveyAreas), UITypeName("Int32")]
+public int ViewPosition { get; set; }
 
-[RPC(AccessType.ConsumerAccess), Autogen, VisibilityParam(nameof(AreaExists1)),
- UITypeName("BigButton"), Description("Assign Area 1")]
-public void AssignArea1(Player player) => this.ToggleAssign(1);   // clicking the assigned one unassigns
+[SyncToView, Autogen, UITypeName("StringDisplay")]
+public string ResultsDisplay { get; private set; } = string.Empty;
+
+// Buttons last. Three of them, which is two more than rule 4 allows -- see the note there.
+[RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Manage Areas on Map")]
+public async Task ManageAreasOnMap(Player player) { ... }
 ```
 
-The pool size as a recorded product decision, not a magic number
-(`SurveyAreasComponent.cs:40-48`):
+The cap that used to size a control pool is now just a range on the cursor, so ten areas cost the
+same one row as one area (`SurveyComponent.cs:71`, `:147`):
 
 ```csharp
-/// Size of the compile-time assign-button pool. RPCs are methods, so SOME ceiling has to exist
-/// -- buttons cannot be generated per area. Six is a product choice, not a technical one: the
-/// motivating late-game setup is one area per resource (coal, iron ore, limestone, gold ore,
-/// copper ore), each in a different biome, which is five with one spare. Four would fit without
-/// scrolling but would not fit that setup, and fitting real use beats a self-imposed no-scroll
-/// rule. Raise it if mod users ask for more. Areas past it are assigned with /drone assignarea.
-public const int AssignButtonPool = 6;
+public const int MaxSurveyAreas = 10;
+
+[Serialized, Eco, Range(1, MaxSurveyAreas), UITypeName("Int32")]
 ```
 
-Row-count arithmetic for five areas, before and after:
+Row-count arithmetic across the three generations of this panel:
 
 ```
-before:  5 areas x (Create/Edit/View/Delete pattern + select)  -> ~20 rows, all stacked
-after:   1 "Manage Areas on Map" + 1 text block + 5 toggles    ->   7 rows
-         findings moved to a second tab, one area at a time    ->   panel length now constant
+first:   5 areas x (Create/Edit/View/Delete + select)          -> ~20 rows, all stacked
+second:  1 "Manage Areas on Map" + text + 5 assign toggles     ->   7 rows, scales with areas
+today:   1 map button + text + 1 cursor + findings + 2 buttons ->   constant, any area count
 ```
+
+The second generation is what rules 6 and 7 were written for. The third removed the pool entirely
+by applying rule 3, which is why those two rules now have no live instance here.
 
 ## Related
 
@@ -235,3 +263,6 @@ after:   1 "Manage Areas on Map" + 1 text block + 5 toggles    ->   7 rows
   the feature at all; this doc is the layout budget that readout has to fit inside.
 - `docs/solutions/workflow-issues/eco-mod-batched-live-testing.md` — every judgement above came from
   live play, which is the only place panel-length problems are visible.
+- `docs/ideation/2026-07-31-dock-ui-palette.html` — the measured control palette behind rule 4:
+  every template drawn at true size, with `BigButton` costed at 3.2 rows against a `Boolean`,
+  `Int32` stepper or `Selector` at one.
