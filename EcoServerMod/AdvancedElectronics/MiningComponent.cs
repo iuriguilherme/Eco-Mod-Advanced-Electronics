@@ -179,11 +179,18 @@ namespace Eco.Mods.TechTree
             var offered = this.OfferedAreas().ToList();
             this.browseIndex = DockReadout.ClampCursor(this.browseIndex, offered.Count);
 
+            var assigned = dock.AssignedMiningArea;
+
             this.AvailableAreas = DockReadout.AtReadableSize(offered.Count == 0
                 ? "No survey docks with an area were found."
-                : string.Join("\n", offered.Select((o, i) => $"{i + 1}. {o.Dock.Name} -- {o.Area.Name} ({o.Area.PlotCount} plots)")));
+                : string.Join("\n", offered.Select((o, i) => MiningReadout.FormatOfferedAreaLine(
+                    i + 1, o.Dock.Name, o.Area.Name, o.Area.PlotCount,
+                    isAssigned: assigned != null
+                                && assigned.OwningDockId == o.Dock.ObjectID
+                                && assigned.AreaId == o.Area.Id,
+                    isMined: IsMinedOut(dock, o.Area)))));
 
-            var reference = dock.AssignedMiningArea;
+            var reference = assigned;
             this.AssignedArea = reference == null ? "none" : this.DescribeAssignment(dock, reference);
 
             var citizen = dock.StampedCitizen;
@@ -217,6 +224,23 @@ namespace Eco.Mods.TechTree
             this.Changed(nameof(this.Progress));
             this.Changed(nameof(this.AvailableAreas));
             this.Changed(nameof(this.SelectArea));
+        }
+
+        /// <summary>
+        /// Whether THIS dock has nothing left to mine in <paramref name="area"/>: every plot mined
+        /// at least once, none re-surveyed since.
+        ///
+        /// Read per dock, not per area, because the mined stamps live on the mining dock while the
+        /// surveyed stamps live on the area (KTD12). Two mining docks pointed at one survey area
+        /// therefore answer this differently, and each is right about itself.
+        /// </summary>
+        private static bool IsMinedOut(DroneDockObject dock, SurveyAreaEntry area)
+        {
+            var surveyed = area.ReadSurveyedStamps();
+            var mined = dock.ReadMinedStamps();
+
+            return PlotFreshness.IsMinedOut(
+                area.ToSurveyArea().EnumeratePlots(), surveyed.StampFor, mined.StampFor);
         }
 
         private string DescribeAssignment(DroneDockObject dock, MiningAreaRef reference)

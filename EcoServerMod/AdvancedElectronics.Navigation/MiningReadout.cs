@@ -71,6 +71,30 @@ namespace AdvancedElectronics.Navigation
                 : FormatStopReason(jobEndReason);
 
         /// <summary>
+        /// One line of the Mining tab's offered-areas list, with the same vocabulary the survey
+        /// tab's roster uses: yellow [assigned] for the one being worked, green [mined] for one
+        /// with nothing left to do until it is re-surveyed.
+        ///
+        /// The two are not exclusive and the order matters when both apply. Assigned comes first
+        /// because it answers "what is the drone doing", which a player is looking for; mined
+        /// answers "is there anything here", which they are scanning for. A mined area that is
+        /// still assigned is a real state -- the pass finished and nobody has unassigned it -- and
+        /// showing only one of the two markers would hide it.
+        /// </summary>
+        public static string FormatOfferedAreaLine(
+            int position, string dockName, string areaName, int plotCount, bool isAssigned, bool isMined)
+        {
+            var line = $"{position}. {dockName} -- {areaName} ({plotCount} plots)";
+            if (isMined) line = DockReadout.AsComplete(line);
+
+            // Appended outside the colour wrap, so each marker keeps its own.
+            if (isAssigned) line += DockReadout.AssignedMarker;
+            if (isMined) line += DockReadout.MinedMarker;
+
+            return line;
+        }
+
+        /// <summary>
         /// The one progress line the Mining tab keeps: how much of the area is done, and how far
         /// into the current plot's shaft the drone has got.
         ///
@@ -84,9 +108,9 @@ namespace AdvancedElectronics.Navigation
         /// </summary>
         public static string FormatProgress(int totalPlots, int worked, int skipped, int shaftLayersDone, int shaftLayersTotal)
         {
-            var head = $"total {totalPlots}, worked {worked}, skipped {skipped}";
+            var head = $"total: {totalPlots} plots, worked: {worked}, skipped: {skipped}";
             return shaftLayersTotal > 0
-                ? $"{head}, current: {shaftLayersDone}/{shaftLayersTotal}"
+                ? $"{head}, current: {shaftLayersDone}/{shaftLayersTotal} layers"
                 : head;
         }
 

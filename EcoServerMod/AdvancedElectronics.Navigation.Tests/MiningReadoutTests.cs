@@ -114,12 +114,60 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal(wordings.Count, wordings.Distinct().Count());
         }
 
+        private static readonly PlotCoord[] TwoPlots = { new PlotCoord(0, 0), new PlotCoord(1, 0) };
+
+        [Fact]
+        public void OfferedArea_CarriesBothMarkers_WhenAMinedAreaIsStillAssigned()
+        {
+            // A real state, not a contradiction: the pass finished and nobody unassigned it.
+            var line = MiningReadout.FormatOfferedAreaLine(1, "Survey Dock", "North Ridge", 12,
+                isAssigned: true, isMined: true);
+
+            Assert.Contains(DockReadout.AssignedMarker, line);
+            Assert.Contains(DockReadout.MinedMarker, line);
+            Assert.StartsWith("<color=green>", line);
+        }
+
+        [Fact]
+        public void OfferedArea_WithNothingSpecial_CarriesNoMarkup()
+        {
+            var line = MiningReadout.FormatOfferedAreaLine(2, "Survey Dock", "Creek Bend", 8,
+                isAssigned: false, isMined: false);
+
+            Assert.Equal("2. Survey Dock -- Creek Bend (8 plots)", line);
+        }
+
+        [Fact]
+        public void MinedOut_NeedsEveryPlotMined_AndNoneReSurveyedSince()
+        {
+            long Surveyed(PlotCoord p) => 100;
+
+            // Both plots mined after their survey: nothing to do here.
+            Assert.True(PlotFreshness.IsMinedOut(TwoPlots, Surveyed, _ => 200));
+
+            // One plot never mined: the area still has work.
+            Assert.False(PlotFreshness.IsMinedOut(TwoPlots, Surveyed, p => p.X == 0 ? 200 : 0));
+
+            // Mined, then re-surveyed to open the next tier: a whole pass is waiting.
+            Assert.False(PlotFreshness.IsMinedOut(TwoPlots, p => p.X == 0 ? 300 : 100, _ => 200));
+        }
+
+        [Fact]
+        public void MinedOut_IsFalseForAnAreaNobodyHasTouched()
+        {
+            // Both stamps 0 means no plot is mineable, which is "nothing to do" -- and reading
+            // that as "nothing left" would paint an untouched area green.
+            Assert.False(PlotFreshness.IsMinedOut(TwoPlots, _ => 0, _ => 0));
+            Assert.False(PlotFreshness.IsMinedOut(System.Array.Empty<PlotCoord>(), _ => 0, _ => 0));
+        }
+
         [Fact]
         public void Progress_ReportsTheAreaTotalAlongsideWhatIsDone()
         {
-            // "worked 2, skipped 1" leaves the player computing the denominator from the area list.
+            // "worked 2, skipped 1" leaves the player computing the denominator from the area list,
+            // and a bare "6/15" leaves them guessing what is being counted.
             Assert.Equal(
-                "total 12, worked 2, skipped 1, current: 6/15",
+                "total: 12 plots, worked: 2, skipped: 1, current: 6/15 layers",
                 MiningReadout.FormatProgress(totalPlots: 12, worked: 2, skipped: 1, shaftLayersDone: 6, shaftLayersTotal: 15));
         }
 
@@ -129,7 +177,7 @@ namespace AdvancedElectronics.Navigation.Tests
             // Between plots there is no current shaft. "current: 0/0" reads as a stalled one.
             var line = MiningReadout.FormatProgress(totalPlots: 12, worked: 12, skipped: 0, shaftLayersDone: 0, shaftLayersTotal: 0);
 
-            Assert.Equal("total 12, worked 12, skipped 0", line);
+            Assert.Equal("total: 12 plots, worked: 12, skipped: 0", line);
             Assert.DoesNotContain("current", line);
         }
 

@@ -60,8 +60,14 @@ namespace AdvancedElectronics.Navigation
         /// <summary>Marks the assigned area the drone cannot currently reach. Appended after <see cref="AssignedMarker"/>.</summary>
         public const string UnreachableMarker = "   <color=red>[unreachable]</color>";
 
-        /// <summary>Colour name for a fully-surveyed area, so the completed ones can be picked out of a list at a glance.</summary>
+        /// <summary>Marks an area whose plots have all been mined and none re-surveyed since.</summary>
+        public const string MinedMarker = "   <color=green>[mined]</color>";
+
+        /// <summary>Colour name for "finished" -- a fully-surveyed area, or a mined-out one.</summary>
         private const string CompleteColor = "green";
+
+        /// <summary>Wraps a line in the finished colour, so both readouts agree on what done looks like.</summary>
+        public static string AsComplete(string text) => $"<color={CompleteColor}>{text}</color>";
 
         /// <summary>
         /// Formats one per-material line (R2), quantity-led: how much of the material was found, the
@@ -149,7 +155,7 @@ namespace AdvancedElectronics.Navigation
             // areas by scanning the list, and a green "100%" inside an otherwise uniform line is
             // barely easier to spot than a plain one.
             if (area.CoveragePercent >= 100f)
-                summary = $"<color={CompleteColor}>{summary}</color>";
+                summary = AsComplete(summary);
 
             return $"{area.Position}. {area.Name} -- {area.PlotCount} plots, {summary}"
                    + (area.IsAssigned ? AssignedMarker : string.Empty)
