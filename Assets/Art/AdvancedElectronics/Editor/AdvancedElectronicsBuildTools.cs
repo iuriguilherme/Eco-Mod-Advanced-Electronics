@@ -69,11 +69,17 @@ public static class AdvancedElectronicsBuildTools
     /// so every server Item type that reaches a player belongs here.
     ///
     /// Colours are chosen to stay pairwise separable at inventory-thumbnail size, which in
-    /// practice means different hue regions rather than different shades. The occupied ones
-    /// are blue, grey, purple, tan, near-white, orange, green, red and amber; magenta and
-    /// lime were the free regions left for the two rows added last. The pair most worth
-    /// protecting is mining against survey, since those two rendered identically for three
-    /// weeks -- hence lime rather than another cool colour.
+    /// practice means different hue regions rather than different shades. Blue, grey, purple,
+    /// tan, near-white, orange, green and red were already taken, so magenta and lime went to
+    /// the two rows added last. The pair most worth protecting is mining against survey, since
+    /// those two rendered identically for three weeks -- hence lime rather than another cool
+    /// colour; they are now the FURTHEST apart pair in the table.
+    ///
+    /// Harvest was amber until measuring the finished table put it 20.7 dE from the assembly's
+    /// orange, under the ~23 where two fills stop reading as different colours at a glance.
+    /// Chocolate moved it clear and lifted the table's closest pair to 38.6 dE overall. Measure
+    /// rather than eyeball when adding a row: a near-collision here is indistinguishable from
+    /// the mis-binding this whole scheme exists to make visible.
     /// </summary>
     private static readonly (string TypeName, Color Fill)[] ItemIcons =
     {
@@ -85,7 +91,7 @@ public static class AdvancedElectronicsBuildTools
         ("AdvancedElectronicsAssemblyItem",      new Color(0.85f, 0.50f, 0.15f, 1f)), // orange
         ("BatteryItem",                          new Color(0.20f, 0.70f, 0.35f, 1f)), // green
         ("AdvancedElectronicsUpgradeItem",       new Color(0.80f, 0.20f, 0.30f, 1f)), // red -- plugin module
-        ("HarvestDroneItem",                     new Color(0.90f, 0.65f, 0.15f, 1f)), // amber -- distinct from SurveyDrone's teal-blue
+        ("HarvestDroneItem",                     new Color(0.42f, 0.26f, 0.14f, 1f)), // chocolate -- was amber, too close to the assembly's orange
         ("MiningDroneItem",                      new Color(0.60f, 0.85f, 0.10f, 1f)), // lime -- green-dominant, unlike HarvestDrone's red-dominant amber
         ("AdvancedElectronicsSkill",             new Color(0.85f, 0.15f, 0.60f, 1f)), // magenta -- a Skill, not an Item, and it binds exactly the same way
     };
