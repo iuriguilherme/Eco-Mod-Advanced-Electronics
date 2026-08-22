@@ -94,8 +94,15 @@ dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests --nologo -v q \
 # Anything under Assets/Art newer than the bundle means the bundle predates a client
 # change. Fails closed: a git checkout rewrites mtimes and can trigger a false
 # positive, which is why --force exists -- but the default must be to refuse.
+#
+# *.unity is in this list because the scene is where every item icon's binding
+# lives: an item is an unpacked GameObject under the scene's "Items" root, and
+# that GameObject's name is the only thing the server binds an icon to. A scene
+# edited after the last bundle build therefore changes what the client renders
+# while every other file type here stays untouched, so omitting it let a release
+# ship a bundle that predates the icons it is supposed to carry.
 NEWER="$(find Assets/Art -type f \
-            \( -name '*.cs' -o -name '*.prefab' -o -name '*.mat' -o -name '*.png' \) \
+            \( -name '*.cs' -o -name '*.prefab' -o -name '*.mat' -o -name '*.png' -o -name '*.unity' \) \
             -newer "$BUNDLE" 2>/dev/null | head -5)"
 
 if [ -n "$NEWER" ]; then
