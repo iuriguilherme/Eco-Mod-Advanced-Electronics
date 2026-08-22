@@ -60,6 +60,20 @@ public static class AdvancedElectronicsBuildTools
     ///
     /// Adding a new item is a one-line change here plus a re-run of "Finish All Item
     /// Icons" -- deliberately cheaper than the five hand-built copies this replaced.
+    ///
+    /// A ROW MISSING HERE IS NOT A MISSING ICON -- it is a WRONG one. MiningDroneItem had a
+    /// scene GameObject and no row, so the finisher never gave it a sprite of its own and it
+    /// shipped rendering the survey drone's placeholder: two GameObjects pointing at one icon
+    /// file, both drawing perfectly, with the name-match gate green throughout. That is what
+    /// scripts/validate-icon-binding.sh checks, and this table is the set it checks against,
+    /// so every server Item type that reaches a player belongs here.
+    ///
+    /// Colours are chosen to stay pairwise separable at inventory-thumbnail size, which in
+    /// practice means different hue regions rather than different shades. The occupied ones
+    /// are blue, grey, purple, tan, near-white, orange, green, red and amber; magenta and
+    /// lime were the free regions left for the two rows added last. The pair most worth
+    /// protecting is mining against survey, since those two rendered identically for three
+    /// weeks -- hence lime rather than another cool colour.
     /// </summary>
     private static readonly (string TypeName, Color Fill)[] ItemIcons =
     {
@@ -72,6 +86,8 @@ public static class AdvancedElectronicsBuildTools
         ("BatteryItem",                          new Color(0.20f, 0.70f, 0.35f, 1f)), // green
         ("AdvancedElectronicsUpgradeItem",       new Color(0.80f, 0.20f, 0.30f, 1f)), // red -- plugin module
         ("HarvestDroneItem",                     new Color(0.90f, 0.65f, 0.15f, 1f)), // amber -- distinct from SurveyDrone's teal-blue
+        ("MiningDroneItem",                      new Color(0.60f, 0.85f, 0.10f, 1f)), // lime -- green-dominant, unlike HarvestDrone's red-dominant amber
+        ("AdvancedElectronicsSkill",             new Color(0.85f, 0.15f, 0.60f, 1f)), // magenta -- a Skill, not an Item, and it binds exactly the same way
     };
 
     /// <summary>
@@ -159,19 +175,74 @@ public static class AdvancedElectronicsBuildTools
     }
 
     /// <summary>
+    /// What one table row's PNG did on this run.
+    /// </summary>
+    public enum IconOutcome { Created, Rewritten, Reused, Failed }
+
+    /// <summary>
     /// Runs the icon finisher for every entry in <see cref="ItemIcons"/>. Idempotent:
     /// each entry reuses an existing scene GameObject and an existing PNG when present,
     /// so re-running after adding one row only does the new work.
     /// </summary>
     [MenuItem("Eco Tools/Advanced Electronics/Finish All Item Icons")]
-    public static void FinishAllItemIcons()
-    {
-        var done = 0;
-        foreach (var (typeName, fill) in ItemIcons)
-            if (FinishItemIcon(typeName, fill)) done++;
+    public static void FinishAllItemIcons() => FinishAllItemIcons(force: false);
 
-        Debug.Log($"[AdvancedElectronics] Finished {done}/{ItemIcons.Length} item icons. " +
-                  "SAVE THE SCENE, then rebuild the bundle (Eco Tools > Mod Kit).");
+    /// <summary>
+    /// The same pass, except every PNG is rewritten rather than reused.
+    ///
+    /// This is a separate MENU COMMAND rather than a code-level flag on purpose. The Editor
+    /// is reached in one grant and the operator follows the icon ordering as a script, so a
+    /// step that cannot be found in a menu cannot be followed.
+    ///
+    /// It is also the only route by which a change to <see cref="PlaceholderIconSize"/>
+    /// reaches an entry that already has a file: the ordinary pass returns the existing
+    /// sprite before it ever reads that constant, so raising it alone regenerates nothing
+    /// and says nothing.
+    ///
+    /// Rewriting happens IN PLACE, never by deleting the PNG -- see
+    /// <see cref="GetOrCreatePlaceholderIconSprite"/> for why the GUID has to survive.
+    /// </summary>
+    [MenuItem("Eco Tools/Advanced Electronics/Finish All Item Icons (Force Regenerate)")]
+    public static void ForceFinishAllItemIcons() => FinishAllItemIcons(force: true);
+
+    private static void FinishAllItemIcons(bool force)
+    {
+        var created   = new List<string>();
+        var rewritten = new List<string>();
+        var reused    = new List<string>();
+        var failed    = new List<string>();
+
+        foreach (var (typeName, fill) in ItemIcons)
+        {
+            FinishItemIcon(typeName, fill, force, out var outcome);
+            switch (outcome)
+            {
+                case IconOutcome.Created:   created.Add(typeName);   break;
+                case IconOutcome.Rewritten: rewritten.Add(typeName); break;
+                case IconOutcome.Reused:    reused.Add(typeName);    break;
+                default:                    failed.Add(typeName);    break;
+            }
+        }
+
+        // Entries are NAMED, not counted. "Finished 11/11" reads identically whether every
+        // row was produced or every row was skipped, and skipping is exactly what the
+        // non-force pass does to everything that already has a file -- so the one number
+        // that looked like proof was the one that could not distinguish the two.
+        var report = new System.Text.StringBuilder();
+        report.Append($"[AdvancedElectronics] {(force ? "Finish All Item Icons (Force Regenerate)" : "Finish All Item Icons")} over {ItemIcons.Length} table row(s).");
+        report.Append(Summarise("created", created));
+        report.Append(Summarise($"rewritten at {PlaceholderIconSize}x{PlaceholderIconSize}", rewritten));
+        report.Append(Summarise("left alone -- already had a PNG; use \"Finish All Item Icons (Force Regenerate)\" to rewrite", reused));
+        report.Append(Summarise("FAILED -- see the errors above", failed));
+        report.Append(" SAVE THE SCENE, then rebuild the bundle (Eco Tools > Mod Kit).");
+
+        if (failed.Count > 0) Debug.LogError(report.ToString());
+        else                  Debug.Log(report.ToString());
+
+        string Summarise(string label, List<string> names) =>
+            names.Count == 0
+                ? string.Empty
+                : System.Environment.NewLine + $"  {label} ({names.Count}): {string.Join(", ", names)}";
     }
 
     /// <summary>
@@ -239,8 +310,8 @@ public static class AdvancedElectronicsBuildTools
     /// root, unpacks it completely (same effect as the README's manual
     /// drag-and-unpack steps), renames it to <paramref name="itemName"/> -- which must
     /// be the exact server Item class name -- and assigns a generated solid-colour
-    /// 64x64 PNG as its ItemTemplate.foreground Image sprite. No dragging a sprite
-    /// asset into an Inspector field required.
+    /// PNG (see <see cref="PlaceholderIconSize"/>) as its ItemTemplate.foreground Image
+    /// sprite. No dragging a sprite asset into an Inspector field required.
     ///
     /// THE NAME-MATCHED ARTIFACT IS THIS SCENE GameObject, NOT THE PNG. Items are never
     /// saved as their own prefab files -- per the ModKit's item flow they are unpacked
@@ -253,9 +324,21 @@ public static class AdvancedElectronicsBuildTools
     /// duplicating it, and reuses the generated icon file if one already exists.
     /// </summary>
     /// <returns>True if the item now has an icon; false if it could not be finished.</returns>
-    public static bool FinishItemIcon(string itemName, Color fill)
+    public static bool FinishItemIcon(string itemName, Color fill) =>
+        FinishItemIcon(itemName, fill, force: false, out _);
+
+    /// <param name="force">
+    /// Rewrite the PNG even when one already exists. See <see cref="ForceFinishAllItemIcons"/>.
+    /// </param>
+    /// <param name="outcome">What this entry's PNG did, for the run summary to name.</param>
+    /// <inheritdoc cref="FinishItemIcon(string, Color)"/>
+    public static bool FinishItemIcon(string itemName, Color fill, bool force, out IconOutcome outcome)
     {
         const string itemsRootName = "Items";
+
+        // Every early return below is a failure, so the caller's summary lists this entry
+        // under FAILED unless the run reaches the assignment at the bottom.
+        outcome = IconOutcome.Failed;
 
         var itemsRoot = FindInLoadedScenes(itemsRootName);
         if (itemsRoot == null)
@@ -294,7 +377,14 @@ public static class AdvancedElectronicsBuildTools
             return false;
         }
 
-        var sprite = GetOrCreatePlaceholderIconSprite(itemName, fill);
+        var sprite = GetOrCreatePlaceholderIconSprite(itemName, fill, force, out outcome);
+        if (sprite == null)
+        {
+            outcome = IconOutcome.Failed;
+            Debug.LogError($"[AdvancedElectronics] Wrote the placeholder PNG for '{itemName}' but could not load a Sprite back from it. Check the importer settings on {IconFolder}/{itemName}_icon.png.");
+            return false;
+        }
+
         itemTemplate.foreground.sprite = sprite;
         EditorUtility.SetDirty(itemTemplate.foreground);
         EditorUtility.SetDirty(go);
@@ -305,29 +395,51 @@ public static class AdvancedElectronicsBuildTools
     }
 
     /// <summary>
-    /// Generates (or reuses) the flat-colour placeholder PNG for one item. The filename
-    /// is derived from the server type name purely so a human can tell the files apart
-    /// in the project window -- nothing binds to it. See <see cref="FinishItemIcon"/>.
+    /// The side length of every generated placeholder, in pixels.
+    ///
+    /// Vanilla bakes its icon atlas at 128 (Client/Assets/Editor/EcoTools/UI/UISpriteBaker.cs
+    /// in the Eco source checkout, and the wiki's Icons.md), and the skill, book, scroll and
+    /// research-paper rects in UI_Icons_Baked_0.png are all 128x128. Matching costs one
+    /// constant and removes size as a variable when a placeholder is held up against the
+    /// real game.
+    ///
+    /// Changing this number on its own regenerates NOTHING, because the ordinary pass returns
+    /// an existing sprite before it ever reads it. See <see cref="ForceFinishAllItemIcons"/>.
     /// </summary>
-    private static Sprite GetOrCreatePlaceholderIconSprite(string itemName, Color fill)
+    private const int PlaceholderIconSize = 128;
+
+    /// <summary>
+    /// Generates, rewrites, or reuses the flat-colour placeholder PNG for one item. The
+    /// filename is derived from the server type name purely so a human can tell the files
+    /// apart in the project window -- nothing binds to it. See <see cref="FinishItemIcon"/>.
+    /// </summary>
+    private static Sprite GetOrCreatePlaceholderIconSprite(string itemName, Color fill, bool force, out IconOutcome outcome)
     {
         var path = $"{IconFolder}/{itemName}_icon.png";
 
         var existingSprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-        if (existingSprite != null)
+        if (existingSprite != null && !force)
+        {
+            outcome = IconOutcome.Reused;
             return existingSprite;
+        }
 
         EnsureArtFolder();
 
-        const int size = 64;
-        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        var pixels = new Color[size * size];
+        var texture = new Texture2D(PlaceholderIconSize, PlaceholderIconSize, TextureFormat.RGBA32, false);
+        var pixels = new Color[PlaceholderIconSize * PlaceholderIconSize];
         for (var i = 0; i < pixels.Length; i++) pixels[i] = fill;
         texture.SetPixels(pixels);
         texture.Apply();
 
         var pngBytes = texture.EncodeToPNG();
         Object.DestroyImmediate(texture);
+
+        // Written OVER any existing file, never deleted and recreated. The scene reaches each
+        // sprite through the GUID in the PNG's .meta sidecar: deleting the pair re-mints that
+        // GUID and leaves every scene Image referencing it dangling, and deleting only the PNG
+        // leaves an orphan .meta whose re-import behaviour is not guaranteed. Overwriting the
+        // bytes keeps the .meta, keeps the GUID, and keeps the reference.
         System.IO.File.WriteAllBytes(path, pngBytes);
         AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
 
@@ -336,8 +448,15 @@ public static class AdvancedElectronicsBuildTools
         importer.spriteImportMode = SpriteImportMode.Single;
         importer.mipmapEnabled = false;
         importer.filterMode = FilterMode.Point;
+
+        // Re-import, then load the Sprite again from the re-imported asset. Rewriting the
+        // bytes alone leaves the imported texture -- and the Sprite object Unity already holds
+        // in memory and the scene already references -- at the OLD dimensions while the file
+        // on disk reports the new ones. The size change would then look applied everywhere a
+        // human looks and be absent from the bundle the client loads.
         importer.SaveAndReimport();
 
+        outcome = existingSprite != null ? IconOutcome.Rewritten : IconOutcome.Created;
         return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 
