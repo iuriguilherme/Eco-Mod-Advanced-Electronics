@@ -81,6 +81,15 @@ mapfile -t WORLD_OBJECT_TYPES < <(
 # crafting table (EfficiencyModule and friends, matched by the Module suffix),
 # and RepairableItem.
 #
+# Skill is listed too, and it is the one base here that a player never holds.
+# It belongs because this gate is about ICONS, not about inventories: Eco's
+# Skill derives from Item, Item carries [HasIcon], and that attribute is read
+# with inheritance, so a skill resolves its icon by class name exactly the way
+# an item does and needs the same name-matching GameObject under "Items".
+# Requiring one of " ,{" after the name is what keeps SkillBook<T,U> and
+# SkillScroll<T,U> from being swallowed by this alternative -- they carry a
+# "<" and are matched by their own entries, which must stay.
+#
 # RepairableItem was added after both drone items silently vanished from this
 # list. They had been plain Items and were rebased onto RepairableItem when the
 # drones gained durability; nothing failed, because an undiscovered type is
@@ -105,7 +114,7 @@ mapfile -t WORLD_OBJECT_TYPES < <(
 # block was dropped outright when the Battery shipped as an inventory item.)
 mapfile -t ITEM_TYPES < <(
   printf '%s' "$DECLS" \
-    | grep -oE 'class [A-Za-z0-9_]+ : (Item[ ,{]|RepairableItem[ ,{]|WorldObjectItem<|BlockItem<|SkillBook<|SkillScroll<|[A-Za-z]*Module[ ,{])' \
+    | grep -oE 'class [A-Za-z0-9_]+ : (Item[ ,{]|RepairableItem[ ,{]|WorldObjectItem<|BlockItem<|Skill[ ,{]|SkillBook<|SkillScroll<|[A-Za-z]*Module[ ,{])' \
     | sed -E 's/class ([A-Za-z0-9_]+) : .*/\1/' \
     | sort -u
 )
