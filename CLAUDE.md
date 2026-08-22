@@ -14,6 +14,7 @@ The mod has **two halves that ship together**, and most work touches the server 
 The two halves are bound by **name**: a `WorldObject` prefab name must equal the server class name exactly. `scripts/validate-name-match.sh` checks this headlessly, without opening Unity.
 
 - Modding reference: https://wiki.play.eco/en/Mod_Development and `Assets/EcoModKit/Docs/README.md` (step-by-step for items, world objects, block sets, emoji).
+  The wiki also exists as a local checkout, a sibling of the Eco source checkout — `Eco.wiki/`. It holds `Icons.md`, the authoritative icon specification (size, the `_FG` suffix, the type name as the default icon name). It documents the first-party atlas-bake pipeline only, so it explains the format and not the asset-bundle path a mod uses; that half is in `docs/solutions/architecture-patterns/mod-icons-bind-by-scene-gameobject-name.md`.
 - Documented learnings: `docs/solutions/` — solutions to past problems (bugs, best practices, workflow patterns) for this mod, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`).
 - Shared vocabulary: `CONCEPTS.md` — domain terms with project-specific meaning (survey area, plot, finding, coverage, assignment); relevant when orienting to the mod or discussing its behavior.
 
