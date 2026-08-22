@@ -79,6 +79,13 @@
     [Serialized]
     [Weight(100)]
     [LocDisplayName("Advanced Electronics Skill Scroll")]
+    // The Ecopedia page is not decoration, and vanilla's skill scrolls do not have one.
+    // It is what makes this class visible to the client's enumerated missing-icon report:
+    // that report walks Ecopedia categories, pages and subpages only, and takes each page's
+    // icon name from its declaring type, so a class with no page can never appear in it.
+    // Remove the page and the scroll's icon becomes uncheckable in one log read.
+    // See docs/plans/2026-08-10-001-feat-tech-tree-icons-plan.md (KTD3).
+    [Ecopedia("Items", "Skill Books", createAsSubPage: true)]
     public partial class AdvancedElectronicsSkillScroll : SkillScroll<AdvancedElectronicsSkill, AdvancedElectronicsSkillBook> {}
 
 
