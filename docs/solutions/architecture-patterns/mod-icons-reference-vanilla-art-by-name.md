@@ -1,0 +1,256 @@
+---
+title: "A mod gets a real icon by naming vanilla's, not by shipping one"
+date: 2026-08-22
+last_updated: 2026-08-22
+category: architecture-patterns
+module: EcoServerMod
+problem_type: architecture_decision
+component: icons
+severity: high
+applies_when:
+  - "Giving a new item, skill, book, scroll, research paper or component an icon"
+  - "Reaching for a placeholder icon because real artwork is not ready"
+  - "An icon does not appear in game and the PNG is obviously present and correctly named"
+  - "Two different things in the mod draw the same picture"
+  - "Deciding whether an icon needs a scene GameObject, a PNG, and a bundle rebuild"
+tags: [eco-modding, icons, has-icon, asset-bundle, modkit, addressables, name-matching, silent-failure, placeholder-art, deprecated-api]
+related_components: [EcoServerMod/AdvancedElectronics, Assets/Art/AdvancedElectronics, scripts]
+---
+
+# A mod gets a real icon by naming vanilla's, not by shipping one
+
+## Context
+
+Four tech-tree entries needed icons. The work that followed built a placeholder pipeline: an
+icon table, generated flat-colour PNGs, a scene GameObject per entry, a bundle rebuild, a
+deploy, a restart. It worked — eleven coloured squares rendered correctly in a running client.
+
+It was also the wrong thing to build, and the reason is worth stating plainly because the
+mistake is easy to repeat: **a flat-colour placeholder is worse than no icon at all.** When a
+class has no icon, the client draws its own missing-icon sprite (`IconManager.cs:169-188` in the
+Eco source checkout — an unknown name is cached to `GetMissingIcon(...)` and warned about once).
+That default is a competent, purpose-drawn graphic. A magenta square is not better than it, and
+unlike the default it costs an Editor session, a bundle rebuild, a deploy and a server restart
+every time it changes.
+
+Underneath that was a factual error nobody checked: **the assumption that a mod must ship an
+icon to have one.** It does not. Vanilla's entire icon library is addressable by name from a
+mod, with no asset, no bundle entry, and no scene object.
+
+## Guidance
+
+### The registry is flat, global, and already full
+
+`IconManager` keeps one dictionary, `nameToIcons`, keyed by icon name
+(`Client/Assets/UI/Scripts/Icons/IconManager.cs:26`). Vanilla fills it from Addressables at
+connect time (`Client/Assets/Scripts/Mods/ModBundleManager.cs:697-703`), mod bundles add to the
+same dictionary, and every lookup — inventory, Ecopedia, tech tree, tooltips, chat — goes
+through it. There is no namespace separating vanilla icons from mod icons.
+
+So any name vanilla registered is a name a mod can ask for.
+
+### Ask for one with `[HasIcon("Name")]`
+
+```csharp
+public class HasIconAttribute : Attribute
+{
+    public string IconName; //Null means uses the regular display name not localized.
+    public HasIconAttribute(string iconName = null) => this.IconName = iconName;
+}
+```
+`Server/Eco.Core/Controller/AutoGenViews.cs:49-53`
+
+and the resolution:
+
+```csharp
+string? GetIconName(Type type)
+{
+    if (type.TryGetAttribute<HasStaticIconAttribute>(true, out var attr)) return type.TryCallStatic<string>(attr.StaticFuncName!, type);
+    var name = type.Attribute<HasIconAttribute>()?.IconName;
+    if (name == null) name = type.Name;
+    return name;
+}
+```
+`Server/Eco.Core/Controller/ControllerMarshalerService.cs:412-418`
+
+The bare `[HasIcon]` on `Item` carries a null name, so everything falls back to the class name —
+which is why the default behaviour is "look for an icon called exactly what I am called". Pass a
+string and that becomes the name the client looks up instead.
+
+**This is not a trick; vanilla does it.** `PublicStorageComponent` and
+`SelectionStorageComponent` both carry `[HasIcon("StorageComponent")]`; `FuelSupplyComponent`
+and `PowerConsumptionComponent` both carry `[HasIcon("PowerComponent")]`. Two classes, one
+picture, no second asset. `GameActions.cs:966` uses `[HasIcon(nameof(IconUtils.MiscIcons.Settlements))]`
+to name an icon from the shared catalogue in `Server/Eco.Shared/Icons/IconUtils.cs`, which lists
+the symbolic and miscellaneous icons (`Skills`, `Crafting`, `QuestionMark`, `EmptyIcon`, …) by
+enum rather than by loose string.
+
+`[HasStaticIcon("FuncName")]` is the computed variant — a static method taking the `Type` and
+returning the name, for a family whose icon varies by tier or tag.
+
+Two cautions. Attribute lookup inherits by default
+(`Server/Eco.Shared/Utils/ReflectionUtils.cs:258`), so a subclass with no attribute of its own
+inherits the parent's *explicit name* too, not just the fact of having an icon — give the
+subclass its own `[HasIcon(...)]` when that is wrong. And `[NoIcon]` on a class blocks an
+inherited `[HasIcon]` entirely.
+
+### What is available, and how to list it
+
+Every sprite baked into vanilla's atlas is registered under its rect name. The catalogue is the
+atlas's `.meta` sidecar in the Eco source checkout — 4,059 rects as of 0.14:
+
+```bash
+grep -oE '^      name: [A-Za-z0-9_]+' \
+    <eco-checkout>/Content/Art/UI/Icons/UI_Icons_Baked_0.png.meta \
+    | sed 's/.*name: //' | sort -u
+```
+
+Read the **sprite-sheet rects**, not the `nameFileIdTable` further down the same file — that
+table retains stale entries for sprites that no longer exist, `_FG` names among them, so
+grepping it reports artwork the atlas does not contain.
+
+`Content/Art/UI/Icons/IndividualIcons/` holds only ~130 loose source PNGs, a partial set of
+newer items. Skill books, scrolls and research papers are not among them; they exist only inside
+the baked atlas. That does not matter — the point is the *name*, not the file.
+
+For this mod, six of eleven entries have a real vanilla icon available today:
+
+| Mod class | Vanilla icon name | Relationship |
+|---|---|---|
+| `AdvancedElectronicsSkill` | `ElectronicsSkill` | direct sibling |
+| `AdvancedElectronicsSkillBook` | `ElectronicsSkillBook` | direct sibling |
+| `AdvancedElectronicsSkillScroll` | `ElectronicsSkillScroll` | direct sibling |
+| `AdvancedElectronicsAssemblyItem` | `ElectronicsAssemblyItem` | direct sibling |
+| `AdvancedElectronicsUpgradeItem` | `ElectronicsUpgradeItem` | direct sibling |
+| `EngineeringResearchPaperPostModernItem` | `EngineeringResearchPaperModernItem` | tier below; vanilla has no PostModern |
+
+`BatteryItem` and the three drones have no vanilla counterpart — the atlas contains no
+`Battery*` or `*Drone*` rect. Those are the only entries that genuinely need artwork drawn.
+
+### When the art really is new
+
+A mod cannot add to the baked atlas or to Addressables, so genuinely custom art has exactly one
+route: the asset bundle. The client picks it up from a scene GameObject named for the server
+class, with a child named `Icon` holding images named `FullImage` and `Foreground`
+(`ModBundleManager.cs:896-915`).
+
+Note the name of the method that does it: **`RegisterDeprecatedIconFromObject`**. The whole
+scene-object route is legacy, and it is the route this mod is built on. It still works, it is
+still the only option for original artwork, and the traps below are all its traps — but it is
+not the modern path and should not be the first thing reached for.
+
+Its mechanics, since they are still needed:
+
+```
+server class name  (or the string in [HasIcon])
+  -> scene GameObject of that exact name, under the scene's "Items" root
+       -> child "Icon"
+            -> child "Foreground"
+                 -> Image.m_Sprite -> {guid}
+                      -> the .meta sidecar declaring that guid
+                           -> the PNG beside it
+```
+
+The client finds those images **by GameObject name**, not through the `ItemTemplate` component's
+serialized fields. Rename `Icon` or `Foreground` and every icon in the mod stops registering at
+once, silently, with the Inspector still looking correct. **The PNG filename binds nothing** —
+getting it right while the GameObject name is wrong is a missing icon that looks cosmetic, and
+pointing two GameObjects at one sprite GUID is a *wrong* icon that looks like success.
+`MiningDroneItem` shipped the survey drone's picture for three weeks that way, with the
+name-match gate green throughout. `scripts/validate-icon-binding.sh` exists to catch exactly
+that and is worth keeping regardless of which route an icon takes.
+
+Size is 128 × 128 (`Client/Assets/Editor/EcoTools/UI/UISpriteBaker.cs:58`, and every relevant
+atlas rect). `_FG` is the background-less suffix and needs no separate asset: with no
+`FullImage`, registration publishes the foreground sprite under both the plain name and
+`name_FG`.
+
+### Three ways the client reports a missing icon
+
+| Signal | Where | Covers | Fires |
+|---|---|---|---|
+| `Ecopedia: Missing following icons: …` | `Client/Assets/UI/Scripts/Ecopedia/EcopediaManager.cs:85-92` | **Ecopedia pages only** — a class with no `[Ecopedia]` attribute can never appear | Once, at login |
+| `Cannot find icon with name "X"` | `IconManager.cs:177` | Any lookup | Lazily, on first draw, once per name per session |
+| `Missing following icons:` (load-time) | `ModBundleManager.cs:796` | Every non-hidden item | Only with quality-assurance mode on |
+
+The first is the only whole-set signal, and it only speaks for classes that have a page — a
+page's icon name is its declaring type's name
+(`Server/Eco.Gameplay/EcopediaRoot/EcopediaManager.cs:145`). Observed 2026-08-22: it named
+`BatteryRecipe`, a `RecipeFamily` with a page and no icon, confirming it covers *any* type with
+a page rather than items specifically.
+
+The second is easy to mistake for silence, because it fires on first draw. A surface nobody
+opened says nothing.
+
+### The `?` in the skill tree is not a missing icon
+
+An undiscovered specialty renders as `?` regardless of its icon — vanilla's Electronics,
+Industry and Mechanics all show one on the same screen. The icon is visible in the tooltip
+swatches and in the Tech Tree node. Do not chase it.
+
+## Why This Matters
+
+The placeholder pipeline cost a full session — an Editor grant, a bundle rebuild, a deploy and
+a server restart — to reach a state visibly worse than doing nothing, while a one-line attribute
+per class would have given six of the eleven entries the game's own artwork with no assets, no
+bundle, and no restart.
+
+The general shape: **before building a pipeline to produce an asset, check whether the platform
+already has the asset and a way to name it.** Eco's icon registry is flat and global, which is
+exactly the sort of detail that reads as an implementation accident and is in fact the whole
+extension point.
+
+## When to Apply
+
+Giving a new entry an icon, in order:
+
+1. **Look for a vanilla name first.** Grep the atlas meta's sprite rects. A direct sibling, a
+   tier below, or a shared component icon all beat anything shippable.
+2. If one fits, add `[HasIcon("ThatName")]` to the class and stop. No asset, no scene object, no
+   bundle rebuild — the change is a server assembly deploy.
+3. Only when nothing fits, author real artwork at 128 × 128 and take the deprecated bundle route:
+   icon-table row, `Finish All Item Icons`, save the scene, run
+   `scripts/validate-icon-binding.sh` and `scripts/validate-name-match.sh` before building the
+   bundle, then deploy bundle *and* assembly together.
+4. Never ship a flat-colour placeholder. The client's own missing-icon sprite is better and free.
+
+## Examples
+
+**The whole change, for a skill book with a vanilla sibling:**
+
+```csharp
+[Serialized]
+[Weight(1000)]
+[LocDisplayName("Advanced Electronics Skill Book")]
+[Ecopedia("Items", "Skill Books", createAsSubPage: true)]
+[HasIcon("ElectronicsSkillBook")]      // vanilla's art; nothing ships
+public partial class AdvancedElectronicsSkillBook : SkillBook<AdvancedElectronicsSkill, AdvancedElectronicsSkillScroll> {}
+```
+
+**Vanilla's own precedent, two classes sharing one icon:**
+
+```csharp
+[Serialized, CreateComponentTabLoc("Storage"), HasIcon("StorageComponent")]  // PublicStorageComponent
+[CreateComponentTabLoc("Storage"), HasIcon("StorageComponent")]              // SelectionStorageComponent
+```
+
+**What a wrong binding looks like when the bundle route is used**, from the gate:
+
+```
+MISMATCH: 'MiningDroneItem' draws Assets/Art/AdvancedElectronics/Sprites/Icons/SurveyDroneItem_icon.png
+          but should draw Assets/Art/AdvancedElectronics/Sprites/Icons/MiningDroneItem_icon.png.
+```
+
+The scene cannot be read line by line to find this: Unity emits components **before** the
+GameObjects that own them, and every item carries a second `Image` on its `Background` child, so
+the object graph has to be rebuilt from `m_GameObject` / `m_Father`.
+
+## Related
+
+- `scripts/validate-icon-binding.sh` — the GUID-resolving gate for the bundle route
+- `scripts/validate-name-match.sh` — the name gate, which cannot see a wrong binding
+- `docs/guides/2026-08-vanilla-icon-extraction-guide.md` — cropping vanilla art for offline
+  comparison; note that referencing by name makes extraction unnecessary for anything shippable
+- `docs/plans/2026-08-10-001-feat-tech-tree-icons-plan.md` — the plan whose placeholder premise
+  this supersedes
+- `CLAUDE.md` — names the wiki checkout, where `Icons.md` documents the icon format
