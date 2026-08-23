@@ -106,26 +106,60 @@ grep -oE '^      name: [A-Za-z0-9_]+' \
 ```
 
 Read the **sprite-sheet rects**, not the `nameFileIdTable` further down the same file — that
-table retains stale entries for sprites that no longer exist, `_FG` names among them, so
-grepping it reports artwork the atlas does not contain.
+table retains stale entries for sprites that no longer exist, `_FG` names among them.
+
+**Sprite names can contain spaces, and those are the ones that matter.** A `[A-Za-z0-9_]+`
+name pattern silently drops 27 rects — the whole generic set. Count what you parsed: **4059**,
+not 4032. This single regex hid the correct answer through a planning cycle, a review, and a
+shipped implementation; every search came back "vanilla has no generic skill book icon", which
+was false.
 
 `Content/Art/UI/Icons/IndividualIcons/` holds only ~130 loose source PNGs, a partial set of
 newer items. Skill books, scrolls and research papers are not among them; they exist only inside
 the baked atlas. That does not matter — the point is the *name*, not the file.
 
-For this mod, six of eleven entries have a real vanilla icon available today:
+### Generic beats another specialty's art
 
-| Mod class | Vanilla icon name | Relationship |
+Two kinds of candidate, and they are **not** equivalent:
+
+- A **per-specialty** name (`ElectronicsSkillBook`) is that specialty's artwork. Pointing
+  Advanced Electronics' book at it draws a picture belonging to a different skill. It is a
+  better-looking placeholder and still a placeholder — arguably worse than a neutral one,
+  because a player can misread it as the wrong item.
+- A **generic** name is content-correct for anything of its kind, and vanilla ships one for
+  every category a skill mod adds:
+
+| Mod class | Vanilla icon | Kind |
 |---|---|---|
-| `AdvancedElectronicsSkill` | `ElectronicsSkill` | direct sibling |
-| `AdvancedElectronicsSkillBook` | `ElectronicsSkillBook` | direct sibling |
-| `AdvancedElectronicsSkillScroll` | `ElectronicsSkillScroll` | direct sibling |
-| `AdvancedElectronicsAssemblyItem` | `ElectronicsAssemblyItem` | direct sibling |
-| `AdvancedElectronicsUpgradeItem` | `ElectronicsUpgradeItem` | direct sibling |
-| `EngineeringResearchPaperPostModernItem` | `EngineeringResearchPaperModernItem` | tier below; vanilla has no PostModern |
+| `AdvancedElectronicsSkillBook` | `Skill Book` | generic — the blue book, no emblem |
+| `AdvancedElectronicsSkillScroll` | `Skill Scrolls` | generic — a rolled grey scroll |
+| `AdvancedElectronicsAssemblyItem` | `Crafting Table` | generic craft station |
+| `AdvancedElectronicsSkill` | `Skills` / `Skills_FG` | generic skills emblem; no per-specialty generic exists |
+| `EngineeringResearchPaperPostModernItem` | `EngineeringResearchPaperModernItem` | same profession's paper, one tier down — honest content, not a borrow |
 
-`BatteryItem` and the three drones have no vanilla counterpart — the atlas contains no
-`Battery*` or `*Drone*` rect. Those are the only entries that genuinely need artwork drawn.
+The rest of the generic set, all space-named: `Skill Books`, `Basic Research`,
+`Modern Research`, `Advanced Research`, `Crop Seed`, `Raw Food`, `Animal Skin`, `Liquid Fuel`,
+`Burnable Fuel`, `Work Party`, `Work Orders`, `Bank Accounts`, `Civic Articles`,
+`Election Processes`, `Asphalt Road`, `Scientist Specialty`.
+
+`BatteryItem` and the three drones have no vanilla counterpart of either kind — the atlas holds
+no `Battery*` or `*Drone*` rect, and no generic fits. Those are the entries that genuinely need
+artwork drawn.
+
+### What other skill mods do
+
+Checked against the mods in `.references/Mods/` — `IntelligenceSkillMod`, `ArcaneKnowledge`,
+`Mixology`, `AnimalHusbandry`, `Beekeeping`:
+
+- **None of them uses `[HasIcon]`.** Not one occurrence across every `.cs` in the set.
+- `IntelligenceSkillMod` adds `IntelligenceSkill : Skill` (no book, no scroll) and ships a
+  189 KB `.unity3d` whose payload contains `IntelligenceSkill` — the legacy bundle route, with
+  its own drawn art.
+- None ships source art; only built bundles, so what they drew cannot be inspected.
+
+So the field convention is the bundle route, and `[HasIcon]` naming appears to be unused by
+mods despite being how vanilla itself shares icons between classes. That is an argument for
+documenting it, not against using it.
 
 ### When the art really is new
 
@@ -204,8 +238,9 @@ extension point.
 
 Giving a new entry an icon, in order:
 
-1. **Look for a vanilla name first.** Grep the atlas meta's sprite rects. A direct sibling, a
-   tier below, or a shared component icon all beat anything shippable.
+1. **Look for a vanilla name first**, and prefer a *generic* one — grep the atlas meta's sprite
+   rects with a pattern that admits spaces, or the whole set is invisible. A generic icon is
+   content-correct; another specialty's is a prettier placeholder.
 2. If one fits, add `[HasIcon("ThatName")]` to the class and stop. No asset, no scene object, no
    bundle rebuild — the change is a server assembly deploy.
 3. Only when nothing fits, author real artwork at 128 × 128 and take the deprecated bundle route:
@@ -223,9 +258,12 @@ Giving a new entry an icon, in order:
 [Weight(1000)]
 [LocDisplayName("Advanced Electronics Skill Book")]
 [Ecopedia("Items", "Skill Books", createAsSubPage: true)]
-[HasIcon("ElectronicsSkillBook")]      // vanilla's art; nothing ships
+[HasIcon("Skill Book")]                // vanilla's generic book; nothing ships
 public partial class AdvancedElectronicsSkillBook : SkillBook<AdvancedElectronicsSkill, AdvancedElectronicsSkillScroll> {}
 ```
+
+Note the space in the name. `"ElectronicsSkillBook"` would also render, and would be wrong —
+that is the Electronics skill's book, not a neutral one.
 
 **Vanilla's own precedent, two classes sharing one icon:**
 
@@ -249,7 +287,7 @@ the object graph has to be rebuilt from `m_GameObject` / `m_Father`.
 
 - `scripts/validate-icon-binding.sh` — the GUID-resolving gate for the bundle route
 - `scripts/validate-name-match.sh` — the name gate, which cannot see a wrong binding
-- `docs/guides/2026-08-vanilla-icon-extraction-guide.md` — cropping vanilla art for offline
+- `docs/guides/2026-08-eco-icon-atlas-guide.md` — cropping vanilla art for offline
   comparison; note that referencing by name makes extraction unnecessary for anything shippable
 - `docs/plans/2026-08-10-001-feat-tech-tree-icons-plan.md` — the plan whose placeholder premise
   this supersedes
