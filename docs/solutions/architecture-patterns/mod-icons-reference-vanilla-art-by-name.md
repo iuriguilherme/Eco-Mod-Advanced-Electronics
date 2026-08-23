@@ -180,10 +180,36 @@ route: the asset bundle. The client picks it up from a scene GameObject named fo
 class, with a child named `Icon` holding images named `FullImage` and `Foreground`
 (`ModBundleManager.cs:896-915`).
 
-Note the name of the method that does it: **`RegisterDeprecatedIconFromObject`**. The whole
-scene-object route is legacy, and it is the route this mod is built on. It still works, it is
-still the only option for original artwork, and the traps below are all its traps — but it is
-not the modern path and should not be the first thing reached for.
+The method that does it is called **`RegisterDeprecatedIconFromObject`**, which is easy to
+misread — and I did. What is deprecated there is the *delivery*: shipping icons inside a mod
+bundle instead of through Addressables. The **authoring model is vanilla's own**, unchanged.
+
+### How a vanilla item gets its icon, end to end
+
+This is worth knowing because it is the same shape as the mod route, and it explains the naming
+that otherwise looks arbitrary:
+
+1. **An artist slices the art into a source sheet.** Research papers live in
+   `Content/Art/UI/Icons/UI_Icons_05.png`; `Skill Book` and `Skill Scroll` in `UI_Icons.png`;
+   tag icons in `UI_Icons_Tags.png`. There are 20-odd such sheets, 256 rects each.
+2. **`Content/Art/Scenes/Icons.unity` holds one `ItemTemplate` GameObject per icon**, named
+   exactly for the server class — `EngineeringResearchPaperModernItem`, `ElectronicsSkillBook` —
+   or for a tag/group string — `Skill Book`, `Skill Books`, `Skill Scrolls`, `Crafting Table` —
+   with the source sprite assigned to its `Foreground`.
+3. **`UISpriteBaker` renders those templates into `UI_Icons_Baked_0.png`** and names each baked
+   rect from the GameObject: `spriteRect.name = entry.item.name + (entry.isBakedForeground ? "_FG" : "")`
+   (`Client/Assets/Editor/EcoTools/UI/UISpriteBaker.cs:654`).
+4. At connect time those baked sprites register into `IconManager.nameToIcons` under exactly
+   those names.
+5. The server sends `IconName`; the client looks it up.
+
+Step 3 is why the source sheet says `EngineeringResearchPaperModern` while the atlas says
+`EngineeringResearchPaperModern**Item**`: the baked name comes from the **GameObject**, never
+from the art file. Same rule the mod route follows, and the same rule that makes a renamed
+child or a mistyped GameObject a silent failure on either side.
+
+So the mod is not doing something legacy and odd. It is doing what `Icons.unity` does, and
+delivering the result in the only container available to it.
 
 Its mechanics, since they are still needed:
 

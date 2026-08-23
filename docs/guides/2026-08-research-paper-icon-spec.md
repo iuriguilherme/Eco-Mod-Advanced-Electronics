@@ -20,8 +20,10 @@ than by describing it from memory.
 | Agriculture | — | ✓ | ✓ | — |
 | Engineering | — | ✓ | ✓ | **the gap** |
 
-Seventeen rects, all 128×128, all in `UI_Icons_Baked_0.png`. No PostModern anywhere, in any
-family — so this is a new tier design, not a missing variant.
+Seventeen rects, all 128×128, all in `UI_Icons_Baked_0.png`; the source art they were baked
+from is in `Content/Art/UI/Icons/UI_Icons_05.png`, where the rects are named without the `Item`
+suffix. No PostModern anywhere, in any family — so this is a new tier design, not a missing
+variant.
 
 ## What varies, measured
 
@@ -90,26 +92,48 @@ The brief, then, is narrow and well-constrained:
 3. **Take the next step in the two tier slots** — the top band and the badge — so the icon reads
    as one rung above Modern at thumbnail size, without competing with the emblem.
 
-Three directions that fit the established grammar. This is a design choice, not a derivation:
+### Decided: platinum star
 
-- **Two stars.** The most literal continuation: Modern's single gold star becomes two in the
-  badge slot. Cheapest to draw, instantly legible as "one tier up", and it reuses an existing
-  shape so the family stays coherent. Risk: at 128 px two stars in a 48 × 32 slot get small.
-- **A different badge metal.** Keep one star, change gold to platinum/white-blue, and darken the
-  top band another step. Preserves the silhouette exactly and signals rank by material the way
-  the top band already signals it by tone. Risk: the gold→platinum read is weaker at thumbnail
-  size than a count change.
-- **A ribbon or wax seal.** Escalate the Modern red accent into an actual seal in the badge slot.
-  The most visually distinct option and the most work, and it departs furthest from the
-  star motif the other tiers established.
+Same silhouette as Modern — one star in the badge slot — with the metal changed and the top band
+stepped once more. Rank is signalled by material, the way the band already signals it by tone,
+and the emblem keeps the whole of the reader's attention.
 
-The first is the safest fit with what vanilla actually does; the third looks best in isolation
-and risks reading as a different item family.
+**Badge.** The gold star is a tight, near-uniform ramp: sampled across all six Modern papers,
+3,281 gold pixels resolve to a core of `#FDCC68` (H 40°, S 0.59, V 0.99) with negligible spread.
+Remap hue to cool steel (210°) at roughly a third of the saturation, holding value:
 
-Whichever is chosen, the icon then ships through the asset-bundle route — the mod cannot add to
-vanilla's baked atlas. See
-`docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md` for that path
-and its traps.
+| Gold | Platinum |
+|---|---|
+| `#FDCC68` `rgb(253, 204, 104)` | `#CAE4FF` `rgb(202, 228, 255)` |
+| `#FDCD6C` | `#CBE5FF` |
+| `#FDCC66` | `#C9E4FF` |
+
+Keep the existing star's shading structure and outline; only the ramp changes. A flat recolour
+of the Modern star is a legitimate first cut.
+
+**Top band.** The tier trend is `rgb(252,252,248)` → `rgb(160,137,119)` → `rgb(142,111,91)`, a
+step of `(-18, -26, -28)`. Continuing it gives **`#7C553F` `rgb(124, 85, 63)`** — dark enough to
+read as one rung up, still clearly the same leather band rather than a new material.
+
+Everything else is unchanged: navy rails `rgb(66, 99, 144)`, off-white sheet, Engineering gear
+emblem at `x 32..96, y 16..80`, grey text rules lower-right.
+
+## Producing it
+
+The art is authored the way vanilla authors it, then delivered the only way a mod can:
+
+1. **Draw at source resolution** in the style of `UI_Icons_05.png`, which is the sheet holding
+   every research paper's source art (`EngineeringResearchPaperModern` and its siblings — note
+   the source rects carry **no** `Item` suffix). Starting from the Modern rect and applying the
+   two changes above is the shortest honest path.
+2. **Name the scene GameObject `EngineeringResearchPaperPostModernItem`** — exactly the server
+   class. Vanilla does the same thing in `Content/Art/Scenes/Icons.unity`, and the baked rect
+   name comes from that GameObject rather than from the art file
+   (`UISpriteBaker.cs:654`). The mod's own finisher follows the identical convention.
+3. **Ship it in the bundle.** A mod cannot add to the baked atlas, so this one icon travels the
+   asset-bundle route. See
+   `docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md` for that
+   path and its traps, and run `scripts/validate-icon-binding.sh` before building.
 
 ## Reference crops
 
