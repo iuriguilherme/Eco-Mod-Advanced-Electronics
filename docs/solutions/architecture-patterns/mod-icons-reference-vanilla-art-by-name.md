@@ -135,7 +135,7 @@ Two kinds of candidate, and they are **not** equivalent:
 | `AdvancedElectronicsSkillScroll` | `Skill Scrolls` | generic — a rolled grey scroll |
 | `AdvancedElectronicsAssemblyItem` | `Crafting Table` | generic craft station |
 | `AdvancedElectronicsSkill` | `Skills` / `Skills_FG` | generic skills emblem; no per-specialty generic exists |
-| `EngineeringResearchPaperPostModernItem` | `EngineeringResearchPaperModernItem` | same profession's paper, one tier down — honest content, not a borrow |
+| `EngineeringResearchPaperPostModernItem` | **none — must be drawn** | see below |
 
 The rest of the generic set, all space-named: `Skill Books`, `Basic Research`,
 `Modern Research`, `Advanced Research`, `Crop Seed`, `Raw Food`, `Animal Skin`, `Liquid Fuel`,
@@ -143,8 +143,20 @@ The rest of the generic set, all space-named: `Skill Books`, `Basic Research`,
 `Election Processes`, `Asphalt Road`, `Scientist Specialty`.
 
 `BatteryItem` and the three drones have no vanilla counterpart of either kind — the atlas holds
-no `Battery*` or `*Drone*` rect, and no generic fits. Those are the entries that genuinely need
-artwork drawn.
+no `Battery*` or `*Drone*` rect, and no generic fits.
+
+The research paper is a subtler case and the reason "nearest sibling" is not a safe default.
+Research paper art is a **two-axis system**: the emblem carries the *family* (geology,
+metallurgy, dendrology, engineering, culinary, agriculture) and the border furniture carries
+the *tier* (basic, advanced, modern). Vanilla never drew a PostModern tier in any family, so
+`EngineeringResearchPaperModernItem` is not "the same paper one tier down" — it is the Modern
+paper, a different item the player also holds, and reusing it makes two items look identical.
+The grammar and the brief for drawing the missing tier are in
+`docs/guides/2026-08-research-paper-icon-spec.md`.
+
+**The general rule this sharpens:** a name is only safe to reference when it is generic, or when
+it names *the same thing*. A name that differs from your class along any axis the art encodes —
+tier, rank, material, profession — is a placeholder, however close it looks in the file listing.
 
 ### What other skill mods do
 
@@ -287,6 +299,8 @@ the object graph has to be rebuilt from `m_GameObject` / `m_Father`.
 
 - `scripts/validate-icon-binding.sh` — the GUID-resolving gate for the bundle route
 - `scripts/validate-name-match.sh` — the name gate, which cannot see a wrong binding
+- `docs/guides/2026-08-research-paper-icon-spec.md` — the research-paper family/tier
+  grammar, measured, and the brief for the missing PostModern tier
 - `docs/guides/2026-08-eco-icon-atlas-guide.md` — cropping vanilla art for offline
   comparison; note that referencing by name makes extraction unnecessary for anything shippable
 - `docs/plans/2026-08-10-001-feat-tech-tree-icons-plan.md` — the plan whose placeholder premise
