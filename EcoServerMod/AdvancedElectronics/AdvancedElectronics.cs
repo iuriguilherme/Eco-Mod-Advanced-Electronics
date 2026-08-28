@@ -31,6 +31,18 @@
     [RequiresSkill(typeof(EngineerSkill), 0), Tag("Engineer Specialty"), Tier(5)]
     [Tag("Specialty")]
     [Tag("Teachable")]
+    // Draws vanilla's own skills emblem rather than anything this mod ships.
+    // The client keeps ONE flat icon registry filled from vanilla's Addressables plus every
+    // mod bundle (IconManager.nameToIcons), so any name vanilla registered is a name a mod
+    // can ask for. Naming one costs no asset, no scene object and no bundle rebuild; vanilla
+    // shares icons between its own classes the same way ([HasIcon("StorageComponent")] sits
+    // on both PublicStorageComponent and SelectionStorageComponent).
+    //
+    // GENERIC, not another specialty's: "Skills" is the neutral art for this kind of thing.
+    // "ElectronicsSkill" would also render and would be wrong -- it is that skill's artwork, and a
+    // player can misread it as the wrong item.
+    // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
+    [HasIcon("Skills")]
     public partial class AdvancedElectronicsSkill : Skill
     {
 
@@ -74,6 +86,18 @@
     [Weight(1000)]
     [LocDisplayName("Advanced Electronics Skill Book")]
     [Ecopedia("Items", "Skill Books", createAsSubPage: true)]
+    // Draws vanilla's own generic skill book rather than anything this mod ships.
+    // The client keeps ONE flat icon registry filled from vanilla's Addressables plus every
+    // mod bundle (IconManager.nameToIcons), so any name vanilla registered is a name a mod
+    // can ask for. Naming one costs no asset, no scene object and no bundle rebuild; vanilla
+    // shares icons between its own classes the same way ([HasIcon("StorageComponent")] sits
+    // on both PublicStorageComponent and SelectionStorageComponent).
+    //
+    // GENERIC, not another specialty's: "Skill Book" is the neutral art for this kind of thing.
+    // "ElectronicsSkillBook" would also render and would be wrong -- it is that skill's artwork, and a
+    // player can misread it as the wrong item.
+    // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
+    [HasIcon("Skill Book")]
     public partial class AdvancedElectronicsSkillBook : SkillBook<AdvancedElectronicsSkill, AdvancedElectronicsSkillScroll> {}
 
     [Serialized]
@@ -86,6 +110,18 @@
     // Remove the page and the scroll's icon becomes uncheckable in one log read.
     // See docs/plans/2026-08-10-001-feat-tech-tree-icons-plan.md (KTD3).
     [Ecopedia("Items", "Skill Books", createAsSubPage: true)]
+    // Draws vanilla's own generic skill scroll rather than anything this mod ships.
+    // The client keeps ONE flat icon registry filled from vanilla's Addressables plus every
+    // mod bundle (IconManager.nameToIcons), so any name vanilla registered is a name a mod
+    // can ask for. Naming one costs no asset, no scene object and no bundle rebuild; vanilla
+    // shares icons between its own classes the same way ([HasIcon("StorageComponent")] sits
+    // on both PublicStorageComponent and SelectionStorageComponent).
+    //
+    // GENERIC, not another specialty's: "Skill Scrolls" is the neutral art for this kind of thing.
+    // "ElectronicsSkillScroll" would also render and would be wrong -- it is that skill's artwork, and a
+    // player can misread it as the wrong item.
+    // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
+    [HasIcon("Skill Scrolls")]
     public partial class AdvancedElectronicsSkillScroll : SkillScroll<AdvancedElectronicsSkill, AdvancedElectronicsSkillBook> {}
 
 
