@@ -340,17 +340,46 @@ public static class AdvancedElectronicsBuildTools
     /// <inheritdoc cref="FinishItemIcon(string, Color)"/>
     public static bool FinishItemIcon(string itemName, Color fill, bool force, out IconOutcome outcome)
     {
-        const string itemsRootName = "Items";
-
         // Every early return below is a failure, so the caller's summary lists this entry
         // under FAILED unless the run reaches the assignment at the bottom.
         outcome = IconOutcome.Failed;
+
+        var itemTemplate = EnsureItemObject(itemName);
+        if (itemTemplate == null) return false;
+
+        var sprite = GetOrCreatePlaceholderIconSprite(itemName, fill, force, out outcome);
+        if (sprite == null)
+        {
+            outcome = IconOutcome.Failed;
+            Debug.LogError($"[AdvancedElectronics] Wrote the placeholder PNG for '{itemName}' but could not load a Sprite back from it. Check the importer settings on {IconFolder}/{itemName}_icon.png.");
+            return false;
+        }
+
+        AssignIconSprite(itemTemplate, sprite);
+        Debug.Log($"[AdvancedElectronics] '{itemName}' now has a placeholder foreground icon ({AssetDatabase.GetAssetPath(sprite)}). Swap in real art later by re-importing over that same PNG file, or by assigning a different Sprite to its ItemTemplate 'foreground' Image component.");
+        return true;
+    }
+
+    /// <summary>
+    /// Finds, or builds from the ModKit template, the scene GameObject that carries one item's
+    /// icon -- an unpacked <c>ItemTemplate</c> under the scene's "Items" root, named EXACTLY for
+    /// the server class.
+    ///
+    /// That name is the entire binding, and this is the only place it gets set, so every icon
+    /// source (flat fill, rendered object, hand-drawn art) goes through here rather than
+    /// re-deriving it. See
+    /// docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md.
+    /// </summary>
+    /// <returns>The item's ItemTemplate, or null if it could not be found or built.</returns>
+    public static ItemTemplate EnsureItemObject(string itemName)
+    {
+        const string itemsRootName = "Items";
 
         var itemsRoot = FindInLoadedScenes(itemsRootName);
         if (itemsRoot == null)
         {
             Debug.LogError($"[AdvancedElectronics] No GameObject named '{itemsRootName}' found in the open scene (searched inactive objects too). Open the scene with the mod's scene roots (Objects/Items/Emoji/BlockSets) first, or check it wasn't renamed/moved.");
-            return false;
+            return null;
         }
 
         GameObject go;
@@ -366,7 +395,7 @@ public static class AdvancedElectronicsBuildTools
             if (templatePrefab == null)
             {
                 Debug.LogError("[AdvancedElectronics] Could not load Assets/EcoModKit/Prefabs/ItemTemplate.prefab.");
-                return false;
+                return null;
             }
 
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(templatePrefab, itemsRoot.transform);
@@ -380,25 +409,35 @@ public static class AdvancedElectronicsBuildTools
         if (itemTemplate == null || itemTemplate.foreground == null)
         {
             Debug.LogError($"[AdvancedElectronics] '{go.name}' doesn't look like an unpacked ItemTemplate (missing the ItemTemplate component, or its 'foreground' Image reference is unset). Delete it and re-run this command to rebuild it from the template.");
-            return false;
+            return null;
         }
 
-        var sprite = GetOrCreatePlaceholderIconSprite(itemName, fill, force, out outcome);
-        if (sprite == null)
-        {
-            outcome = IconOutcome.Failed;
-            Debug.LogError($"[AdvancedElectronics] Wrote the placeholder PNG for '{itemName}' but could not load a Sprite back from it. Check the importer settings on {IconFolder}/{itemName}_icon.png.");
-            return false;
-        }
+        return itemTemplate;
+    }
 
+    /// <summary>
+    /// Puts a sprite on the item's "Foreground" Image and marks everything dirty.
+    ///
+    /// The client reads the image on the child GameObject NAMED "Foreground"
+    /// (ModBundleManager.RegisterDeprecatedIconFromObject), not the ItemTemplate field this
+    /// assigns through -- the two coincide only because the ModKit template wires them together.
+    /// </summary>
+    public static void AssignIconSprite(ItemTemplate itemTemplate, Sprite sprite)
+    {
         itemTemplate.foreground.sprite = sprite;
         EditorUtility.SetDirty(itemTemplate.foreground);
-        EditorUtility.SetDirty(go);
-
+        EditorUtility.SetDirty(itemTemplate.gameObject);
         AssetDatabase.SaveAssets();
-        Debug.Log($"[AdvancedElectronics] '{go.name}' now has a placeholder foreground icon ({AssetDatabase.GetAssetPath(sprite)}). Swap in real art later by re-importing over that same PNG file, or by assigning a different Sprite to its ItemTemplate 'foreground' Image component.");
-        return true;
     }
+
+    /// <summary>Creates the art folders if missing. Shared with the object-icon renderer.</summary>
+    public static void EnsureIconFolder() => EnsureArtFolder();
+
+    /// <summary>Where generated icon PNGs are written. Shared with the object-icon renderer.</summary>
+    public static string IconOutputFolder => IconFolder;
+
+    /// <summary>Side length of a generated icon. Shared with the object-icon renderer.</summary>
+    public static int IconSize => PlaceholderIconSize;
 
     /// <summary>
     /// The side length of every generated placeholder, in pixels.
