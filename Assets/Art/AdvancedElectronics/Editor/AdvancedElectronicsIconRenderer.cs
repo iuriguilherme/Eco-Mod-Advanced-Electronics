@@ -48,12 +48,19 @@ public static class AdvancedElectronicsIconRenderer
     /// </summary>
     private static readonly (string ItemName, string PrefabName, Color Tint)[] RenderedIcons =
     {
-        ("SurveyDroneItem",                 "SurveyDroneObject",  new Color(0.25f, 0.55f, 0.85f)), // teal-blue
-        ("MiningDroneItem",                 "MiningDroneObject",  new Color(0.60f, 0.85f, 0.10f)), // lime
-        ("HarvestDroneItem",                "HarvestDroneObject", new Color(0.42f, 0.26f, 0.14f)), // chocolate
-        ("DroneDockItem",                   "DroneDockObject",                        Color.white),
-        ("AdvancedElectronicsAssemblyItem", "AdvancedElectronicsAssemblyObject",      Color.white),
+        ("SurveyDroneItem",  "SurveyDroneObject",  new Color(0.25f, 0.55f, 0.85f)), // teal-blue
+        ("MiningDroneItem",  "MiningDroneObject",  new Color(0.60f, 0.85f, 0.10f)), // lime
+        ("HarvestDroneItem", "HarvestDroneObject", new Color(0.42f, 0.26f, 0.14f)), // chocolate
     };
+
+    // DroneDockObject and AdvancedElectronicsAssemblyObject were here and were removed. Both are
+    // hand-built Unity primitives wearing the shared placeholder material, so rendering them is
+    // faithful and useless: the dock came out a flat blue-grey diamond, the assembly a flat
+    // hexagon. A render is only worth having when the MODEL is worth photographing.
+    //
+    // The assembly instead names vanilla's generic "Crafting Table"; the dock draws the client's
+    // own missing-icon sprite, which is a competent drawing and beats a flat shape. Put either
+    // back the day its model becomes real.
 
     /// <summary>
     /// How far a tinted render moves from its own albedo toward the role colour.
