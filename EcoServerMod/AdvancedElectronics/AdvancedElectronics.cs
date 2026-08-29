@@ -31,20 +31,24 @@
     [RequiresSkill(typeof(EngineerSkill), 0), Tag("Engineer Specialty"), Tier(5)]
     [Tag("Specialty")]
     [Tag("Teachable")]
-    // Draws vanilla's own skills emblem rather than anything this mod ships.
-    // The client keeps ONE flat icon registry filled from vanilla's Addressables plus every
-    // mod bundle (IconManager.nameToIcons), so any name vanilla registered is a name a mod
-    // can ask for. Naming one costs no asset, no scene object and no bundle rebuild; vanilla
-    // shares icons between its own classes the same way ([HasIcon("StorageComponent")] sits
-    // on both PublicStorageComponent and SelectionStorageComponent).
+    // Draws vanilla's own skills emblem. The client keeps ONE flat icon registry filled from
+    // vanilla's Addressables plus every mod bundle, so any name vanilla registered is a name a
+    // mod can ask for -- no asset, no scene object, no bundle rebuild.
     //
-    // GENERIC, not another specialty's: "Skills" is the neutral art for this kind of thing.
-    // "ElectronicsSkill" would also render and would be wrong -- it is that skill's artwork, and a
-    // player can misread it as the wrong item.
+    // WHY HasStaticIcon RATHER THAN [HasIcon("Skills")]. GetIconName reads the static one FIRST
+    // and unconditionally (ControllerMarshalerService.cs:414); the [HasIcon] path below it takes
+    // the first match of an INHERITED lookup, and every Item already inherits Item's own bare
+    // [HasIcon] whose IconName is null -- so the name falls back to the class name and the
+    // explicit one is ignored. That is why vanilla only ever passes a name to [HasIcon] on
+    // components, never on an Item subclass: it does not work there.
+    //
     // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
-    [HasIcon("Skills")]
+    [HasStaticIcon(nameof(StaticIconName))]
     public partial class AdvancedElectronicsSkill : Skill
     {
+
+        /// <summary>The vanilla icon this draws. Read by [HasStaticIcon] above.</summary>
+        public static string StaticIconName(Type type) => "Skills";
 
         public override void OnLevelUp(User user)
         {
@@ -86,19 +90,24 @@
     [Weight(1000)]
     [LocDisplayName("Advanced Electronics Skill Book")]
     [Ecopedia("Items", "Skill Books", createAsSubPage: true)]
-    // Draws vanilla's own generic skill book rather than anything this mod ships.
-    // The client keeps ONE flat icon registry filled from vanilla's Addressables plus every
-    // mod bundle (IconManager.nameToIcons), so any name vanilla registered is a name a mod
-    // can ask for. Naming one costs no asset, no scene object and no bundle rebuild; vanilla
-    // shares icons between its own classes the same way ([HasIcon("StorageComponent")] sits
-    // on both PublicStorageComponent and SelectionStorageComponent).
+    // Draws vanilla's own generic skill book. The client keeps ONE flat icon registry filled from
+    // vanilla's Addressables plus every mod bundle, so any name vanilla registered is a name a
+    // mod can ask for -- no asset, no scene object, no bundle rebuild.
     //
-    // GENERIC, not another specialty's: "Skill Book" is the neutral art for this kind of thing.
-    // "ElectronicsSkillBook" would also render and would be wrong -- it is that skill's artwork, and a
-    // player can misread it as the wrong item.
+    // WHY HasStaticIcon RATHER THAN [HasIcon("Skill Book")]. GetIconName reads the static one FIRST
+    // and unconditionally (ControllerMarshalerService.cs:414); the [HasIcon] path below it takes
+    // the first match of an INHERITED lookup, and every Item already inherits Item's own bare
+    // [HasIcon] whose IconName is null -- so the name falls back to the class name and the
+    // explicit one is ignored. That is why vanilla only ever passes a name to [HasIcon] on
+    // components, never on an Item subclass: it does not work there.
+    //
     // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
-    [HasIcon("Skill Book")]
-    public partial class AdvancedElectronicsSkillBook : SkillBook<AdvancedElectronicsSkill, AdvancedElectronicsSkillScroll> {}
+    [HasStaticIcon(nameof(StaticIconName))]
+    public partial class AdvancedElectronicsSkillBook : SkillBook<AdvancedElectronicsSkill, AdvancedElectronicsSkillScroll>
+    {
+        /// <summary>The vanilla icon this draws. Read by [HasStaticIcon] above.</summary>
+        public static string StaticIconName(Type type) => "Skill Book";
+    }
 
     [Serialized]
     [Weight(100)]
@@ -110,19 +119,24 @@
     // Remove the page and the scroll's icon becomes uncheckable in one log read.
     // See docs/plans/2026-08-10-001-feat-tech-tree-icons-plan.md (KTD3).
     [Ecopedia("Items", "Skill Books", createAsSubPage: true)]
-    // Draws vanilla's own generic skill scroll rather than anything this mod ships.
-    // The client keeps ONE flat icon registry filled from vanilla's Addressables plus every
-    // mod bundle (IconManager.nameToIcons), so any name vanilla registered is a name a mod
-    // can ask for. Naming one costs no asset, no scene object and no bundle rebuild; vanilla
-    // shares icons between its own classes the same way ([HasIcon("StorageComponent")] sits
-    // on both PublicStorageComponent and SelectionStorageComponent).
+    // Draws vanilla's own generic skill scroll. The client keeps ONE flat icon registry filled from
+    // vanilla's Addressables plus every mod bundle, so any name vanilla registered is a name a
+    // mod can ask for -- no asset, no scene object, no bundle rebuild.
     //
-    // GENERIC, not another specialty's: "Skill Scrolls" is the neutral art for this kind of thing.
-    // "ElectronicsSkillScroll" would also render and would be wrong -- it is that skill's artwork, and a
-    // player can misread it as the wrong item.
+    // WHY HasStaticIcon RATHER THAN [HasIcon("Skill Scrolls")]. GetIconName reads the static one FIRST
+    // and unconditionally (ControllerMarshalerService.cs:414); the [HasIcon] path below it takes
+    // the first match of an INHERITED lookup, and every Item already inherits Item's own bare
+    // [HasIcon] whose IconName is null -- so the name falls back to the class name and the
+    // explicit one is ignored. That is why vanilla only ever passes a name to [HasIcon] on
+    // components, never on an Item subclass: it does not work there.
+    //
     // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
-    [HasIcon("Skill Scrolls")]
-    public partial class AdvancedElectronicsSkillScroll : SkillScroll<AdvancedElectronicsSkill, AdvancedElectronicsSkillBook> {}
+    [HasStaticIcon(nameof(StaticIconName))]
+    public partial class AdvancedElectronicsSkillScroll : SkillScroll<AdvancedElectronicsSkill, AdvancedElectronicsSkillBook>
+    {
+        /// <summary>The vanilla icon this draws. Read by [HasStaticIcon] above.</summary>
+        public static string StaticIconName(Type type) => "Skill Scrolls";
+    }
 
 
     [RequiresSkill(typeof(ElectronicsSkill), 1)]

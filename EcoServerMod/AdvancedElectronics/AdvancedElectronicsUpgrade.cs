@@ -108,21 +108,25 @@ namespace Eco.Mods.TechTree
     // AllowPluginModules.Tags is string[], which needs no reference at all. Its own tag rather than
     // "SpecialtyModule", so the override admits this module and not every specialty upgrade.
     [Tag("AdvancedElectronicsUpgrade")] //noloc
-    // Draws vanilla's own modern-tier upgrade module art rather than anything this mod ships.
-    // The client keeps ONE flat icon registry filled from vanilla's Addressables plus every
-    // mod bundle (IconManager.nameToIcons), so any name vanilla registered is a name a mod
-    // can ask for. Naming one costs no asset, no scene object and no bundle rebuild; vanilla
-    // shares icons between its own classes the same way ([HasIcon("StorageComponent")] sits
-    // on both PublicStorageComponent and SelectionStorageComponent).
+    // Draws vanilla's own modern-tier upgrade module art. The client keeps ONE flat icon registry filled from
+    // vanilla's Addressables plus every mod bundle, so any name vanilla registered is a name a
+    // mod can ask for -- no asset, no scene object, no bundle rebuild.
     //
-    // GENERIC, not another specialty's: "ModernUpgrade" is the neutral art for this kind of thing.
-    // "ElectronicsUpgradeItem" would also render and would be wrong -- it is that skill's artwork, and a
-    // player can misread it as the wrong item.
+    // WHY HasStaticIcon RATHER THAN [HasIcon("ModernUpgrade")]. GetIconName reads the static one FIRST
+    // and unconditionally (ControllerMarshalerService.cs:414); the [HasIcon] path below it takes
+    // the first match of an INHERITED lookup, and every Item already inherits Item's own bare
+    // [HasIcon] whose IconName is null -- so the name falls back to the class name and the
+    // explicit one is ignored. That is why vanilla only ever passes a name to [HasIcon] on
+    // components, never on an Item subclass: it does not work there.
+    //
     // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
-    [HasIcon("ModernUpgrade")]
+    [HasStaticIcon(nameof(StaticIconName))]
     public partial class AdvancedElectronicsUpgradeItem :
         EfficiencyModule
     {
+
+        /// <summary>The vanilla icon this draws. Read by [HasStaticIcon] above.</summary>
+        public static string StaticIconName(Type type) => "ModernUpgrade";
         // v14 module shape, matching ElectronicsUpgradeItem in the shipped __core__ mod.
         //
         // The old form passed (ResourceEfficiency | SpeedEfficiency, 0.80f, skillType, 0.75f) and
