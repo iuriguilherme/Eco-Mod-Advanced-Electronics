@@ -142,8 +142,9 @@ The rest of the generic set, all space-named: `Skill Books`, `Basic Research`,
 `Burnable Fuel`, `Work Party`, `Work Orders`, `Bank Accounts`, `Civic Articles`,
 `Election Processes`, `Asphalt Road`, `Scientist Specialty`.
 
-`BatteryItem` and the three drones have no vanilla counterpart of either kind — the atlas holds
-no `Battery*` or `*Drone*` rect, and no generic fits.
+`BatteryItem`, `DroneDockItem` and the three drones have no vanilla counterpart of either kind —
+the atlas holds no `Battery*` or `*Drone*` rect, and no generic fits. The drones did not need one:
+see **Render it from the model** below.
 
 The research paper is a subtler case and the reason "nearest sibling" is not a safe default.
 Research paper art is a **two-axis system**: the emblem carries the *family* (geology,
@@ -172,6 +173,38 @@ Checked against the mods in `.references/Mods/` — `IntelligenceSkillMod`, `Arc
 So the field convention is the bundle route, and `[HasIcon]` naming appears to be unused by
 mods despite being how vanilla itself shares icons between classes. That is an argument for
 documenting it, not against using it.
+
+### Render it from the model
+
+Before commissioning art, check whether the thing already exists in three dimensions, because
+**that is how Eco makes its own icons**. `UISpriteBaker` composes a GameObject in a scene, points
+a camera at it and screenshots it into the atlas — the RenderTexture at `UISpriteBaker.cs:505-520`
+and the transparent-clear camera at `:583-587`. A mod can do the same thing into its own bundle:
+`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsIconRenderer.cs`.
+
+That gave the three drones real icons with no artist. Four traps cost a render each:
+
+1. **The materials do not render in the Editor.** The ModKit's `Curved/Standard` is a modified
+   Unity Standard shader — Built-in Render Pipeline — and this project is HDRP, so every render
+   came back Unity's magenta "no valid shader" colour. In game it never shows, because the Eco
+   client supplies the pipeline those materials were written for. Substitute an unlit material
+   carrying the original's albedo.
+2. **Property names differ per pipeline.** `HDRP/Unlit` calls them `_UnlitColorMap` and
+   `_UnlitColor`, not `_BaseColorMap`/`_BaseColor`. Setting names the shader does not have binds
+   nothing, renders the shader's flat default, and reads as success. Try a list of names and
+   report the shader's own property list when none matches.
+3. **Bundled objects ship disabled.** The client keeps them as inactive templates, so a plain
+   `InstantiatePrefab` photographs nothing. Force the instance and its children active.
+4. **A shared model renders one picture under several names.** The three drones are one chassis —
+   HRVSTR-01 doing different jobs — so they came back BYTE-IDENTICAL. `validate-icon-binding.sh`
+   passes that correctly: each entry does point at its own file, and the files merely hold the
+   same bytes. Fingerprint the outputs and fail on a collision; differentiate with a per-role
+   tint applied as a modulation, not a replacement, so the albedo survives it.
+
+**Render only what is worth photographing.** The dock and the assembly are hand-built primitives
+wearing the placeholder material, so their renders were a flat diamond and a flat hexagon —
+faithful to the model and worse than the client's own missing-icon sprite. The assembly took
+`[HasIcon("Crafting Table")]` instead; the dock draws the default until its model is real.
 
 ### When the art really is new
 
@@ -279,6 +312,8 @@ Giving a new entry an icon, in order:
 1. **Look for a vanilla name first**, and prefer a *generic* one — grep the atlas meta's sprite
    rects with a pattern that admits spaces, or the whole set is invisible. A generic icon is
    content-correct; another specialty's is a prettier placeholder.
+1b. **Otherwise check for a model worth photographing** and render it (see above). Free, accurate,
+   and it is what vanilla does. Skip this when the model is itself a placeholder.
 2. If one fits, add `[HasIcon("ThatName")]` to the class and stop. No asset, no scene object, no
    bundle rebuild — the change is a server assembly deploy.
 3. Only when nothing fits, author real artwork at 128 × 128 and take the deprecated bundle route:
