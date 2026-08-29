@@ -30,21 +30,40 @@ public static class AdvancedElectronicsIconRenderer
 
     /// <summary>
     /// Every server Item type whose icon is a render of a WorldObject prefab this mod already
-    /// ships, and the prefab it renders.
+    /// ships, the prefab it renders, and the role tint that render is modulated by.
     ///
     /// THE FIRST STRING IS THE SERVER CLASS NAME and is what the scene GameObject is named --
     /// that name is the whole binding. The second is only a file to load; nothing binds to it.
     /// The two differ by more than a suffix for the dock and the drones, which is exactly why
     /// they are two columns rather than one derived from the other.
+    ///
+    /// THE TINT EXISTS BECAUSE THE DRONES SHARE A CHASSIS. HRVSTR-01 is one machine doing
+    /// different jobs, so photographing survey, mining and harvest from a fixed angle produced
+    /// three BYTE-IDENTICAL icons -- the same "two items, one picture" failure this mod already
+    /// shipped once, arriving by a new route and past a binding gate that correctly passes it
+    /// (each entry does point at its own file; the files merely held identical bytes).
+    ///
+    /// White means no tint. The dock and the assembly are distinct models that read correctly on
+    /// their own, and tinting them would only shift them away from what the player sees placed.
     /// </summary>
-    private static readonly (string ItemName, string PrefabName)[] RenderedIcons =
+    private static readonly (string ItemName, string PrefabName, Color Tint)[] RenderedIcons =
     {
-        ("SurveyDroneItem",                 "SurveyDroneObject"),
-        ("MiningDroneItem",                 "MiningDroneObject"),
-        ("HarvestDroneItem",                "HarvestDroneObject"),
-        ("DroneDockItem",                   "DroneDockObject"),
-        ("AdvancedElectronicsAssemblyItem", "AdvancedElectronicsAssemblyObject"),
+        ("SurveyDroneItem",                 "SurveyDroneObject",  new Color(0.25f, 0.55f, 0.85f)), // teal-blue
+        ("MiningDroneItem",                 "MiningDroneObject",  new Color(0.60f, 0.85f, 0.10f)), // lime
+        ("HarvestDroneItem",                "HarvestDroneObject", new Color(0.42f, 0.26f, 0.14f)), // chocolate
+        ("DroneDockItem",                   "DroneDockObject",                        Color.white),
+        ("AdvancedElectronicsAssemblyItem", "AdvancedElectronicsAssemblyObject",      Color.white),
     };
+
+    /// <summary>
+    /// How far a tinted render moves from its own albedo toward the role colour.
+    ///
+    /// The tint is applied as a modulation, not a replacement, so surface detail survives it --
+    /// at 1.0 a dark role colour like the harvest drone's would crush the model to a silhouette.
+    /// Dial this down if the drones stop looking like the same machine; dial it up if the pair
+    /// that matters, mining against survey, is not obvious at inventory-thumbnail size.
+    /// </summary>
+    private const float TintStrength = 0.65f;
 
     /// <summary>
     /// Camera angle. Eco's object icons read as a three-quarter view from slightly above, so the
@@ -83,7 +102,7 @@ public static class AdvancedElectronicsIconRenderer
         // Keyed by the rendered bytes, so two entries that produced the same picture collide here.
         var byImage = new Dictionary<string, List<string>>();
 
-        foreach (var (itemName, prefabName) in RenderedIcons)
+        foreach (var (itemName, prefabName, tint) in RenderedIcons)
         {
             var path = $"{AdvancedElectronicsBuildTools.IconOutputFolder}/{itemName}_icon.png";
 
@@ -93,7 +112,7 @@ public static class AdvancedElectronicsIconRenderer
                 continue;
             }
 
-            if (RenderOne(itemName, prefabName, path))
+            if (RenderOne(itemName, prefabName, tint, path))
             {
                 rendered.Add(itemName);
 
@@ -139,7 +158,7 @@ public static class AdvancedElectronicsIconRenderer
         {
             if (sharers.Count < 2) continue;
 
-            Debug.LogError($"[AdvancedElectronics] These entries rendered to BYTE-IDENTICAL icons and will be indistinguishable in game: {string.Join(", ", sharers)}. Each points at its own file, so scripts/validate-icon-binding.sh passes and nothing else will tell you. They share a model; decide how they should differ (a per-role tint, a role badge, or a different camera angle per entry) rather than shipping one picture under several names.");
+            Debug.LogError($"[AdvancedElectronics] These entries rendered to BYTE-IDENTICAL icons and will be indistinguishable in game: {string.Join(", ", sharers)}. Each points at its own file, so scripts/validate-icon-binding.sh passes and nothing else will tell you. They share a model, so give them different role tints in RenderedIcons rather than shipping one picture under several names.");
         }
     }
 
@@ -150,7 +169,7 @@ public static class AdvancedElectronicsIconRenderer
             return System.Convert.ToBase64String(md5.ComputeHash(System.IO.File.ReadAllBytes(path)));
     }
 
-    private static bool RenderOne(string itemName, string prefabName, string path)
+    private static bool RenderOne(string itemName, string prefabName, Color tint, string path)
     {
         var prefabPath = $"{PrefabFolder}/{prefabName}.prefab";
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
@@ -166,7 +185,7 @@ public static class AdvancedElectronicsIconRenderer
         var itemTemplate = AdvancedElectronicsBuildTools.EnsureItemObject(itemName);
         if (itemTemplate == null) return false;
 
-        var pixels = RenderPrefab(prefab, itemName);
+        var pixels = RenderPrefab(prefab, itemName, tint);
         if (pixels == null) return false;
 
         AdvancedElectronicsBuildTools.EnsureIconFolder();
@@ -200,7 +219,7 @@ public static class AdvancedElectronicsIconRenderer
     /// Builds a throwaway camera-and-light rig far below the scene, frames the prefab in it, and
     /// returns the PNG bytes. Returns null and logs why when the render came back empty.
     /// </summary>
-    private static byte[] RenderPrefab(GameObject prefab, string itemName)
+    private static byte[] RenderPrefab(GameObject prefab, string itemName, Color tint)
     {
         var size = AdvancedElectronicsBuildTools.IconSize;
 
@@ -229,7 +248,7 @@ public static class AdvancedElectronicsIconRenderer
                                     .Where(r => r.enabled && r.bounds.size != Vector3.zero)
                                     .ToArray();
 
-            SubstituteRenderableMaterials(renderers, temporaryMaterials);
+            SubstituteRenderableMaterials(renderers, tint, temporaryMaterials);
             if (renderers.Length == 0)
             {
                 Debug.LogError($"[AdvancedElectronics] '{itemName}': {prefab.name} has no enabled Renderer with non-zero bounds, so there is nothing to photograph.");
@@ -321,8 +340,11 @@ public static class AdvancedElectronicsIconRenderer
     /// Assigning to sharedMaterials on an INSTANTIATED copy repoints that copy's renderers; it
     /// does not touch the material assets on disk. The rig is destroyed straight afterwards.
     /// </summary>
-    private static void SubstituteRenderableMaterials(Renderer[] renderers, List<Material> created)
+    private static void SubstituteRenderableMaterials(Renderer[] renderers, Color tint, List<Material> created)
     {
+        // Lerped from white rather than used raw, so the albedo still reads through it.
+        var roleTint = Color.Lerp(Color.white, tint, TintStrength);
+
         Shader unlit = null;
         foreach (var name in UnlitShaders)
         {
@@ -353,11 +375,13 @@ public static class AdvancedElectronicsIconRenderer
                     if (material.HasProperty("_MainTex"))      material.SetTexture("_MainTex", albedo);
                 }
 
-                var tint = originals[i] != null && originals[i].HasProperty("_Color")
+                var original = originals[i] != null && originals[i].HasProperty("_Color")
                     ? originals[i].GetColor("_Color")
                     : Color.white;
-                if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", tint);
-                if (material.HasProperty("_Color"))     material.SetColor("_Color", tint);
+                var modulated = original * roleTint;
+
+                if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", modulated);
+                if (material.HasProperty("_Color"))     material.SetColor("_Color", modulated);
 
                 substitutes[i] = material;
                 created.Add(material);
