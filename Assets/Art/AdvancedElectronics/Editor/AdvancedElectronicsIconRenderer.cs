@@ -83,6 +83,19 @@ public static class AdvancedElectronicsIconRenderer
     private const float Fill = 0.82f;
 
     /// <summary>
+    /// Eco's icon background plate, reconstructed from vanilla's own full/_FG pairs: wherever a
+    /// _FG sprite is transparent, its full twin is showing pure plate, and across 500 pairs every
+    /// pixel is revealed by something. Recomposing a vanilla icon from it matches the real one to
+    /// a mean of ~2/255, which is edge antialiasing.
+    ///
+    /// It matters because the client stores TWO sprites per icon name -- a full one with the
+    /// plate and a _FG one without -- and vanilla bakes the plate into the full variant. Without
+    /// it a mod's icons sit in the inventory grid with the slot showing through while every
+    /// vanilla item has a backing, which is exactly how they looked.
+    /// </summary>
+    private const string PlatePath = "Assets/Art/AdvancedElectronics/Sprites/IconBackground.png";
+
+    /// <summary>
     /// Where the throwaway render rig is built. Far enough from any authored content that an
     /// orthographic camera framed on the rig cannot catch scene geometry in the background.
     /// </summary>
@@ -192,41 +205,127 @@ public static class AdvancedElectronicsIconRenderer
         var itemTemplate = AdvancedElectronicsBuildTools.EnsureItemObject(itemName);
         if (itemTemplate == null) return false;
 
-        var pixels = RenderPrefab(prefab, itemName, tint);
-        if (pixels == null) return false;
+        var rendered = RenderPrefab(prefab, itemName, tint);
+        if (rendered == null) return false;
+
+        var plate = LoadPlate();
+        if (plate == null) return false;
 
         AdvancedElectronicsBuildTools.EnsureIconFolder();
-        System.IO.File.WriteAllBytes(path, pixels);
 
+        // Two files, because the client keeps two sprites per name and uses them for different
+        // things: the full one in inventory and Ecopedia, the _FG one on minimap markers and
+        // overlay badges where a plate would be wrong.
+        var foregroundPath = path.Replace("_icon.png", "_icon_FG.png");
+        System.IO.File.WriteAllBytes(foregroundPath, rendered.EncodeToPNG());
+        System.IO.File.WriteAllBytes(path, Composite(plate, rendered).EncodeToPNG());
+
+        // Written over any existing file rather than deleted and recreated: the scene reaches the
+        // sprite through the GUID in the PNG's .meta sidecar, and deleting the pair re-mints that
+        // GUID and dangles every reference to it.
+        var full       = ImportAsSprite(path);
+        var foreground = ImportAsSprite(foregroundPath);
+        if (full == null || foreground == null) return false;
+
+        AdvancedElectronicsBuildTools.AssignIconSprite(itemTemplate, foreground);
+        if (!AdvancedElectronicsBuildTools.AssignFullIconSprite(itemTemplate, full)) return false;
+
+        Debug.Log($"[AdvancedElectronics] '{itemName}' now draws a render of {prefabName}, plated ({path}) and bare ({foregroundPath}).");
+        return true;
+    }
+
+    /// <summary>Imports one written PNG as a sprite and hands the Sprite back.</summary>
+    private static Sprite ImportAsSprite(string path)
+    {
         // Written over any existing file rather than deleted and recreated: the scene reaches the
         // sprite through the GUID in the PNG's .meta sidecar, and deleting the pair re-mints that
         // GUID and dangles every reference to it.
         AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
 
         var importer = (TextureImporter)AssetImporter.GetAtPath(path);
-        importer.textureType      = TextureImporterType.Sprite;
-        importer.spriteImportMode = SpriteImportMode.Single;
-        importer.mipmapEnabled    = false;
+        importer.textureType         = TextureImporterType.Sprite;
+        importer.spriteImportMode    = SpriteImportMode.Single;
+        importer.mipmapEnabled       = false;
         importer.alphaIsTransparency = true;
         importer.SaveAndReimport();
 
         var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
         if (sprite == null)
-        {
             Debug.LogError($"[AdvancedElectronics] Wrote {path} but could not load a Sprite back from it.");
-            return false;
-        }
-
-        AdvancedElectronicsBuildTools.AssignIconSprite(itemTemplate, sprite);
-        Debug.Log($"[AdvancedElectronics] '{itemName}' now draws a render of {prefabName} ({path}).");
-        return true;
+        return sprite;
     }
 
     /// <summary>
-    /// Builds a throwaway camera-and-light rig far below the scene, frames the prefab in it, and
-    /// returns the PNG bytes. Returns null and logs why when the render came back empty.
+    /// The plate, forced readable so its pixels can be composited on the CPU. An imported texture
+    /// is not readable by default and GetPixels32 throws rather than returning anything.
     /// </summary>
-    private static byte[] RenderPrefab(GameObject prefab, string itemName, Color tint)
+    private static Texture2D LoadPlate()
+    {
+        var importer = AssetImporter.GetAtPath(PlatePath) as TextureImporter;
+        if (importer == null)
+        {
+            Debug.LogError($"[AdvancedElectronics] No icon background at {PlatePath}. Icons would ship without the backing plate every vanilla item has.");
+            return null;
+        }
+
+        if (!importer.isReadable)
+        {
+            importer.isReadable = true;
+            importer.SaveAndReimport();
+        }
+
+        var plate = AssetDatabase.LoadAssetAtPath<Texture2D>(PlatePath);
+        if (plate == null) Debug.LogError($"[AdvancedElectronics] Could not load {PlatePath} as a Texture2D.");
+        return plate;
+    }
+
+    /// <summary>Source-over composite of the render onto the plate.</summary>
+    private static Texture2D Composite(Texture2D plate, Texture2D over)
+    {
+        var size = AdvancedElectronicsBuildTools.IconSize;
+        var result = new Texture2D(size, size, TextureFormat.RGBA32, false);
+
+        var under = plate.width == size && plate.height == size
+            ? plate.GetPixels32()
+            : ScaleNearest(plate, size);
+        var top = over.GetPixels32();
+        var blended = new Color32[under.Length];
+
+        for (var i = 0; i < blended.Length; i++)
+        {
+            var a = top[i].a / 255f;
+            blended[i] = new Color32(
+                (byte)(top[i].r * a + under[i].r * (1f - a)),
+                (byte)(top[i].g * a + under[i].g * (1f - a)),
+                (byte)(top[i].b * a + under[i].b * (1f - a)),
+                (byte)Mathf.Min(255f, top[i].a + under[i].a * (1f - a)));
+        }
+
+        result.SetPixels32(blended);
+        result.Apply();
+        return result;
+    }
+
+    /// <summary>Nearest-neighbour resize, for a plate that is not already icon-sized.</summary>
+    private static Color32[] ScaleNearest(Texture2D source, int size)
+    {
+        var pixels = source.GetPixels32();
+        var scaled = new Color32[size * size];
+        for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
+            {
+                var sx = x * source.width / size;
+                var sy = y * source.height / size;
+                scaled[y * size + x] = pixels[sy * source.width + sx];
+            }
+        return scaled;
+    }
+
+    /// <summary>
+    /// Builds a throwaway camera rig far below the scene, frames the prefab in it, and returns the
+    /// rendered texture. Returns null and logs why when the render came back empty.
+    /// </summary>
+    private static Texture2D RenderPrefab(GameObject prefab, string itemName, Color tint)
     {
         var size = AdvancedElectronicsBuildTools.IconSize;
 
@@ -306,9 +405,7 @@ public static class AdvancedElectronicsIconRenderer
                 return null;
             }
 
-            var png = texture.EncodeToPNG();
-            Object.DestroyImmediate(texture);
-            return png;
+            return texture;
         }
         finally
         {

@@ -430,6 +430,66 @@ public static class AdvancedElectronicsBuildTools
         AssetDatabase.SaveAssets();
     }
 
+    /// <summary>
+    /// Puts the plated sprite on a child named "FullImage", creating that child when it is
+    /// missing -- and it always is, because the ModKit's ItemTemplate does not ship one.
+    ///
+    /// The client stores TWO sprites per icon name and picks between them by GameObject name:
+    /// "FullImage" becomes the full icon, "Foreground" the background-less _FG variant
+    /// (ModBundleManager.RegisterDeprecatedIconFromObject). With no FullImage it registers the
+    /// foreground under BOTH names, which is why the mod's icons had no backing plate in the
+    /// inventory grid while every vanilla item did.
+    /// </summary>
+    /// <returns>False if the item's hierarchy is not shaped the way the client reads it.</returns>
+    public static bool AssignFullIconSprite(ItemTemplate itemTemplate, Sprite sprite)
+    {
+        var icon = itemTemplate.transform.Find("Icon");
+        if (icon == null)
+        {
+            Debug.LogError($"[AdvancedElectronics] '{itemTemplate.name}' has no 'Icon' child, so there is nowhere to put the full icon. Rebuild it from the ModKit template.");
+            return false;
+        }
+
+        var full = icon.Find("FullImage");
+        if (full == null)
+        {
+            // Cloned from Foreground so it inherits the same rect, anchors and draw order rather
+            // than depending on defaults that would put it somewhere else in the 128px frame.
+            var source = itemTemplate.foreground != null ? itemTemplate.foreground.rectTransform : null;
+            if (source == null)
+            {
+                Debug.LogError($"[AdvancedElectronics] '{itemTemplate.name}' has no Foreground image to copy the FullImage rect from.");
+                return false;
+            }
+
+            var clone = Object.Instantiate(source.gameObject, icon);
+            clone.name = "FullImage";
+            full = clone.transform;
+
+            // A clone of Foreground may carry children (overlays); the full icon is one image.
+            for (var i = full.childCount - 1; i >= 0; i--)
+                Object.DestroyImmediate(full.GetChild(i).gameObject);
+
+            Debug.Log($"[AdvancedElectronics] Added a 'FullImage' child to '{itemTemplate.name}' -- the ModKit template ships none, so the client had no plated icon to register.");
+        }
+
+        var image = full.GetComponent<Image>();
+        if (image == null)
+        {
+            Debug.LogError($"[AdvancedElectronics] '{itemTemplate.name}' has a 'FullImage' child with no Image component.");
+            return false;
+        }
+
+        image.sprite = sprite;
+        itemTemplate.fullImage = image;
+
+        EditorUtility.SetDirty(image);
+        EditorUtility.SetDirty(itemTemplate);
+        EditorUtility.SetDirty(itemTemplate.gameObject);
+        AssetDatabase.SaveAssets();
+        return true;
+    }
+
     /// <summary>Creates the art folders if missing. Shared with the object-icon renderer.</summary>
     public static void EnsureIconFolder() => EnsureArtFolder();
 

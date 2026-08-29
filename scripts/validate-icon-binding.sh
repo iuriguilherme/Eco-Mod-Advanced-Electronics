@@ -83,6 +83,12 @@ echo
 # status is one of OK (a guid was reached), NOSPRITE (the Image's sprite reference is
 # unset), NOFOREGROUND (no child named "Foreground" under "Icon"), NOICON (no child named
 # "Icon"), or NOIMAGE (a "Foreground" child carrying no Image with a sprite field at all).
+#
+# A fourth field carries the guid of the "FullImage" child when the item has one, or "-".
+# The client stores two sprites per icon name and chooses between them BY CHILD NAME:
+# "FullImage" is the full icon that carries the background plate, "Foreground" the plate-less
+# _FG variant. An item with no FullImage has its foreground registered under both names, which
+# is how the mod's icons came to sit in the inventory grid with no backing.
 walk_scene() {
     local scene="$1"
     awk '
@@ -143,15 +149,19 @@ walk_scene() {
                 if (item == "") continue
 
                 icon = childNamed(item, "Icon")
-                if (icon == "") { print goName[item] "\tNOICON\t-"; continue }
+                if (icon == "") { print goName[item] "\tNOICON\t-\t-"; continue }
 
                 fg = childNamed(icon, "Foreground")
-                if (fg == "") { print goName[item] "\tNOFOREGROUND\t-"; continue }
+                if (fg == "") { print goName[item] "\tNOFOREGROUND\t-\t-"; continue }
 
-                if (!(fg in sprite)) { print goName[item] "\tNOIMAGE\t-"; continue }
-                if (sprite[fg] == "-") { print goName[item] "\tNOSPRITE\t-"; continue }
+                if (!(fg in sprite)) { print goName[item] "\tNOIMAGE\t-\t-"; continue }
+                if (sprite[fg] == "-") { print goName[item] "\tNOSPRITE\t-\t-"; continue }
 
-                print goName[item] "\tOK\t" sprite[fg]
+                fullGuid = "-"
+                fullImg = childNamed(icon, "FullImage")
+                if (fullImg != "" && (fullImg in sprite)) fullGuid = sprite[fullImg]
+
+                print goName[item] "\tOK\t" sprite[fg] "\t" fullGuid
             }
         }
 
@@ -212,9 +222,10 @@ done < <(grep -r --include='*.meta' -m1 '^guid: ' Assets 2>/dev/null || true)
 failures=0
 
 # --- 1. Every scene item draws its own icon file ------------------------------
-while IFS=$'\t' read -r item status guid; do
+while IFS=$'\t' read -r item status guid fullguid; do
     [ -z "$item" ] && continue
     expected="$ICON_DIR/${item}_icon.png"
+    expected_fg="$ICON_DIR/${item}_icon_FG.png"
 
     case "$status" in
         NOICON)
@@ -247,11 +258,28 @@ while IFS=$'\t' read -r item status guid; do
                 echo "          The reference is dangling — most often the result of an icon PNG being"
                 echo "          deleted and recreated, which re-mints its GUID."
                 failures=1
-            elif [ "$actual" != "$expected" ]; then
+            elif [ "$actual" != "$expected" ] && [ "$actual" != "$expected_fg" ]; then
                 echo "MISMATCH: '$item' draws $actual"
-                echo "          but should draw $expected."
+                echo "          but should draw $expected or $expected_fg."
                 echo "          Two items resolving to one file is the mis-binding this gate exists for:"
                 echo "          it renders perfectly and looks exactly like success."
+                failures=1
+            fi
+
+            # The plated variant, when the item has one. An item whose Foreground is the bare
+            # _FG render MUST have it, or the client registers the plate-less sprite as the full
+            # icon and the item sits in the inventory grid with the slot showing through.
+            if [ "$fullguid" != "-" ]; then
+                actual_full="${GUID_PATH[$fullguid]:-}"
+                if [ "$actual_full" != "$expected" ]; then
+                    echo "MISMATCH: '$item' has a FullImage drawing ${actual_full:-an unclaimed guid $fullguid}"
+                    echo "          but it should draw $expected — the plated variant."
+                    failures=1
+                fi
+            elif [ "$actual" = "$expected_fg" ]; then
+                echo "MISMATCH: '$item' draws the plate-less $expected_fg on its Foreground but has no"
+                echo "          'FullImage' child. The client would then register the plate-less sprite as"
+                echo "          the full icon, and the item shows no background in the inventory grid."
                 failures=1
             fi
             ;;
