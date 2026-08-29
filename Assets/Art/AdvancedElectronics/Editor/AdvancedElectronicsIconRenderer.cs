@@ -358,6 +358,8 @@ public static class AdvancedElectronicsIconRenderer
             return;
         }
 
+        Debug.Log($"[AdvancedElectronics] Rendering icons through '{unlit.name}'.");
+
         foreach (var renderer in renderers)
         {
             var originals   = renderer.sharedMaterials;
@@ -368,20 +370,17 @@ public static class AdvancedElectronicsIconRenderer
                 var material = new Material(unlit) { hideFlags = HideFlags.HideAndDontSave };
 
                 var albedo = FindAlbedo(originals[i]);
-                if (albedo != null)
-                {
-                    if (material.HasProperty("_BaseColorMap")) material.SetTexture("_BaseColorMap", albedo);
-                    if (material.HasProperty("_BaseMap"))      material.SetTexture("_BaseMap", albedo);
-                    if (material.HasProperty("_MainTex"))      material.SetTexture("_MainTex", albedo);
-                }
+                var boundAlbedo = albedo == null || SetFirst(material, AlbedoProperties, albedo);
 
                 var original = originals[i] != null && originals[i].HasProperty("_Color")
                     ? originals[i].GetColor("_Color")
                     : Color.white;
-                var modulated = original * roleTint;
+                var boundColor = SetFirst(material, ColorProperties, original * roleTint);
 
-                if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", modulated);
-                if (material.HasProperty("_Color"))     material.SetColor("_Color", modulated);
+                // A shader whose colour property this does not know about renders every entry the
+                // same flat default -- which is how three tinted drones came back byte-identical.
+                if (!boundAlbedo || !boundColor)
+                    Debug.LogError($"[AdvancedElectronics] '{unlit.name}' exposes none of the {(boundAlbedo ? "colour" : "albedo")} property names this knows ({string.Join(", ", boundAlbedo ? ColorProperties : AlbedoProperties)}). Its own are: {string.Join(", ", PropertyNames(unlit))}. Add the right one to AlbedoProperties/ColorProperties.");
 
                 substitutes[i] = material;
                 created.Add(material);
@@ -391,12 +390,46 @@ public static class AdvancedElectronicsIconRenderer
         }
     }
 
+    /// <summary>
+    /// Albedo texture property names, tried in order. HDRP/Unlit calls it _UnlitColorMap, HDRP/Lit
+    /// _BaseColorMap, URP _BaseMap, Built-in _MainTex -- and a name this list misses binds nothing
+    /// while still rendering, which reads as success.
+    /// </summary>
+    private static readonly string[] AlbedoProperties =
+        { "_UnlitColorMap", "_BaseColorMap", "_BaseMap", "_MainTex", "_AlbedoMap" };
+
+    /// <summary>Tint property names, same story: HDRP/Unlit calls it _UnlitColor.</summary>
+    private static readonly string[] ColorProperties =
+        { "_UnlitColor", "_BaseColor", "_Color" };
+
+    /// <summary>Sets the first property the material actually has. False if it has none of them.</summary>
+    private static bool SetFirst(Material material, string[] properties, Texture value)
+    {
+        foreach (var property in properties)
+            if (material.HasProperty(property)) { material.SetTexture(property, value); return true; }
+        return false;
+    }
+
+    /// <inheritdoc cref="SetFirst(Material, string[], Texture)"/>
+    private static bool SetFirst(Material material, string[] properties, Color value)
+    {
+        foreach (var property in properties)
+            if (material.HasProperty(property)) { material.SetColor(property, value); return true; }
+        return false;
+    }
+
+    /// <summary>Every property a shader exposes, for the diagnostic above.</summary>
+    private static IEnumerable<string> PropertyNames(Shader shader)
+    {
+        for (var i = 0; i < shader.GetPropertyCount(); i++) yield return shader.GetPropertyName(i);
+    }
+
     /// <summary>The original material's albedo, under whichever property name it uses.</summary>
     private static Texture FindAlbedo(Material material)
     {
         if (material == null) return null;
 
-        foreach (var property in new[] { "_MainTex", "_BaseColorMap", "_BaseMap", "_AlbedoMap" })
+        foreach (var property in AlbedoProperties)
             if (material.HasProperty(property))
             {
                 var texture = material.GetTexture(property);
