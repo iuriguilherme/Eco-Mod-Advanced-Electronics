@@ -80,6 +80,9 @@ public static class AdvancedElectronicsIconRenderer
         var skipped  = new List<string>();
         var failed   = new List<string>();
 
+        // Keyed by the rendered bytes, so two entries that produced the same picture collide here.
+        var byImage = new Dictionary<string, List<string>>();
+
         foreach (var (itemName, prefabName) in RenderedIcons)
         {
             var path = $"{AdvancedElectronicsBuildTools.IconOutputFolder}/{itemName}_icon.png";
@@ -90,9 +93,19 @@ public static class AdvancedElectronicsIconRenderer
                 continue;
             }
 
-            if (RenderOne(itemName, prefabName, path)) rendered.Add(itemName);
-            else                                      failed.Add(itemName);
+            if (RenderOne(itemName, prefabName, path))
+            {
+                rendered.Add(itemName);
+
+                var fingerprint = Fingerprint(path);
+                if (!byImage.TryGetValue(fingerprint, out var sharers))
+                    byImage[fingerprint] = sharers = new List<string>();
+                sharers.Add(itemName);
+            }
+            else failed.Add(itemName);
         }
+
+        ReportIdenticalRenders(byImage);
 
         var report = new System.Text.StringBuilder();
         report.Append($"[AdvancedElectronics] {(force ? "Render Object Icons (Force Re-render)" : "Render Object Icons")} over {RenderedIcons.Length} entr(ies).");
@@ -108,6 +121,33 @@ public static class AdvancedElectronicsIconRenderer
             names.Count == 0
                 ? string.Empty
                 : System.Environment.NewLine + $"  {label} ({names.Count}): {string.Join(", ", names)}";
+    }
+
+    /// <summary>
+    /// Two items drawing one picture is the exact failure this mod already shipped once, when
+    /// MiningDroneItem had no icon of its own and rendered the survey drone's. The binding gate
+    /// cannot catch this shape of it: every entry here points at its OWN file, and the files
+    /// merely happen to hold identical bytes.
+    ///
+    /// It is not a bug in the rig. The drones share one chassis on purpose -- HRVSTR-01 is one
+    /// machine doing different jobs -- so photographing them from a fixed angle necessarily
+    /// produces one image. Differentiating them is a content decision, not a rendering one.
+    /// </summary>
+    private static void ReportIdenticalRenders(Dictionary<string, List<string>> byImage)
+    {
+        foreach (var sharers in byImage.Values)
+        {
+            if (sharers.Count < 2) continue;
+
+            Debug.LogError($"[AdvancedElectronics] These entries rendered to BYTE-IDENTICAL icons and will be indistinguishable in game: {string.Join(", ", sharers)}. Each points at its own file, so scripts/validate-icon-binding.sh passes and nothing else will tell you. They share a model; decide how they should differ (a per-role tint, a role badge, or a different camera angle per entry) rather than shipping one picture under several names.");
+        }
+    }
+
+    /// <summary>A cheap content hash of a written icon, for the duplicate check above.</summary>
+    private static string Fingerprint(string path)
+    {
+        using (var md5 = System.Security.Cryptography.MD5.Create())
+            return System.Convert.ToBase64String(md5.ComputeHash(System.IO.File.ReadAllBytes(path)));
     }
 
     private static bool RenderOne(string itemName, string prefabName, string path)
@@ -166,6 +206,7 @@ public static class AdvancedElectronicsIconRenderer
 
         GameObject rig = null;
         RenderTexture renderTexture = null;
+        var temporaryMaterials = new List<Material>();
         var previousActive = RenderTexture.active;
 
         try
@@ -187,6 +228,8 @@ public static class AdvancedElectronicsIconRenderer
             var renderers = instance.GetComponentsInChildren<Renderer>(false)
                                     .Where(r => r.enabled && r.bounds.size != Vector3.zero)
                                     .ToArray();
+
+            SubstituteRenderableMaterials(renderers, temporaryMaterials);
             if (renderers.Length == 0)
             {
                 Debug.LogError($"[AdvancedElectronics] '{itemName}': {prefab.name} has no enabled Renderer with non-zero bounds, so there is nothing to photograph.");
@@ -213,10 +256,7 @@ public static class AdvancedElectronicsIconRenderer
             camera.allowHDR         = false;
             camera.allowMSAA        = false;
 
-            // The rig carries its own key and fill so the render does not depend on whatever
-            // lighting the currently-open scene happens to have.
-            AddLight(cameraObject.transform, new Vector3(35f, -30f, 0f), 1.4f);
-            AddLight(cameraObject.transform, new Vector3(-15f, 140f, 0f), 0.6f);
+            // No lights: the substitution below renders unlit, which is the whole point of it.
 
             renderTexture = new RenderTexture(size, size, 24, RenderTextureFormat.ARGB32)
             {
@@ -247,22 +287,99 @@ public static class AdvancedElectronicsIconRenderer
         finally
         {
             RenderTexture.active = previousActive;
+            foreach (var material in temporaryMaterials) Object.DestroyImmediate(material);
             if (renderTexture != null) Object.DestroyImmediate(renderTexture);
             if (rig != null) Object.DestroyImmediate(rig);
         }
     }
 
-    private static void AddLight(Transform parent, Vector3 euler, float intensity)
+    /// <summary>
+    /// Shader names tried in order, first hit wins. Unlit on purpose.
+    ///
+    /// The mod's materials use the ModKit's <c>Curved/Standard</c>, a modified Unity Standard
+    /// shader -- Built-in Render Pipeline. THIS PROJECT IS HDRP, and a Built-in shader under HDRP
+    /// does not render: it draws Unity's magenta "no valid shader" colour. In game that never
+    /// shows, because the Eco client supplies the pipeline those materials were written for, so
+    /// the materials are correct and only an in-Editor render is affected.
+    ///
+    /// Unlit also removes lighting from the problem entirely. An HDRP light's intensity is in
+    /// physical units and is driven by HDAdditionalLightData rather than Light.intensity, so a
+    /// lit rig assembled from plain UnityEngine types is a coin flip between black and blown out.
+    /// A flat, correctly-textured render is worth more than a shaded one that might be neither.
+    /// </summary>
+    private static readonly string[] UnlitShaders =
     {
-        var lightObject = new GameObject("__IconLight");
-        lightObject.transform.SetParent(parent, false);
-        lightObject.transform.localRotation = Quaternion.Euler(euler);
+        "HDRP/Unlit",
+        "Universal Render Pipeline/Unlit",
+        "Unlit/Texture",
+        "Sprites/Default",
+    };
 
-        var light = lightObject.AddComponent<Light>();
-        light.type      = LightType.Directional;
-        light.intensity = intensity;
-        light.color     = Color.white;
-        light.shadows   = LightShadows.None;
+    /// <summary>
+    /// Points every renderer at a throwaway unlit material carrying the original's albedo.
+    ///
+    /// Assigning to sharedMaterials on an INSTANTIATED copy repoints that copy's renderers; it
+    /// does not touch the material assets on disk. The rig is destroyed straight afterwards.
+    /// </summary>
+    private static void SubstituteRenderableMaterials(Renderer[] renderers, List<Material> created)
+    {
+        Shader unlit = null;
+        foreach (var name in UnlitShaders)
+        {
+            unlit = Shader.Find(name);
+            if (unlit != null) break;
+        }
+
+        if (unlit == null)
+        {
+            Debug.LogWarning("[AdvancedElectronics] Found no unlit shader to render icons with; falling back to the prefab's own materials, which will come out magenta under this project's render pipeline.");
+            return;
+        }
+
+        foreach (var renderer in renderers)
+        {
+            var originals   = renderer.sharedMaterials;
+            var substitutes = new Material[originals.Length];
+
+            for (var i = 0; i < originals.Length; i++)
+            {
+                var material = new Material(unlit) { hideFlags = HideFlags.HideAndDontSave };
+
+                var albedo = FindAlbedo(originals[i]);
+                if (albedo != null)
+                {
+                    if (material.HasProperty("_BaseColorMap")) material.SetTexture("_BaseColorMap", albedo);
+                    if (material.HasProperty("_BaseMap"))      material.SetTexture("_BaseMap", albedo);
+                    if (material.HasProperty("_MainTex"))      material.SetTexture("_MainTex", albedo);
+                }
+
+                var tint = originals[i] != null && originals[i].HasProperty("_Color")
+                    ? originals[i].GetColor("_Color")
+                    : Color.white;
+                if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", tint);
+                if (material.HasProperty("_Color"))     material.SetColor("_Color", tint);
+
+                substitutes[i] = material;
+                created.Add(material);
+            }
+
+            renderer.sharedMaterials = substitutes;
+        }
+    }
+
+    /// <summary>The original material's albedo, under whichever property name it uses.</summary>
+    private static Texture FindAlbedo(Material material)
+    {
+        if (material == null) return null;
+
+        foreach (var property in new[] { "_MainTex", "_BaseColorMap", "_BaseMap", "_AlbedoMap" })
+            if (material.HasProperty(property))
+            {
+                var texture = material.GetTexture(property);
+                if (texture != null) return texture;
+            }
+
+        return null;
     }
 
     /// <summary>
@@ -275,13 +392,18 @@ public static class AdvancedElectronicsIconRenderer
     {
         var pixels = texture.GetPixels32();
 
-        var opaque = 0;
-        var lit    = 0;
+        var opaque  = 0;
+        var lit     = 0;
+        var magenta = 0;
+        var blown   = 0;
         foreach (var p in pixels)
         {
             if (p.a <= 8) continue;
             opaque++;
             if (p.r > 24 || p.g > 24 || p.b > 24) lit++;
+            // Unity's "no valid shader for this render pipeline" colour.
+            if (p.r > 200 && p.g < 80 && p.b > 200) magenta++;
+            if (p.r > 245 && p.g > 245 && p.b > 245) blown++;
         }
 
         if (opaque == 0)
@@ -293,6 +415,18 @@ public static class AdvancedElectronicsIconRenderer
         if (lit == 0)
         {
             Debug.LogError($"[AdvancedElectronics] '{itemName}': the render of {prefabName} is a black silhouette ({opaque} opaque pixels, none lit) -- nothing was written. The rig's lights did not reach it, which on HDRP usually means the directional lights need pipeline-specific intensity. Fix the rig rather than shipping this.");
+            return false;
+        }
+
+        if (magenta > opaque / 2)
+        {
+            Debug.LogError($"[AdvancedElectronics] '{itemName}': the render of {prefabName} is Unity's magenta missing-shader colour ({100f * magenta / opaque:F0}% of the object) -- nothing was written. The material's shader does not render under this project's pipeline; SubstituteRenderableMaterials is supposed to prevent exactly this, so check that one of UnlitShaders resolves.");
+            return false;
+        }
+
+        if (blown > opaque * 9 / 10)
+        {
+            Debug.LogError($"[AdvancedElectronics] '{itemName}': the render of {prefabName} came back almost entirely white -- nothing was written. The substitute material lost its albedo, or the render is blown out.");
             return false;
         }
 
