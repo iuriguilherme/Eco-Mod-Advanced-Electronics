@@ -49,6 +49,32 @@ through it. There is no namespace separating vanilla icons from mod icons.
 
 So any name vanilla registered is a name a mod can ask for.
 
+### Three fields, three consumers, and they are not interchangeable
+
+Set one and the icon changes on some surfaces and not others, which reads as "the fix did not
+work" and costs a server restart per guess. It cost three.
+
+| What you set | Where it lands | Who draws from it |
+|---|---|---|
+| `[HasStaticIcon("Method")]` | `ViewClassInfo.IconName` | Ecopedia pages |
+| `[HasIcon("Name")]` | read directly at `TypeTooltips.cs:46` | type tooltips |
+| `public override string IconName` | `Item.IconName`, synced per instance | **inventory slots, recipe rows, hotbar** |
+
+The last one is the one that matters most and the one with no attribute at all:
+
+```csharp
+[SyncToView] public virtual string IconName    => this.Name;
+```
+`Server/Eco.Gameplay/Items/Item.cs:34`
+
+An item instance's icon name is a plain virtual property defaulting to the class name. No
+attribute touches it. Override it, and set the other two to the same string.
+
+A further trap inside the attribute path: `[HasIcon("X")]` on an `Item` subclass appears not to
+take, because `Item` itself carries a bare `[HasIcon]` whose `IconName` is null and the lookup
+inherits. That is why vanilla only ever passes a name to `[HasIcon]` on components. Setting all
+three fields sidesteps the question.
+
 ### Ask for one with `[HasIcon("Name")]`
 
 ```csharp
@@ -118,6 +144,38 @@ was false.
 newer items. Skill books, scrolls and research papers are not among them; they exist only inside
 the baked atlas. That does not matter — the point is the *name*, not the file.
 
+### Three kinds of answer, and only one of them is not a placeholder
+
+"Placeholder" turned out to name two very different things, and conflating them wasted a cycle:
+
+1. **Not a placeholder.** Either the game has exactly **one** picture for this kind of thing, or
+   the mod renders its own model. Naming vanilla's single skill-book icon borrows no identity —
+   every skill-book icon in the atlas is byte-identical, and so is every skill scroll, so the
+   specialty is carried by the item's name and never by its picture. Verify before assuming:
+   `md5sum` the extracted crops.
+
+2. **A borrowed-sibling placeholder.** A related item's genuine art — right subject, right plate,
+   and strictly better than the client's default — but it belongs to another item, and the two
+   are indistinguishable until the mod has art of its own. `AdvancedElectronicsSkill` and
+   `AdvancedElectronicsUpgradeItem` draw Electronics' emblem and module, because unlike books and
+   scrolls those **do** differ per specialty. This ships, and it goes on the replacement list.
+
+3. **A flat-colour placeholder.** Worse than shipping nothing: the client's own missing-icon
+   sprite is a competent drawing that costs nothing, and a coloured square costs an Editor
+   session, a bundle rebuild, a deploy and a restart every time it changes. Never.
+
+The distinction that matters: (2) must be **replaced**, (3) should never have been **written**.
+
+### Beware the space-named generics
+
+They look like the obvious answer for a mod and they are usually wrong. `Skill Book`,
+`Skill Scrolls`, `Skills` and `ModernUpgrade` are **tag icons** — the same drawing on a grey
+plate, for category headers. Real items sit on olive or navy plates, so a tag icon in an
+inventory slot has a visibly wrong background next to everything around it.
+
+Check the plate before committing to a name: extract the candidate and a real item of the same
+kind and put them side by side.
+
 ### Generic beats another specialty's art
 
 Two kinds of candidate, and they are **not** equivalent:
@@ -131,10 +189,10 @@ Two kinds of candidate, and they are **not** equivalent:
 
 | Mod class | Vanilla icon | Kind |
 |---|---|---|
-| `AdvancedElectronicsSkillBook` | `Skill Book` | generic — the blue book, no emblem |
-| `AdvancedElectronicsSkillScroll` | `Skill Scrolls` | generic — a rolled grey scroll |
-| `AdvancedElectronicsAssemblyItem` | `Crafting Table` | generic craft station |
-| `AdvancedElectronicsSkill` | `Skills` / `Skills_FG` | generic skills emblem; no per-specialty generic exists |
+| `AdvancedElectronicsSkillBook` | `ElectronicsSkillBook` | **not a placeholder** — every skill book is one picture |
+| `AdvancedElectronicsSkillScroll` | `ElectronicsSkillScroll` | **not a placeholder** — every skill scroll is one picture |
+| `AdvancedElectronicsSkill` | `ElectronicsSkill` | borrowed sibling — skill emblems differ per specialty |
+| `AdvancedElectronicsUpgradeItem` | `ElectronicsUpgradeItem` | borrowed sibling — upgrade modules differ per specialty |
 | `EngineeringResearchPaperPostModernItem` | **none — must be drawn** | see below |
 
 The rest of the generic set, all space-named: `Skill Books`, `Basic Research`,

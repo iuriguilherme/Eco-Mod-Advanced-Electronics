@@ -130,14 +130,25 @@ namespace Eco.Mods.TechTree
     //
     // All three name the same picture below. Changing one alone leaves the others asking for the
     // class name, which resolves to whatever placeholder the mod's own bundle registered.
-    [HasIcon("ModernUpgrade")]
+    //
+    // BORROWED SIBLING PLACEHOLDER, and unlike the book and scroll this one IS a placeholder.
+    // Every skill-book icon in the game is byte-identical, so naming one borrows nothing; skill
+    // emblems and upgrade modules are NOT -- each specialty has its own art. So this draws a
+    // picture that genuinely belongs to Electronics, and the two items are indistinguishable
+    // until this mod has art of its own.
+    //
+    // It is still the right call for now: correct in subject, correct plate, and strictly better
+    // than the client's default. It is a placeholder in the sense that it must be REPLACED, not
+    // in the sense that it should never have shipped -- that is the flat-colour kind.
+    // Tracked in docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
+    [HasIcon("ElectronicsUpgradeItem")]
     [HasStaticIcon(nameof(StaticIconName))]
     public partial class AdvancedElectronicsUpgradeItem :
         EfficiencyModule
     {
 
         /// <summary>The vanilla icon this draws. Read by [HasStaticIcon] above.</summary>
-        public static string StaticIconName(Type type) => "ModernUpgrade";
+        public static string StaticIconName(Type type) => "ElectronicsUpgradeItem";
 
         /// <summary>
         /// The icon an INSTANCE of this draws. Item declares it as
@@ -150,7 +161,7 @@ namespace Eco.Mods.TechTree
         /// attribute leaves every inventory slot, recipe row and hotbar entry still asking for
         /// the class name; both are needed to point at one picture.
         /// </summary>
-        public override string IconName => "ModernUpgrade";
+        public override string IconName => "ElectronicsUpgradeItem";
         // v14 module shape, matching ElectronicsUpgradeItem in the shipped __core__ mod.
         //
         // The old form passed (ResourceEfficiency | SpeedEfficiency, 0.80f, skillType, 0.75f) and
