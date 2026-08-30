@@ -120,6 +120,17 @@ namespace Eco.Mods.TechTree
     // components, never on an Item subclass: it does not work there.
     //
     // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
+    // Three consumers, three fields, and they are NOT interchangeable -- this is why the icon
+    // appeared to be unfixable for two restarts:
+    //
+    //   [HasStaticIcon]              -> ViewClassInfo.IconName, the CLASS icon. Ecopedia pages.
+    //   [HasIcon("...")]             -> read directly by TypeTooltips.cs:46 for type tooltips.
+    //   public override IconName     -> Item.IconName, the INSTANCE value synced per item and
+    //                                   drawn in inventory, recipe rows and the hotbar.
+    //
+    // All three name the same picture below. Changing one alone leaves the others asking for the
+    // class name, which resolves to whatever placeholder the mod's own bundle registered.
+    [HasIcon("ModernUpgrade")]
     [HasStaticIcon(nameof(StaticIconName))]
     public partial class AdvancedElectronicsUpgradeItem :
         EfficiencyModule
