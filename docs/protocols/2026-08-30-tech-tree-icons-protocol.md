@@ -5,11 +5,10 @@ Owner-run verification of the icon work on `feat/tech-tree-icons`.
 | | |
 |---|---|
 | **Tester** | Iuri (repository owner) — the only party with the live server and client |
-| **Build under test** | `d0232b0` — server assembly only |
-| **Bundle under test** | `AssetBundles/AdvancedElectronics.unity3d`, built 08-29 21:26, **unchanged since** |
-| **Deployed** | server DLL 08-30 15:45, bundle 08-29 21:27, both verified byte-identical to the repo |
+| **Round 1 build** | `d0232b0` — **PASSED**, tester-reported 08-30 16:10, screenshots 48 |
+| **Round 2 build** | `01f94af` — server assembly **and** bundle |
 | **Requires restart** | Yes — a mod assembly does not hot-reload |
-| **Requires Editor / bundle rebuild** | No |
+| **Requires Editor + bundle rebuild** | **Yes** — round 2 removes scene objects |
 
 ## Why this document exists
 
@@ -64,8 +63,9 @@ does not ship, so neither is under test.
 
 | # | Defect | Evidence | Fixed in |
 |---|---|---|---|
-| D1 | Inline icons in tooltip and chat text draw the mod's flat placeholders | Screenshots 47 — magenta square in the Advanced Electronics tooltip, purple beside the skill book | `d0232b0`, untested |
-| D2 | Four entries still **ship** flat-colour PNGs in the bundle under their class names, now dead weight | icon table still has 11 rows; `AdvancedElectronicsSkillBook_icon.png` et al. still built | Not fixed — needs an Editor trip |
+| D1 | Inline icons in tooltip and chat text draw the mod's flat placeholders | Screenshots 47 — magenta square in the Advanced Electronics tooltip, purple beside the skill book | `d0232b0` — **verified fixed**, round 1 |
+| D2 | Four entries still **ship** flat-colour PNGs in the bundle under their class names | icon table had 11 rows | `01f94af` — rows removed; scene objects and PNGs pending the Editor trip |
+| D5 | **Recipe icons draw the flat placeholder.** A recipe's icon is its first product's class `Name` (`RecipeFamily.cs:241`), and that method is **not virtual** — there is no override point, so this cannot be fixed in the server classes | Tester-reported 08-30 16:10 | `01f94af` — fixed by removing the shipped art, so the class name resolves to nothing rather than to a square |
 | D3 | `DroneDockItem`, `BatteryItem`, `EngineeringResearchPaperPostModernItem` draw flat colours, violating RI2 | Screenshot 47 storage chest — green, white and blue-grey squares | Not fixed — blocked on art |
 | D4 | Comment headers in `AdvancedElectronics.cs` still say "WHY HasStaticIcon RATHER THAN `[HasIcon]`", which is no longer true — both are set | source | Not fixed — cosmetic, tracked |
 
@@ -104,6 +104,49 @@ is why the checklist below covers all of them.
 | `override string IconName` | `Item.cs:34` | inventory, hotbar, storage, recipe rows |
 | `override ItemIconUILink` | `ItemLinkable.cs:56` | inline icons in tooltip and chat text |
 
+## Round 2 — what changed and what to look for
+
+D5 is the reason round 2 exists, and it forced a different shape of fix. Every remaining
+name-keyed surface had one cause: **the bundle still registered flat-colour art under our class
+names**, and several consumers resolve by class name with no override available. Removing that
+art is the fix.
+
+**Chosen deliberately (option B):** the mod now ships *no* icon for the skill, book, scroll and
+upgrade. Surfaces that resolve by class name fall back to Eco's own missing-icon sprite rather
+than to a coloured square — RI2 satisfied, RI1 not yet on those surfaces. Shipping vanilla's art
+under our class names would fix them outright and is under consideration pending a licensing
+check; that is tracked, not decided.
+
+**Expected in round 2 — should change:**
+
+- Recipe icons for the four entries stop being coloured squares. They become Eco's default
+  missing-icon sprite, **not** vanilla's book — that is the accepted interim.
+
+**Must NOT change:**
+
+- Everything that passed in round 1: inventory slots, hotbar, recipe rows, Tech Tree node,
+  inline tooltip and chat icons, Ecopedia pages.
+- The three drone icons, plates and tints.
+
+**Gate state going into the Editor trip.** `validate-icon-binding.sh` is RED with exactly four
+`scene item … has no row` messages. That is the correct reading of a tree whose table rows are
+gone but whose scene objects are not yet removed; it must be GREEN after the Editor step below.
+`validate-name-match.sh` is green and now reports the four as named-icon types shipping no asset
+by design — an exemption discovered from the source, so deleting a binding makes its type
+required again. Both sides of that were tested.
+
+## Editor steps for round 2
+
+1. Let the domain reload finish.
+2. `Eco Tools > Advanced Electronics > Retire Unlisted Item Icons` — deletes the four scene
+   objects. It names each one it removes.
+3. Save the scene.
+4. Stop and tell me: I delete the four PNGs and their `.meta` files, then run both gates. Both
+   must be green before the bundle is built.
+5. `Eco Tools > Mod Kit > Build Current Bundle`.
+6. Tell me again: I copy the bundle, rebuild and deploy the assembly.
+7. Restart, then run the checklist below.
+
 ## Procedure
 
 Restart the server first, then log in. Setup:
@@ -136,6 +179,8 @@ was drawn instead. A screenshot per failing row is worth more than a description
 | T9 | Type tooltip | Hover the *skill name* where it appears as a type link | Real art |
 | T10 | Client log | After opening every surface above | No `Cannot find icon with name "…"` naming any of our entries; no new exception; no duplicate-key error |
 | T11 | Drone regression | Compare the three drones side by side | Still plated, still three distinct colours — unchanged from before this build |
+| T12 | **Recipe icon** | Laboratory → Crafting → the "Advanced Electronics Skill Book" recipe row and its Ecopedia recipe link | Eco's default missing-icon sprite, **not** a coloured square. Vanilla's book here would need option A |
+| T13 | Regression sweep after asset removal | Re-check T1, T3, T6 | Unchanged from round 1 — removing the shipped art must not disturb the surfaces the source overrides drive |
 
 ## Verdict
 
@@ -152,6 +197,8 @@ was drawn instead. A screenshot per failing row is worth more than a description
 | T9 | | | |
 | T10 | | | |
 | T11 | | | |
+| T12 | | | |
+| T13 | | | |
 
 ## If a row fails
 
