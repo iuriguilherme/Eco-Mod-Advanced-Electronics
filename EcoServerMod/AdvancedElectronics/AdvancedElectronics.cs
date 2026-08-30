@@ -119,7 +119,7 @@
     public partial class AdvancedElectronicsSkillBook : SkillBook<AdvancedElectronicsSkill, AdvancedElectronicsSkillScroll>
     {
         /// <summary>The vanilla icon this draws. Read by [HasStaticIcon] above.</summary>
-        public static string StaticIconName(Type type) => "Skill Book";
+        public static string StaticIconName(Type type) => "ElectronicsSkillBook";
 
         /// <summary>
         /// The icon an INSTANCE of this draws. Item declares it as
@@ -132,7 +132,15 @@
         /// attribute leaves every inventory slot, recipe row and hotbar entry still asking for
         /// the class name; both are needed to point at one picture.
         /// </summary>
-        public override string IconName => "Skill Book";
+        /// Vanilla ships ONE skill-book picture: every book icon in the atlas -- baking,
+        /// cooking, masonry, smelting, composites, electronics, all of them -- is byte-identical.
+        /// So naming one is not borrowing another specialty's art; there is no such thing here,
+        /// and the specialty is carried by the item's name rather than its picture.
+        ///
+        /// NOT the space-named "Skill Book" generic, which is the TAG icon: the same drawing on a
+        /// grey plate rather than the olive one every skill book in an inventory slot uses. The
+        /// space-named set is for category headers, and it looks wrong beside real items.
+        public override string IconName => "ElectronicsSkillBook";
     }
 
     [Serialized]
@@ -161,7 +169,7 @@
     public partial class AdvancedElectronicsSkillScroll : SkillScroll<AdvancedElectronicsSkill, AdvancedElectronicsSkillBook>
     {
         /// <summary>The vanilla icon this draws. Read by [HasStaticIcon] above.</summary>
-        public static string StaticIconName(Type type) => "Skill Scrolls";
+        public static string StaticIconName(Type type) => "ElectronicsSkillScroll";
 
         /// <summary>
         /// The icon an INSTANCE of this draws. Item declares it as
@@ -174,7 +182,15 @@
         /// attribute leaves every inventory slot, recipe row and hotbar entry still asking for
         /// the class name; both are needed to point at one picture.
         /// </summary>
-        public override string IconName => "Skill Scrolls";
+        /// Vanilla ships ONE skill-scroll picture: every scroll icon in the atlas -- baking,
+        /// cooking, masonry, smelting, composites, electronics, all of them -- is byte-identical.
+        /// So naming one is not borrowing another specialty's art; there is no such thing here,
+        /// and the specialty is carried by the item's name rather than its picture.
+        ///
+        /// NOT the space-named "Skill Scrolls" generic, which is the TAG icon: the same drawing on a
+        /// grey plate rather than the olive one every skill scroll in an inventory slot uses. The
+        /// space-named set is for category headers, and it looks wrong beside real items.
+        public override string IconName => "ElectronicsSkillScroll";
     }
 
 
