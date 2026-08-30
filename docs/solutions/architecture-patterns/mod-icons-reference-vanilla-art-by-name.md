@@ -1,7 +1,7 @@
 ---
 title: "A mod gets a real icon by naming vanilla's, not by shipping one"
 date: 2026-08-22
-last_updated: 2026-08-22
+last_updated: 2026-08-30
 category: architecture-patterns
 module: EcoServerMod
 problem_type: architecture_decision
@@ -39,6 +39,10 @@ mod, with no asset, no bundle entry, and no scene object.
 
 ## Guidance
 
+**Path convention.** Every `Server/`, `Client/` and `Content/` path below is relative to the
+**Eco source checkout**, a sibling of this repository — not to this repo, which contains none
+of them. Repo-relative paths are written from `Assets/`, `EcoServerMod/`, `scripts/` or `docs/`.
+
 ### The registry is flat, global, and already full
 
 `IconManager` keeps one dictionary, `nameToIcons`, keyed by icon name
@@ -49,18 +53,29 @@ through it. There is no namespace separating vanilla icons from mod icons.
 
 So any name vanilla registered is a name a mod can ask for.
 
-### Three fields, three consumers, and they are not interchangeable
+### Four fields, four consumers, and they are not interchangeable
 
-Set one and the icon changes on some surfaces and not others, which reads as "the fix did not
-work" and costs a server restart per guess. It cost three.
+There is no shared default. Set one and the icon changes on some surfaces and not others, which
+reads as "the fix did not work" and costs a server restart per guess. It cost four.
 
 | What you set | Where it lands | Who draws from it |
 |---|---|---|
 | `[HasStaticIcon("Method")]` | `ViewClassInfo.IconName` | Ecopedia pages |
-| `[HasIcon("Name")]` | read directly at `TypeTooltips.cs:46` | type tooltips |
-| `public override string IconName` | `Item.IconName`, synced per instance | **inventory slots, recipe rows, hotbar** |
+| `[HasIcon("Name")]` | read at `TypeTooltips.cs:46` | type tooltips |
+| `public override string IconName` | `Item.IconName`, synced per instance | inventory slots, hotbar, storage, recipe **rows** |
+| `protected override ItemIconUILink` | `ItemLinkable.cs:56` | **inline icons in tooltip and chat text** |
 
-The last one is the one that matters most and the one with no attribute at all:
+The fourth is easy to miss because it looks like the third and is not:
+
+```csharp
+protected virtual LocString ItemIconUILink(LocString text) => TextLoc.Item(TextLoc.Icon(this.Name, text));
+```
+`Server/Eco.Gameplay/Items/ItemLinkable.cs:56`
+
+Keyed on `Name`, not `IconName`. Override it to pass `this.IconName` so one string drives
+everything rather than four literals drifting apart.
+
+The third is the one that matters most and the one with no attribute at all:
 
 ```csharp
 [SyncToView] public virtual string IconName    => this.Name;
@@ -73,7 +88,30 @@ attribute touches it. Override it, and set the other two to the same string.
 A further trap inside the attribute path: `[HasIcon("X")]` on an `Item` subclass appears not to
 take, because `Item` itself carries a bare `[HasIcon]` whose `IconName` is null and the lookup
 inherits. That is why vanilla only ever passes a name to `[HasIcon]` on components. Setting all
-three fields sidesteps the question.
+four fields sidesteps the question.
+
+### Some surfaces have no override at all, and the class name is the last word
+
+Two consumers cannot be redirected from the server classes:
+
+- **A recipe's icon is its first product's class `Name`** —
+  `TextLoc.Icon(this.DefaultRecipe.Products[0].Item.Name, …)` at
+  `Server/Eco.Gameplay/Items/Recipes/RecipeFamily.cs:241`, mirrored in `Recipe.cs:138`. Both are
+  plain, **non-virtual** methods on `ILinkable`. There is no override point.
+- **The display-name alias** — `ModBundleManager` calls `SetSpriteAlias(ServerName, DisplayName)`,
+  mapping the item's display name onto whatever the bundle registered under its class name.
+
+So the class name has the final say wherever no override exists, and **the only lever is what the
+bundle registers under it**. While the mod shipped its own art under the class name, every such
+surface drew that art no matter what the server declared — which is why a run of source-side
+fixes kept improving some surfaces and leaving others untouched.
+
+The rule that falls out: **a mod that names vanilla's icon must ship nothing under its own class
+names.** Removing the icon-table rows is not tidying up after the fix; it is part of the fix.
+Removing them makes the unoverridable surfaces fall back to the client's own missing-icon sprite
+rather than to a coloured square — better, but still not vanilla's art. Getting vanilla's picture
+onto those surfaces requires shipping vanilla's art under the class name, which is a licensing
+question rather than a technical one.
 
 ### Ask for one with `[HasIcon("Name")]`
 
@@ -222,7 +260,9 @@ tier, rank, material, profession — is a placeholder, however close it looks in
 Checked against the mods in `.references/Mods/` — `IntelligenceSkillMod`, `ArcaneKnowledge`,
 `Mixology`, `AnimalHusbandry`, `Beekeeping`:
 
-- **None of them uses `[HasIcon]`.** Not one occurrence across every `.cs` in the set.
+- **None of them has any icon code at all** — no `[HasIcon]`, no `IconName`, no sprite handling,
+  zero occurrences across every `.cs` in the set. The convention is to ship art in the bundle and
+  let the class name resolve to it.
 - `IntelligenceSkillMod` adds `IntelligenceSkill : Skill` (no book, no scroll) and ships a
   189 KB `.unity3d` whose payload contains `IntelligenceSkill` — the legacy bundle route, with
   its own drawn art.
@@ -350,6 +390,16 @@ opened says nothing.
 An undiscovered specialty renders as `?` regardless of its icon — vanilla's Electronics,
 Industry and Mechanics all show one on the same screen. The icon is visible in the tooltip
 swatches and in the Tech Tree node. Do not chase it.
+
+### How to find the consumer instead of guessing at it
+
+The failure mode that cost the most was reasoning from the surfaces that were already right.
+Each fix worked, each looked like it had failed, and the next guess was aimed at another field.
+
+What actually settled it, every time, was picking the **one surface that is wrong** and grepping
+the game source for how *that* surface builds its icon — `TextLoc.Icon`, `SetIcon`, `IconName`,
+`UILinkContent`. The consumers are all within two greps of each other, and each names its key
+explicitly. Four fields were found that way; none was found by inference.
 
 ## Why This Matters
 
