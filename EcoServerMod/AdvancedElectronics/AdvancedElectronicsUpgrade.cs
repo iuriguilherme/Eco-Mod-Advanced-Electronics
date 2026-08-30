@@ -127,6 +127,19 @@ namespace Eco.Mods.TechTree
 
         /// <summary>The vanilla icon this draws. Read by [HasStaticIcon] above.</summary>
         public static string StaticIconName(Type type) => "ModernUpgrade";
+
+        /// <summary>
+        /// The icon an INSTANCE of this draws. Item declares it as
+        /// <c>[SyncToView] public virtual string IconName =&gt; this.Name</c>
+        /// (Server/Eco.Gameplay/Items/Item.cs:34), so it defaults to the class name and is what
+        /// the client actually receives per item.
+        ///
+        /// The [HasStaticIcon] attribute above sets a DIFFERENT thing -- the class-level icon on
+        /// ViewClassInfo, which drives Ecopedia pages and type tooltips. Setting only the
+        /// attribute leaves every inventory slot, recipe row and hotbar entry still asking for
+        /// the class name; both are needed to point at one picture.
+        /// </summary>
+        public override string IconName => "ModernUpgrade";
         // v14 module shape, matching ElectronicsUpgradeItem in the shipped __core__ mod.
         //
         // The old form passed (ResourceEfficiency | SpeedEfficiency, 0.80f, skillType, 0.75f) and
