@@ -119,8 +119,27 @@ mapfile -t ITEM_TYPES < <(
     | sort -u
 )
 
+# Item types that NAME a vanilla icon rather than shipping one. These need no client asset,
+# and requiring one would require the very thing that broke them: while the mod shipped its own
+# art under the class name, every surface that resolves an icon BY THAT NAME drew the mod's art
+# instead of vanilla's -- a recipe's icon is its first product's Name
+# (Server/Eco.Gameplay/Items/Recipes/RecipeFamily.cs:241, and it is not virtual), and
+# ModBundleManager aliases each item's display name onto whatever the bundle registered under
+# its class name.
+#
+# Discovered from the source rather than listed here, so the exemption cannot outlive the
+# binding that justifies it: delete the attribute and the type is required to have an asset
+# again on the next run.
+mapfile -t NAMED_ICON_TYPES < <(
+  printf '%s' "$DECLS" \
+    | grep -oE 'HasIcon\("[^"]+"\)\][^{]{0,160}class [A-Za-z0-9_]+' \
+    | sed -E 's/.*class //' \
+    | sort -u
+)
+
 echo "Server WorldObject types (need a name-matching prefab): ${WORLD_OBJECT_TYPES[*]:-none}"
 echo "Server Item types (need a name-matching icon asset):    ${ITEM_TYPES[*]:-none}"
+echo "Item types naming a vanilla icon (ship no asset):       ${NAMED_ICON_TYPES[*]:-none}"
 echo
 
 if [ ! -d "$ASSET_DIR" ]; then
@@ -160,6 +179,14 @@ for t in "${ITEM_TYPES[@]:-}"; do
   # a player, so it carries no client-side icon/prefab by design. Documented
   # exception, not a gap.
   if [ "$t" = "MiningArmItem" ]; then
+    continue
+  fi
+
+  # Named-icon types (see the discovery block above). Reported, never silent: a type vanishing
+  # from the icon set is exactly the failure this gate exists to catch, so it has to be visible
+  # that this one was intended.
+  if printf '%s\n' "${NAMED_ICON_TYPES[@]:-}" | grep -qx "$t"; then
+    echo "NOTE: Item '$t' names a vanilla icon and ships no client asset by design -- not a gap."
     continue
   fi
   # Item GameObjects live inside a scene, not as a standalone asset file (see

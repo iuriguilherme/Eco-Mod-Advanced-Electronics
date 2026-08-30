@@ -101,6 +101,9 @@ public static class AdvancedElectronicsIconRenderer
     /// </summary>
     private static readonly Vector3 RigOrigin = new Vector3(0f, -10000f, 0f);
 
+    /// <summary>The item names this renderer owns, for the retirement sweep in the build tools.</summary>
+    public static IEnumerable<string> RenderedItemNames => RenderedIcons.Select(entry => entry.ItemName);
+
     [MenuItem("Eco Tools/Advanced Electronics/Render Object Icons")]
     public static void RenderObjectIcons() => RenderObjectIcons(force: false);
 

@@ -81,19 +81,27 @@ public static class AdvancedElectronicsBuildTools
     /// rather than eyeball when adding a row: a near-collision here is indistinguishable from
     /// the mis-binding this whole scheme exists to make visible.
     /// </summary>
+    // RETIRED, deliberately: AdvancedElectronicsSkill, its skill book, its skill scroll and
+    // AdvancedElectronicsUpgradeItem used to have rows here and no longer do. They name vanilla's
+    // own artwork instead, so the mod ships no icon for them at all.
+    //
+    // Removing the rows is the POINT, not tidiness. Several surfaces resolve an icon by the
+    // item's CLASS NAME with no override available -- a recipe's icon is its first product's
+    // Name (RecipeFamily.cs:241, not virtual), and ModBundleManager aliases each item's display
+    // name onto whatever the bundle registered under its class name. While this table shipped a
+    // flat colour under those names, every one of those surfaces drew the flat colour no matter
+    // what the server classes declared.
+    //
+    // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md.
     private static readonly (string TypeName, Color Fill)[] ItemIcons =
     {
         ("SurveyDroneItem",                      new Color(0.25f, 0.55f, 0.85f, 1f)), // teal-blue (pre-existing)
         ("DroneDockItem",                        new Color(0.40f, 0.45f, 0.50f, 1f)), // steel grey -- shipped without an icon; see below
-        ("AdvancedElectronicsSkillBook",         new Color(0.45f, 0.20f, 0.55f, 1f)), // deep purple
-        ("AdvancedElectronicsSkillScroll",       new Color(0.85f, 0.75f, 0.50f, 1f)), // parchment
         ("EngineeringResearchPaperPostModernItem", new Color(0.90f, 0.90f, 0.95f, 1f)), // near-white paper
         ("AdvancedElectronicsAssemblyItem",      new Color(0.85f, 0.50f, 0.15f, 1f)), // orange
         ("BatteryItem",                          new Color(0.20f, 0.70f, 0.35f, 1f)), // green
-        ("AdvancedElectronicsUpgradeItem",       new Color(0.80f, 0.20f, 0.30f, 1f)), // red -- plugin module
         ("HarvestDroneItem",                     new Color(0.42f, 0.26f, 0.14f, 1f)), // chocolate -- was amber, too close to the assembly's orange
         ("MiningDroneItem",                      new Color(0.60f, 0.85f, 0.10f, 1f)), // lime -- green-dominant, unlike HarvestDrone's red-dominant amber
-        ("AdvancedElectronicsSkill",             new Color(0.85f, 0.15f, 0.60f, 1f)), // magenta -- a Skill, not an Item, and it binds exactly the same way
     };
 
     /// <summary>
@@ -358,6 +366,48 @@ public static class AdvancedElectronicsBuildTools
         AssignIconSprite(itemTemplate, sprite);
         Debug.Log($"[AdvancedElectronics] '{itemName}' now has a placeholder foreground icon ({AssetDatabase.GetAssetPath(sprite)}). Swap in real art later by re-importing over that same PNG file, or by assigning a different Sprite to its ItemTemplate 'foreground' Image component.");
         return true;
+    }
+
+
+    /// <summary>
+    /// Deletes scene objects under "Items" that no longer appear in either icon table.
+    ///
+    /// Needed because retiring an entry is not just dropping its row: the GameObject is what the
+    /// client reads, so while it survives, its sprite stays registered under the class name and
+    /// keeps shadowing vanilla's icon on every name-keyed surface. Nothing else in this file ever
+    /// removes one -- the finishers only create.
+    /// </summary>
+    [MenuItem("Eco Tools/Advanced Electronics/Retire Unlisted Item Icons")]
+    public static void RetireUnlistedItemIcons()
+    {
+        var itemsRoot = FindInLoadedScenes("Items");
+        if (itemsRoot == null)
+        {
+            Debug.LogError("[AdvancedElectronics] No 'Items' root in the open scene.");
+            return;
+        }
+
+        var keep = new HashSet<string>(ItemIcons.Select(entry => entry.TypeName));
+        foreach (var rendered in AdvancedElectronicsIconRenderer.RenderedItemNames) keep.Add(rendered);
+
+        var doomed = new List<GameObject>();
+        foreach (Transform child in itemsRoot.transform)
+            if (!keep.Contains(child.name)) doomed.Add(child.gameObject);
+
+        if (doomed.Count == 0)
+        {
+            Debug.Log($"[AdvancedElectronics] Nothing to retire -- every object under 'Items' is listed in a table ({keep.Count} listed).");
+            return;
+        }
+
+        foreach (var go in doomed)
+        {
+            Debug.Log($"[AdvancedElectronics] Retiring scene object '{go.name}' -- no table row, so the mod ships no icon for it and the class name is left free to resolve to vanilla's.");
+            Object.DestroyImmediate(go);
+        }
+
+        EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+        Debug.Log($"[AdvancedElectronics] Retired {doomed.Count} item object(s). Delete their PNGs too, then SAVE THE SCENE and rebuild the bundle.");
     }
 
     /// <summary>
