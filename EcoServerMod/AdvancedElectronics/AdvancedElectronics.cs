@@ -85,6 +85,22 @@
         /// </summary>
         public override string IconName => "ElectronicsSkill";
 
+        /// <summary>
+        /// The icon drawn INLINE IN TOOLTIP AND CHAT TEXT, e.g. the little square beside this
+        /// item's name in "Requires: ... ".
+        ///
+        /// ItemLinkable declares it as
+        /// <c>TextLoc.Item(TextLoc.Icon(this.Name, text))</c>
+        /// (Server/Eco.Gameplay/Items/ItemLinkable.cs:56) -- keyed on <c>Name</c>, the CLASS name,
+        /// which is a fourth field independent of IconName and of both icon attributes. Setting
+        /// those three left this one still asking for the class name, which resolves to whatever
+        /// the mod's own bundle registered under it.
+        ///
+        /// Pointing it at IconName rather than a literal keeps one source of truth: change the
+        /// icon in one place and every surface follows.
+        /// </summary>
+        protected override LocString ItemIconUILink(LocString text) => TextLoc.Item(TextLoc.Icon(this.IconName, text));
+
         public override void OnLevelUp(User user)
         {
             user.Skillset.AddExperience(typeof(SelfImprovementSkill), 20, Localizer.DoStr("for leveling up another specialization."));
@@ -174,6 +190,22 @@
         /// grey plate rather than the olive one every skill book in an inventory slot uses. The
         /// space-named set is for category headers, and it looks wrong beside real items.
         public override string IconName => "ElectronicsSkillBook";
+
+        /// <summary>
+        /// The icon drawn INLINE IN TOOLTIP AND CHAT TEXT, e.g. the little square beside this
+        /// item's name in "Requires: ... ".
+        ///
+        /// ItemLinkable declares it as
+        /// <c>TextLoc.Item(TextLoc.Icon(this.Name, text))</c>
+        /// (Server/Eco.Gameplay/Items/ItemLinkable.cs:56) -- keyed on <c>Name</c>, the CLASS name,
+        /// which is a fourth field independent of IconName and of both icon attributes. Setting
+        /// those three left this one still asking for the class name, which resolves to whatever
+        /// the mod's own bundle registered under it.
+        ///
+        /// Pointing it at IconName rather than a literal keeps one source of truth: change the
+        /// icon in one place and every surface follows.
+        /// </summary>
+        protected override LocString ItemIconUILink(LocString text) => TextLoc.Item(TextLoc.Icon(this.IconName, text));
     }
 
     [Serialized]
@@ -235,6 +267,22 @@
         /// grey plate rather than the olive one every skill scroll in an inventory slot uses. The
         /// space-named set is for category headers, and it looks wrong beside real items.
         public override string IconName => "ElectronicsSkillScroll";
+
+        /// <summary>
+        /// The icon drawn INLINE IN TOOLTIP AND CHAT TEXT, e.g. the little square beside this
+        /// item's name in "Requires: ... ".
+        ///
+        /// ItemLinkable declares it as
+        /// <c>TextLoc.Item(TextLoc.Icon(this.Name, text))</c>
+        /// (Server/Eco.Gameplay/Items/ItemLinkable.cs:56) -- keyed on <c>Name</c>, the CLASS name,
+        /// which is a fourth field independent of IconName and of both icon attributes. Setting
+        /// those three left this one still asking for the class name, which resolves to whatever
+        /// the mod's own bundle registered under it.
+        ///
+        /// Pointing it at IconName rather than a literal keeps one source of truth: change the
+        /// icon in one place and every surface follows.
+        /// </summary>
+        protected override LocString ItemIconUILink(LocString text) => TextLoc.Item(TextLoc.Icon(this.IconName, text));
     }
 
 

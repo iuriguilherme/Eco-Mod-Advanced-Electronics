@@ -162,6 +162,22 @@ namespace Eco.Mods.TechTree
         /// the class name; both are needed to point at one picture.
         /// </summary>
         public override string IconName => "ElectronicsUpgradeItem";
+
+        /// <summary>
+        /// The icon drawn INLINE IN TOOLTIP AND CHAT TEXT, e.g. the little square beside this
+        /// item's name in "Requires: ... ".
+        ///
+        /// ItemLinkable declares it as
+        /// <c>TextLoc.Item(TextLoc.Icon(this.Name, text))</c>
+        /// (Server/Eco.Gameplay/Items/ItemLinkable.cs:56) -- keyed on <c>Name</c>, the CLASS name,
+        /// which is a fourth field independent of IconName and of both icon attributes. Setting
+        /// those three left this one still asking for the class name, which resolves to whatever
+        /// the mod's own bundle registered under it.
+        ///
+        /// Pointing it at IconName rather than a literal keeps one source of truth: change the
+        /// icon in one place and every surface follows.
+        /// </summary>
+        protected override LocString ItemIconUILink(LocString text) => TextLoc.Item(TextLoc.Icon(this.IconName, text));
         // v14 module shape, matching ElectronicsUpgradeItem in the shipped __core__ mod.
         //
         // The old form passed (ResourceEfficiency | SpeedEfficiency, 0.80f, skillType, 0.75f) and
