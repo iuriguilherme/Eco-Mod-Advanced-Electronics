@@ -5,8 +5,8 @@ records exactly where the work stands, what is proven, what is assumed, and what
 
 | | |
 |---|---|
-| **Branch** | `feat/tech-tree-icons`, 34 commits ahead of `origin/main`, **nothing pushed** |
-| **Head** | `422e4d6` |
+| **Branch** | `feat/tech-tree-icons`, ~37 commits ahead of `origin/main`, **nothing pushed** |
+| **Head** | the last commit on the branch; `422e4d6` is where the code work ended, later commits are docs |
 | **Both gates** | green — `scripts/validate-icon-binding.sh`, `scripts/validate-name-match.sh` |
 | **Build / tests** | 0 errors, 260/260 |
 | **Deployed** | server DLL 08-30 15:45 (= `d0232b0`); bundle 08-29 21:27, byte-identical to repo |
@@ -62,24 +62,59 @@ Then run protocol rows **T12** (recipe icons) and **T13** (regression sweep).
 Expected at T12: recipe icons become Eco's **default** missing-icon sprite, not vanilla's book.
 That is option B working as chosen, not a failure.
 
-### 2. Art — three items and one model
+### 2. Art brief — the next deliverable, specified here so it can be written cold
 
-Needs a human artist. **A presentable brief was requested and not yet written** — that is the
-next deliverable, covering at minimum: `BatteryItem`, `EngineeringResearchPaperPostModernItem`,
-the `DroneDockObject` model, and the tag icons above. The research paper is already specified to
-pixel level in its guide; the others are not.
+**Audience: a human artist who is not on this project and has to be persuaded to help.** Not a
+ticket. It needs to explain what Eco icons are, show what good looks like, and make the ask
+small and concrete. Publish it somewhere shareable rather than leaving it in the repo only.
 
-### 3. The licensing question — unresolved, and it gates a real simplification
+What it must cover, with what is already known about each:
 
-Shipping vanilla's art under our own class names ("option A") would fix every remaining
-name-keyed surface at once and let **all four** source-side overrides be deleted. It was not
-taken because it puts Strange Loop Games' pixels in a public LGPL repo and release archive.
+| Asset | What is known | What is missing |
+|---|---|---|
+| `EngineeringResearchPaperPostModernItem` | **Fully specified** — `docs/guides/2026-08-research-paper-icon-spec.md` has the measured grammar, geometry, the platinum ramp `#CAE4FF` and band `#7C553F`, and the decision already taken | Only the drawing |
+| `BatteryItem` | No vanilla counterpart; atlas holds no `Battery*` rect | Everything — subject, composition |
+| `DroneDockObject` **model** | Currently a hand-built Unity primitive; its icon is a render, so a real model fixes the icon for free | The 3D model; icon then needs no art at all |
+| `Electric Fuel` tag | Client reports `Cannot find icon with name "Electric Fuel"` | Never assessed — is it ours or vanilla's? |
+| `Skill Books` / research-paper **tag** icons | Vanilla's tag icons are one drawing on a grey plate | Whether we need our own at all |
+| `MiningComponent`, `SurveyComponent` | Ours, carry a bare `[HasIcon]`, no asset | Whether components warrant icons |
+| `AdvancedElectronicsSulfuricBatteryTalentGroup`, `BatteryRecipe` | Reported missing by the client | Out of original scope, unassessed |
 
-What is known: the four reference mods that add skills — AnimalHusbandry, Mixology,
-ArcaneKnowledge, IntelligenceSkillMod — contain **zero icon code of any kind**, and ship art in
-their `.unity3d` bundles. **What was not done: decompressing those bundles to see whether the art
-inside is vanilla-derived.** That is the question that actually bears on precedent, it is
-answerable from `.references/Mods/`, and it needs an LZ4 reader. Do not assume it was ruled out.
+Facts the brief should carry, all established this session:
+
+- **128 × 128, PNG with alpha.** Vanilla bakes at that size (`UISpriteBaker.cs:58`).
+- Icons are **two sprites**: a full one carrying the background plate, and a `_FG` one without.
+  The plate is reconstructed and committed at
+  `Assets/Art/AdvancedElectronics/Sprites/IconBackground.png` — an artist can composite against
+  it rather than inventing one.
+- The house style is **isometric three-quarter, flat-shaded, readable at thumbnail size**.
+  Extract comparisons with `docs/guides/2026-08-eco-icon-atlas-guide.md`.
+- Fills must be **pairwise separable** — measure, do not eyeball. The closest pair in the mod's
+  own set was once 20.7 dE, under the ~23 where two colours stop reading as different.
+- Licence: the mod is **LGPL-3.0-or-later and public**. Whatever an artist contributes has to be
+  licensable on those terms, and that must be agreed up front, not after.
+
+### 3. Licensing — specified here so the ask can be written cold
+
+Two separable questions. Do not merge them.
+
+**Q1 — may we ship vanilla's art?** Shipping SLG's icons under our class names ("option A") would
+fix every remaining name-keyed surface and let all four source-side overrides be deleted. Needs
+SLG's answer. Worth asking precisely: *may a public, LGPL-licensed mod redistribute icon sprites
+extracted from the game's own atlas, for items the mod adds?* Note that the ModKit already
+ships art to modders, so there may be an existing answer.
+
+**Q2 — is there a method that needs no licence at all?** Naming vanilla's icon already is one:
+it ships zero pixels and is what the mod does today for four entries. The open part is whether
+that method can be made to reach the surfaces that resolve by class name — recipes and the
+display-name alias. If Eco exposes any hook there that was not found, Q1 becomes moot.
+
+Before asking SLG, close the evidence gap: **decompress the reference mods' bundles in
+`.references/Mods/` and look at whether their art is vanilla-derived.** AnimalHusbandry,
+Mixology, ArcaneKnowledge and IntelligenceSkillMod all add skills, all contain zero icon code,
+and all ship `.unity3d` bundles. If public mods already redistribute vanilla icons, that is
+precedent worth citing. This was **not** done — it needs an LZ4 reader (`lz4` or `UnityPy`,
+neither currently installed).
 
 ### 4. The plan is stale and must be updated or superseded
 
