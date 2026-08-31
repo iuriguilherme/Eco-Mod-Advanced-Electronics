@@ -62,13 +62,20 @@ Then run protocol rows **T12** (recipe icons) and **T13** (regression sweep).
 Expected at T12: recipe icons become Eco's **default** missing-icon sprite, not vanilla's book.
 That is option B working as chosen, not a failure.
 
-### 2. Art brief — the next deliverable, specified here so it can be written cold
+### 2. Art brief — **written**
 
-**Audience: a human artist who is not on this project and has to be persuaded to help.** Not a
-ticket. It needs to explain what Eco icons are, show what good looks like, and make the ask
-small and concrete. Publish it somewhere shareable rather than leaving it in the repo only.
+`docs/briefs/2026-08-31-icon-art-brief.html` is the artist-facing request. It is tracked with
+`__ICON_*__` placeholders instead of image bytes; `docs/briefs/build-art-brief.py <output.html>`
+inlines the three drone icons as data URIs and writes the standalone page that gets shared. The
+owner holds the published link.
 
-What it must cover, with what is already known about each:
+It asks for three things — the PostModern research paper (01), the battery (02), the drone dock
+model (03) — and lists the two unassessed tag/component icons as explicitly not-yet-needed. It
+states CC BY-SA 4.0 for art, permanent named credit, no deadline, and one constraint worth
+keeping if the document is ever rewritten: **the paper must be drawn fresh in vanilla's visual
+language, not painted over vanilla's file**, because the repo is public.
+
+The per-asset knowledge it was built from, kept here because it is the audit trail:
 
 | Asset | What is known | What is missing |
 |---|---|---|
@@ -80,7 +87,7 @@ What it must cover, with what is already known about each:
 | `MiningComponent`, `SurveyComponent` | Ours, carry a bare `[HasIcon]`, no asset | Whether components warrant icons |
 | `AdvancedElectronicsSulfuricBatteryTalentGroup`, `BatteryRecipe` | Reported missing by the client | Out of original scope, unassessed |
 
-Facts the brief should carry, all established this session:
+Facts the brief carries, all established this session:
 
 - **128 × 128, PNG with alpha.** Vanilla bakes at that size (`UISpriteBaker.cs:58`).
 - Icons are **two sprites**: a full one carrying the background plate, and a `_FG` one without.
@@ -91,8 +98,8 @@ Facts the brief should carry, all established this session:
   Extract comparisons with `docs/guides/2026-08-eco-icon-atlas-guide.md`.
 - Fills must be **pairwise separable** — measure, do not eyeball. The closest pair in the mod's
   own set was once 20.7 dE, under the ~23 where two colours stop reading as different.
-- Licence: the mod is **LGPL-3.0-or-later and public**. Whatever an artist contributes has to be
-  licensable on those terms, and that must be agreed up front, not after.
+- Licence: **code is LGPL-3.0-or-later, art is CC BY-SA 4.0** (`LICENSE-ART`), and the repo is
+  public. Whatever an artist contributes has to be licensable on those terms, agreed up front.
 
 ### 3. Licensing — specified here so the ask can be written cold
 

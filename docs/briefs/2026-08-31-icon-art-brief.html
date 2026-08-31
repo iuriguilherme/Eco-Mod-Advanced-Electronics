@@ -1,0 +1,707 @@
+<title>Advanced Electronics Art Brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>
+  :root {
+    --paper:      #EBEEF3;
+    --card:       #FFFFFF;
+    --card-sunk:  #F4F6F9;
+    --ink:        #151A21;
+    --ink-soft:   #55606F;
+    --ink-faint:  #7C8899;
+    --rule:       #C6CEDA;
+    --rule-soft:  #DFE4EC;
+    --navy:       #426390;
+    --navy-deep:  #2C4468;
+    --band:       #7C553F;
+    --shadow:     0 1px 0 rgba(21, 26, 33, .05), 0 8px 24px -18px rgba(21, 26, 33, .5);
+
+    --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --f-body:    "Source Serif 4", Georgia, "Times New Roman", serif;
+    --f-mono:    "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+    --step-0: 1.0625rem;
+    --step-1: 1.1875rem;
+    --step-2: 1.4375rem;
+    --step-3: 1.875rem;
+    --step-4: 2.625rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:     #0E1319;
+      --card:      #181F28;
+      --card-sunk: #131A22;
+      --ink:       #E3E9F1;
+      --ink-soft:  #97A4B6;
+      --ink-faint: #6D7B8D;
+      --rule:      #2F3A47;
+      --rule-soft: #222B35;
+      --navy:      #83A9DE;
+      --navy-deep: #A9C6EE;
+      --band:      #C08D6B;
+      --shadow:    0 1px 0 rgba(0,0,0,.4), 0 8px 24px -18px rgba(0,0,0,.9);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:     #0E1319;
+    --card:      #181F28;
+    --card-sunk: #131A22;
+    --ink:       #E3E9F1;
+    --ink-soft:  #97A4B6;
+    --ink-faint: #6D7B8D;
+    --rule:      #2F3A47;
+    --rule-soft: #222B35;
+    --navy:      #83A9DE;
+    --navy-deep: #A9C6EE;
+    --band:      #C08D6B;
+    --shadow:    0 1px 0 rgba(0,0,0,.4), 0 8px 24px -18px rgba(0,0,0,.9);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: var(--step-0);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: clamp(1.25rem, 4vw, 3.5rem) clamp(1rem, 4vw, 2.5rem) 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.25rem;
+  }
+
+  /* ---- title block ---------------------------------------------- */
+
+  .titleblock {
+    border: 1px solid var(--rule);
+    background: var(--card);
+    box-shadow: var(--shadow);
+  }
+
+  .titleblock__main {
+    padding: clamp(1.5rem, 4vw, 2.75rem);
+    display: flex;
+    flex-direction: column;
+    gap: 1.125rem;
+  }
+
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: .75rem;
+    font-weight: 500;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--navy);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--f-display);
+    font-weight: 700;
+    font-size: var(--step-4);
+    line-height: 1.05;
+    letter-spacing: -.022em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .standfirst {
+    font-size: var(--step-1);
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: 44ch;
+    margin: 0;
+  }
+
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    border-top: 1px solid var(--rule);
+  }
+
+  .field {
+    padding: .8rem 1.1rem .9rem;
+    border-right: 1px solid var(--rule-soft);
+    display: flex;
+    flex-direction: column;
+    gap: .18rem;
+  }
+  .field:last-child { border-right: 0; }
+
+  .field__label {
+    font-family: var(--f-mono);
+    font-size: .6875rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .field__value {
+    font-family: var(--f-mono);
+    font-size: .8125rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  /* ---- sections -------------------------------------------------- */
+
+  section { display: flex; flex-direction: column; gap: 1.15rem; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: .85rem;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: .5rem;
+  }
+
+  .sec-head__idx {
+    font-family: var(--f-mono);
+    font-size: .75rem;
+    font-weight: 500;
+    letter-spacing: .1em;
+    color: var(--navy);
+    flex: none;
+  }
+
+  h2 {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: var(--step-2);
+    letter-spacing: -.012em;
+    line-height: 1.2;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h3 {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: var(--step-1);
+    letter-spacing: -.008em;
+    line-height: 1.3;
+    margin: 0;
+  }
+
+  p { margin: 0; max-width: 68ch; }
+  section > p + p { margin-top: -.35rem; }
+
+  a {
+    color: var(--navy);
+    text-underline-offset: .18em;
+    text-decoration-thickness: 1px;
+  }
+  a:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: 3px;
+  }
+
+  strong { font-weight: 600; }
+
+  code, .mono {
+    font-family: var(--f-mono);
+    font-size: .875em;
+  }
+  code {
+    background: var(--card-sunk);
+    border: 1px solid var(--rule-soft);
+    border-radius: 2px;
+    padding: .05em .32em;
+    white-space: nowrap;
+  }
+
+  ul { margin: 0; padding-left: 1.15rem; max-width: 68ch; }
+  li { margin-bottom: .4rem; }
+  li::marker { color: var(--ink-faint); }
+
+  /* ---- reference strip ------------------------------------------- */
+
+  .refstrip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 1px;
+    background: var(--rule-soft);
+    border: 1px solid var(--rule);
+  }
+
+  .ref {
+    background: var(--card);
+    padding: 1.25rem 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .7rem;
+    text-align: center;
+  }
+
+  .ref img {
+    width: 112px;
+    height: 112px;
+    image-rendering: auto;
+    display: block;
+  }
+
+  .ref__name {
+    font-family: var(--f-mono);
+    font-size: .75rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  .ref__note {
+    font-size: .875rem;
+    line-height: 1.45;
+    color: var(--ink-soft);
+  }
+
+  /* ---- spec table ------------------------------------------------ */
+
+  .specwrap { overflow-x: auto; border: 1px solid var(--rule); background: var(--card); }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: var(--f-mono);
+    font-size: .8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  th, td {
+    text-align: left;
+    padding: .62rem .95rem;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+
+  th {
+    font-weight: 500;
+    font-size: .6875rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    background: var(--card-sunk);
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: 0; }
+
+  td:first-child { color: var(--navy); white-space: nowrap; }
+
+  /* ---- asset entries --------------------------------------------- */
+
+  .assets { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  .asset {
+    border: 1px solid var(--rule);
+    background: var(--card);
+    box-shadow: var(--shadow);
+  }
+
+  .asset__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem .9rem;
+    padding: .85rem 1.35rem;
+    border-bottom: 1px solid var(--rule);
+    background: var(--card-sunk);
+  }
+
+  .asset__idx {
+    font-family: var(--f-mono);
+    font-size: .8125rem;
+    font-weight: 500;
+    color: var(--ink-faint);
+    flex: none;
+  }
+
+  .asset__title { flex: 1 1 14rem; }
+
+  .pill {
+    font-family: var(--f-mono);
+    font-size: .6875rem;
+    font-weight: 500;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: .22rem .55rem;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    white-space: nowrap;
+    flex: none;
+  }
+  .pill--ready { color: var(--navy); }
+  .pill--open  { color: var(--band); }
+  .pill--maybe { color: var(--ink-faint); }
+
+  .asset__body {
+    padding: 1.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .asset__body p { max-width: 66ch; }
+
+  .kv {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: .4rem 1.1rem;
+    align-items: baseline;
+  }
+
+  .kv dt {
+    font-family: var(--f-mono);
+    font-size: .6875rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding-top: .15rem;
+  }
+
+  .kv dd { margin: 0; font-size: .9375rem; line-height: 1.5; }
+
+  .swatches { display: flex; flex-wrap: wrap; gap: .55rem; }
+
+  .swatch {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    font-family: var(--f-mono);
+    font-size: .75rem;
+    border: 1px solid var(--rule);
+    background: var(--card-sunk);
+    padding: .22rem .55rem .22rem .28rem;
+    border-radius: 2px;
+  }
+
+  .swatch i {
+    width: .9rem;
+    height: .9rem;
+    border-radius: 2px;
+    border: 1px solid rgba(0,0,0,.22);
+    flex: none;
+  }
+
+  /* ---- pull quote ------------------------------------------------ */
+
+  .pull {
+    border-left: 3px solid var(--navy);
+    padding: .2rem 0 .2rem 1.15rem;
+    font-size: var(--step-1);
+    line-height: 1.5;
+    color: var(--ink);
+    max-width: 56ch;
+  }
+
+  /* ---- closing --------------------------------------------------- */
+
+  .closing {
+    border: 1px solid var(--rule);
+    background: var(--card);
+    padding: clamp(1.35rem, 4vw, 2.25rem);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    box-shadow: var(--shadow);
+  }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.1rem;
+    font-family: var(--f-mono);
+    font-size: .75rem;
+    line-height: 1.7;
+    color: var(--ink-faint);
+  }
+
+  @media (max-width: 34rem) {
+    .field { border-right: 0; border-bottom: 1px solid var(--rule-soft); }
+    .kv { grid-template-columns: 1fr; gap: .15rem; }
+    .kv dd { margin-bottom: .5rem; }
+  }
+</style>
+
+<div class="sheet">
+
+  <header class="titleblock">
+    <div class="titleblock__main">
+      <p class="eyebrow">Art request &middot; Eco mod</p>
+      <h1>Six icons and one model for a mod that flies drones</h1>
+      <p class="standfirst">Advanced Electronics adds the first self-moving autonomous objects any Eco mod has shipped. The code works and people play it. The art is the part I cannot do.</p>
+    </div>
+    <div class="fields">
+      <div class="field">
+        <span class="field__label">Project</span>
+        <span class="field__value">Advanced Electronics</span>
+      </div>
+      <div class="field">
+        <span class="field__label">Version</span>
+        <span class="field__value">0.3.0 &middot; alpha</span>
+      </div>
+      <div class="field">
+        <span class="field__label">Target</span>
+        <span class="field__value">Eco 0.14.0.3</span>
+      </div>
+      <div class="field">
+        <span class="field__label">Art licence</span>
+        <span class="field__value">CC BY-SA 4.0</span>
+      </div>
+      <div class="field">
+        <span class="field__label">Credit</span>
+        <span class="field__value">Named, permanent</span>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-head__idx">A</span>
+      <h2>What I am asking for</h2>
+    </div>
+    <p>Three pieces of art, plus two or three small ones that may turn out to be unnecessary. Each is bounded, each is specified below, and <strong>you can take exactly one and stop there</strong> &mdash; nothing here depends on anything else in the list. The first item is specified down to the hex value; if you only ever do that one, the mod is meaningfully better than it is today.</p>
+    <p>There is no money in this. It is an open-source mod, and I would rather say that in the first paragraph than bury it. What there is: a permanent credit in the repository and the release notes, your name on art that ships to every server running the mod, and a piece of work with an unusually clear spec.</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-head__idx">B</span>
+      <h2>Why this mod, and not another one</h2>
+    </div>
+    <p>Eco is a multiplayer civilization sim where an entire server shares one ecology, one economy, and one set of laws. Mods add professions, machines and recipes to it. Almost all of them add static things: a workbench, a recipe, a skill.</p>
+    <p class="pull">This one adds drones that leave their dock, fly a survey grid over the terrain, find ore, and come back. As far as I can establish, no other Eco mod has shipped an object that moves itself.</p>
+    <p>That took a pathfinder, a survey grid, a drone lifecycle and a lot of careful work against a game engine that was not expecting it. It is done, it is tested, and it is released. What it looks like in the player's inventory is currently the weakest part of the whole thing &mdash; a few items still draw the engine's generic &ldquo;no icon&rdquo; sprite, and one draws a flat coloured square I am embarrassed by.</p>
+    <p>That is the entire gap. The engineering is finished; the last mile is pictures.</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-head__idx">C</span>
+      <h2>What the finished work looks like</h2>
+    </div>
+    <p>These three shipped and are in the game now. They are renders of the drone models on the game's standard icon plate &mdash; not drawn by hand, which is exactly why the remaining items are hard for me. They set the register: <strong>isometric three-quarter, flat-shaded, one clear silhouette, readable at thumbnail size.</strong></p>
+    <div class="refstrip">
+      <figure class="ref">
+        <img src="__ICON_SURVEY__" alt="Survey drone icon: a small teal-blue quadcopter on a rounded grey plate">
+        <figcaption>
+          <div class="ref__name">SurveyDroneItem</div>
+          <div class="ref__note">Teal-blue. Scouts the grid and reports ore.</div>
+        </figcaption>
+      </figure>
+      <figure class="ref">
+        <img src="__ICON_MINING__" alt="Mining drone icon: a lime-green quadcopter on a rounded grey plate">
+        <figcaption>
+          <div class="ref__name">MiningDroneItem</div>
+          <div class="ref__note">Lime. Extracts from a surveyed plot.</div>
+        </figcaption>
+      </figure>
+      <figure class="ref">
+        <img src="__ICON_HARVEST__" alt="Harvest drone icon: a brown quadcopter on a rounded grey plate">
+        <figcaption>
+          <div class="ref__name">HarvestDroneItem</div>
+          <div class="ref__note">Chocolate. Works crops and plantations.</div>
+        </figcaption>
+      </figure>
+    </div>
+    <p>The three share one chassis and are separated by colour alone, which is a compromise I made because I am not an artist. If you look at them and immediately want to fix that, say so &mdash; that is a fourth thing worth doing and I left it off the list only because the three above at least work.</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-head__idx">D</span>
+      <h2>The format, in full</h2>
+    </div>
+    <p>These constants come from measuring the game's own icon atlas rather than from guesswork, so they are safe to build against.</p>
+    <div class="specwrap">
+      <table>
+        <thead>
+          <tr><th scope="col">Field</th><th scope="col">Value</th><th scope="col">Why</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Canvas</td>
+            <td>128 &times; 128 px, PNG, alpha</td>
+            <td>Every icon the game bakes is this size</td>
+          </tr>
+          <tr>
+            <td>Deliverables</td>
+            <td>two PNGs per icon</td>
+            <td>One <em>with</em> the background plate, one <em>without</em></td>
+          </tr>
+          <tr>
+            <td>Plate</td>
+            <td>supplied</td>
+            <td>The rounded grey plate is in the repo; composite onto it</td>
+          </tr>
+          <tr>
+            <td>Naming</td>
+            <td><span class="mono">Name_icon.png</span> and <span class="mono">Name_icon_FG.png</span></td>
+            <td>The suffix is how the game tells the two apart</td>
+          </tr>
+          <tr>
+            <td>Style</td>
+            <td>isometric three-quarter, flat-shaded</td>
+            <td>Matches every vanilla item icon</td>
+          </tr>
+          <tr>
+            <td>Legibility</td>
+            <td>must read at roughly 40 px</td>
+            <td>That is the size of a real inventory slot</td>
+          </tr>
+          <tr>
+            <td>Colour separation</td>
+            <td>keep fills clearly apart</td>
+            <td>Two of my own icons once landed close enough to be confused in a full inventory</td>
+          </tr>
+          <tr>
+            <td>Source files</td>
+            <td>welcome, not required</td>
+            <td>Layered source makes future tweaks possible without you</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>If any of this is inconvenient for how you work, ignore it and send me flat art at any size &mdash; conforming it to the format is my job, not yours. The spec is here so you <em>can</em> match it, not so you have to.</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-head__idx">E</span>
+      <h2>The assets</h2>
+    </div>
+    <p>Ordered by how much difference each makes and how well specified it is. The first three are the real ask; the last two may not be needed at all and I would not start on them yet.</p>
+
+    <div class="assets">
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">01</span>
+          <h3 class="asset__title">Engineering research paper &mdash; PostModern tier</h3>
+          <span class="pill pill--ready">Fully specified</span>
+        </div>
+        <div class="asset__body">
+          <p>Eco's research papers are a two-axis system. A <strong>family</strong> emblem (geology, metallurgy, engineering&hellip;) sits in the middle of a sheet of paper and never changes. A <strong>tier</strong> is signalled by furniture around it: a plain sheet is Basic, a tan binding band is Advanced, a darker brown band plus a gold star is Modern.</p>
+          <p>This mod introduces a <strong>PostModern</strong> tier. The game has never drawn one, in any family. So this is a new rung on an existing ladder, and the ladder's rule is <em>accumulating formality</em> &mdash; each tier adds furniture and never takes any away.</p>
+          <p>I measured the existing papers pixel by pixel to work out what varies. The emblem is 0% changed across every tier step; the navy side rails are identical in every family and every tier; only the top band and a badge slot in the lower left carry tier. So the design decision is already made and narrow:</p>
+          <dl class="kv">
+            <dt>Emblem</dt>
+            <dd>The engineering gear, unchanged, at x 32&ndash;96 / y 16&ndash;80. A player must read &ldquo;engineering paper&rdquo; before they read the tier.</dd>
+            <dt>Rails</dt>
+            <dd>Navy, both edges, unchanged. Dendrology looks green-framed and Culinary red-framed, but that is the emblem bleeding outward &mdash; sampled at the edge, every family returns the same navy.</dd>
+            <dt>Badge</dt>
+            <dd>Same star silhouette as Modern, in <strong>platinum instead of gold</strong>. Rank by material.</dd>
+            <dt>Band</dt>
+            <dd>One step darker than Modern's, continuing the existing tonal trend.</dd>
+          </dl>
+          <div class="swatches">
+            <span class="swatch"><i style="background:#426390"></i>#426390 rails</span>
+            <span class="swatch"><i style="background:#CAE4FF"></i>#CAE4FF platinum</span>
+            <span class="swatch"><i style="background:#7C553F"></i>#7C553F band</span>
+            <span class="swatch"><i style="background:#FAFAF8"></i>#FAFAF8 sheet</span>
+          </div>
+          <p><strong>One constraint that matters.</strong> Please draw this fresh in the same visual language rather than recolouring the game's own file. The mod is public and its art ships under CC&nbsp;BY-SA&nbsp;4.0, so it needs to be original work that <em>matches</em> the house style, not a derivative of the studio's asset. Working from the vanilla paper on screen as a reference is exactly right; exporting and painting over it is not.</p>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">02</span>
+          <h3 class="asset__title">Battery</h3>
+          <span class="pill pill--open">Open brief</span>
+        </div>
+        <div class="asset__body">
+          <p>An item the player crafts and carries. It powers the drones. The game has no battery of its own anywhere in its icon set, so there is nothing to match against and nothing to be consistent with &mdash; this one is genuinely yours to design.</p>
+          <p>What it needs to communicate at 40&nbsp;px: <strong>stored electrical charge, industrial rather than consumer, craftable by hand at a rough tech level.</strong> Eco's tech tiers run from campfires to modern industry, and this sits in the upper-middle: think lead-acid or a chunky cell in a metal case, not a lithium pouch and not a cartoon AA.</p>
+          <p>It currently ships as a flat green square. Anything is an improvement, which is a low bar and I offer it as reassurance rather than as a standard.</p>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">03</span>
+          <h3 class="asset__title">Drone dock &mdash; a 3D model, not an icon</h3>
+          <span class="pill pill--open">Open brief</span>
+        </div>
+        <div class="asset__body">
+          <p>The largest ask, and the one with the best return. The dock is the building the drones launch from and return to &mdash; it is placed in the world, so players look at it constantly, and it is currently a shape I assembled out of Unity primitives. It looks exactly as good as that sounds.</p>
+          <p>Its icon is generated by rendering the model, so <strong>a real model fixes the icon for free</strong> and there is no separate 2D deliverable. One piece of work, two problems solved.</p>
+          <dl class="kv">
+            <dt>Reads as</dt>
+            <dd>A landing pad or hangar with a clear place a drone sits. Function should be legible from across the map.</dd>
+            <dt>Scale</dt>
+            <dd>Roughly a small workshop &mdash; a player walks up to it, not into it.</dd>
+            <dt>Materials</dt>
+            <dd>Eco's industrial tier: steel, concrete, some copper and exposed wiring. Weathered, built by hand, not injection-moulded.</dd>
+            <dt>Budget</dt>
+            <dd>Low-poly with a hand-painted or simple PBR texture. It sits alongside vanilla world objects, which are modest.</dd>
+            <dt>Format</dt>
+            <dd>FBX or a Blender file. I handle the Unity import, the collision and the prefab wiring.</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">04</span>
+          <h3 class="asset__title">Electric Fuel &mdash; category icon</h3>
+          <span class="pill pill--maybe">May not be needed</span>
+        </div>
+        <div class="asset__body">
+          <p>A tag, not an item &mdash; the label a group of items share. The game reports it as missing an icon, but I have not yet established whether that icon is mine to supply or something the base game should already provide. Tag icons are drawn differently from item icons: one flat symbol on a grey plate, closer to a pictogram than to an object.</p>
+          <p>Listed for completeness. I will confirm before asking anyone to draw it.</p>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">05</span>
+          <h3 class="asset__title">Mining and survey components</h3>
+          <span class="pill pill--maybe">May not be needed</span>
+        </div>
+        <div class="asset__body">
+          <p>Two internal parts the drones are built from. They appear in crafting lists. Whether they warrant their own icons or should inherit something generic is an open question about the mod's design, not about art. Same status as 04: on the list so nothing is hidden, not something to start.</p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-head__idx">F</span>
+      <h2>Licence, credit, and what I will not ask of you</h2>
+    </div>
+    <ul>
+      <li><strong>Your art ships under CC&nbsp;BY-SA&nbsp;4.0</strong>, which is the licence the mod's art already uses. You keep authorship. Anyone reusing it must credit you and share alike.</li>
+      <li><strong>You are credited by name</strong> in the repository, in the release notes, and in the mod listing &mdash; permanently, per asset, however you want to be named.</li>
+      <li><strong>It must be your own work</strong>, or work you can license on those terms. That rules out painting over the base game's files, AI-generated output you cannot license, and anything you have already sold exclusively.</li>
+      <li><strong>No deadline.</strong> The mod is released and working; these are improvements, not blockers.</li>
+      <li><strong>No obligation to finish.</strong> Take one item, send a sketch, or tell me it is not for you. Any of those is a complete and useful answer.</li>
+      <li><strong>I will not ask for revisions past what you offer.</strong> If a first pass is what you have time for, I will ship the first pass.</li>
+    </ul>
+    <p>If those terms are wrong for you but you would still like to help, tell me which part is the problem. The licence is the one piece I cannot move, because the whole project is public &mdash; everything else is negotiable.</p>
+  </section>
+
+  <div class="closing">
+    <h2>If you want in</h2>
+    <p>Reply and tell me which number you are interested in. I will send you the reference material for that item and nothing else: the relevant vanilla icons to look at, the plate PNG, the exact measurements, and the existing drone icons at full size.</p>
+    <p>The code and everything described here live at <a href="https://github.com/iuriguilherme/Eco-Mod-Advanced-Electronics">github.com/iuriguilherme/Eco-Mod-Advanced-Electronics</a>. Opening an issue there works as well as replying, if that is more your speed.</p>
+    <p>Item 01 is the one to take if you want the clearest brief. Item 03 is the one to take if you want the biggest visible impact. Item 02 is the one to take if you would rather design something than match something.</p>
+  </div>
+
+  <footer>
+    Advanced Electronics &middot; a mod for Eco by Strange Loop Games<br>
+    Code: LGPL-3.0-or-later &middot; Art: CC BY-SA 4.0 &middot; Not affiliated with or endorsed by Strange Loop Games<br>
+    Vanilla game art referenced in this document remains the property of Strange Loop Games and is not reproduced here.
+  </footer>
+
+</div>
