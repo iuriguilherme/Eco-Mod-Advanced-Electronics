@@ -69,11 +69,18 @@ That is option B working as chosen, not a failure.
 inlines the three drone icons as data URIs and writes the standalone page that gets shared. The
 owner holds the published link.
 
-It asks for three things — the PostModern research paper (01), the battery (02), the drone dock
-model (03) — and lists the two unassessed tag/component icons as explicitly not-yet-needed. It
-states CC BY-SA 4.0 for art, permanent named credit, no deadline, and one constraint worth
-keeping if the document is ever rewritten: **the paper must be drawn fresh in vanilla's visual
-language, not painted over vanilla's file**, because the repo is public.
+**Audience: the artist who built the drone model**, who has worked on the base game's art for
+years. So the document carries no persuasion, no format spec and no mod overview — he knows all
+three better than we do. It is a list of the eleven outstanding pieces grouped by kind of work,
+each with its concept and its scope, and nothing else. Items 10 and 11 are marked undecided
+because whether components warrant icons is a mod-design question, not an art question.
+
+Full list: dock model, drone role variants, battery, PostModern paper, upgrade module, skill
+emblem, three tag icons (`Electric Fuel`, `Post Modern Research`, `AdvancedElectronicsUpgrade` —
+all three declared by the mod), and the two undecided components.
+
+One line worth keeping if the document is ever rewritten: art ships **CC BY-SA 4.0**, so a piece
+must be drawn fresh in vanilla's visual language rather than painted over vanilla's file.
 
 The per-asset knowledge it was built from, kept here because it is the audit trail:
 
