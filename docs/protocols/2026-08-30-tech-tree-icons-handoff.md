@@ -9,8 +9,8 @@ records exactly where the work stands, what is proven, what is assumed, and what
 | **Head** | the last commit on the branch; `422e4d6` is where the code work ended, later commits are docs |
 | **Both gates** | green — `scripts/validate-icon-binding.sh`, `scripts/validate-name-match.sh` |
 | **Build / tests** | 0 errors, 260/260 |
-| **Deployed** | server DLL 08-30 15:45 (= `d0232b0`); bundle 08-29 21:27, byte-identical to repo |
-| **Pending deploy** | Bundle **must be rebuilt** — the scene changed at `422e4d6` and the deployed bundle predates it |
+| **Deployed** | server DLL 08-30 15:45 (= `d0232b0`); bundle 08-30 16:25, md5-identical to the repo's |
+| **Pending deploy** | None. Verified 2026-08-31 by reading the bundle's own contents, not its timestamp |
 
 ## Read these first
 
@@ -51,13 +51,22 @@ not been assessed.
 
 ## Remaining work, in dependency order
 
-### 1. Rebuild and redeploy the bundle — blocking, mechanical
+### 1. Run protocol rows T12 and T13 — the only thing left that needs the owner
 
-`422e4d6` removed four scene objects; the deployed bundle predates it. Until it is rebuilt,
-the retirement has not reached the client.
+**The rebuild is already done.** The earlier entry here said the bundle predated `422e4d6` and
+had to be rebuilt; that was wrong, and it was wrong because it compared timestamps. Reading the
+bundle itself settles it:
 
-Editor: `Eco Tools > Mod Kit > Build Current Bundle`. Then copy to `EcoModsDir` and restart.
-Then run protocol rows **T12** (recipe icons) and **T13** (regression sweep).
+```
+scripts/read-mod-bundle.py AssetBundles/AdvancedElectronics.unity3d --strings <dir>
+```
+
+The four retired names — `AdvancedElectronicsSkill`, `...SkillBook`, `...SkillScroll`,
+`AdvancedElectronicsUpgradeItem` — appear **nowhere** in the built bundle, while the seven live
+ones do. The deployed copy is md5-identical to the repo's. The retirement reached the client.
+
+So what remains is the testing, which only the owner can do: protocol rows **T12** (recipe
+icons) and **T13** (regression sweep).
 
 Expected at T12: recipe icons become Eco's **default** missing-icon sprite, not vanilla's book.
 That is option B working as chosen, not a failure.
@@ -108,27 +117,21 @@ Facts the brief carries, all established this session:
 - Licence: **code is LGPL-3.0-or-later, art is CC BY-SA 4.0** (`LICENSE-ART`), and the repo is
   public. Whatever an artist contributes has to be licensable on those terms, agreed up front.
 
-### 3. Licensing — specified here so the ask can be written cold
+### 3. Licensing — **written**, and the evidence gap is closed
 
-Two separable questions. Do not merge them.
+`docs/protocols/2026-08-31-slg-icon-licensing-ask.md` carries both questions in sendable form,
+what each answer changes, and the evidence gathered before sending. Two things it settles that
+the earlier plan only guessed at:
 
-**Q1 — may we ship vanilla's art?** Shipping SLG's icons under our class names ("option A") would
-fix every remaining name-keyed surface and let all four source-side overrides be deleted. Needs
-SLG's answer. Worth asking precisely: *may a public, LGPL-licensed mod redistribute icon sprites
-extracted from the game's own atlas, for items the mod adds?* Note that the ModKit already
-ships art to modders, so there may be an existing answer.
+- **The reference mods set no precedent.** All four were decompressed and inspected. Each ships
+  its own art under its own class names; **none** ships an asset named after a vanilla one, and
+  none uses the `_FG` convention. So there is nothing to cite — worth knowing before citing
+  something that does not exist. The check is by name only; pixel comparison would need a
+  Texture2D decoder and was not done.
+- **The ModKit ships with no licence file at all**, while distributing four of the game's own
+  textures. That absence is the reason to ask rather than infer.
 
-**Q2 — is there a method that needs no licence at all?** Naming vanilla's icon already is one:
-it ships zero pixels and is what the mod does today for four entries. The open part is whether
-that method can be made to reach the surfaces that resolve by class name — recipes and the
-display-name alias. If Eco exposes any hook there that was not found, Q1 becomes moot.
-
-Before asking SLG, close the evidence gap: **decompress the reference mods' bundles in
-`.references/Mods/` and look at whether their art is vanilla-derived.** AnimalHusbandry,
-Mixology, ArcaneKnowledge and IntelligenceSkillMod all add skills, all contain zero icon code,
-and all ship `.unity3d` bundles. If public mods already redistribute vanilla icons, that is
-precedent worth citing. This was **not** done — it needs an LZ4 reader (`lz4` or `UnityPy`,
-neither currently installed).
+Still open: **where** to ask. Pick a venue where the answer is public and quotable.
 
 ### 4. The plan is stale and must be updated or superseded
 
