@@ -191,6 +191,12 @@ namespace Eco.Mods.TechTree
                 var performed = this.Perform(outcome.Action, area, ground, above, citizen);
                 if (performed != null)
                 {
+                    // R15: a block the drone cannot work is SKIPPED, and does not fail the
+                    // area around it. Only a refusal that would repeat everywhere is worth
+                    // stopping for -- a law, a property boundary, an empty store -- and the
+                    // rest is one awkward block among hundreds.
+                    if (!this.IsAreaWide(performed.Value, area, citizen)) continue;
+
                     this.RecordStall(area, performed.Value.Stall, performed.Value.Detail);
                     return ParkedWorkOutcome.PlotFailed;
                 }
@@ -206,6 +212,47 @@ namespace Eco.Mods.TechTree
             // R31 wants the least-grown plant's due time rather than a sweep.
             this.RecordGrowthWait(area, plot);
             return ParkedWorkOutcome.PlotDone;
+        }
+
+        /// <summary>
+        /// Whether a refusal would repeat on every other block in the area, and so is worth
+        /// stopping the area for rather than skipping one block over (R15, R34).
+        ///
+        /// Law and property answer for the whole settlement or plot, so they are area-wide
+        /// by construction. A material shortfall is only area-wide if the material really is
+        /// gone: the same pretest stage also refuses a cell that happens to be occupied or a
+        /// block that changed underfoot, and reading those as an empty store would stop a
+        /// whole field over one blocked square. So the store is asked directly rather than
+        /// its wording being matched.
+        /// </summary>
+        private bool IsAreaWide((FarmStallReason Stall, string Detail) refusal, FarmAreaEntry area, User citizen)
+        {
+            switch (refusal.Stall)
+            {
+                case FarmStallReason.LawRefusal:
+                case FarmStallReason.PropertyRefusal:
+                    return true;
+
+                case FarmStallReason.MissingMaterial:
+                    return !this.SourceHolds(area, refusal.Detail, citizen);
+
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>Whether linked storage still holds what the refused action needed.</summary>
+        private bool SourceHolds(FarmAreaEntry area, string material, User citizen)
+        {
+            var wantedSeed = material != null && material.EndsWith("seed", StringComparison.OrdinalIgnoreCase);
+            var type = wantedSeed
+                ? CropCatalog.ByKey(area.Crop)?.SeedType
+                : typeof(DirtItem);
+
+            if (type == null) return false;
+
+            return this.SourceInventory(citizen).NonEmptyStacks
+                .Any(stack => stack.Item?.Type == type);
         }
 
         /// <summary>Performs one action, returning null on success or the stall to record on refusal.</summary>
