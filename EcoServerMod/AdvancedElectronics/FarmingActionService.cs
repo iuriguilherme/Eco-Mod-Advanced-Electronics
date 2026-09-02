@@ -345,16 +345,9 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private static FarmActionResult Perform(GameActionPack pack, List<GameAction> actions)
         {
-            if (pack.PackFlags != default)
-                return FarmActionResult.Refusal(RemovalRefusalStage.Unrecognised, "Pack flags were set.");
-
-            foreach (var action in actions)
-            {
-                if (action is IUserGameAction { Citizen: null })
-                    return FarmActionResult.Refusal(RemovalRefusalStage.Unrecognised, "An action carried no citizen.");
-                if (action.AuthIgnored)
-                    return FarmActionResult.Refusal(RemovalRefusalStage.Unrecognised, "An action waived authorization.");
-            }
+            var invariantFailure = GameActionPackGuards.InvariantFailure(pack, actions);
+            if (invariantFailure != null)
+                return FarmActionResult.Refusal(RemovalRefusalStage.Unrecognised, invariantFailure);
 
             // A failed early result is a refusal in its own right, reported with the
             // engine's wording rather than left to be classified below.
@@ -365,26 +358,8 @@ namespace Eco.Mods.TechTree
             var result = pack.TryPerform(null);
             if (result) return FarmActionResult.Success();
 
-            return FarmActionResult.Refusal(ClassifyRefusal(pack, actions), result.Message.ToString());
+            return FarmActionResult.Refusal(GameActionPackGuards.ClassifyRefusal(pack, actions), result.Message.ToString());
         }
 
-        /// <summary>
-        /// Law before property, the pipeline's own evaluation order, run only after the
-        /// pack has already been refused. This is what keeps AE8's law refusal from being
-        /// reported as a missing material.
-        /// </summary>
-        private static RemovalRefusalStage ClassifyRefusal(GameActionPack pack, List<GameAction> actions)
-        {
-            var accountChangeSet = pack.GetAccountChangeSet();
-            foreach (var action in actions)
-                if (!ServiceHolder<ILawManager>.Obj.Perform(action, accountChangeSet))
-                    return RemovalRefusalStage.SettlementLaw;
-
-            foreach (var action in actions)
-                if (!ServiceHolder<IAuthManager>.Obj.IsAuthorized(action, out _).Success)
-                    return RemovalRefusalStage.Property;
-
-            return RemovalRefusalStage.Pretest;
-        }
     }
 }

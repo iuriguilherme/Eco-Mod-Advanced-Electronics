@@ -185,27 +185,23 @@ namespace Eco.Mods.TechTree
             if (result)
                 return PlacementResult.Success();
 
-            return PlacementResult.Refusal(ClassifyRefusal(pack, actions), result.Message.ToString());
+            return PlacementResult.Refusal(GameActionPackGuards.ClassifyRefusal(pack, actions), result.Message.ToString());
         }
 
         /// <summary>
-        /// The fail-closed assertions, run immediately before performing. Returns null
-        /// when every invariant holds; otherwise the refusal to return instead of performing.
+        /// The shared fail-closed assertions plus the one this service owns: exactly one
+        /// drop action per position, so a pack can neither place a block it never
+        /// announced nor announce one it never places.
         /// </summary>
         private static PlacementResult CheckInvariants(GameActionPack pack, List<GameAction> actions, int positionCount)
         {
-            if (pack.PackFlags != default)
-                return PlacementResult.Refusal(RemovalRefusalStage.Unrecognised, "Pack flags were set.");
+            var shared = GameActionPackGuards.InvariantFailure(pack, actions);
+            if (shared != null)
+                return PlacementResult.Refusal(RemovalRefusalStage.Unrecognised, shared);
 
             var dropCount = 0;
             foreach (var action in actions)
-            {
                 if (action is DropOrPickupBlock) dropCount++;
-                if (action is IUserGameAction { Citizen: null })
-                    return PlacementResult.Refusal(RemovalRefusalStage.Unrecognised, "An action carried no citizen.");
-                if (action.AuthIgnored)
-                    return PlacementResult.Refusal(RemovalRefusalStage.Unrecognised, "An action waived authorization.");
-            }
 
             if (dropCount != positionCount)
                 return PlacementResult.Refusal(RemovalRefusalStage.Unrecognised, "Drop-action count did not equal the placed-position count.");
@@ -213,24 +209,6 @@ namespace Eco.Mods.TechTree
             return null;
         }
 
-        /// <summary>
-        /// Best-effort classification of a refusal, run only after the pack has already
-        /// been refused. Law before property, matching the pipeline's own evaluation
-        /// order; neither check mutates anything. A refusal clearing both is a pretest.
-        /// </summary>
-        private static RemovalRefusalStage ClassifyRefusal(GameActionPack pack, List<GameAction> actions)
-        {
-            var accountChangeSet = pack.GetAccountChangeSet();
-            foreach (var action in actions)
-                if (!ServiceHolder<ILawManager>.Obj.Perform(action, accountChangeSet))
-                    return RemovalRefusalStage.SettlementLaw;
-
-            foreach (var action in actions)
-                if (!ServiceHolder<IAuthManager>.Obj.IsAuthorized(action, out _).Success)
-                    return RemovalRefusalStage.Property;
-
-            return RemovalRefusalStage.Pretest;
-        }
 
         /// <summary>
         /// The engine's own placement pretests, reproduced rather than recalled: read from
