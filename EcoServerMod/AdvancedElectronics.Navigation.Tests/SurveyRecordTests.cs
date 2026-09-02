@@ -518,5 +518,116 @@ namespace AdvancedElectronics.Navigation.Tests
         {
             Assert.False(SurveyFinding.NotFound.HasPlot);
         }
+
+        // --- U4: the at-bedrock observation, recorded per column and folded per plot (KTD4) ---
+        //
+        // A two-block plot size is used deliberately so a plot is four columns and the
+        // fold can be stated exhaustively; the shipped plot is eight blocks a side.
+        private const int TinyPlot = 2;
+
+        [Fact]
+        public void PlotWhoseEveryColumnRestsOnBedrock_ReadsAtBedrock()
+        {
+            var record = new SurveyRecord(TinyPlot);
+            record.RecordColumnBedrock(AreaA, 0, 0, true);
+            record.RecordColumnBedrock(AreaA, 1, 0, true);
+            record.RecordColumnBedrock(AreaA, 0, 1, true);
+            record.RecordColumnBedrock(AreaA, 1, 1, true);
+
+            Assert.True(record.PlotRestsOnBedrock(AreaA, new PlotCoord(0, 0)));
+        }
+
+        [Fact]
+        public void PlotWithThreeOfFourColumnsAtBedrock_DoesNotReadAtBedrock()
+        {
+            var record = new SurveyRecord(TinyPlot);
+            record.RecordColumnBedrock(AreaA, 0, 0, true);
+            record.RecordColumnBedrock(AreaA, 1, 0, true);
+            record.RecordColumnBedrock(AreaA, 0, 1, true);
+            record.RecordColumnBedrock(AreaA, 1, 1, false);
+
+            Assert.False(record.PlotRestsOnBedrock(AreaA, new PlotCoord(0, 0)));
+        }
+
+        [Fact]
+        public void PlotWithAColumnNeverObserved_DoesNotReadAtBedrock()
+        {
+            // A pass that stopped part-way through a plot has not proven the plot.
+            var record = new SurveyRecord(TinyPlot);
+            record.RecordColumnBedrock(AreaA, 0, 0, true);
+            record.RecordColumnBedrock(AreaA, 1, 0, true);
+            record.RecordColumnBedrock(AreaA, 0, 1, true);
+
+            Assert.False(record.PlotRestsOnBedrock(AreaA, new PlotCoord(0, 0)));
+        }
+
+        [Fact]
+        public void PlotWithNoObservationAtAll_DoesNotReadAtBedrock()
+        {
+            var record = new SurveyRecord(TinyPlot);
+
+            Assert.False(record.PlotRestsOnBedrock(AreaA, new PlotCoord(0, 0)));
+        }
+
+        [Fact]
+        public void ReObservingAColumn_ReplacesItsEarlierAnswer()
+        {
+            // The ground changes between passes; the newest observation is the true one.
+            var record = new SurveyRecord(TinyPlot);
+            record.RecordColumnBedrock(AreaA, 0, 0, false);
+            record.RecordColumnBedrock(AreaA, 0, 0, true);
+            record.RecordColumnBedrock(AreaA, 1, 0, true);
+            record.RecordColumnBedrock(AreaA, 0, 1, true);
+            record.RecordColumnBedrock(AreaA, 1, 1, true);
+
+            Assert.True(record.PlotRestsOnBedrock(AreaA, new PlotCoord(0, 0)));
+        }
+
+        [Fact]
+        public void BedrockPlots_ListsOnlyThePlotsEveryColumnOfWhichIsAtBedrock()
+        {
+            var record = new SurveyRecord(TinyPlot);
+            // plot (0,0): all four at bedrock.
+            record.RecordColumnBedrock(AreaA, 0, 0, true);
+            record.RecordColumnBedrock(AreaA, 1, 0, true);
+            record.RecordColumnBedrock(AreaA, 0, 1, true);
+            record.RecordColumnBedrock(AreaA, 1, 1, true);
+            // plot (1,0): one column still has ground over the floor.
+            record.RecordColumnBedrock(AreaA, 2, 0, true);
+            record.RecordColumnBedrock(AreaA, 3, 0, true);
+            record.RecordColumnBedrock(AreaA, 2, 1, true);
+            record.RecordColumnBedrock(AreaA, 3, 1, false);
+
+            Assert.Equal(new[] { new PlotCoord(0, 0) }, record.BedrockPlots(AreaA).ToArray());
+        }
+
+        [Fact]
+        public void BedrockObservations_AreScopedToTheirArea()
+        {
+            var record = new SurveyRecord(TinyPlot);
+            record.RecordColumnBedrock(AreaA, 0, 0, true);
+            record.RecordColumnBedrock(AreaA, 1, 0, true);
+            record.RecordColumnBedrock(AreaA, 0, 1, true);
+            record.RecordColumnBedrock(AreaA, 1, 1, true);
+
+            Assert.True(record.PlotRestsOnBedrock(AreaA, new PlotCoord(0, 0)));
+            Assert.False(record.PlotRestsOnBedrock(AreaB, new PlotCoord(0, 0)));
+            Assert.Empty(record.BedrockPlots(AreaB));
+        }
+
+        [Fact]
+        public void ClearArea_DropsThatAreasBedrockObservations()
+        {
+            var record = new SurveyRecord(TinyPlot);
+            record.RecordColumnBedrock(AreaA, 0, 0, true);
+            record.RecordColumnBedrock(AreaA, 1, 0, true);
+            record.RecordColumnBedrock(AreaA, 0, 1, true);
+            record.RecordColumnBedrock(AreaA, 1, 1, true);
+
+            record.ClearArea(AreaA);
+
+            Assert.False(record.PlotRestsOnBedrock(AreaA, new PlotCoord(0, 0)));
+            Assert.Empty(record.BedrockPlots(AreaA));
+        }
     }
 }

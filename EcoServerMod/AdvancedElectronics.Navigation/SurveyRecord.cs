@@ -51,6 +51,12 @@ namespace AdvancedElectronics.Navigation
         private readonly Dictionary<int, Dictionary<(int X, int Z), int>> _surfaceByArea =
             new Dictionary<int, Dictionary<(int X, int Z), int>>();
 
+        // areaId -> column (x, z) -> does that column rest on the world floor (U4, KTD4).
+        // Per COLUMN, not per plot: the walk is a column-scoped observation, and the plot
+        // answer is a fold over the columns (every one of them, see PlotRestsOnBedrock).
+        private readonly Dictionary<int, Dictionary<(int X, int Z), bool>> _bedrockByArea =
+            new Dictionary<int, Dictionary<(int X, int Z), bool>>();
+
         public SurveyRecord(int plotSize)
         {
             if (plotSize <= 0)
@@ -122,6 +128,73 @@ namespace AdvancedElectronics.Navigation
             return (sorted.Count % 2 == 1)
                 ? sorted[mid]
                 : (int)System.Math.Round((sorted[mid - 1] + sorted[mid]) / 2.0);
+        }
+
+        /// <summary>
+        /// Records whether column (<paramref name="x"/>, <paramref name="z"/>) of
+        /// <paramref name="areaId"/> rests on the impenetrable world floor — the answer
+        /// <see cref="BedrockWalk.ColumnRestsOnBedrock"/> produced for it (U4, KTD4).
+        ///
+        /// Unlike <see cref="RecordSample"/> this is LAST-WRITE-WINS rather than
+        /// first-write-wins: the ground under a column changes between passes — that is the
+        /// whole point of a resurvey — so the newest observation is the true one, exactly as
+        /// <see cref="RecordSurface"/> already treats a column's surface height.
+        /// </summary>
+        public void RecordColumnBedrock(int areaId, int x, int z, bool restsOnBedrock)
+        {
+            if (!_bedrockByArea.TryGetValue(areaId, out var columns))
+            {
+                columns = new Dictionary<(int X, int Z), bool>();
+                _bedrockByArea[areaId] = columns;
+            }
+            columns[(x, z)] = restsOnBedrock;
+        }
+
+        /// <summary>
+        /// True when <paramref name="plot"/> of <paramref name="areaId"/> is down at bedrock:
+        /// every one of its <c>plotSize * plotSize</c> columns has been observed AND every
+        /// observation was positive (KTD4).
+        ///
+        /// Requiring the plot to be observed in full, not merely observed consistently, is
+        /// what keeps a pass that stopped part-way through a plot from claiming it: an
+        /// unproven column is not a column at bedrock, and `[cleared]` is derived from this
+        /// answer (R7, R8).
+        /// </summary>
+        public bool PlotRestsOnBedrock(int areaId, PlotCoord plot)
+        {
+            if (!_bedrockByArea.TryGetValue(areaId, out var columns))
+                return false;
+
+            var observed = 0;
+            foreach (var entry in columns)
+            {
+                if (!PlotCoord.FromWorldColumn(entry.Key.X, entry.Key.Z, _plotSize).Equals(plot))
+                    continue;
+                if (!entry.Value)
+                    return false;
+                observed++;
+            }
+
+            return observed == _plotSize * _plotSize;
+        }
+
+        /// <summary>
+        /// Every plot of <paramref name="areaId"/> that reads as at bedrock, in no particular
+        /// order — the projection the Eco side persists on the area beside the findings rows.
+        /// </summary>
+        public IEnumerable<PlotCoord> BedrockPlots(int areaId)
+        {
+            if (!_bedrockByArea.TryGetValue(areaId, out var columns))
+                yield break;
+
+            var candidates = columns.Keys
+                .Select(c => PlotCoord.FromWorldColumn(c.X, c.Z, _plotSize))
+                .Distinct()
+                .ToList();
+
+            foreach (var plot in candidates)
+                if (PlotRestsOnBedrock(areaId, plot))
+                    yield return plot;
         }
 
         /// <summary>
@@ -317,6 +390,7 @@ namespace AdvancedElectronics.Navigation
         public void ClearArea(int areaId)
         {
             _surfaceByArea.Remove(areaId);
+            _bedrockByArea.Remove(areaId);
             if (_byArea.Remove(areaId))
             {
                 // Drop this area's sampled blocks so re-surveying it later records

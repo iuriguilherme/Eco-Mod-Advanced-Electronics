@@ -165,6 +165,27 @@ namespace Eco.Mods.TechTree
         /// </summary>
         [Serialized] public ThreadSafeList<long> MinedStamps { get; set; } = new();
 
+        /// <summary>
+        /// The plots this area's last survey observed DOWN AT BEDROCK (U4, R7/R8/R26),
+        /// flattened as consecutive (x, z) pairs exactly the way <see cref="PlotCoords"/>
+        /// already flattens — no new persistence shape is invented for this. A plot is listed
+        /// only when every column in it rested on the impenetrable world floor; the fold from
+        /// columns to plots is <see cref="SurveyRecord.PlotRestsOnBedrock"/>'s, and only its
+        /// result is stored.
+        ///
+        /// This is what `[cleared]` and `[empty]` are tested against, and it is an OBSERVATION
+        /// rather than a flag (R8): it is written by a survey pass and cleared by
+        /// <see cref="ClearFindings"/> alongside the findings (R10), so a player who fills a
+        /// cleared area in has only to let it be resurveyed for it to rejoin the ramp. That is
+        /// the opposite of <see cref="MinedStamps"/>, which survive a resurvey because digging
+        /// having happened is not a claim a later survey can falsify.
+        ///
+        /// A <see cref="ThreadSafeList{T}"/> of plain ints, like every other serialized
+        /// collection here: Eco's serializer rejects a non-immutable <c>[Serialized]</c> member
+        /// and fails server init.
+        /// </summary>
+        [Serialized] public ThreadSafeList<int> BedrockPlotCoords { get; set; } = new();
+
         /// <summary>Parameterless constructor required by the Eco serializer.</summary>
         public SurveyAreaEntry() { }
 
@@ -214,8 +235,13 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Discards this area's findings and surveyed stamps (delete, or an edit that redraws the
-        /// geometry).
+        /// Discards this area's findings, surveyed stamps and at-bedrock observations (delete, an
+        /// edit that redraws the geometry, or a newly started resurvey).
+        ///
+        /// The bedrock observations go with the findings, not with the mined stamps (R10): they
+        /// are a claim about what the ground is like NOW, so a pass that has not yet re-observed
+        /// a plot must not be able to answer for it. This is what makes AE5 work — a `[cleared]`
+        /// area a player has filled in stops reading cleared as soon as it is resurveyed.
         ///
         /// <see cref="MinedStamps"/> is deliberately NOT cleared here (R13). The findings are a
         /// claim about what is in the ground and a resurvey replaces them; the mined stamps are a
@@ -233,6 +259,7 @@ namespace Eco.Mods.TechTree
             this.SurveyDepth = 0;
             this.MedianSurface = 0;
             this.SurveyedStamps = new ThreadSafeList<long>();
+            this.BedrockPlotCoords = new ThreadSafeList<int>();
         }
 
         /// <summary>
@@ -319,6 +346,61 @@ namespace Eco.Mods.TechTree
             for (var i = 0; i + 2 < this.MinedStamps.Count; i += 3)
                 entries[new PlotCoord((int)this.MinedStamps[i], (int)this.MinedStamps[i + 1])] = this.MinedStamps[i + 2];
             return PlotStampAccumulator.FromSnapshot(entries);
+        }
+
+        /// <summary>
+        /// Replaces this area's persisted at-bedrock plots with what the pass just observed
+        /// (U4). <paramref name="plots"/> are the ones <see cref="SurveyRecord.BedrockPlots"/>
+        /// projects — every column in each of them walked down to the world floor.
+        ///
+        /// Deliberately UNGUARDED, unlike <see cref="SetSurveyedStamps"/> and
+        /// <see cref="SetMinedStamps"/>: an empty result here is a real answer ("this pass found
+        /// nothing at bedrock"), not an unpopulated accumulator. R8 requires a survey that finds
+        /// ground standing above bedrock to stop restating `[cleared]`, and an empty-write guard
+        /// would make a once-cleared area permanently cleared — exactly the stored-flag
+        /// behaviour KTD3 rejects. The caller only reaches this once the pass has coverage.
+        /// </summary>
+        public void SetBedrockPlots(IEnumerable<PlotCoord> plots)
+        {
+            var flat = new ThreadSafeList<int>();
+            foreach (var p in plots)
+            {
+                flat.Add(p.X);
+                flat.Add(p.Z);
+            }
+            this.BedrockPlotCoords = flat;
+        }
+
+        /// <summary>This area's persisted at-bedrock plots (unflattening the pairs).</summary>
+        public IEnumerable<PlotCoord> ReadBedrockPlots()
+        {
+            for (var i = 0; i + 1 < this.BedrockPlotCoords.Count; i += 2)
+                yield return new PlotCoord(this.BedrockPlotCoords[i], this.BedrockPlotCoords[i + 1]);
+        }
+
+        /// <summary>True when the last survey observed <paramref name="plot"/> down at bedrock.</summary>
+        public bool PlotRestsOnBedrock(PlotCoord plot)
+        {
+            for (var i = 0; i + 1 < this.BedrockPlotCoords.Count; i += 2)
+                if (this.BedrockPlotCoords[i] == plot.X && this.BedrockPlotCoords[i + 1] == plot.Z)
+                    return true;
+            return false;
+        }
+
+        /// <summary>
+        /// True when EVERY plot of this area was observed down at bedrock — the floor test R7
+        /// and R26 put `[cleared]` and `[empty]` behind. False for an area with no plots, which
+        /// is a degenerate area rather than an exhausted one.
+        /// </summary>
+        public bool RestsOnBedrock()
+        {
+            if (this.PlotCount == 0)
+                return false;
+
+            foreach (var plot in this.Plots())
+                if (!this.PlotRestsOnBedrock(plot))
+                    return false;
+            return true;
         }
 
         /// <summary>

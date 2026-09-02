@@ -43,6 +43,7 @@ namespace Eco.Mods.TechTree
 
         private IOreReader oreReader;
         private EcoWorldSampler worldSampler;
+        private IColumnProbe columnProbe;
 
         public override void Initialize()
         {
@@ -51,6 +52,9 @@ namespace Eco.Mods.TechTree
             // Reused only for GroundHeightAt (already-established, already-ASSUMPTION-documented
             // ground-column lookup) -- this component adds no new terrain-height API surface.
             this.worldSampler = new EcoWorldSampler();
+            // The at-bedrock walk's world reader (U4). EcoBlockClassifier is stateless, so the
+            // sensor holds its own rather than reaching for the mining side's instance.
+            this.columnProbe = new EcoBlockClassifier();
         }
 
         /// <summary>
@@ -66,6 +70,16 @@ namespace Eco.Mods.TechTree
 
             int surfaceY = (int)this.worldSampler.GroundHeightAt(x, z);
             record.RecordSurface(areaId, x, z, surfaceY); // for the area's median surface level
+
+            // Does this column rest on the world floor (U4, R7/R8)? NOT a single read beneath
+            // surfaceY: GroundHeightAt is the engine's top-SOLID-block query and a player-built
+            // block is solid, so on a capped column surfaceY is the cap and one read under it
+            // finds only the air the mining drone dug out. BedrockWalk steps down past built
+            // blocks and empty space to the first natural terrain block, bounded at
+            // BedrockWalk.MaxColumnReads so a built tower cannot make it unbounded. A plot is at
+            // bedrock only when every one of its columns is -- the record owns that fold.
+            record.RecordColumnBedrock(areaId, x, z,
+                BedrockWalk.ColumnRestsOnBedrock(this.columnProbe, x, surfaceY, z));
 
             // Scan DOWN from the surface: ore is underground, so reading only the surface block
             // reported "no ore" everywhere. Every block in the column counts toward the plot's

@@ -503,6 +503,13 @@ namespace Eco.Mods.TechTree
             var median = this.surveyRecord.MedianSurfaceLevel(entry.Id) ?? 0;
 
             entry.SetFindings(this.surveyRecord.Findings(entry.Id), coverage * 100f, depth, median);
+
+            // The pass's at-bedrock observation (U4), persisted beside the findings rows and on
+            // the same schedule: it is derived from the same sweep, and R8 requires it to be
+            // re-stated by every survey rather than stored once as a flag. Written even when the
+            // projection is empty — "nothing is at bedrock any more" is the answer that returns a
+            // filled-in area to the ramp (AE5).
+            entry.SetBedrockPlots(this.surveyRecord.BedrockPlots(entry.Id));
         }
 
         /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
