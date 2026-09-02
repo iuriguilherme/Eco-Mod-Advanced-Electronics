@@ -91,6 +91,35 @@ namespace Eco.Mods.TechTree
         /// </summary>
         [Serialized] public bool LastFlat { get; set; }
 
+        // ---------------------------------------------------------------
+        // The level pass in progress (U12). Held on the area rather than on the driver,
+        // because the driver is a live object rebuilt from scratch on every dispatch while a
+        // half-levelled hillside is exactly the state that must outlive one.
+        //
+        // Only the target and the banked spoil are kept, never the plan. The plan is
+        // re-derived from the ground each dispatch, which is what lets a pass resume against
+        // what it has actually dug -- but the TARGET must not be, or re-deriving the median
+        // from the half-levelled surface would move it under the pass and it would never
+        // converge (R19).
+        // ---------------------------------------------------------------
+
+        /// <summary>Whether a level pass is under way. Distinct from the toggle: the toggle is the request, this is the run.</summary>
+        [Serialized] public bool LevelPassStarted { get; set; }
+
+        /// <summary>The height the pass is levelling to, pinned at pass entry.</summary>
+        [Serialized] public int LevelTargetHeight { get; set; }
+
+        /// <summary>Blocks this pass has removed and still counts as its own material, wherever they now sit (R20).</summary>
+        [Serialized] public int LevelBankedSpoil { get; set; }
+
+        /// <summary>Ends the pass and forgets its state, whether it completed or was abandoned.</summary>
+        public void ClearLevelPass()
+        {
+            this.LevelPassStarted = false;
+            this.LevelTargetHeight = 0;
+            this.LevelBankedSpoil = 0;
+        }
+
         /// <summary>Forgets the last report, so an area no longer worked stops asserting a stale reason.</summary>
         public void ClearLastReport()
         {

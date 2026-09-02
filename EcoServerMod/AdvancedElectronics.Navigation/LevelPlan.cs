@@ -148,7 +148,20 @@ namespace AdvancedElectronics.Navigation
         /// into spoil the drone removes and already holds, rather than into dirt it has to
         /// draw from linked storage.
         /// </summary>
-        public static LevelPlan Build(IEnumerable<SurfaceColumn> columns)
+        public static LevelPlan Build(IEnumerable<SurfaceColumn> columns) => Build(columns, null);
+
+        /// <summary>
+        /// Builds the pass against an already-chosen target rather than deriving one.
+        ///
+        /// This is what lets a pass survive being interrupted. A driver re-samples the
+        /// ground on every dispatch, and by then it has already dug: re-deriving the median
+        /// from the half-levelled surface would move the target under the pass and it would
+        /// never converge. The target is chosen once, at pass entry, and pinned here after.
+        /// </summary>
+        public static LevelPlan ForTarget(IEnumerable<SurfaceColumn> columns, int targetHeight) =>
+            Build(columns, targetHeight);
+
+        private static LevelPlan Build(IEnumerable<SurfaceColumn> columns, int? pinnedTarget)
         {
             if (columns == null) throw new ArgumentNullException(nameof(columns));
 
@@ -166,7 +179,7 @@ namespace AdvancedElectronics.Navigation
             }
 
             var heights = sampled.Select(c => c.SurfaceY).OrderBy(y => y).ToList();
-            var target = heights[(heights.Count - 1) / 2];
+            var target = pinnedTarget ?? heights[(heights.Count - 1) / 2];
 
             var removals = new List<LevelRemoval>();
             var fills = new List<LevelFill>();

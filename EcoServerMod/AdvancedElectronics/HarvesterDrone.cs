@@ -33,8 +33,11 @@ namespace Eco.Mods.TechTree
     /// </summary>
     [Serialized]
     [Weight(500)]
-    [LocDisplayName("Harvest Drone")]
-    [LocDescription("A craftable ground harvest drone. Insert into a Drone Dock to pair it for dispatch.")]
+    [LocDisplayName("Farm Drone")]
+    // R39: the base-yield trade goes on the item, which is what a player reads before
+    // crafting -- the moment the trade-off is actually worth knowing. Discovering it after
+    // building a farm reads as the drone being broken rather than as a stated cost.
+    [LocDescription("A craftable farm drone. It prepares, plants and harvests an assigned area on the crop's own clock. It harvests base yield, without the skill and talent bonuses a citizen's own harvest earns. Insert into a Drone Dock to pair it for dispatch.")]
     [Ecopedia("Crafted Objects", "Advanced Electronics", true, true, null)]
     public class HarvestDroneItem : RepairableItem, IWorldObjectComponentSource, IPersistentData
     {
@@ -116,6 +119,13 @@ namespace Eco.Mods.TechTree
             ComponentInstallation.For<FuelConsumptionComponent>(
                 configure:         c => c.Initialize(FuelJoulesPerSecond),
                 proxyInteractions: false),
+
+            // The two farming tabs (R2), installed by the drone rather than declared on the
+            // dock, so a dock holding a survey or mining drone never shows them. Two tabs
+            // because a crop ceiling belongs to the crop and an area's settings belong to
+            // the area -- different kinds of setting, not a second job.
+            ComponentInstallation.For<FarmingComponent>(proxyInteractions: false),
+            ComponentInstallation.For<CropCeilingComponent>(proxyInteractions: false),
         };
 
         /// <summary>
@@ -129,6 +139,12 @@ namespace Eco.Mods.TechTree
 
     /// <summary>
     /// The physical roaming drone WorldObject that a <see cref="DroneDockObject"/> dispatches.
+    ///
+    /// Still named Harvest rather than Farm, deliberately. The client half binds to the
+    /// server by NAME -- a prefab's name must equal the server class name exactly -- so
+    /// renaming this type would break that binding until the Unity prefab is renamed to
+    /// match, which is Editor work this contract's scope boundary excludes. The
+    /// player-facing name is the one that changed.
     /// Spawned and destroyed by <see cref="DroneDockObject.OnDockStorageChanged"/> when a
     /// <see cref="HarvestDroneItem"/> is inserted into / removed from the dock. The
     /// <c>[RequireComponent]</c> declarations pull in <see cref="DroneMoverComponent"/>,
@@ -179,7 +195,9 @@ namespace Eco.Mods.TechTree
     /// </summary>
     [Serialized]
     [RequireComponent(typeof(DroneMoverComponent))]
-    [RequireComponent(typeof(OreSensorComponent))]
+    // No OreSensorComponent. This drone inherited one from the survey chassis it was copied
+    // from, which is the whole reason it used to report the survey job: it had a sensor, so
+    // surveying is what it did. A farm reads blocks, not ore.
     [RequireComponent(typeof(DroneLifecycle))]
     // The drone carries no fuel, parts, storage, or auth components, and is not interactable
     // (R1, R2). All three of those moved to the dock, which is an ordinary placed object with
@@ -195,12 +213,8 @@ namespace Eco.Mods.TechTree
         /// <summary>The harvest arm -- the one drone that differs. A class constant, never stored.</summary>
         public DroneTool Tool => DroneTool.Harvest;
 
-        /// <summary>
-        /// Survey, which is accidental rather than designed: this drone inherited an ore sensor
-        /// from the same chassis the survey drone uses, and surveying is what it has always done.
-        /// Recorded here as the behaviour it actually has, until a harvest job exists.
-        /// </summary>
-        public DroneJobKind Job => DroneJobKind.Survey;
+        /// <summary>Farming, now that there is a farm job to run.</summary>
+        public DroneJobKind Job => DroneJobKind.Farm;
 
         /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
         partial void ModsPreInitialize();
@@ -224,7 +238,7 @@ namespace Eco.Mods.TechTree
             });
         }
 
-        public override LocString DisplayName => Localizer.DoStr("Harvest Drone");
+        public override LocString DisplayName => Localizer.DoStr("Farm Drone");
 
         /// <summary>Display name of the owner this drone acts on behalf of, or null if never stamped.</summary>
         [Serialized]
@@ -257,18 +271,11 @@ namespace Eco.Mods.TechTree
         }
     }
 
-    // WITHHELD FOR THE NEXT RELEASE -- the harvest drone's arm does not yet behave the way it is
-    // meant to during flight, so the drone is not offered to players.
+    // No longer withheld. The recipe was commented out whole rather than merely unregistered,
+    // because RecipeFamily carries [ForceCreateViewAllDerived]: the type existing is enough for
+    // Eco to instantiate it at startup and register the recipe, which would have left a
+    // withheld drone visible in the recipe browser and the skill's tech tree.
     //
-    // The whole class is commented out rather than just its table registration. RecipeFamily
-    // carries [ForceCreateViewAllDerived], so the type existing is enough: Eco instantiates it at
-    // startup and Initialize() registers the recipe, which leaves it visible in the recipe browser
-    // and the skill's tech tree even when it belongs to no bench. Only removing the type removes
-    // it from the game.
-    //
-    // The item and world object are deliberately left defined, so a save that already holds a
-    // harvest drone keeps loading. Restore by deleting the /* and */ below.
-    /*
     /// <summary>Recipe unlocking <see cref="HarvestDroneItem"/>.</summary>
     [RequiresSkill(typeof(AdvancedElectronicsSkill), 1)]
     public partial class HarvestDroneRecipe : RecipeFamily
@@ -281,7 +288,7 @@ namespace Eco.Mods.TechTree
             var recipe = new Recipe();
             recipe.Init(
                 name: "HarvestDrone",
-                displayName: Localizer.DoStr("Harvest Drone"),
+                displayName: Localizer.DoStr("Farm Drone"),
                 ingredients: new List<IngredientElement>
                 {
                     new IngredientElement(typeof(AdvancedCircuitItem), 6, typeof(AdvancedElectronicsSkill)),
@@ -307,16 +314,13 @@ namespace Eco.Mods.TechTree
             this.LaborInCalories = CreateLaborInCaloriesValue(1000, typeof(AdvancedElectronicsSkill));
             this.CraftMinutes = CreateCraftTimeValue(beneficiary: typeof(HarvestDroneRecipe), start: 10, skillType: typeof(AdvancedElectronicsSkill));
             this.ModsPreInitialize();
-            this.Initialize(displayText: Localizer.DoStr("Harvest Drone"), recipeType: typeof(HarvestDroneRecipe));
+            this.Initialize(displayText: Localizer.DoStr("Farm Drone"), recipeType: typeof(HarvestDroneRecipe));
             this.ModsPostInitialize();
 
-            // WITHHELD FOR THE NEXT RELEASE. The harvest drone's arm does not yet behave the way
-            // it is meant to during flight, so it is not offered to players. Registering no
-            // table is what hides it: a RecipeFamily that joins no CraftingComponent appears on
-            // no bench, while the item and world object stay defined so existing saves that
-            // already hold one keep loading. Restore by uncommenting the line below.
-            //
-            // CraftingComponent.AddRecipe(tableType: typeof(RoboticAssemblyLineObject), recipeFamily: this);
+            // The same bench and the same skill gate as the survey and mining drones. A farm
+            // drone is not a lesser machine than a mining one, and putting it on an earlier
+            // bench would say it was.
+            CraftingComponent.AddRecipe(tableType: typeof(RoboticAssemblyLineObject), recipeFamily: this);
         }
 
         /// <summary>Hook for mods to customize RecipeFamily before initialization. You can change recipes, xp, labor, time here.</summary>
@@ -325,5 +329,4 @@ namespace Eco.Mods.TechTree
         /// <summary>Hook for mods to customize RecipeFamily after initialization, but before registration. You can change skill requirements here.</summary>
         partial void ModsPostInitialize();
     }
-    */
 }

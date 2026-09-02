@@ -23,6 +23,13 @@ namespace AdvancedElectronics.Navigation
     public enum DroneJobKind
     {
         Survey,
-        Mining
+        Mining,
+
+        /// <summary>
+        /// Prepares, plants and harvests an area continuously. Appended rather than
+        /// inserted: these values are persisted by ordinal, so the existing members'
+        /// positions are load-bearing.
+        /// </summary>
+        Farm
     }
 }

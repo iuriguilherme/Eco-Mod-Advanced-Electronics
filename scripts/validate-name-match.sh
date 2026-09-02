@@ -173,14 +173,14 @@ done
 
 for t in "${ITEM_TYPES[@]:-}"; do
   [ -z "$t" ] && continue
-  # U4/U11: MiningArmItem is never crafted, held, or placed in an inventory --
-  # the mining removal service (EcoServerMod/AdvancedElectronics/MiningRemovalService.cs)
-  # builds its own game actions naming it directly and it is never presented to
-  # a player, so it carries no client-side icon/prefab by design. Documented
-  # exception, not a gap.
-  if [ "$t" = "MiningArmItem" ]; then
-    continue
-  fi
+  # The drone arms are never crafted, held, or placed in an inventory. The services that
+  # use them (MiningRemovalService, BlockPlacementService, FarmingActionService) build
+  # their own game actions naming the arm directly, and no player is ever shown one --
+  # they exist so a settlement law can name them. So they carry no client-side
+  # icon/prefab by design. Documented exception, not a gap.
+  case "$t" in
+    MiningArmItem|HarvestArmItem) continue ;;
+  esac
 
   # Named-icon types (see the discovery block above). Reported, never silent: a type vanishing
   # from the icon set is exactly the failure this gate exists to catch, so it has to be visible
