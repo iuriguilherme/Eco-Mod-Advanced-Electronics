@@ -46,6 +46,37 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal(0, plan.FillDemand);
         }
 
+        [Fact]
+        public void ForTarget_PinsTheHeight_SoAHalfDugPassDoesNotChaseANewMedian()
+        {
+            // The driver re-samples the ground every dispatch, and by then it has dug.
+            // Re-deriving the median from the half-levelled surface would move the target
+            // under the pass and it would never converge.
+            var start = LevelPlan.Build(new[] { Col(0, 0, 4), Col(1, 0, 10), Col(2, 0, 16) });
+            Assert.Equal(10, start.TargetHeight);
+
+            // The tall column is now partly cut, so the bare median has moved to 8.
+            var midPass = new[] { Col(0, 0, 4), Col(1, 0, 10), Col(2, 0, 8) };
+            Assert.Equal(8, LevelPlan.Build(midPass).TargetHeight);
+
+            var resumed = LevelPlan.ForTarget(midPass, start.TargetHeight);
+
+            Assert.Equal(10, resumed.TargetHeight);
+            Assert.Equal(0, resumed.RemovalVolume);
+            Assert.Equal(8, resumed.FillDemand);
+        }
+
+        [Fact]
+        public void ForTarget_ReportsWhatIsLeft_NotWhatThePassStartedWith()
+        {
+            var columns = new[] { Col(0, 0, 12), Col(1, 0, 10), Col(2, 0, 10) };
+            Assert.Equal(2, LevelPlan.ForTarget(columns, 10).RemovalVolume);
+
+            // One block taken out; the plan against the new ground reports the remainder.
+            var after = new[] { Col(0, 0, 11), Col(1, 0, 10), Col(2, 0, 10) };
+            Assert.Equal(1, LevelPlan.ForTarget(after, 10).RemovalVolume);
+        }
+
         // --- Geometry: which blocks come out, which columns go up ---
 
         [Fact]

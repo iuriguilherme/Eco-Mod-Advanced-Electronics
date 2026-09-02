@@ -113,7 +113,15 @@ namespace Eco.Mods.TechTree
         /// while it is on, and clears itself when the pass completes (R21) -- so this is a
         /// request rather than a mode.
         /// </summary>
-        [Serialized, Eco, UITypeName("Checkbox")]
+        /// <remarks>
+        /// Full access, not the bare <c>[Eco]</c> default. A bare attribute requires only
+        /// consumer access (<c>EcoAttribute.RequiredAccess</c>: "If not specified then by
+        /// default requires Consumer Access"), and this toggle starts a pass that removes
+        /// standing ground across the area and back-fills from the owner's storage. The
+        /// dock re-checks the same gate, because an attribute guards the RPC and not the
+        /// state operation behind it.
+        /// </remarks>
+        [Serialized, Eco(AccessType.FullAccess), UITypeName("Checkbox")]
         public bool LevelFirst
         {
             get => this.SelectedArea()?.LevelFirst ?? false;
@@ -125,7 +133,12 @@ namespace Eco.Mods.TechTree
                 var area = this.SelectedArea();
                 if (area == null || area.LevelFirst == value) return;
 
-                dock.SetFarmAreaLevelFirst(area.Id, value);
+                // No acting player reaches a property setter, so a request to turn the
+                // toggle ON is carried by the button below, which has one. Turning it off
+                // is always allowed.
+                if (value) return;
+
+                dock.SetFarmAreaLevelFirst(area.Id, false);
                 this.RefreshAll();
             }
         }
@@ -134,10 +147,19 @@ namespace Eco.Mods.TechTree
         // Buttons. Declared last because that is where they render anyway.
         // ---------------------------------------------------------------
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Manage Areas on Map")]
+        [RPC(AccessType.FullAccess), Autogen, UITypeName("BigButton"), Description("Manage Areas on Map")]
         public async Task ManageAreasOnMap(Player player)
         {
             if (this.Parent is not DroneDockObject dock) return;
+
+            // Re-checked here as well as on the attribute: the editor can redraw or delete
+            // an ASSIGNED area, which re-aims a drone working under someone else's stamp.
+            if (!dock.HasFullAccess(player?.User))
+            {
+                player?.MsgLocStr("You need full access on this drone dock to edit its areas.", NotificationStyle.Error);
+                return;
+            }
+
             await FarmAreaPicker.ManageAreas(player, dock, MaxAreaPlots);
             this.RefreshAll();
         }
@@ -148,7 +170,7 @@ namespace Eco.Mods.TechTree
         /// has to name one -- and because a crop chosen by accident while scrolling is not
         /// a decision.
         /// </summary>
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Set Crop for Selected Area")]
+        [RPC(AccessType.FullAccess), Autogen, UITypeName("BigButton"), Description("Set Crop for Selected Area")]
         public void SetCropForSelectedArea(Player player)
         {
             if (this.Parent is not DroneDockObject dock) return;
@@ -166,7 +188,12 @@ namespace Eco.Mods.TechTree
             var picked = pickedType == null ? null : Item.Get(pickedType);
             if (picked == null)
             {
-                dock.SetFarmAreaCrop(area.Id, null);
+                if (!dock.SetFarmAreaCrop(area.Id, null, player?.User))
+                {
+                    player?.MsgLocStr("You need full access on this drone dock to clear its crop.", NotificationStyle.Error);
+                    return;
+                }
+
                 this.RefreshAll();
                 player?.MsgLocStr($"'{area.Name}' now has no crop and will be left alone.", NotificationStyle.Info);
                 return;
@@ -184,12 +211,44 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
-            dock.SetFarmAreaCrop(area.Id, crop.Key);
+            if (!dock.SetFarmAreaCrop(area.Id, crop.Key, player?.User))
+            {
+                player?.MsgLocStr("You need full access on this drone dock to set its crop.", NotificationStyle.Error);
+                return;
+            }
+
             this.RefreshAll();
             player?.MsgLocStr($"'{area.Name}' now grows {crop.DisplayName}.", NotificationStyle.Info);
         }
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Assign Selected Area")]
+        /// <summary>
+        /// Requests the level pass for the selected area (R17). A button rather than the
+        /// checkbox alone, because only a remote call carries the acting player, and a pass
+        /// that removes the owner's ground should name who asked for it.
+        /// </summary>
+        [RPC(AccessType.FullAccess), Autogen, UITypeName("BigButton"), Description("Level Selected Area First")]
+        public void RequestLevelPass(Player player)
+        {
+            if (this.Parent is not DroneDockObject dock) return;
+
+            var area = this.SelectedArea();
+            if (area == null)
+            {
+                player?.MsgLocStr("No area is selected.", NotificationStyle.Error);
+                return;
+            }
+
+            if (!dock.SetFarmAreaLevelFirst(area.Id, true, player?.User))
+            {
+                player?.MsgLocStr("You need full access on this drone dock to level its ground.", NotificationStyle.Error);
+                return;
+            }
+
+            this.RefreshAll();
+            player?.MsgLocStr($"'{area.Name}' will be levelled before it is farmed.", NotificationStyle.Info);
+        }
+
+        [RPC(AccessType.FullAccess), Autogen, UITypeName("BigButton"), Description("Assign Selected Area")]
         public void AssignSelectedArea(Player player)
         {
             if (this.Parent is not DroneDockObject dock) return;
@@ -211,7 +270,7 @@ namespace Eco.Mods.TechTree
             player?.MsgLocStr($"Farm area '{area.Name}' assigned.", NotificationStyle.Info);
         }
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Unassign Selected Area")]
+        [RPC(AccessType.FullAccess), Autogen, UITypeName("BigButton"), Description("Unassign Selected Area")]
         public void UnassignSelectedArea(Player player)
         {
             if (this.Parent is not DroneDockObject dock) return;
@@ -223,7 +282,12 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
-            dock.AssignFarmArea(area.Id, false, player?.User, out _);
+            if (!dock.AssignFarmArea(area.Id, false, player?.User, out var unassignRefusal))
+            {
+                player?.MsgLocStr($"Could not unassign -- {unassignRefusal}.", NotificationStyle.Error);
+                return;
+            }
+
             this.RefreshAll();
             player?.MsgLocStr($"Farm area '{area.Name}' unassigned.", NotificationStyle.Info);
         }
@@ -242,7 +306,7 @@ namespace Eco.Mods.TechTree
             this.browseIndex = DockReadout.ClampCursor(this.browseIndex, dock.FarmAreas.Count);
 
             var states = dock.ReadFarmJobStates();
-            var job = new FarmJob(states.Select(s => s.State));
+            var job = dock.ReadFarmJob();
 
             this.AreasDisplay = DockReadout.AtReadableSize(
                 dock.FarmAreas.Count == 0

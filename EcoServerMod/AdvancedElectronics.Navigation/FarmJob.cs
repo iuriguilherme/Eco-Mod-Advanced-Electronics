@@ -37,7 +37,28 @@ namespace AdvancedElectronics.Navigation
         PropertyRefusal,
 
         /// <summary>Plots are held because another dock's area covers the same ground (R37).</summary>
-        HeldByOverlap
+        HeldByOverlap,
+
+        /// <summary>
+        /// One block refused for a reason local to it -- occupied, changed underfoot, not
+        /// ripe, nothing growing. Not a stall at all: the block is passed over and the area
+        /// keeps working (R15). Present so a per-block refusal has somewhere to go that is
+        /// not one of the reasons that stop a field.
+        ///
+        /// Appended rather than inserted: these values are persisted by ordinal, so the
+        /// existing members' positions are load-bearing.
+        /// </summary>
+        Skipped,
+
+        /// <summary>
+        /// The level pass cannot start or continue, for a reason of its own (R18) -- most
+        /// often plants still standing in the area. A real stall a citizen must clear, but
+        /// not a supply one: reporting it as a missing material spliced its sentence into
+        /// "linked storage has no ...".
+        ///
+        /// Appended rather than inserted: persisted by ordinal.
+        /// </summary>
+        LevelPassBlocked
     }
 
     /// <summary>Whether the job has work, is waiting, or has hit something a citizen must clear.</summary>
@@ -119,7 +140,8 @@ namespace AdvancedElectronics.Navigation
         public bool IsBlocked =>
             Stall.HasValue
             && Stall != FarmStallReason.WaitingOnGrowth
-            && Stall != FarmStallReason.CeilingReached;
+            && Stall != FarmStallReason.CeilingReached
+            && Stall != FarmStallReason.Skipped;
 
         public bool IsWorkable => !Stall.HasValue;
 
@@ -159,6 +181,24 @@ namespace AdvancedElectronics.Navigation
 
             return new FarmAreaState(
                 areaName, RequireCrop(crop), FarmStallReason.UnfitGround, unfitCondition: condition);
+        }
+
+        /// <summary>
+        /// R15: the area is working, and one or more blocks in it were passed over. Not a
+        /// stall -- nothing is asked of the citizen -- but distinct from "nothing to
+        /// report", so the tab can say so rather than stay silent about it.
+        /// </summary>
+        public static FarmAreaState Skipped(string areaName, string crop) =>
+            new FarmAreaState(areaName, RequireCrop(crop), FarmStallReason.Skipped);
+
+        /// <summary>R18: the level pass will not run, and says why in its own words.</summary>
+        public static FarmAreaState LevelPassBlocked(string areaName, string crop, string detail)
+        {
+            if (string.IsNullOrEmpty(detail))
+                throw new ArgumentException("A refused level pass names its reason (R18).", nameof(detail));
+
+            return new FarmAreaState(
+                areaName, RequireCrop(crop), FarmStallReason.LevelPassBlocked, unfitCondition: detail);
         }
 
         public static FarmAreaState RefusedByLaw(string areaName, string crop) =>

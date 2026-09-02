@@ -79,7 +79,7 @@ namespace Eco.Mods.TechTree
         [LocDescription("Stop harvesting this crop once linked storage holds this many. Zero means no limit.")]
         public int Ceiling { get; set; }
 
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Apply Ceiling")]
+        [RPC(AccessType.FullAccess), Autogen, UITypeName("BigButton"), Description("Apply Ceiling")]
         public void ApplyCeiling(Player player)
         {
             if (this.Parent is not DroneDockObject dock) return;
@@ -102,7 +102,12 @@ namespace Eco.Mods.TechTree
             }
 
             var ceiling = this.Ceiling < 0 ? 0 : this.Ceiling;
-            dock.SetCropCeiling(crop.Key, ceiling);
+            if (!dock.SetCropCeiling(crop.Key, ceiling, player?.User))
+            {
+                player?.MsgLocStr("You need full access on this drone dock to set its ceilings.", NotificationStyle.Error);
+                return;
+            }
+
             this.RefreshAll();
 
             player?.MsgLocStr(
@@ -117,7 +122,7 @@ namespace Eco.Mods.TechTree
         /// from applying a zero because clearing thirty caps one at a time through the
         /// picker is not a thing anyone would do.
         /// </summary>
-        [RPC(AccessType.ConsumerAccess), Autogen, UITypeName("BigButton"), Description("Clear All Ceilings")]
+        [RPC(AccessType.FullAccess), Autogen, UITypeName("BigButton"), Description("Clear All Ceilings")]
         public void ClearAllCeilings(Player player)
         {
             if (this.Parent is not DroneDockObject dock) return;
@@ -129,8 +134,14 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
+            if (!dock.HasFullAccess(player?.User))
+            {
+                player?.MsgLocStr("You need full access on this drone dock to clear its ceilings.", NotificationStyle.Error);
+                return;
+            }
+
             foreach (var crop in cleared)
-                dock.SetCropCeiling(crop, 0);
+                dock.SetCropCeiling(crop, 0, player?.User);
 
             this.RefreshAll();
             player?.MsgLocStr($"Cleared {cleared.Count} ceilings. Every crop is harvested without limit.", NotificationStyle.Info);

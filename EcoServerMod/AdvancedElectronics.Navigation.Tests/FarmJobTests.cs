@@ -58,6 +58,30 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
+        public void ASkippedBlock_DoesNotBlockTheArea()
+        {
+            // R15: a block the drone could not work is passed over. Treating it as a stall
+            // stopped the whole field over one occupied square.
+            var job = new FarmJob(new[] { FarmAreaState.Skipped(North, Corn) });
+
+            Assert.False(job.Areas[0].IsBlocked);
+            Assert.False(job.IdleForWantOfMaterial);
+        }
+
+        [Fact]
+        public void ARefusedLevelPass_DoesBlockTheArea()
+        {
+            // Unlike a skipped block, this one needs a citizen: the plants have to go
+            // before the pass can run (R18).
+            var job = new FarmJob(new[]
+            {
+                FarmAreaState.LevelPassBlocked(North, Corn, "plants are still standing here")
+            });
+
+            Assert.True(job.Areas[0].IsBlocked);
+        }
+
+        [Fact]
         public void EveryOtherReason_ReportsAsBlocked()
         {
             Assert.True(FarmAreaState.AwaitingCrop(North).IsBlocked);

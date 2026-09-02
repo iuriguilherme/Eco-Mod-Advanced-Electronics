@@ -23,7 +23,9 @@ namespace AdvancedElectronics.Navigation.Tests
             FarmAreaState.UnfitGround(North, Corn, "ground pollution"),
             FarmAreaState.RefusedByLaw(North, Corn),
             FarmAreaState.RefusedByProperty(North, Corn),
-            FarmAreaState.HeldByOverlap(North, Corn, heldPlotCount: 3)
+            FarmAreaState.HeldByOverlap(North, Corn, heldPlotCount: 3),
+            FarmAreaState.LevelPassBlocked(North, Corn, "plants are still standing here; clear them first"),
+            FarmAreaState.Skipped(North, Corn)
         };
 
         [Fact]
@@ -158,6 +160,30 @@ namespace AdvancedElectronics.Navigation.Tests
 
             Assert.Contains(North, line);
             Assert.Contains("no crop", line);
+        }
+
+        [Fact]
+        public void ARefusedLevelPassSpeaksInItsOwnWords_NotAsASupplyProblem()
+        {
+            // The pass's reason used to be reported as a missing material, which rendered
+            // as "blocked -- linked storage has no plants are still standing here".
+            var text = FarmReadout.FormatStall(
+                FarmAreaState.LevelPassBlocked(North, Corn, "plants are still standing here"));
+
+            Assert.Contains("plants are still standing here", text);
+            Assert.DoesNotContain("linked storage", text);
+        }
+
+        [Fact]
+        public void ASkippedBlockReadsAsWorking_NotAsAStoppedArea()
+        {
+            // R15: one block passed over is not a reason a citizen acts on, and must not
+            // borrow the wording of one that stops a field.
+            var text = FarmReadout.FormatStall(FarmAreaState.Skipped(North, Corn));
+
+            Assert.Contains("working", text);
+            Assert.DoesNotContain("blocked", text);
+            Assert.DoesNotContain("refused", text);
         }
 
         // --- The job line ---

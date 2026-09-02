@@ -71,6 +71,13 @@ namespace Eco.Mods.TechTree
         /// <summary>When the earliest crop comes due, in world seconds. MaxValue means nothing is growing.</summary>
         private double nextScanAtWorldSeconds;
 
+        /// <summary>The peek's cached answer, so one tick's scan is paid for once.</summary>
+        private (int AreaId, PlotCoord Plot)? peekedTarget;
+        private bool peekValid;
+
+        /// <summary>Set when a scan exhausted the sweep; consumed when a target from the restarted sweep is taken.</summary>
+        private bool sweepRestartPending;
+
         public FarmingStrategy(
             DroneDockObject homeDock,
             IWorldSampler sampler,
@@ -105,8 +112,17 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public bool IsExhausted => !this.homeDock.AssignedFarmAreas.Any();
 
-        /// <summary>Nothing to offer this tick: either the hold is full, or every area is waiting or blocked.</summary>
-        public bool IsComplete => this.IsExhausted || this.holdFull || !this.HasAnyTarget();
+        /// <summary>
+        /// Nothing to offer right now: the hold is full, or every area is waiting or
+        /// blocked.
+        ///
+        /// Reads through the cached peek and never through the consuming path. The
+        /// lifecycle asks this alongside <see cref="TryGetNextTarget"/> in the same tick,
+        /// and a property that settled the farm's wake or restarted its sweep as a side
+        /// effect of being read would park a farm nobody had actually offered work to --
+        /// and pay for the whole per-column area scan twice over while doing it.
+        /// </summary>
+        public bool IsComplete => this.IsExhausted || this.holdFull || this.PeekTarget() == null;
 
         public bool TryGetNextTarget(out PlotCoord plot)
         {
@@ -116,14 +132,30 @@ namespace Eco.Mods.TechTree
             // resumes. Produce decays in the hold, so carrying it around is a real cost.
             if (this.holdFull) return false;
 
-            if (this.homeDock.StampedCitizen == null) return false;
+            // Re-checked on every dispatch, not once at assignment: access can be revoked
+            // while the drone is out.
+            if (!this.homeDock.FarmStampIsValid()) return false;
 
-            var target = this.NextTarget();
-            if (target == null) return false;
+            var target = this.PeekTarget();
+            if (target == null)
+            {
+                // The one place the farm settles: it was asked for work and had none.
+                this.SettleUntilSomethingChanges();
+                return false;
+            }
+
+            // The sweep restarts only when a target from the second pass is actually
+            // taken, so nothing re-offers ground the drone never flew to.
+            if (this.sweepRestartPending)
+            {
+                this.visitedThisSweep.Clear();
+                this.sweepRestartPending = false;
+            }
 
             this.currentAreaId = target.Value.AreaId;
             this.currentPlot = target.Value.Plot;
             this.visitedThisSweep.Add(target.Value);
+            this.InvalidatePeek();
 
             plot = target.Value.Plot;
             return true;
@@ -133,6 +165,14 @@ namespace Eco.Mods.TechTree
         {
             var area = this.homeDock.FarmArea(this.currentAreaId);
             if (area == null || this.currentPlot == null) return ParkedWorkOutcome.PlotFailed;
+
+            // And again at the moment of work: a dispatch that cleared the check can still
+            // arrive after the citizen's access is gone.
+            if (!this.homeDock.FarmStampIsValid())
+            {
+                this.RecordStall(area, FarmStallReason.PropertyRefusal, null);
+                return ParkedWorkOutcome.PlotFailed;
+            }
 
             // The level pass, when requested, runs before any block work on this area
             // (R17). It is bounded per dispatch and clears its own toggle when it finishes.
@@ -193,17 +233,17 @@ namespace Eco.Mods.TechTree
                 {
                     // R15: a block the drone cannot work is SKIPPED, and does not fail the
                     // area around it. Only a refusal that would repeat everywhere is worth
-                    // stopping for -- a law, a property boundary, an empty store -- and the
-                    // rest is one awkward block among hundreds.
-                    if (!this.IsAreaWide(performed.Value, area, citizen)) continue;
+                    // stopping for -- a law, a property boundary, an empty store.
+                    if (!this.IsAreaWide(performed.Value, citizen)) continue;
 
-                    this.RecordStall(area, performed.Value.Stall, performed.Value.Detail);
+                    this.RecordStall(area, performed.Value.Stall, performed.Value.MaterialName);
                     return ParkedWorkOutcome.PlotFailed;
                 }
 
                 area.LastNextAction = (int)outcome.Action;
                 area.LastStallReason = -1;
 
+                this.InvalidatePeek();
                 this.CheckHold();
                 return this.holdFull ? ParkedWorkOutcome.PlotDone : ParkedWorkOutcome.StillWorking;
             }
@@ -219,13 +259,12 @@ namespace Eco.Mods.TechTree
         /// stopping the area for rather than skipping one block over (R15, R34).
         ///
         /// Law and property answer for the whole settlement or plot, so they are area-wide
-        /// by construction. A material shortfall is only area-wide if the material really is
-        /// gone: the same pretest stage also refuses a cell that happens to be occupied or a
-        /// block that changed underfoot, and reading those as an empty store would stop a
-        /// whole field over one blocked square. So the store is asked directly rather than
-        /// its wording being matched.
+        /// by construction. A material shortfall is area-wide only when the material really
+        /// is gone -- the store is asked directly, using the item TYPE the refused action
+        /// needed rather than any reading of the engine's wording. Everything else is one
+        /// awkward block among hundreds and is skipped.
         /// </summary>
-        private bool IsAreaWide((FarmStallReason Stall, string Detail) refusal, FarmAreaEntry area, User citizen)
+        private bool IsAreaWide(PerformRefusal refusal, User citizen)
         {
             switch (refusal.Stall)
             {
@@ -234,29 +273,42 @@ namespace Eco.Mods.TechTree
                     return true;
 
                 case FarmStallReason.MissingMaterial:
-                    return !this.SourceHolds(area, refusal.Detail, citizen);
+                    return refusal.MaterialType != null && !this.SourceHolds(refusal.MaterialType, citizen);
 
                 default:
                     return false;
             }
         }
 
-        /// <summary>Whether linked storage still holds what the refused action needed.</summary>
-        private bool SourceHolds(FarmAreaEntry area, string material, User citizen)
+        /// <summary>Whether linked storage still holds the item a refused action needed.</summary>
+        private bool SourceHolds(Type materialType, User citizen) =>
+            this.SourceInventory(citizen).NonEmptyStacks.Any(stack => stack.Item?.Type == materialType);
+
+        /// <summary>
+        /// One refused action: the reason to report, and -- when the action consumed a
+        /// material -- the item type it needed and that item's name.
+        ///
+        /// The TYPE is what decides whether the refusal is area-wide, because only it can
+        /// answer "is the store actually empty". The name is only ever displayed. An action
+        /// that consumes nothing carries neither, and can therefore never be mistaken for a
+        /// supply problem.
+        /// </summary>
+        private readonly struct PerformRefusal
         {
-            var wantedSeed = material != null && material.EndsWith("seed", StringComparison.OrdinalIgnoreCase);
-            var type = wantedSeed
-                ? CropCatalog.ByKey(area.Crop)?.SeedType
-                : typeof(DirtItem);
+            public FarmStallReason Stall { get; }
+            public Type MaterialType { get; }
+            public string MaterialName { get; }
 
-            if (type == null) return false;
-
-            return this.SourceInventory(citizen).NonEmptyStacks
-                .Any(stack => stack.Item?.Type == type);
+            public PerformRefusal(FarmStallReason stall, Type materialType = null, string materialName = null)
+            {
+                this.Stall = stall;
+                this.MaterialType = materialType;
+                this.MaterialName = materialName;
+            }
         }
 
-        /// <summary>Performs one action, returning null on success or the stall to record on refusal.</summary>
-        private (FarmStallReason Stall, string Detail)? Perform(
+        /// <summary>Performs one action, returning null on success or the refusal to classify.</summary>
+        private PerformRefusal? Perform(
             FarmAction action, FarmAreaEntry area, BlockPos ground, BlockPos above, User citizen)
         {
             switch (action)
@@ -268,7 +320,7 @@ namespace Eco.Mods.TechTree
                         citizen, this.harvestArm, this.SourceInventory(citizen));
                     return result.Outcome == PlacementOutcome.Succeeded
                         ? null
-                        : (StallFor(result.RefusalStage, "dirt"), result.Message);
+                        : Refusal(result.RefusalStage, typeof(DirtItem), "dirt");
                 }
 
                 case FarmAction.Plow:
@@ -276,15 +328,16 @@ namespace Eco.Mods.TechTree
                     var result = this.farming.Plow(ground, citizen, this.harvestArm);
                     return result.Outcome == FarmActionOutcome.Succeeded
                         ? null
-                        : (StallFor(result.RefusalStage, null), result.Message);
+                        : Refusal(result.RefusalStage);
                 }
 
                 case FarmAction.Sow:
                 {
+                    var seedType = CropCatalog.ByKey(area.Crop)?.SeedType;
                     var result = this.farming.Sow(ground, area.Crop, citizen, this.harvestArm, this.SourceInventory(citizen));
                     return result.Outcome == FarmActionOutcome.Succeeded
                         ? null
-                        : (StallFor(result.RefusalStage, $"{CropCatalog.DisplayNameFor(area.Crop)} seed"), result.Message);
+                        : Refusal(result.RefusalStage, seedType, $"{CropCatalog.DisplayNameFor(area.Crop)} seed");
                 }
 
                 case FarmAction.Harvest:
@@ -292,13 +345,34 @@ namespace Eco.Mods.TechTree
                     var result = this.farming.Harvest(above, citizen, this.harvestArm, this.hold);
                     return result.Outcome == FarmActionOutcome.Succeeded
                         ? null
-                        : (StallFor(result.RefusalStage, null), result.Message);
+                        : Refusal(result.RefusalStage);
                 }
 
                 default:
                     return null;
             }
         }
+
+        /// <summary>
+        /// The refusal stage as the reason the tab reports (R36).
+        ///
+        /// Law and property stay distinct all the way to the string, because a settlement
+        /// forbidding the action and the dock's owner lacking access are fixed in different
+        /// places. Everything else -- a pretest, an unrecognised refusal -- is reported as a
+        /// material stall ONLY when the action actually consumed a material, and even then
+        /// the store still has to be empty for it to stop the area. An action that consumes
+        /// nothing gets Skipped, which is not area-wide and not shown as a stall: the block
+        /// is simply passed over (R15).
+        /// </summary>
+        private static PerformRefusal Refusal(
+            RemovalRefusalStage stage, Type materialType = null, string materialName = null) => stage switch
+        {
+            RemovalRefusalStage.SettlementLaw => new PerformRefusal(FarmStallReason.LawRefusal),
+            RemovalRefusalStage.Property => new PerformRefusal(FarmStallReason.PropertyRefusal),
+            _ => materialType == null
+                ? new PerformRefusal(FarmStallReason.Skipped)
+                : new PerformRefusal(FarmStallReason.MissingMaterial, materialType, materialName)
+        };
 
         /// <summary>
         /// The action for one column: R14's rules over what the block currently is, with
@@ -348,21 +422,40 @@ namespace Eco.Mods.TechTree
         /// re-reading every column of every area each tick to rediscover the same answer is
         /// the poll the requirement forbids, however it is spelled.
         /// </summary>
-        private (int AreaId, PlotCoord Plot)? NextTarget()
+        /// <summary>
+        /// The next target, computed at most once per tick and cached. Pure: it records no
+        /// wake, restarts no sweep, and hands out no plot. The caller that actually
+        /// consumes a target owns those effects.
+        /// </summary>
+        private (int AreaId, PlotCoord Plot)? PeekTarget()
         {
-            if (!this.ShouldScan()) return null;
+            if (this.peekValid) return this.peekedTarget;
 
-            var found = this.Scan();
-            if (found != null) return found;
-
-            this.SettleUntilSomethingChanges();
-            return null;
+            this.peekedTarget = this.ShouldScan() ? this.Scan() : null;
+            this.peekValid = true;
+            return this.peekedTarget;
         }
 
-        /// <summary>Whether anything has happened that could have given the farm work.</summary>
+        /// <summary>Drops the cached peek after anything that could change what wants doing.</summary>
+        private void InvalidatePeek()
+        {
+            this.peekValid = false;
+            this.peekedTarget = null;
+        }
+
+        /// <summary>
+        /// Whether anything has happened that could have given the farm work.
+        ///
+        /// The stamp is re-checked here rather than trusted from assignment time, which is
+        /// what stops a citizen whose access was revoked from going on having the drone
+        /// work in their name. Mining does the same through its own refusal check; farming
+        /// only tested for a citizen existing, and being offline is not the same as being
+        /// unauthorized.
+        /// </summary>
         private bool ShouldScan() =>
-            this.homeDock.FarmWakeToken != this.lastScanToken
-            || WorldTime.Seconds >= this.nextScanAtWorldSeconds;
+            this.homeDock.FarmStampIsValid()
+            && (this.homeDock.FarmWakeToken != this.lastScanToken
+                || WorldTime.Seconds >= this.nextScanAtWorldSeconds);
 
         /// <summary>
         /// Records that this scan found nothing, and when to look again: the earliest time
@@ -413,6 +506,12 @@ namespace Eco.Mods.TechTree
                         continue;
                     }
 
+                    // A level pass refused at its entry check is refused for the whole
+                    // area, so offering its next plot just flies the drone out to be told
+                    // the same thing 24 more times.
+                    if (area.LevelFirst && area.LastStallReason == (int)FarmStallReason.LevelPassBlocked)
+                        continue;
+
                     foreach (var plot in area.ToArea().EnumeratePlots())
                     {
                         if (this.visitedThisSweep.Contains((area.Id, plot))) continue;
@@ -423,10 +522,18 @@ namespace Eco.Mods.TechTree
                 }
 
                 // Every assigned plot has been offered once. A farm's work is continuous, so
-                // the sweep starts again -- but only once, and only if the second pass finds
-                // something, or this would spin.
-                if (sweep == 0 && this.visitedThisSweep.Count > 0) this.visitedThisSweep.Clear();
-                else break;
+                // the sweep starts again -- but only once, or this would spin. The restart
+                // is recorded rather than performed, because this method must stay free of
+                // side effects: it runs from a property read.
+                if (sweep == 0 && this.visitedThisSweep.Count > 0)
+                {
+                    this.sweepRestartPending = true;
+                    this.visitedThisSweep.Clear();
+                }
+                else
+                {
+                    break;
+                }
             }
 
             return null;
@@ -467,8 +574,16 @@ namespace Eco.Mods.TechTree
 
             if (earliest == null) return;
 
+            // The area's due time is the earliest across every plot of it, not whichever
+            // plot happened to be walked last -- otherwise the farm sleeps past the crop
+            // that was ready first.
+            var alreadyWaiting = area.LastStallReason == (int)FarmStallReason.WaitingOnGrowth
+                && area.LastNextDueHours >= 0;
+
             area.LastStallReason = (int)FarmStallReason.WaitingOnGrowth;
-            area.LastNextDueHours = earliest.Value;
+            area.LastNextDueHours = alreadyWaiting
+                ? Math.Min(area.LastNextDueHours, earliest.Value)
+                : earliest.Value;
             area.LastNextAction = -1;
         }
 
@@ -502,6 +617,7 @@ namespace Eco.Mods.TechTree
                     area.LastMissingMaterial = detail;
                     break;
                 case FarmStallReason.UnfitGround:
+                case FarmStallReason.LevelPassBlocked:
                     area.LastUnfitCondition = detail;
                     break;
             }
@@ -509,6 +625,8 @@ namespace Eco.Mods.TechTree
 
         public void OnArrivalFailed()
         {
+            this.InvalidatePeek();
+
             // The plot could not be reached. Nothing to record against it -- farming keeps
             // no per-plot ledger (R7) -- and it stays marked visited for this sweep, so the
             // drone tries the next one instead of circling the same unreachable ground.
@@ -519,6 +637,10 @@ namespace Eco.Mods.TechTree
         {
             var plan = CargoUnloader.TryUnload(this.hold, this.link, this.homeDock.StampedCitizen);
             this.holdFull = plan.Outcome != UnloadOutcome.Full;
+
+            // An unload frees the hold and moves produce into the very storage the ceiling
+            // is measured against, so what wants doing may have changed.
+            this.InvalidatePeek();
         }
 
         public void OnEnded(string reason)
@@ -533,12 +655,6 @@ namespace Eco.Mods.TechTree
             var quantity = this.hold.NonEmptyStacks.Sum(s => s.Quantity);
             if (!HoldLedger.HasRoomFor(quantity, this.holdCapacity, 1))
                 this.holdFull = true;
-        }
-
-        private bool HasAnyTarget()
-        {
-            if (this.homeDock.StampedCitizen == null) return false;
-            return this.NextTarget() != null;
         }
 
         private LevelPassDriver LevelDriver(FarmAreaEntry area) => new LevelPassDriver(
@@ -574,16 +690,5 @@ namespace Eco.Mods.TechTree
                 yield return (baseX + dx, baseZ + dz);
         }
 
-        /// <summary>
-        /// The refusal stage as the reason the tab reports (R36). Law and property stay
-        /// distinct all the way to the string, because a settlement forbidding the action
-        /// and the dock's owner lacking access are fixed in different places.
-        /// </summary>
-        private static FarmStallReason StallFor(RemovalRefusalStage stage, string material) => stage switch
-        {
-            RemovalRefusalStage.SettlementLaw => FarmStallReason.LawRefusal,
-            RemovalRefusalStage.Property => FarmStallReason.PropertyRefusal,
-            _ => material == null ? FarmStallReason.PropertyRefusal : FarmStallReason.MissingMaterial
-        };
     }
 }

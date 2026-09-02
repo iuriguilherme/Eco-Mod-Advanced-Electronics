@@ -295,23 +295,39 @@ namespace Eco.Mods.TechTree
         /// than adding to it, and belongs to this area alone -- selecting another area shows
         /// that area's own crop.
         /// </summary>
-        public void SetFarmAreaCrop(int id, string cropKey)
+        public bool SetFarmAreaCrop(int id, string cropKey, User actingCitizen = null)
         {
             var entry = this.FarmArea(id);
-            if (entry == null) return;
+            if (entry == null) return false;
+
+            // Same gate as assignment: choosing the crop decides what the drone plants on
+            // this ground under the stamped citizen's name, so it is an owner's decision.
+            if (!this.HasFullAccess(actingCitizen)) return false;
 
             entry.Crop = string.IsNullOrWhiteSpace(cropKey) ? null : cropKey;
             if (entry.Assigned) this.farmAssignmentEpoch++;
+            return true;
         }
 
-        /// <summary>Sets an area's level-first toggle (R17), or clears it when its pass completes (R21).</summary>
-        public void SetFarmAreaLevelFirst(int id, bool levelFirst)
+        /// <summary>
+        /// Sets an area's level-first toggle (R17), or clears it when its pass completes
+        /// (R21).
+        ///
+        /// Turning it ON requires full access, because a level pass is destructive: it
+        /// removes standing ground across the whole area and back-fills from the owner's
+        /// storage, and none of that is undoable. Turning it off, and the pass clearing it
+        /// on completion, need no citizen -- stopping is always allowed.
+        /// </summary>
+        public bool SetFarmAreaLevelFirst(int id, bool levelFirst, User actingCitizen = null)
         {
             var entry = this.FarmArea(id);
-            if (entry == null) return;
+            if (entry == null) return false;
+
+            if (levelFirst && !this.HasFullAccess(actingCitizen)) return false;
 
             entry.LevelFirst = levelFirst;
             if (entry.Assigned) this.farmAssignmentEpoch++;
+            return true;
         }
 
         /// <summary>
@@ -333,22 +349,21 @@ namespace Eco.Mods.TechTree
                 return false;
             }
 
-            if (assigned)
+            if (actingCitizen == null)
             {
-                if (actingCitizen == null)
-                {
-                    refusalReason = "no acting citizen";
-                    return false;
-                }
-
-                if (!this.HasFullAccess(actingCitizen))
-                {
-                    refusalReason = "you need full access on this drone dock";
-                    return false;
-                }
-
-                this.StampCitizen(actingCitizen);
+                refusalReason = "no acting citizen";
+                return false;
             }
+
+            // Both directions are gated. Unassigning used to ignore the acting citizen
+            // entirely, so any passer-by could halt an owner's automation.
+            if (!this.HasFullAccess(actingCitizen))
+            {
+                refusalReason = "you need full access on this drone dock";
+                return false;
+            }
+
+            if (assigned) this.StampCitizen(actingCitizen);
 
             entry.Assigned = assigned;
             this.farmAssignmentEpoch++;
@@ -374,9 +389,10 @@ namespace Eco.Mods.TechTree
         /// rather than being stored as a limit of nothing -- which is what keeps the
         /// ceilings grid's untouched default from stopping every crop in the game.
         /// </summary>
-        public void SetCropCeiling(string crop, int ceiling)
+        public bool SetCropCeiling(string crop, int ceiling, User actingCitizen = null)
         {
-            if (string.IsNullOrWhiteSpace(crop)) return;
+            if (string.IsNullOrWhiteSpace(crop)) return false;
+            if (!this.HasFullAccess(actingCitizen)) return false;
             if (ceiling < 0) ceiling = 0;
 
             var existing = this.CropCeilings.FirstOrDefault(c => string.Equals(c.Crop, crop, StringComparison.Ordinal));
@@ -384,11 +400,12 @@ namespace Eco.Mods.TechTree
             if (ceiling == 0)
             {
                 if (existing != null) this.CropCeilings.Remove(existing);
-                return;
+                return true;
             }
 
             if (existing != null) existing.Ceiling = ceiling;
             else this.CropCeilings.Add(new CropCeilingEntry(crop, ceiling));
+            return true;
         }
 
         /// <summary>
@@ -534,6 +551,23 @@ namespace Eco.Mods.TechTree
         private void OnLinkedStorageChanged(User user) => this.RequestFarmWake();
 
         /// <summary>
+        /// Whether the stamped citizen still holds the access every farming write is
+        /// performed under, re-checked on the ACTING path rather than trusted from
+        /// assignment time.
+        ///
+        /// The mining side does the same through <c>StampRefusalReason</c>, and farming
+        /// went without it: a citizen whose full access was revoked kept having the drone
+        /// plow, sow and harvest in their name, spending their linked storage, until every
+        /// area was unassigned by hand. Assignment-time authorization answers "may you
+        /// start this", and only a live re-check answers "may you still be doing it".
+        /// </summary>
+        public bool FarmStampIsValid()
+        {
+            var citizen = this.StampedCitizen;
+            return citizen != null && this.HasFullAccess(citizen);
+        }
+
+        /// <summary>
         /// Records who is accountable for this dock's work. Shared with the mining side on
         /// purpose: a dock holds one drone, so it has one stamped citizen, and two fields
         /// would let the two halves disagree about who is answering for a world write.
@@ -567,6 +601,20 @@ namespace Eco.Mods.TechTree
             return readouts;
         }
 
+        /// <summary>
+        /// The job the drone is actually running: the ASSIGNED areas only.
+        ///
+        /// Separate from <see cref="ReadFarmJobStates"/>, which lists every drawn area so a
+        /// citizen can select one to assign. Folding unassigned areas into the job made a
+        /// dock with drawn-but-unassigned areas report "working", and made
+        /// "no areas assigned" reachable only when nothing was drawn at all.
+        /// </summary>
+        public FarmJob ReadFarmJob()
+        {
+            var ledger = this.ReadCropCeilings();
+            return new FarmJob(this.AssignedFarmAreas.Select(area => this.StateFor(area, ledger)));
+        }
+
         private FarmAreaState StateFor(FarmAreaEntry area, CropCeilingLedger ledger)
         {
             if (string.IsNullOrEmpty(area.Crop))
@@ -574,7 +622,12 @@ namespace Eco.Mods.TechTree
 
             var cropName = CropCatalog.DisplayNameFor(area.Crop);
 
-            if (!ledger.MayHarvest(area.Crop, this.CountInLinkedStorage(area.Crop)))
+            // A full store stops the harvest, not the farm: the ground still wants plowing
+            // and sowing. Reporting "holding" while the drone is actively working the area
+            // tells a citizen their farm has stopped when it has not.
+            if (!ledger.MayHarvest(area.Crop, this.CountInLinkedStorage(area.Crop))
+                && area.LastStallReason != (int)FarmStallReason.MissingMaterial
+                && area.LastNextAction < 0)
                 return FarmAreaState.CeilingReached(area.Name, cropName);
 
             var stall = area.LastStallReason < 0 ? (FarmStallReason?)null : (FarmStallReason)area.LastStallReason;
@@ -586,6 +639,9 @@ namespace Eco.Mods.TechTree
                     return FarmAreaState.WaitingOnGrowth(area.Name, cropName, Math.Max(0, area.LastNextDueHours));
                 case FarmStallReason.UnfitGround:
                     return FarmAreaState.UnfitGround(area.Name, cropName, area.LastUnfitCondition ?? "the ground");
+                case FarmStallReason.LevelPassBlocked:
+                    return FarmAreaState.LevelPassBlocked(
+                        area.Name, cropName, area.LastUnfitCondition ?? "the pass cannot run");
                 case FarmStallReason.LawRefusal:
                     return FarmAreaState.RefusedByLaw(area.Name, cropName);
                 case FarmStallReason.PropertyRefusal:

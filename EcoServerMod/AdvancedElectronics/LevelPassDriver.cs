@@ -109,13 +109,17 @@ namespace Eco.Mods.TechTree
         {
             if (!this.area.LevelFirst) return LevelPassResult.NotRequested();
 
+            // Full access, re-checked here: the pass is destructive and runs for many
+            // dispatches, so the citizen it acts as must still be allowed to act.
+            if (!this.dock.FarmStampIsValid())
+                return LevelPassResult.Blocked(
+                    FarmStallReason.PropertyRefusal, "the stamped citizen no longer has access to this dock");
+
             var citizen = this.dock.StampedCitizen;
-            if (citizen == null)
-                return LevelPassResult.Blocked(FarmStallReason.PropertyRefusal, "no stamped citizen");
 
             var columns = this.SampleColumns();
             if (columns.Count == 0)
-                return LevelPassResult.Blocked(FarmStallReason.MissingMaterial, "the area covers no ground");
+                return LevelPassResult.Blocked(FarmStallReason.LevelPassBlocked, "the area covers no ground");
 
             if (!this.area.LevelPassStarted)
             {
@@ -124,7 +128,7 @@ namespace Eco.Mods.TechTree
                 // it is growing in, which is never what a citizen meant by "level this".
                 if (this.AnyPlantStanding(columns))
                     return LevelPassResult.Blocked(
-                        FarmStallReason.MissingMaterial, "the level pass will not start with plants standing here");
+                        FarmStallReason.LevelPassBlocked, "plants are still standing here; clear them first");
 
                 this.area.LevelTargetHeight = LevelPlan.Build(columns).TargetHeight;
                 this.area.LevelPassStarted = true;
@@ -259,7 +263,11 @@ namespace Eco.Mods.TechTree
         {
             RemovalRefusalStage.SettlementLaw => FarmStallReason.LawRefusal,
             RemovalRefusalStage.Property => FarmStallReason.PropertyRefusal,
-            _ => FarmStallReason.MissingMaterial
+
+            // Anything else is the pass's own problem -- an occupied cell, a block that
+            // changed, an empty dirt store -- and is reported in the pass's words rather
+            // than dressed up as a supply stall it may not be.
+            _ => FarmStallReason.LevelPassBlocked
         };
     }
 }

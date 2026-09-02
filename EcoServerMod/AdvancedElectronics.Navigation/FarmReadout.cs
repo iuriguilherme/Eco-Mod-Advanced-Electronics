@@ -87,6 +87,16 @@ namespace AdvancedElectronics.Navigation
                 case FarmStallReason.PropertyRefusal:
                     return "refused by property authorization -- the dock's owner lacks access here";
 
+                case FarmStallReason.LevelPassBlocked:
+                    // The pass's own words, not a supply clause wrapped round them.
+                    return $"levelling stopped -- {area.UnfitCondition}";
+
+                case FarmStallReason.Skipped:
+                    // Not a stall a citizen acts on -- the area is working and one block
+                    // was passed over -- so it says so plainly rather than borrowing the
+                    // wording of a reason that stops a field.
+                    return "working -- some blocks were passed over";
+
                 case FarmStallReason.HeldByOverlap:
                     // R37: how much ground is held and what that means, and nothing about
                     // whose area holds it. The channel docks exchange geometry over is
