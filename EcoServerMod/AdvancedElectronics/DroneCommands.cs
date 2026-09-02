@@ -387,6 +387,21 @@ namespace Eco.Mods.TechTree
             }
             else
                 user.MsgLocStr("  Mining job: (none)");
+
+            // R27: the refusal reason has to outlive the job that hit it, or an area that reads
+            // `[cleared]` because one plot was refused looks the same as one that is genuinely
+            // spent. Printed beside the skip rows above -- the place this mod already answers
+            // "why was that plot skipped" -- rather than on the roster line, which stays at its
+            // budgeted length, or on a new panel row, which KTD10 rules out.
+            if (dock.AssignedMiningArea is { } exclusionAreaRef
+                && exclusionAreaRef.Resolve(out _, out var exclusionArea) == AreaLookupSignal.Found)
+            {
+                var ledger = dock.ReadMiningExclusions(exclusionAreaRef.OwningDockId, exclusionArea);
+                var exclusionLine = MiningReadout.FormatExclusionLine(ledger.AttemptFacts);
+                if (!string.IsNullOrWhiteSpace(exclusionLine))
+                    user.MsgLocStr($"  {exclusionLine}");
+            }
+
             user.MsgLocStr($"  Mining halted server-wide: {MiningHalt.IsHalted}");
             user.MsgLocStr($"  Anim state Working: {FormatAnimState(dock, DroneDockObject.WorkingStateName)}");
 

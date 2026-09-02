@@ -165,6 +165,41 @@ namespace AdvancedElectronics.Navigation
             string.IsNullOrWhiteSpace(detail) ? string.Empty : "last refusal: " + detail.Trim();
 
         /// <summary>
+        /// What an area still excludes after the job that produced it has gone (R27, U3), or
+        /// empty when it excludes nothing.
+        ///
+        /// R27's obligation is that an area whose `[cleared]` rests on an exclusion NAMES the
+        /// refusal where the mining tab already reports reasons -- the stop-reason and skip
+        /// rows -- so the player can see what they would have to change to unblock it, and
+        /// blocked ground never reads as spent ground. The skip line beside this one can only
+        /// speak while the job lives; this one reads the persisted record, which is the only
+        /// thing left to answer once the job is over.
+        ///
+        /// Uses the same category wording as <see cref="FormatSkipLine"/> -- one vocabulary
+        /// (KTD5) -- and appends the engine's own words for the refusal when the record carries
+        /// them, because "obstructed" names the bucket and not the cause.
+        /// </summary>
+        public static string FormatExclusionLine(IReadOnlyList<MiningExclusion> exclusions)
+        {
+            if (exclusions == null || exclusions.Count == 0)
+                return string.Empty;
+
+            var parts = exclusions
+                .GroupBy(e => e.Category)
+                .OrderByDescending(g => g.Count())
+                .ThenBy(g => (int)g.Key)
+                .Select(g => $"{g.Count()} {Label(g.Key)}");
+
+            var line = "excluded, awaiting a resurvey: " + string.Join(", ", parts);
+
+            var detail = exclusions
+                .Select(e => e.Detail)
+                .FirstOrDefault(d => !string.IsNullOrWhiteSpace(d));
+
+            return string.IsNullOrWhiteSpace(detail) ? line : $"{line} -- {detail.Trim()}";
+        }
+
+        /// <summary>
         /// The composed skip line (R31): the all-zero case, a single category, and
         /// multiple categories each render distinctly, and every rendered count sums to
         /// <paramref name="skippedTotal"/>.

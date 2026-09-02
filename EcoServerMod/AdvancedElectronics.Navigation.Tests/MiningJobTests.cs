@@ -249,6 +249,211 @@ namespace AdvancedElectronics.Navigation.Tests
 
         private static bool NoneSurveyed(PlotCoord plot) => false;
 
+        // ------------------------------------------------------------------
+        // U3: the exclusion ledger and its reach (R18, R19, R27).
+        //
+        // Two docks are named throughout: DockA hits the refusal, DockB has access.
+        // The ledger is the whole decidable half of this unit -- which categories are
+        // attempt facts, how a suppression set is unioned per dock, and when a survey
+        // lifts an exclusion (KTD5, KTD12).
+        // ------------------------------------------------------------------
+
+        private const string DockA = "dock-a";
+        private const string DockB = "dock-b";
+
+        [Fact]
+        public void EverySkipCategoryIsAnAttemptFact_NoneBindsAnotherDock()
+        {
+            // R18's reach split, stated over the whole enum rather than the values that
+            // happen to exist today: a mining pass records NO ground facts. Obstructed is
+            // the classifier's catch-all for a refusal that was neither law nor property --
+            // R7's single-column obstruction, which never stops a plot reaching bedrock --
+            // and bedrock never reaches this ledger at all, because MiningStrategy filters
+            // NotRemovable positions out before submission and advances the layer without
+            // recording a skip. The one ground fact is the area's at-bedrock observation (U4).
+            foreach (SkipCategory category in System.Enum.GetValues(typeof(SkipCategory)))
+                Assert.Equal(ExclusionReach.Attempt, MiningExclusion.ReachOf(category));
+        }
+
+        [Fact]
+        public void SettlementLawRefusalByOneDock_DoesNotSuppressThatPlotForAnotherDock()
+        {
+            var ledger = new MiningExclusionLedger();
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused under settlement law.", 100));
+
+            Assert.True(ledger.SuppressesFor(DockA, P00));
+            Assert.False(ledger.SuppressesFor(DockB, P00));
+        }
+
+        [Fact]
+        public void AGroundFact_SuppressesThatPlotForEveryDock()
+        {
+            // The at-bedrock observation U4 writes per column onto the area (KTD4). It is
+            // holderless by construction -- no dock recorded it, the ground did.
+            var ledger = new MiningExclusionLedger();
+            ledger.RecordGroundFact(P01);
+
+            Assert.True(ledger.SuppressesFor(DockA, P01));
+            Assert.True(ledger.SuppressesFor(DockB, P01));
+        }
+
+        [Fact]
+        public void CoversAE10_OneSettlementLawPlot_IsAccountedForRegardlessOfHolder_AndNamesItsReason()
+        {
+            // The half of AE10 this unit owns: the exclusion is shared information, so the
+            // area's status reads it whoever recorded it, and it carries the wording R27
+            // reports on the mining tab. Turning "an exclusion accounts for this plot" into
+            // [cleared] rather than [empty] is U5's derivation, which reads exactly these
+            // two answers.
+            var ledger = new MiningExclusionLedger();
+            ledger.RecordGroundFact(P00);
+            ledger.RecordGroundFact(P10);
+            ledger.Record(new MiningExclusion(DockA, P01, SkipCategory.SettlementLaw, "Refused under settlement law.", 100));
+
+            // Read with no filter on holder -- what the one shared status is derived from.
+            var accounted = ledger.AttemptFacts;
+            Assert.Equal(P01, Assert.Single(accounted).Plot);
+            Assert.Equal(SkipCategory.SettlementLaw, accounted[0].Category);
+            Assert.Equal("Refused under settlement law.", accounted[0].Detail);
+
+            // ... and the plot is genuinely still accounted for, rather than exhausted.
+            Assert.True(ledger.IsAccountedForByAttempt(P01));
+            Assert.False(ledger.IsAccountedForByAttempt(P00));
+        }
+
+        [Fact]
+        public void CoversAE15_ASurveyObservingMineableMaterialAtAnExcludedPlot_DropsTheExclusion()
+        {
+            // No mining pass is involved: a [cleared] area is offered to no mining dock
+            // (R44), so a survey is the only thing that can ever lift this.
+            var ledger = new MiningExclusionLedger();
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused under settlement law.", 100));
+            Assert.True(ledger.SuppressesFor(DockA, P00));
+
+            // A LATER survey pass sweeps the plot (stamp 300 postdates the refusal's 100) and
+            // finds it standing above bedrock -- there is mineable material there.
+            var lifted = ledger.LiftWhereSurveyObservedMaterial(_ => 300, _ => false);
+
+            Assert.Equal(P00, Assert.Single(lifted).Plot);
+            Assert.False(ledger.SuppressesFor(DockA, P00));
+            Assert.Empty(ledger.AttemptFacts);
+        }
+
+        [Fact]
+        public void ASurveyThatPredatesTheRefusal_LiftsNothing()
+        {
+            // Otherwise an exclusion would be lifted by the very pass that preceded it, and
+            // would suppress nothing for as long as it took to read it back.
+            var ledger = new MiningExclusionLedger();
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.Property, "Refused under private property.", 300));
+
+            Assert.Empty(ledger.LiftWhereSurveyObservedMaterial(_ => 300, _ => false));
+            Assert.True(ledger.SuppressesFor(DockA, P00));
+        }
+
+        [Fact]
+        public void ALaterSurveyFindingThePlotAtBedrock_LiftsNothing()
+        {
+            // "Observes MINEABLE material" is the condition, not "observes". A plot down at
+            // bedrock has nothing left to take, so there is nothing for the exclusion to be
+            // wrong about.
+            var ledger = new MiningExclusionLedger();
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.Unreachable, null, 100));
+
+            Assert.Empty(ledger.LiftWhereSurveyObservedMaterial(_ => 300, _ => true));
+            Assert.True(ledger.SuppressesFor(DockA, P00));
+        }
+
+        [Fact]
+        public void AnExclusionSetFromTwoDocks_ReadsAsOneRecord_ButYieldsTwoDifferentOfferLists()
+        {
+            // R19's whole point, and R26's: what varies per dock is which plots it is
+            // OFFERED, never what the area says it is.
+            var ledger = new MiningExclusionLedger();
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "law", 100));
+            ledger.Record(new MiningExclusion(DockB, P10, SkipCategory.Property, "property", 100));
+            ledger.RecordGroundFact(P01);
+
+            // One shared record, both entries, whoever asks.
+            Assert.Equal(2, ledger.AttemptFacts.Count);
+
+            var area = new[] { P00, P10, P01 };
+            Assert.Equal(new[] { P10 }, area.Where(p => !ledger.SuppressesFor(DockA, p)).ToArray());
+            Assert.Equal(new[] { P00 }, area.Where(p => !ledger.SuppressesFor(DockB, p)).ToArray());
+        }
+
+        [Fact]
+        public void AJobThatSkippedNothing_LeavesNoExclusionBehind()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkWorked(P00);
+            job.MarkWorked(P10);
+            job.TryComplete(AllSurveyed);
+
+            Assert.Empty(job.SkippedPlots());
+
+            var ledger = new MiningExclusionLedger();
+            foreach (var skip in job.SkippedPlots())
+                ledger.Record(new MiningExclusion(DockA, skip.Plot, skip.Category, skip.Detail, 100));
+
+            Assert.Empty(ledger.AttemptFacts);
+            Assert.False(ledger.SuppressesFor(DockA, P00));
+        }
+
+        [Fact]
+        public void TheJobsSkippedLedgerCarriesThePlotTheCategoryAndTheRefusalDetail()
+        {
+            // KTD5: no second refusal vocabulary is introduced -- the exclusion the dock
+            // persists is exactly what the job already recorded, detail included.
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkSkipped(P00, SkipCategory.SettlementLaw, "Refused under settlement law.");
+            job.MarkWorked(P10);
+
+            var skip = Assert.Single(job.SkippedPlots());
+            Assert.Equal(P00, skip.Plot);
+            Assert.Equal(SkipCategory.SettlementLaw, skip.Category);
+            Assert.Equal("Refused under settlement law.", skip.Detail);
+        }
+
+        [Fact]
+        public void ASkippedPlotSurvivesTheJobSnapshotRoundTrip_DetailIncluded()
+        {
+            // The exclusion is written from the job's ledger, and a job is rehydrated from
+            // its snapshot after a restart, so the detail has to survive the projection.
+            var job = new MiningJob(new[] { P00 });
+            job.Dispatch();
+            job.MarkSkipped(P00, SkipCategory.Property, "You do not have permission here.");
+
+            var restored = MiningJob.FromSnapshot(job.ToSnapshot());
+
+            var skip = Assert.Single(restored.SkippedPlots());
+            Assert.Equal(SkipCategory.Property, skip.Category);
+            Assert.Equal("You do not have permission here.", skip.Detail);
+        }
+
+        [Fact]
+        public void CoversAE10_TheExclusionNamesItsRefusalWhereReasonsAreAlreadyReported()
+        {
+            // R27's half of AE10: the reason survives the job that hit it, worded with the same
+            // category vocabulary the skip line uses and carrying the engine's own words. An
+            // area whose [cleared] rests on this must be able to say what would unblock it.
+            var ledger = new MiningExclusionLedger();
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused by settlement law 'No Digging'.", 100));
+
+            var line = MiningReadout.FormatExclusionLine(ledger.AttemptFacts);
+
+            Assert.Contains("not authorized (settlement law)", line);
+            Assert.Contains("No Digging", line);
+        }
+
+        [Fact]
+        public void AnAreaExcludingNothing_RendersNoExclusionLineAtAll()
+        {
+            Assert.Equal(string.Empty, MiningReadout.FormatExclusionLine(new MiningExclusionLedger().AttemptFacts));
+        }
+
         [Fact]
         public void TryComplete_NoOp_WhenNotWorking()
         {

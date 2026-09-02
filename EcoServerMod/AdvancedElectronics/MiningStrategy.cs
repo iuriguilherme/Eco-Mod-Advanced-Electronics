@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using AdvancedElectronics.Navigation;
 using Eco.Gameplay.Components;
@@ -214,6 +215,23 @@ namespace Eco.Mods.TechTree
         private bool IsSurveyed(SurveyAreaEntry sourceArea, PlotCoord plot) =>
             PlotFreshness.IsMineable(sourceArea.ReadSurveyedStamps().StampFor(plot), sourceArea.ReadMinedStamps().StampFor(plot));
 
+        /// <summary>
+        /// What this dock is OFFERED (R19): a plot that is mineable by the stamps AND not
+        /// excluded -- the union of the area's ground facts (its at-bedrock observation, which
+        /// binds every dock) and THIS dock's own attempt facts (what it was refused, which bind
+        /// nobody else).
+        ///
+        /// The ledger is built once per target selection rather than per plot: it re-reads the
+        /// area, and the exclusion set is the same for every plot in the pass.
+        /// </summary>
+        private Func<PlotCoord, bool> OfferablePlots(SurveyAreaEntry sourceArea)
+        {
+            var exclusions = this.homeDock.ReadMiningExclusions(this.areaRef.OwningDockId, sourceArea);
+            var holder = this.homeDock.ExclusionHolderId;
+
+            return plot => !exclusions.SuppressesFor(holder, plot) && this.IsSurveyed(sourceArea, plot);
+        }
+
         public bool TryGetNextTarget(out PlotCoord plot)
         {
             plot = default;
@@ -238,7 +256,10 @@ namespace Eco.Mods.TechTree
             if (sourceArea == null)
                 return false; // either not-yet-resolved (retry) or just ended (Invalidated) -- both report no target.
 
-            bool IsSurveyed(PlotCoord p) => this.IsSurveyed(sourceArea, p);
+            // R19: what this dock is offered, not merely what is mineable. Built once here and
+            // handed to both TryComplete and NextPlot, so the plot a refusal took off the table
+            // is equally not a reason to keep the job running.
+            var offerable = this.OfferablePlots(sourceArea);
 
             if (this.job.Status == MiningJobStatus.Idle)
                 this.job.Dispatch();
@@ -246,10 +267,10 @@ namespace Eco.Mods.TechTree
             if (this.job.Status != MiningJobStatus.Working)
                 return false;
 
-            if (this.job.TryComplete(IsSurveyed))
+            if (this.job.TryComplete(offerable))
                 return false;
 
-            var next = this.job.NextPlot(IsSurveyed);
+            var next = this.job.NextPlot(offerable);
             if (next == null)
                 return false;
 
@@ -355,6 +376,12 @@ namespace Eco.Mods.TechTree
                 // names the bucket and not the cause. Live pass #2 lost two of three plots to
                 // exactly that, with the answer already computed and thrown away here.
                 this.job.MarkSkipped(target, RefusalMapping.ToSkipCategory(result.RefusalStage), result.Message);
+
+                // R18: the refusal outlives the job. Persisted at the skip rather than at the
+                // job's end so the engine's own wording is captured while it is still in hand
+                // -- the dock's flat projection of the job cannot carry a string -- and so a
+                // job that never ends cleanly still leaves its record.
+                this.homeDock.PersistMiningExclusions(this.job);
                 this.EndPass();
                 return ParkedWorkOutcome.PlotFailed;
             }
@@ -414,6 +441,7 @@ namespace Eco.Mods.TechTree
             if (plot == null) return;
 
             this.job.MarkSkipped(plot.Value, SkipCategory.Unreachable);
+            this.homeDock.PersistMiningExclusions(this.job); // R18 -- a failed route is this dock's fact, and it outlives the job.
             this.EndPass();
             this.lastOfferedPlot = null;
         }

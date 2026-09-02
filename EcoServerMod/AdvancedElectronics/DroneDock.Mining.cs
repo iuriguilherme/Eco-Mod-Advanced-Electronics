@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Utils;
 using Eco.Gameplay.Auth;
@@ -10,6 +12,51 @@ using Eco.Shared.SharedTypes;
 
 namespace Eco.Mods.TechTree
 {
+    /// <summary>
+    /// One persisted attempt-fact exclusion (U3, R18, R19, KTD5): a plot ONE mining pass could
+    /// not take, kept past the job's end so the next offer suppresses it again.
+    ///
+    /// It lives on the dock that hit the refusal, which is what makes its reach per dock without
+    /// storing a holder: whoever reads it off this dock is reading that dock's own knowledge.
+    /// The (source dock, area id) pair identifies the area, because an area id is dock-local —
+    /// two survey docks each publish an area 1.
+    ///
+    /// A flat <c>[Serialized]</c> class of primitives inside a <see cref="ThreadSafeList{T}"/>,
+    /// the shape <see cref="OreFindingSnapshot"/> already proves: the refusal wording is a string,
+    /// so the flattened-into-one-primitive-list form the coordinate lists use cannot carry it.
+    /// Every serialized member has a setter — a computed one stops the mod loading, with a clean
+    /// build and a silent log (docs/solutions/conventions/serialized-needs-a-member-to-write-back-into.md).
+    /// </summary>
+    [Serialized]
+    public class MiningExclusionEntry
+    {
+        /// <summary>Object id of the survey dock that published the area, stringified — an area id alone is dock-local.</summary>
+        [Serialized] public string SourceDockId { get; set; }
+
+        [Serialized] public int AreaId { get; set; }
+
+        [Serialized] public int PlotX { get; set; }
+
+        [Serialized] public int PlotZ { get; set; }
+
+        /// <summary><see cref="SkipCategory"/>'s ordinal — the mining job's own vocabulary, not a second one (KTD5).</summary>
+        [Serialized] public int CategoryValue { get; set; }
+
+        /// <summary>The engine's own refusal wording (R27), or null when the refusal had none.</summary>
+        [Serialized] public string Detail { get; set; }
+
+        /// <summary>The plot's surveyed stamp when the refusal happened — what a later survey's lift is measured against (R19).</summary>
+        [Serialized] public long SurveyedStamp { get; set; }
+
+        /// <summary>Parameterless constructor required by the Eco serializer.</summary>
+        public MiningExclusionEntry() { }
+
+        public PlotCoord Plot => new PlotCoord(this.PlotX, this.PlotZ);
+
+        public bool IsFor(string sourceDockId, int areaId) =>
+            this.AreaId == areaId && this.SourceDockId == sourceDockId;
+    }
+
     // Mining-specific dock state: U8 (cross-dock area reference, mined stamps), U12
     // (citizen stamp, re-check, full-access gate), and U9 (the mining job's persisted
     // ledger). Split from DroneDock.cs (maintainability) -- the mining surface is
@@ -58,6 +105,144 @@ namespace Eco.Mods.TechTree
             if (this.AssignedMiningArea.Resolve(out _, out var area) != AreaLookupSignal.Found) return;
 
             area.RecordMinedPlot(plot, stampValue);
+        }
+
+        // ---------------------------------------------------------------
+        // U3: the exclusion ledger's dock half (R18, R19, R27, KTD5).
+        //
+        // EVERY skip category a mining pass records is an ATTEMPT fact -- Unreachable,
+        // Property, SettlementLaw, Obstructed and Other alike -- so the whole ledger belongs
+        // here, on the dock that hit the refusals, and binds nobody else. A mining pass
+        // records no ground facts at all: Obstructed is the classifier's catch-all for a
+        // refusal that was neither law nor property (R7's single-column obstruction, which
+        // never stops a plot reaching bedrock), and bedrock never reaches the ledger because
+        // MiningStrategy filters NotRemovable positions out before submitting a layer.
+        //
+        // The one ground fact is the at-bedrock observation the survey pass writes per column
+        // onto the AREA (U4, SurveyAreaEntry.BedrockPlotCoords). It is read here, never
+        // duplicated here.
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// This dock's persisted attempt-fact exclusions, across every area it has worked
+        /// (U3). Kept past the job that produced them, which is the whole point: a job ends,
+        /// and the next offer still has to know which plots this dock was refused.
+        ///
+        /// NOT cleared by <see cref="UnassignMiningArea"/> -- walking away from an area does
+        /// not unlearn what the drone was refused there. What clears one is the survey lifting
+        /// it (R19), applied on read in <see cref="AddMiningExclusionsTo"/>.
+        /// </summary>
+        [Serialized] public ThreadSafeList<MiningExclusionEntry> MiningExclusions { get; set; } = new();
+
+        /// <summary>This dock's identity in an exclusion ledger — which exclusions are its own to be bound by (R19).</summary>
+        public string ExclusionHolderId => this.ObjectID.ToString();
+
+        /// <summary>
+        /// Persists <paramref name="job"/>'s skipped plots as this dock's exclusions on the
+        /// area it is currently assigned to (R18, KTD5). Reads the job's own ledger — plot,
+        /// category and the engine's refusal wording — so no second refusal vocabulary exists.
+        ///
+        /// Called at each skip rather than once at the job's end: the wording is captured while
+        /// it is still in hand (the dock's flat int projection of the job cannot carry a string,
+        /// so a restart would lose it), and a job that is never cleanly ended still leaves its
+        /// record. Idempotent — re-persisting restates the same plots.
+        ///
+        /// A job that skipped nothing leaves nothing behind.
+        /// </summary>
+        public void PersistMiningExclusions(MiningJob job)
+        {
+            if (job == null) return;
+            if (this.AssignedMiningArea == null) return;
+            if (this.AssignedMiningArea.Resolve(out _, out var area) != AreaLookupSignal.Found) return;
+
+            var skipped = job.SkippedPlots();
+            if (skipped.Count == 0) return;
+
+            var sourceDockId = this.AssignedMiningArea.OwningDockId.ToString();
+            var stamps = area.ReadSurveyedStamps();
+
+            // Rebuilt rather than mutated in place: every other serialized collection here is
+            // replaced wholesale on write, and an entry edited inside the list is the one shape
+            // whose serializability is not already proven.
+            var rebuilt = new ThreadSafeList<MiningExclusionEntry>();
+            foreach (var existing in this.MiningExclusions)
+                if (!(existing.IsFor(sourceDockId, area.Id) && skipped.Any(s => s.Plot.X == existing.PlotX && s.Plot.Z == existing.PlotZ)))
+                    rebuilt.Add(existing);
+
+            foreach (var skip in skipped)
+                rebuilt.Add(new MiningExclusionEntry
+                {
+                    SourceDockId = sourceDockId,
+                    AreaId = area.Id,
+                    PlotX = skip.Plot.X,
+                    PlotZ = skip.Plot.Z,
+                    CategoryValue = (int)skip.Category,
+                    Detail = skip.Detail,
+                    SurveyedStamp = stamps.StampFor(skip.Plot),
+                });
+
+            this.MiningExclusions = rebuilt;
+        }
+
+        /// <summary>
+        /// Adds this dock's exclusions for <paramref name="area"/> into <paramref name="ledger"/>,
+        /// tagged with <see cref="ExclusionHolderId"/>, and applies R19's lift first: an
+        /// exclusion a LATER survey pass has contradicted — the plot's surveyed stamp postdates
+        /// the refusal and the plot is not down at bedrock, so there is mineable material there
+        /// — is dropped from the persisted list and never reaches the ledger (AE15).
+        ///
+        /// The lift lands on the read rather than on the survey pass because the exclusions sit
+        /// on the mining docks while the pass runs on the survey dock, and a survey dock does
+        /// not enumerate mining docks. The stamp comparison makes the two equivalent: the first
+        /// read after the pass is the drop.
+        ///
+        /// Takes the ledger rather than returning one so a caller deriving the AREA's status can
+        /// merge several docks' exclusions into a single ledger and read them all regardless of
+        /// holder (R26) — the split R19 draws is between what a dock is OFFERED and what the
+        /// area reads, and only the offer side filters by holder.
+        /// </summary>
+        public void AddMiningExclusionsTo(MiningExclusionLedger ledger, Guid owningDockId, SurveyAreaEntry area)
+        {
+            if (ledger == null || area == null) return;
+
+            var sourceDockId = owningDockId.ToString();
+            var mine = this.MiningExclusions.Where(e => e.IsFor(sourceDockId, area.Id)).ToList();
+            if (mine.Count == 0) return;
+
+            var scratch = new MiningExclusionLedger();
+            foreach (var entry in mine)
+                scratch.Record(new MiningExclusion(
+                    this.ExclusionHolderId, entry.Plot, (SkipCategory)entry.CategoryValue, entry.Detail, entry.SurveyedStamp));
+
+            var stamps = area.ReadSurveyedStamps();
+            var lifted = scratch.LiftWhereSurveyObservedMaterial(stamps.StampFor, area.PlotRestsOnBedrock);
+            if (lifted.Count > 0)
+            {
+                var survivors = new ThreadSafeList<MiningExclusionEntry>();
+                foreach (var entry in this.MiningExclusions)
+                    if (!(entry.IsFor(sourceDockId, area.Id) && lifted.Any(l => l.Plot.X == entry.PlotX && l.Plot.Z == entry.PlotZ)))
+                        survivors.Add(entry);
+                this.MiningExclusions = survivors;
+            }
+
+            foreach (var exclusion in scratch.AttemptFacts)
+                ledger.Record(exclusion);
+        }
+
+        /// <summary>
+        /// The exclusions in force on <paramref name="area"/> as this dock sees them: the area's
+        /// own ground facts (U4's at-bedrock observation, binding every dock) unioned with this
+        /// dock's surviving attempt facts. What <see cref="MiningExclusionLedger.SuppressesFor"/>
+        /// then answers is which plots this dock is offered (R19).
+        /// </summary>
+        public MiningExclusionLedger ReadMiningExclusions(Guid owningDockId, SurveyAreaEntry area)
+        {
+            var ledger = new MiningExclusionLedger();
+            if (area == null) return ledger;
+
+            ledger.RecordGroundFacts(area.ReadBedrockPlots());
+            this.AddMiningExclusionsTo(ledger, owningDockId, area);
+            return ledger;
         }
 
         /// <summary>True when <paramref name="citizen"/> holds full access on this dock (R39, R40) -- the level the dig-or-mine action itself declares, not the attribute default.</summary>
