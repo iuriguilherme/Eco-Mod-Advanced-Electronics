@@ -209,8 +209,10 @@ namespace Eco.Mods.TechTree
             }
         }
 
+        // Both stamps come off the source area (U2, R1): the mined record moved there from the
+        // dock, so a plot another dock has already dug is refused to this one as well.
         private bool IsSurveyed(SurveyAreaEntry sourceArea, PlotCoord plot) =>
-            PlotFreshness.IsMineable(sourceArea.ReadSurveyedStamps().StampFor(plot), this.homeDock.ReadMinedStamps().StampFor(plot));
+            PlotFreshness.IsMineable(sourceArea.ReadSurveyedStamps().StampFor(plot), sourceArea.ReadMinedStamps().StampFor(plot));
 
         public bool TryGetNextTarget(out PlotCoord plot)
         {
@@ -289,7 +291,7 @@ namespace Eco.Mods.TechTree
                 this.currentShaftPlan.Layers.Count - layers.Count,
                 this.currentShaftPlan.Layers.Count,
                 progressArea == null ? 0 : progressArea.ReadSurveyedStamps().StampFor(target),
-                this.homeDock.ReadMinedStamps().StampFor(target));
+                progressArea == null ? 0 : progressArea.ReadMinedStamps().StampFor(target));
 
             if (layers.Count == 0)
             {

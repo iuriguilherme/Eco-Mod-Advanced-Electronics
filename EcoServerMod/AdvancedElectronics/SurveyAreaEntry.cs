@@ -140,12 +140,30 @@ namespace Eco.Mods.TechTree
         /// <summary>
         /// Per-plot surveyed stamps (KTD12, R41), flattened as (x, z, stamp) triples --
         /// the persisted mirror of the live <see cref="PlotStampAccumulator"/> the sweep
-        /// writes into. Compared against the mining dock's own mined stamps
+        /// writes into. Compared against this area's <see cref="MinedStamps"/>
         /// (<see cref="PlotFreshness.IsMineable"/>) to decide which plots a mining job may
         /// work. Follows the same lifecycle as <see cref="Findings"/>: cleared on a redraw
-        /// or delete, since a plot's old stamp says nothing about the new geometry.
+        /// or delete, since a plot's old stamp says nothing about the new geometry -- which
+        /// is exactly where the mined stamps beside them part company (R13).
         /// </summary>
         [Serialized] public ThreadSafeList<long> SurveyedStamps { get; set; } = new();
+
+        /// <summary>
+        /// Per-plot MINED stamps (U2, R1), in exactly the shape <see cref="SurveyedStamps"/>
+        /// uses -- flattened (x, z, stamp) triples projected from and rehydrated into a
+        /// <see cref="PlotStampAccumulator"/> (KTD2). These used to live on the mining dock, one
+        /// list per dock, which meant two docks pointed at one area each held a private opinion
+        /// about what had been dug and the second one re-dug ground the first had taken. They are
+        /// the area's record now: a stamp is a fact about the GROUND, so every dock that can see
+        /// the area reads the same one.
+        ///
+        /// Unlike the surveyed stamps this list is NOT cleared by <see cref="ClearFindings"/>
+        /// (R13): a resurvey discards what the old survey claimed to find, but the digging
+        /// actually happened and the record of when is what makes the resurveyed area mineable
+        /// again rather than merely un-mined. What stays per dock is the mining JOB and its
+        /// ledger (R2).
+        /// </summary>
+        [Serialized] public ThreadSafeList<long> MinedStamps { get; set; } = new();
 
         /// <summary>Parameterless constructor required by the Eco serializer.</summary>
         public SurveyAreaEntry() { }
@@ -195,7 +213,16 @@ namespace Eco.Mods.TechTree
             this.MedianSurface = medianSurface;
         }
 
-        /// <summary>Discards this area's findings and surveyed stamps (delete, or an edit that redraws the geometry).</summary>
+        /// <summary>
+        /// Discards this area's findings and surveyed stamps (delete, or an edit that redraws the
+        /// geometry).
+        ///
+        /// <see cref="MinedStamps"/> is deliberately NOT cleared here (R13). The findings are a
+        /// claim about what is in the ground and a resurvey replaces them; the mined stamps are a
+        /// record that digging happened, which no later survey makes untrue. Keeping them is also
+        /// what makes AE3 work: an area mined at 200 and resurveyed at 300 is mineable again
+        /// because 300 postdates a 200 that is still there to be postdated.
+        /// </summary>
         public void ClearFindings()
         {
             this.Findings = new ThreadSafeList<OreFindingSnapshot>();
@@ -252,12 +279,59 @@ namespace Eco.Mods.TechTree
             return PlotStampAccumulator.FromSnapshot(entries);
         }
 
-        /// <summary>Records <paramref name="plot"/> surveyed at <paramref name="stampValue"/> and persists it immediately, mirroring the mining dock's own <c>RecordMinedPlot</c>.</summary>
+        /// <summary>Records <paramref name="plot"/> surveyed at <paramref name="stampValue"/> and persists it immediately, mirroring <see cref="RecordMinedPlot"/>.</summary>
         public void RecordSurveyedPlot(PlotCoord plot, long stampValue)
         {
             var accumulator = this.ReadSurveyedStamps();
             accumulator.Record(plot, stampValue);
             this.SetSurveyedStamps(accumulator);
+        }
+
+        /// <summary>
+        /// Replaces this area's persisted mined stamps from the live accumulator's current
+        /// snapshot. The exact mirror of <see cref="SetSurveyedStamps"/>, empty guard included:
+        /// an empty accumulator never overwrites a populated persisted snapshot.
+        /// </summary>
+        public void SetMinedStamps(PlotStampAccumulator stamps)
+        {
+            if (stamps == null || stamps.IsEmpty)
+                return;
+
+            var flat = new ThreadSafeList<long>();
+            foreach (var entry in stamps.Snapshot())
+            {
+                flat.Add(entry.Key.X);
+                flat.Add(entry.Key.Z);
+                flat.Add(entry.Value);
+            }
+            this.MinedStamps = flat;
+        }
+
+        /// <summary>
+        /// This area's persisted mined stamps, rehydrated into a live accumulator (U2, R1).
+        /// Every dock reading this area gets the same answer, which is the whole point of the
+        /// record having moved here: <see cref="PlotFreshness.IsMineable"/> now compares two
+        /// stamps that both came off one object.
+        /// </summary>
+        public PlotStampAccumulator ReadMinedStamps()
+        {
+            var entries = new Dictionary<PlotCoord, long>();
+            for (var i = 0; i + 2 < this.MinedStamps.Count; i += 3)
+                entries[new PlotCoord((int)this.MinedStamps[i], (int)this.MinedStamps[i + 1])] = this.MinedStamps[i + 2];
+            return PlotStampAccumulator.FromSnapshot(entries);
+        }
+
+        /// <summary>
+        /// Records <paramref name="plot"/> mined at <paramref name="stampValue"/> and persists it
+        /// immediately, mirroring <see cref="RecordSurveyedPlot"/>. Unlike the survey side there
+        /// is no live/throttled projection step, since a mined stamp is written once per plot
+        /// rather than accumulated per column.
+        /// </summary>
+        public void RecordMinedPlot(PlotCoord plot, long stampValue)
+        {
+            var accumulator = this.ReadMinedStamps();
+            accumulator.Record(plot, stampValue);
+            this.SetMinedStamps(accumulator);
         }
 
         /// <summary>

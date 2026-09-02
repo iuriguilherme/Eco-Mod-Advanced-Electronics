@@ -17,10 +17,14 @@ namespace Eco.Mods.TechTree
     public partial class DroneDockObject
     {
         // ---------------------------------------------------------------
-        // U8: a mining dock's reference to an area published by a survey dock (KTD2), and
-        // this dock's own per-plot mined stamps (KTD12). Only meaningful on a dock holding
-        // a mining drone, but declared here rather than on the drone: the reference and
-        // the mined ledger are dock-owned state, the same way SurveyAreas is.
+        // U8: a mining dock's reference to an area published by a survey dock (KTD2).
+        // Only meaningful on a dock holding a mining drone, but declared here rather than
+        // on the drone: the reference is dock-owned state, the same way SurveyAreas is.
+        //
+        // The per-plot MINED stamps used to live here too. They do not any more (U2, R1):
+        // they are the area's record now, beside its surveyed stamps, so a block one dock
+        // digs is dug for every dock that can see the area. What stays per dock is the
+        // mining JOB and its ledger (R2), further down this file.
         // ---------------------------------------------------------------
 
         /// <summary>The area this mining dock currently consumes, or null when unassigned.</summary>
@@ -37,38 +41,23 @@ namespace Eco.Mods.TechTree
             this.AssignedMiningArea == null ? null : $"mining:{this.AssignedMiningArea.AreaId}:{this.miningAssignmentEpoch}";
 
         /// <summary>
-        /// This dock's own mined stamps (KTD12), flattened as (x, z, stamp) triples --
-        /// compared against the SOURCE area's surveyed stamps to decide which plots are
-        /// mineable (<see cref="AdvancedElectronics.Navigation.PlotFreshness.IsMineable"/>).
-        /// Deliberately not cleared on reassignment: a plot already mined stays recorded
-        /// mined even if the dock is later pointed at a different area, since the mined
-        /// stamp describes the WORLD position, not the assignment.
+        /// Records <paramref name="plot"/> mined at <paramref name="stampValue"/> ON THE AREA
+        /// THIS DOCK IS WORKING (U2, R1), resolved through the assignment's existing
+        /// <see cref="MiningAreaRef"/> -- the same reference every dispatch already resolves.
+        /// The dock keeps no mined list of its own: the stamp is a fact about the ground, so it
+        /// belongs where every dock that can see that ground will read it, beside the area's
+        /// surveyed stamps that <see cref="AdvancedElectronics.Navigation.PlotFreshness.IsMineable"/>
+        /// compares it against.
+        ///
+        /// A no-op when the dock is unassigned or the area has gone: there is no ground record
+        /// to write into, and a vanished area ends the job on the next tick anyway.
         /// </summary>
-        [Serialized] public ThreadSafeList<long> MinedStamps { get; set; } = new();
-
-        /// <summary>This dock's persisted mined stamps, rehydrated into a live accumulator.</summary>
-        public PlotStampAccumulator ReadMinedStamps()
-        {
-            var entries = new Dictionary<PlotCoord, long>();
-            for (var i = 0; i + 2 < this.MinedStamps.Count; i += 3)
-                entries[new PlotCoord((int)this.MinedStamps[i], (int)this.MinedStamps[i + 1])] = this.MinedStamps[i + 2];
-            return PlotStampAccumulator.FromSnapshot(entries);
-        }
-
-        /// <summary>Records <paramref name="plot"/> mined at <paramref name="stampValue"/> and persists it immediately -- unlike the survey side, there is no live/throttled projection step, since a mined stamp is written once per plot, not accumulated per column.</summary>
         public void RecordMinedPlot(PlotCoord plot, long stampValue)
         {
-            var accumulator = this.ReadMinedStamps();
-            accumulator.Record(plot, stampValue);
+            if (this.AssignedMiningArea == null) return;
+            if (this.AssignedMiningArea.Resolve(out _, out var area) != AreaLookupSignal.Found) return;
 
-            var flat = new ThreadSafeList<long>();
-            foreach (var entry in accumulator.Snapshot())
-            {
-                flat.Add(entry.Key.X);
-                flat.Add(entry.Key.Z);
-                flat.Add(entry.Value);
-            }
-            this.MinedStamps = flat;
+            area.RecordMinedPlot(plot, stampValue);
         }
 
         /// <summary>True when <paramref name="citizen"/> holds full access on this dock (R39, R40) -- the level the dig-or-mine action itself declares, not the attribute default.</summary>
@@ -148,7 +137,11 @@ namespace Eco.Mods.TechTree
             return true;
         }
 
-        /// <summary>Clears this dock's mining area assignment (R7). The mined ledger, hold, and stamp are untouched.</summary>
+        /// <summary>
+        /// Clears this dock's mining area assignment (R7). The hold and the citizen stamp are
+        /// untouched, and so is the area's mined record -- which the dock never owned and cannot
+        /// drop by walking away from the area (U2, R1).
+        /// </summary>
         public void UnassignMiningArea()
         {
             this.AssignedMiningArea = null;
