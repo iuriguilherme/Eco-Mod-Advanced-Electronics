@@ -1,0 +1,143 @@
+---
+title: "A review scoped to the document cannot see what the code already settled"
+date: 2026-08-30
+category: workflow-issues
+module: EcoServerMod
+problem_type: workflow_issue
+component: development_workflow
+severity: medium
+applies_when:
+  - "Dispatching reviewers over a requirements or plan document for a feature that extends existing code"
+  - "A review finding says a document fails to specify where something goes, what surface it uses, or what a player is told"
+  - "About to ask the maintainer to choose a placement, a wording, or a reporting surface"
+  - "Writing a requirement that describes UI behaviour for a component that already renders something"
+  - "A reviewer proposes adding a field, a slot, or a message to an interface that exists"
+tags: [ce-doc-review, review-scoping, requirements, grounding, false-gap, methodology, eco-modding]
+related_components: [EcoServerMod/AdvancedElectronics, docs/plans]
+---
+
+# A review scoped to the document cannot see what the code already settled
+
+## Context
+
+Four rounds of `ce-doc-review` ran over a requirements plan for a feature extending the drone mod's
+existing readouts. Every reviewer was given the document, the decision primer, and the findings
+schema. Several were given specific source files to check *feasibility* claims against.
+
+None of them was told the implementation was authoritative over questions of **placement and
+presentation**. So they reviewed the document against itself, and reported — correctly, on the
+evidence they had — that it failed to specify things.
+
+Four such findings reached the maintainer as questions. All four were already answered in the code:
+
+- **Where a refusal reason goes.** A finding said the requirement demands a reason on the roster line
+  while the field-order requirement never says where it sits, leaving three possible layouts. The
+  mining readout already has dedicated rows for this — `FormatStopReason`, `FormatBlockedReason`, and
+  a composed `FormatSkipLine` that words property, settlement-law, unreachable and obstructed
+  refusals by category. Reasons were never on the area line.
+- **What surface a detail view uses.** A finding said "detail" was undefined — panel, command, or
+  popup — with no cap on a per-plot list. `FormatProgress` carries a comment stating that per-fact
+  rows were deliberately folded into one line because they are "a debugging surface, not a player
+  one", and naming `/drone state` as where "why was that plot skipped" belongs.
+- **Where partial progress is reported.** A finding called a phrase on the roster line duplicative of
+  the status word. Both were redundant with a third surface: the progress row already reports
+  `total: N plots, worked: X, skipped: Y`.
+- **Whether a tab discloses an area's purpose.** A finding wanted a kind field on every roster line.
+  The answer needed both halves of the repo: a dock *can* list unrelated areas, so the tab does not
+  disclose kind — but kind is internal and not information the player acts on.
+
+The maintainer caught all four. The reviewers could not have.
+
+## Guidance
+
+**Scope a document review by what each finding class needs as authority, not by what the document
+contains.**
+
+A requirements document under review has three different kinds of claim in it, and they answer to
+different authorities:
+
+| Claim | Authority | Reviewable from the document alone |
+|---|---|---|
+| *What we will build* — behaviour, scope, product decisions | the maintainer | yes |
+| *Whether it can be built* — cost, data shape, access paths | the codebase | only with source access |
+| *Where it goes and what it looks like* — surfaces, slots, wording, reporting | **the codebase** | **no** |
+
+The third row is the trap. It reads like product design, so it is natural to review it against the
+document. But for any feature extending existing code, the surfaces already exist and already have
+conventions — often documented in comments that state the reasoning, which is exactly what a
+reviewer needs and cannot see.
+
+**Practical form:**
+
+- When the feature extends an existing component, name that component's rendering or presentation
+  code as authoritative in the reviewer's prompt, the same way feasibility claims already get source
+  files. A reviewer told "these files decide placement" will read them.
+- Before asking the maintainer where something goes, grep for whether it goes somewhere already.
+  "The document does not say" and "nobody has decided" are different statements.
+- Treat a finding of the form *"the document never says where/what surface/how it is reported"* as
+  requiring a code check before it becomes a question. It is the signature of this failure.
+
+**On "duplicate, so drop it".** One of the four findings identified a genuine duplication and
+proposed deletion, which was accepted and was wrong. The information was real; it was in the wrong
+place. When a fact appears twice, the question is which surface owns it — deleting one instance
+answers a different question than the one worth asking.
+
+## Why This Matters
+
+The cost is not the wrong answer — the maintainer corrected every one. The cost is that **four
+product decisions were put to a human who did not need to make any of them**, in a review whose
+purpose was to reduce what they had to decide.
+
+It also produces a specific kind of bad requirement. Asked "where should this go?", the natural
+output is a requirement that *specifies* a placement — inventing a slot, a cap, or an ordering for a
+surface that already has one. That requirement then contradicts the implementation, and the
+contradiction is discovered during planning or later.
+
+Two of the four findings resolved not by choosing but by **deleting the requirement's placement
+language entirely** and pointing at the existing surface. The document got shorter. A review that
+had read the code would have proposed that directly.
+
+## When to Apply
+
+Applies whenever a reviewed document describes behaviour for code that exists. It does not apply to
+greenfield work, where the document genuinely is the only authority on placement.
+
+The signal to check for is a finding that faults the document for *silence* rather than for being
+wrong. Silence about behaviour is usually a real gap. Silence about surface, slot, wording, or
+reporting is usually the document declining to restate something the code has already settled.
+
+## Examples
+
+A finding as filed, and what a code check turned it into:
+
+> **Filed:** "R27 requires a refusal reason on the roster line; R29 fixes the exact field order and
+> never mentions the reason text. An implementer must guess whether it consumes one of the two capped
+> overlay slots, rides inside the status word, or is a new uncapped segment."
+
+Three plausible layouts, no basis to choose, so it reached the maintainer as a question.
+
+The check that dissolved it:
+
+```bash
+grep -n 'reason\|Reason\|skip\|Skip' EcoServerMod/AdvancedElectronics.Navigation/MiningReadout.cs
+```
+
+which returns `FormatStopReason`, `FormatBlockedReason` and `FormatSkipLine` — reasons already have
+their own rows. The requirement was corrected to point at them, and the roster line kept its
+budgeted length. No slot had to be found, because none was ever needed.
+
+The same grep pattern found the diagnostic-surface answer in a doc comment two methods away.
+
+## Related
+
+- `docs/solutions/workflow-issues/a-remembered-capability-and-a-cited-file-are-claims.md` — the
+  adjacent failure: asserting a capability exists without checking. This one is the inverse, asserting
+  a gap exists without checking.
+- `docs/solutions/workflow-issues/a-closed-option-set-caps-the-answer-at-what-you-thought-of.md` —
+  why a question built from three invented options is worse than no question; here the options were
+  invented because the real answer was never looked up.
+- `docs/solutions/design-patterns/vertical-stack-only-ui-design.md` — the panel constraints these
+  readouts were built against, and the source of the length budget several findings reasoned about
+  without reading.
+- `docs/ideation/2026-08-21-shared-area-status-review-decisions.md` — the four-round decision record
+  this was drawn from.

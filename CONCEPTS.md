@@ -41,9 +41,9 @@ Two consequences already in force:
 A named, dock-owned region of Plots that the player draws on the map for the drone to prospect.
 
 Identity is a dock-local id, not the name — two areas may share a name and remain distinct.
-Redrawing an area's geometry is treated as creating a different area: its Findings and Coverage are
-discarded, because the old survey no longer describes the new shape. Renaming is not a redraw and
-preserves them. Deleting an area destroys its Findings with it.
+Redrawing an area's geometry keeps what is still true: every Plot the edit retains keeps its
+Findings, its dig record, and its refusals, and only the Plots the edit adds are unsurveyed.
+Renaming is not a redraw at all. Deleting an area destroys its Findings with it.
 
 ### Plot
 Eco's property subdivision unit — a fixed square of world columns, the granularity at which land is
@@ -61,6 +61,103 @@ until read together with Coverage — unsurveyed and surveyed-but-barren are dif
 The fraction of a Survey Area the drone has actually swept. Distinguishes a survey that has not
 started from one in progress from one that finished and found nothing.
 
+### Area Lifecycle
+The single ground state a [[Survey Area]] is in at any moment: unsurveyed, surveyed, digging, mined,
+[[Cleared]], or [[Empty]]. Exactly one applies, and it is what the area's colour on a dock roster
+reports.
+
+Surveyed, digging and mined are three points on one axis: surveyed means the ground has been read and
+not yet dug, digging means some of it has been taken and some is still worth taking, mined means
+everything the survey found has been taken. A survey resets that axis — partly-dug ground comes back
+as surveyed, because a mining drone can only ever take what a survey found.
+
+The lifecycle describes the ground, not the work. [[Assignment]] and unreachability accompany any of
+the states, because a drone's current trip says nothing about what the area contains. Mined, cleared
+and empty all mean "nothing to dig here now" and differ in what would change that: a mined area needs
+re-surveying, a cleared one is waiting on a refusal being lifted, an empty one has nothing left at
+all. The state is read from what the area itself records rather than announced by whichever drone
+last worked it, so every dock that can see the area agrees.
+
+Plots inside one area can disagree, and the area still shows one state — the dominant one. Any plot
+still worth digging keeps the area on the ramp. What the drones read per plot, the roster compresses
+to a line.
+
+### Cleared
+The [[Area Lifecycle]] state of a [[Survey Area]] the mining drone is finished with — nothing remains
+that it is *able* to take. That may be because the ground is exhausted, or because what is left sits
+behind a refusal, so cleared is not the same claim as [[Empty]] and only Empty is safe to treat as
+spent ground.
+
+Cleared is re-derived from what a survey observes rather than remembered, so ground raised again —
+by a fill, or by an edit the mod did not make — stops being cleared without anything having to
+revoke it. An area whose cleared rests on a refusal says which refusal, so blocked ground never reads
+as spent ground.
+
+### Empty
+The [[Area Lifecycle]] state of a [[Survey Area]] with genuinely nothing left in it: every [[Plot]]
+dug down to bedrock, and no refusal accounting for anything still there.
+
+Bedrock is the impenetrable layer at the bottom of the world and the only ground the game refuses to
+let anything dig; obstructions that block a single column — a built block, dirt holding a plant or a
+tree — are stepped around rather than stopping the dig. Empty is the state a landfill consumes,
+which is why it is worth separating from [[Cleared]]: filling ground someone was merely refused is a
+different act from filling ground that is finished.
+
+### Overlap
+The condition of two areas covering the same ground, and the annotation that marks it. Drawing an
+overlapping area is never refused — the conflict is marked instead, and the area's detail names the
+centre block of each shared [[Plot]] so the player can find it.
+
+Overlapping is not by itself a block. Assigning an area claims its plots, and a drone works only what
+its own dock has claimed — so the collision is found and reported when a player assigns, not while a
+drone is working. An assignment that would take plots another area already holds is refused, and says
+which plots and what holds them. The test is [[Kind]]-blind: what matters is whether the ground is
+held, not what it is held for.
+
+That is what keeps a mining drone out of farmland and a farming drone off mining ground, and it is why
+docks exchange area geometry even when they are too far apart to work each other's areas: two areas
+can collide on the ground however far apart their docks sit. An unassigned area holds nothing, and
+neither does one that is [[Empty]] — there is nothing left to claim it for.
+
+### Claim
+The hold an [[Assignment]] takes on an area's plots. Assigning records it; unassigning releases it and
+says so. A drone works only plots its own dock has claimed, so it never has to ask mid-pass what
+another dock is doing.
+
+A claim coordinates drones; it does not control access. Its lifetime is the [[Assignment]]'s, so it is
+not something a player owns, holds, or can have taken — releasing one is just the assignment ending.
+Who may see, edit, or assign an area is a separate question, answered by Eco's own access levels on the
+dock, and the claim neither widens nor narrows them.
+
+A claim is kind-blind — any assigned area holds its plots against every dock, and any unassigned area
+is free to a dock of any kind. Ground that reads [[Empty]] is the one exception: there is nothing left
+to hold it for, so it is claimable even where another area still covers it. A [[Cleared]] area does
+keep its claim, because the [[Exclusion]] behind it may lift.
+
+### Kind
+What an area is for — the job it exists to serve. Kind belongs to the area rather than the dock that
+owns it, so the purpose survives being reassigned, and it can change over an area's life.
+
+The player reads a kind as a tag in brackets — `[farm]` and its siblings — in the same vocabulary as the
+rest of the line, never as a field of its own. That tag is how someone knows what an area is for and what
+to expect when assigning a drone to it. A dock may list areas of any kind.
+
+Changing a kind is an explicit act by whoever operates the dock — explicit meaning it never happens as a
+side effect of other work, not that it carries a permission level of its own. The refusal it does carry
+is about drone activity: a kind cannot change while a drone is mid-pass on that area or one overlapping
+it. Access to the dock is a separate question and is unchanged by any of this. It does not gate
+who may take ground — [[Claim]] does that, kind-blind. What it does is say which data a dock writes
+onto an area, and that record is how ground passes from one purpose to the next.
+
+### Exclusion
+A record that something could not be taken, and why. An exclusion reaches as far as the fact behind it:
+bedrock reached is true of the ground and binds every dock, while a property, settlement-law, or
+pathing refusal is true of one attempt and binds only the dock that hit it.
+
+An exclusion is a record of the last attempt, not a permanent verdict. A survey pass that observes
+mineable material where one was recorded drops it. Exclusions are what separate [[Cleared]] from
+[[Empty]] — ground the drone was refused on, from ground with nothing left in it.
+
 ### Survey Depth
 How far below the surface a survey looked, in blocks. Bounds what a Finding-free result can be
 taken to mean: nothing found says nothing about material deeper than this.
@@ -71,6 +168,70 @@ then move to the next.
 
 Because each Plot is visited discretely, a Survey Area need not be contiguous, and a Plot the drone
 cannot reach is skipped rather than stalling the survey.
+
+## Farming
+
+### Block Decision
+The rule the Farm Drone applies to every block it visits: read what the block currently is, and act
+on that alone. A surface the plow will not accept gets dirt; bare plowable ground is plowed; tilled
+ground is sown; a ripe plant of the area's seed is harvested unless its crop has hit its ceiling;
+any other plant is plowed under whatever its maturity; a plant still growing is left alone.
+
+It replaced a per-area stage chain, and the reason is worth keeping: with one drone there is no work
+to sequence between machines, so the only thing a stage recorded was a claim about ground that the
+ground itself already answers. Reading the block instead means a player who hand-plows a corner or
+hand-plants a row is not a desync — the drone simply sees the new state.
+
+### Farm Marker
+`[farm]`, set on an area the moment it is assigned to a farm dock. A designation rather than an
+achievement: an area's purpose is known when a citizen assigns it, not when the ground catches up.
+
+`[flat]` is not its companion but its opposite in purpose: it marks ground flat enough to farm by
+hand or by tractor, and it exists for the people the drone is not — a player without drones yet, or a
+neighbour who farms manually. A drone works irregular ground perfectly well, so levelling is a
+service, not a precondition.
+
+It is re-derived from the ground rather than stored, so an area that stops being flat stops showing
+it. It yields its place on the line to any other tag that needs the room, and only for want of room:
+what it says stays true and useful while a drone is working the area, because a citizen can farm that
+same ground by hand at the same time.
+
+Both are non-exclusive annotations — they never occupy an area's lifecycle status slot and never take
+a colour from its ramp — and neither is ever read to decide what the drone does next.
+
+Neither is what keeps other drones off farmland. Two areas that share ground stop both their drones on
+the plots they share, symmetrically, so protection is a property of overlapping geometry rather than
+of any marker.
+
+### Crop Ceiling
+The quantity of one crop, held across a dock's linked storage, at which the drone stops harvesting it
+and leaves ripe plants standing in the ground.
+
+It exists because standing crops keep and harvested ones spoil, so the safest place to store surplus
+food is unharvested. The ceiling belongs to the crop rather than to an area, so every area growing it
+answers to one number.
+
+Unset is not a pending state. A crop nobody has capped is harvested without limit, and zero is how a
+citizen returns one to that default — a player who has not thought about a crop wants all of it, so
+the absence of a ceiling reads as "no ceiling", never as "not configured yet".
+
+### Level Pass
+The one-off job that flattens an area's surface to a single height, run only while that area's
+level-first toggle is on and cleared once it finishes.
+
+It is not preparation for farming — the drone works irregular ground perfectly well. Its value goes to
+whoever farms that ground by hand or by tractor, which is early-game help before drones exist and a way
+to serve neighbours who do not use them. It is the one farming job with unbounded dig-and-haul cost,
+which is why it sits behind a toggle rather than inside the [[Block Decision]], and why a working farm
+never re-levels itself.
+
+### Ground Fitness
+Whether a particular crop can grow in a particular plot, asked of the engine rather than measured.
+
+Fitness pairs a plot with a seed, so the same ground can be unfit for one crop and fine for another —
+ground pollution is the usual reason, but temperature and moisture refuse plots too. A plot found unfit
+is skipped and named, never remediated and never worked around: it becomes farmable again only when the
+condition itself lifts. Unfit ground does not stall the area around it.
 
 ## Client–server binding
 
@@ -227,6 +388,15 @@ its current drone lends it.
 Condition splits in two, and the halves behave differently. The dock's own parts degrade with use and
 stay with the dock. A drone's condition rides the drone item itself, so it travels when the drone is
 moved to another dock — a worn drone stays worn, and the dock it left keeps its own wear.
+
+### Dock Network
+The set of [[Drone Dock]]s close enough to one another to share the state of a [[Survey Area]] — the
+docks whose rosters answer the same way about the same ground.
+
+Bounded by its own radius, tuned separately from the storage link radius a dock also carries:
+proximity for sharing work is a gameplay constraint, not a storage one, and binding the two would
+make either impossible to tune alone. Membership is proximity plus ownership, and it does not
+replace authorization, which is still checked against the acting player wherever a player acts.
 
 ### Module
 An item that, while slotted into a host object, lends that host a set of components it would not
