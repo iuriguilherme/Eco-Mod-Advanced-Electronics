@@ -181,11 +181,115 @@ namespace AdvancedElectronics.Navigation
         }
 
         /// <summary>
-        /// The area-total finding per material type in <paramref name="areaId"/> — what the readout
-        /// renders (R2). Only this area's own findings appear; another area's are never included (R3a).
+        /// One row per (plot, material) in <paramref name="areaId"/> (KTD1) — the shape that is
+        /// persisted on the area, so a later rule can invalidate or preserve one plot's findings
+        /// without touching the rest (R16, R20). Each row's <see cref="SurveyFinding.Count"/>,
+        /// depth range and <see cref="SurveyFinding.Concentration"/> are that plot's alone; the
+        /// area totals the readout shows are re-derived from these rows by
+        /// <see cref="AreaTotals"/>. Only this area's own rows appear; another area's are never
+        /// included (R3a). This is a projection change only — the live accumulator has always
+        /// keyed its inner dictionary by plot.
         /// </summary>
-        public IEnumerable<SurveyFinding> Findings(int areaId) =>
-            SampledOreTypes(areaId).Select(ore => MaterialFinding(areaId, ore)).Where(f => f.Found);
+        public IEnumerable<SurveyFinding> Findings(int areaId)
+        {
+            if (!_byArea.TryGetValue(areaId, out var plots))
+                yield break;
+
+            foreach (var entry in plots)
+                foreach (var row in PlotRows(areaId, entry.Key, entry.Value))
+                    yield return row;
+        }
+
+        /// <summary>
+        /// The rows for one plot of <paramref name="areaId"/> — empty when nothing has been
+        /// sampled there. The per-plot read R16's plot-level invalidation and R20's
+        /// plot-level preservation are decided against.
+        /// </summary>
+        public IEnumerable<SurveyFinding> Findings(int areaId, PlotCoord plot)
+        {
+            if (!_byArea.TryGetValue(areaId, out var plots) || !plots.TryGetValue(plot, out var data))
+                return Enumerable.Empty<SurveyFinding>();
+
+            return PlotRows(areaId, plot, data);
+        }
+
+        private static IEnumerable<SurveyFinding> PlotRows(int areaId, PlotCoord plot, PlotData data)
+        {
+            foreach (var ore in data.OreTypes.ToList())
+            {
+                if (!data.TryGetOre(ore, out var count, out var shallowestDepth, out var shallowestPos, out var deepestDepth) || count == 0)
+                    continue;
+
+                var concentration = data.SampledCount > 0 ? (float)count / data.SampledCount : 0f;
+                yield return SurveyFinding.CreateInPlot(areaId, plot, ore, count, shallowestPos, shallowestDepth, deepestDepth, concentration);
+            }
+        }
+
+        /// <summary>
+        /// Folds per-plot rows back into one area total per material — the figures the survey tab,
+        /// the roster line and the chat readout have always shown, now re-derived at read time
+        /// rather than stored (KTD1). Pure over the rows, so the persisted snapshot and the live
+        /// record aggregate through the same code.
+        /// </summary>
+        /// <remarks>
+        /// The total's count is the sum across plots, its position and minimum depth come from the
+        /// shallowest row, and its maximum depth from the deepest. Concentration is recovered by
+        /// summing each row's own sampled-block denominator (<c>count / concentration</c>), so the
+        /// ratio is over the plots that actually carry the material. Before KTD1 the denominator
+        /// was every sampled block in the area including ore-free plots; per-plot rows do not
+        /// record ore-free plots at all, so that wider denominator no longer exists. Concentration
+        /// is the secondary signal the readout does not render — <see cref="SurveyFinding.Count"/>
+        /// is the headline, and it is unchanged.
+        /// </remarks>
+        public static IEnumerable<SurveyFinding> AreaTotals(IEnumerable<SurveyFinding> rows)
+        {
+            if (rows == null)
+                yield break;
+
+            var byOre = new Dictionary<string, List<SurveyFinding>>();
+            var order = new List<string>();
+            foreach (var row in rows)
+            {
+                if (!row.Found || string.IsNullOrEmpty(row.OreType))
+                    continue;
+
+                if (!byOre.TryGetValue(row.OreType, out var list))
+                {
+                    list = new List<SurveyFinding>();
+                    byOre[row.OreType] = list;
+                    order.Add(row.OreType);
+                }
+                list.Add(row);
+            }
+
+            foreach (var ore in order)
+            {
+                var list = byOre[ore];
+                var areaId = list[0].AreaId;
+                var totalCount = 0;
+                var shallowestDepth = int.MaxValue;
+                var deepestDepth = int.MinValue;
+                var shallowestPos = default(BlockPos);
+                var sampledDenominator = 0d;
+
+                foreach (var row in list)
+                {
+                    totalCount += row.Count;
+                    if (row.DepthBelowSurface < shallowestDepth)
+                    {
+                        shallowestDepth = row.DepthBelowSurface;
+                        shallowestPos = row.Position;
+                    }
+                    if (row.DepthMax > deepestDepth)
+                        deepestDepth = row.DepthMax;
+                    if (row.Concentration > 0f)
+                        sampledDenominator += row.Count / (double)row.Concentration;
+                }
+
+                var concentration = sampledDenominator > 0d ? (float)(totalCount / sampledDenominator) : 0f;
+                yield return SurveyFinding.Create(areaId, ore, totalCount, shallowestPos, shallowestDepth, deepestDepth, concentration);
+            }
+        }
 
         /// <summary>
         /// How much of <paramref name="area"/> has been surveyed: the fraction of

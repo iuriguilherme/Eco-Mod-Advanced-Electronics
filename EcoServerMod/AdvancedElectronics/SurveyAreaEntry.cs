@@ -7,15 +7,31 @@ using Eco.Shared.Serialization;
 namespace Eco.Mods.TechTree
 {
     /// <summary>
-    /// One serialized per-ore survey finding, stored on the area that produced it: the
-    /// dig target block, its depth, and the plot concentration (R5/R7). The persisted
-    /// mirror of the Eco-free <see cref="SurveyFinding"/> — a plain <c>[Serialized]</c>
-    /// class (parameterless ctor + settable props) so it survives a restart alongside the
-    /// area, unlike the in-memory <see cref="SurveyRecord"/> it is derived from.
+    /// One serialized survey finding for one ore IN ONE PLOT of the area that produced it
+    /// (KTD1): which plot, the dig target block, its depth, and the plot concentration
+    /// (R5/R7). The persisted mirror of the Eco-free <see cref="SurveyFinding"/> — a plain
+    /// <c>[Serialized]</c> class (parameterless ctor + settable props) so it survives a
+    /// restart alongside the area, unlike the in-memory <see cref="SurveyRecord"/> it is
+    /// derived from.
+    ///
+    /// Rows are per plot rather than per area so R16 can return the plots whose ground
+    /// changed to unsurveyed and R20 can preserve the plots an edit retains, each without
+    /// touching the rest. The area totals the readouts show are re-derived from these rows
+    /// at read time by <see cref="SurveyRecord.AreaTotals"/>.
+    ///
+    /// The plot is two plain ints, matching how <see cref="SurveyAreaEntry.PlotCoords"/>
+    /// already flattens: the class stays flat primitives, which is what makes its
+    /// serializability not in question.
     /// </summary>
     [Serialized]
     public class OreFindingSnapshot
     {
+        /// <summary>Plot x of the plot these counts were accumulated in.</summary>
+        [Serialized] public int PlotX { get; set; }
+
+        /// <summary>Plot z of the plot these counts were accumulated in.</summary>
+        [Serialized] public int PlotZ { get; set; }
+
         [Serialized] public string OreType { get; set; }
         [Serialized] public int Count { get; set; }
         [Serialized] public int X { get; set; }
@@ -29,6 +45,8 @@ namespace Eco.Mods.TechTree
 
         public static OreFindingSnapshot From(SurveyFinding f) => new OreFindingSnapshot
         {
+            PlotX = f.Plot.X,
+            PlotZ = f.Plot.Z,
             OreType = f.OreType,
             Count = f.Count,
             X = f.Position.X,
@@ -39,9 +57,12 @@ namespace Eco.Mods.TechTree
             Concentration = f.Concentration,
         };
 
-        /// <summary>Back to the Eco-free finding shape the readout formatter consumes.</summary>
+        /// <summary>The plot this row belongs to.</summary>
+        public PlotCoord Plot => new PlotCoord(this.PlotX, this.PlotZ);
+
+        /// <summary>Back to the Eco-free per-plot row shape the projection and readouts consume.</summary>
         public SurveyFinding ToSurveyFinding(int areaId) =>
-            SurveyFinding.Create(areaId, this.OreType, this.Count, new BlockPos(this.X, this.Y, this.Z), this.DepthBelowSurface, this.DepthMax, this.Concentration);
+            SurveyFinding.CreateInPlot(areaId, this.Plot, this.OreType, this.Count, new BlockPos(this.X, this.Y, this.Z), this.DepthBelowSurface, this.DepthMax, this.Concentration);
     }
 
     /// <summary>
@@ -85,13 +106,26 @@ namespace Eco.Mods.TechTree
         [Serialized] public int Epoch { get; set; }
 
         /// <summary>
-        /// This area's survey findings, persisted with the area (KTD11 design change): available
-        /// until the area is deleted or edited. Reassigning the drone away and back does NOT clear
-        /// them — they belong to the area, not the drone or the dock's current assignment. Cleared
-        /// by <see cref="SetPlots"/> (an edit redraws the geometry, so it is effectively a new area)
-        /// and by the owning dock on delete.
+        /// This area's survey findings as one row per (plot, ore) (KTD1), persisted with the area
+        /// (KTD11 design change): available until the area is deleted or edited. Reassigning the
+        /// drone away and back does NOT clear them — they belong to the area, not the drone or the
+        /// dock's current assignment. Cleared by <see cref="SetPlots"/> (an edit redraws the
+        /// geometry, so it is effectively a new area) and by the owning dock on delete.
+        ///
+        /// Read through <see cref="ReadFindings()"/> for the area totals or
+        /// <see cref="ReadFindings(PlotCoord)"/> for one plot's rows, never directly: those are
+        /// what apply the KTD1 upgrade before handing anything back.
         /// </summary>
         [Serialized] public ThreadSafeList<OreFindingSnapshot> Findings { get; set; } = new();
+
+        /// <summary>
+        /// Which shape <see cref="Findings"/> is stored in (KTD1). A save written before U1 has no
+        /// value for this and loads as 0, which <see cref="FindingsVersion.IsStale"/> reads as a
+        /// pre-U1 area whose rows are discarded on first read — a server that upgrades resurveys
+        /// once. The marker is explicit rather than inferred from an absent plot, because a pre-U1
+        /// row loads as plot (0,0) and (0,0) is a real plot near the world origin.
+        /// </summary>
+        [Serialized] public int FindingsShapeVersion { get; set; }
 
         /// <summary>Fraction of this area surveyed, 0-100 (R7a). Persisted with the findings.</summary>
         [Serialized] public float CoveragePercent { get; set; }
@@ -143,13 +177,19 @@ namespace Eco.Mods.TechTree
             this.ClearFindings();
         }
 
-        /// <summary>Replaces this area's persisted findings from a fresh survey pass.</summary>
+        /// <summary>
+        /// Replaces this area's persisted findings from a fresh survey pass. <paramref name="findings"/>
+        /// are the per-plot rows <see cref="SurveyRecord.Findings(int)"/> projects — one per
+        /// (plot, ore) — and writing them stamps the current shape version, so the rows this area
+        /// now holds are never mistaken for a pre-U1 save.
+        /// </summary>
         public void SetFindings(IEnumerable<SurveyFinding> findings, float coveragePercent, int surveyDepth, int medianSurface)
         {
             var snapshot = new ThreadSafeList<OreFindingSnapshot>();
             foreach (var f in findings.Where(f => f.Found))
                 snapshot.Add(OreFindingSnapshot.From(f));
             this.Findings = snapshot;
+            this.FindingsShapeVersion = FindingsVersion.Current;
             this.CoveragePercent = coveragePercent;
             this.SurveyDepth = surveyDepth;
             this.MedianSurface = medianSurface;
@@ -159,10 +199,27 @@ namespace Eco.Mods.TechTree
         public void ClearFindings()
         {
             this.Findings = new ThreadSafeList<OreFindingSnapshot>();
+            // An empty list is trivially in the current shape, so stamping here is what keeps the
+            // KTD1 upgrade a one-shot: a cleared area is never re-cleared on every later read.
+            this.FindingsShapeVersion = FindingsVersion.Current;
             this.CoveragePercent = 0f;
             this.SurveyDepth = 0;
             this.MedianSurface = 0;
             this.SurveyedStamps = new ThreadSafeList<long>();
+        }
+
+        /// <summary>
+        /// Discards findings written in a pre-U1 shape (KTD1). Called before every read, so the
+        /// upgrade happens on the first read after a load and never again. Findings stored per
+        /// area cannot be attributed to a plot, so there is nothing to migrate — the area reads as
+        /// unsurveyed and is surveyed once more.
+        /// </summary>
+        private void UpgradeFindingsIfStale()
+        {
+            if (!FindingsVersion.IsStale(this.FindingsShapeVersion))
+                return;
+
+            this.ClearFindings();
         }
 
         /// <summary>
@@ -203,9 +260,30 @@ namespace Eco.Mods.TechTree
             this.SetSurveyedStamps(accumulator);
         }
 
-        /// <summary>The persisted findings back in the Eco-free shape the readout formatter consumes.</summary>
-        public IEnumerable<SurveyFinding> ReadFindings() =>
-            this.Findings.Select(s => s.ToSurveyFinding(this.Id));
+        /// <summary>
+        /// The area totals — one finding per ore across the whole area — re-derived from the
+        /// per-plot rows at read time (KTD1), in the Eco-free shape the readout formatter
+        /// consumes. This is what the survey tab, the roster line and the chat readouts show, and
+        /// the figures are the same ones they showed before findings became per-plot.
+        /// </summary>
+        public IEnumerable<SurveyFinding> ReadFindings()
+        {
+            this.UpgradeFindingsIfStale();
+            return SurveyRecord.AreaTotals(this.Findings.Select(s => s.ToSurveyFinding(this.Id)).ToList());
+        }
+
+        /// <summary>
+        /// The rows for one plot — the per-plot read R16's invalidation and R20's preservation are
+        /// decided against. Empty for a plot this area has no findings for.
+        /// </summary>
+        public IEnumerable<SurveyFinding> ReadFindings(PlotCoord plot)
+        {
+            this.UpgradeFindingsIfStale();
+            return this.Findings
+                .Where(s => s.PlotX == plot.X && s.PlotZ == plot.Z)
+                .Select(s => s.ToSurveyFinding(this.Id))
+                .ToList();
+        }
 
         /// <summary>The stored plots as <see cref="PlotCoord"/>s (unflattening the pairs).</summary>
         public IEnumerable<PlotCoord> Plots()

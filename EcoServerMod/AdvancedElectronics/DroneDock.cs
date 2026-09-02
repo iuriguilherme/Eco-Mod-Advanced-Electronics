@@ -480,6 +480,10 @@ namespace Eco.Mods.TechTree
         /// survive a restart and remain readable while another area is assigned. Skips when there
         /// is no assigned area or no samples yet, so an empty post-restart record does not wipe a
         /// previously-persisted snapshot before the drone has re-surveyed.
+        ///
+        /// What is projected is one row per (plot, ore) (KTD1) — the area totals the readouts show
+        /// are re-derived from those rows on read, not stored. <see cref="SurveyAreaEntry.CoveragePercent"/>
+        /// stays a persisted scalar: it is written on this same tick and has no per-plot consumer.
         /// </summary>
         private void PersistAssignedAreaFindings()
         {

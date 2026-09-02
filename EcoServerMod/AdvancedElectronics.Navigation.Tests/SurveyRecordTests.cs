@@ -284,5 +284,239 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Empty(record.Findings(AreaA));
             Assert.Contains(record.Findings(AreaB), f => f.OreType == Gold);
         }
+
+        // --- U1: per-plot findings rows (KTD1, R16/R20) ---
+
+        [Fact]
+        public void Findings_ProjectOneRowPerPlotPerOre_EachRowNamingItsOwnPlot()
+        {
+            var record = new SurveyRecord(PlotSize);
+
+            // Plot (0,0): iron. Plot (2,0) (x = 16..23): gold.
+            record.RecordSample(1, 60, 1, Iron, 4, AreaA);
+            record.RecordSample(16, 58, 1, Gold, 6, AreaA);
+
+            var rows = record.Findings(AreaA).ToList();
+
+            Assert.Equal(2, rows.Count);
+            Assert.All(rows, r => Assert.True(r.HasPlot));
+            var iron = Assert.Single(rows.Where(r => r.OreType == Iron));
+            var gold = Assert.Single(rows.Where(r => r.OreType == Gold));
+            Assert.Equal(new PlotCoord(0, 0), iron.Plot);
+            Assert.Equal(new PlotCoord(2, 0), gold.Plot);
+            Assert.Equal(1, iron.Count);
+            Assert.Equal(1, gold.Count);
+        }
+
+        [Fact]
+        public void Findings_SameOreInTwoPlots_ProjectsTwoRows_NotOneAreaTotalRow()
+        {
+            var record = new SurveyRecord(PlotSize);
+
+            record.RecordSample(1, 60, 1, Iron, 4, AreaA);
+            record.RecordSample(2, 60, 1, Iron, 4, AreaA);
+            record.RecordSample(16, 64, 1, Iron, 6, AreaA);
+
+            var rows = record.Findings(AreaA).Where(r => r.OreType == Iron).ToList();
+
+            Assert.Equal(2, rows.Count);
+            Assert.Equal(2, rows.Single(r => r.Plot.Equals(new PlotCoord(0, 0))).Count);
+            Assert.Equal(1, rows.Single(r => r.Plot.Equals(new PlotCoord(2, 0))).Count);
+        }
+
+        [Fact]
+        public void Findings_TwoOresInOnePlot_ProjectTwoRowsForThatPlot_NotOneMergedRow()
+        {
+            var record = new SurveyRecord(PlotSize);
+
+            record.RecordSample(1, 60, 1, Iron, 4, AreaA);
+            record.RecordSample(2, 58, 1, Gold, 6, AreaA);
+
+            var rows = record.Findings(AreaA).ToList();
+
+            Assert.Equal(2, rows.Count);
+            Assert.All(rows, r => Assert.Equal(new PlotCoord(0, 0), r.Plot));
+            Assert.Equal(new[] { Gold, Iron }, rows.Select(r => r.OreType).OrderBy(o => o).ToArray());
+        }
+
+        [Fact]
+        public void Findings_ForOnePlot_ReturnsOnlyThatPlotsRows()
+        {
+            var record = new SurveyRecord(PlotSize);
+
+            record.RecordSample(1, 60, 1, Iron, 4, AreaA);      // plot (0,0)
+            record.RecordSample(16, 58, 1, Gold, 6, AreaA);     // plot (2,0)
+            record.RecordSample(32, 50, 1, Limestone, 9, AreaA); // plot (4,0)
+
+            var rows = record.Findings(AreaA, new PlotCoord(2, 0)).ToList();
+
+            var only = Assert.Single(rows);
+            Assert.Equal(Gold, only.OreType);
+            Assert.Equal(new PlotCoord(2, 0), only.Plot);
+        }
+
+        [Fact]
+        public void Findings_ForAPlotWithNoSamples_IsEmpty()
+        {
+            var record = new SurveyRecord(PlotSize);
+            record.RecordSample(1, 60, 1, Iron, 4, AreaA);
+
+            Assert.Empty(record.Findings(AreaA, new PlotCoord(9, 9)));
+        }
+
+        [Fact]
+        public void Findings_EmptyRecord_ProjectsNoRows_SoThePersistGuardStillRefuses()
+        {
+            var record = new SurveyRecord(PlotSize);
+            var area = Area(AreaA, new PlotCoord(0, 0));
+
+            Assert.Empty(record.Findings(AreaA));
+            Assert.Empty(record.Findings(AreaA, new PlotCoord(0, 0)));
+            Assert.Equal(0f, record.Coverage(area)); // the coverage-zero clobber guard's input
+        }
+
+        // --- U1: area totals re-derived from the rows (KTD1) ---
+
+        [Fact]
+        public void AreaTotals_ForAnOre_SumTheRowCountsAcrossPlots()
+        {
+            var record = new SurveyRecord(PlotSize);
+
+            record.RecordSample(1, 60, 1, Iron, 4, AreaA);
+            record.RecordSample(2, 60, 1, Iron, 4, AreaA);
+            record.RecordSample(16, 64, 1, Iron, 6, AreaA);
+            record.RecordSample(17, 64, 1, Iron, 6, AreaA);
+            record.RecordSample(18, 64, 1, Iron, 6, AreaA);
+
+            var rows = record.Findings(AreaA).ToList();
+            var total = Assert.Single(SurveyRecord.AreaTotals(rows));
+
+            Assert.Equal(record.MaterialFinding(AreaA, Iron).Count, total.Count);
+            Assert.Equal(5, total.Count);
+            Assert.Equal(AreaA, total.AreaId);
+            Assert.False(total.HasPlot); // an area total belongs to no single plot
+        }
+
+        [Fact]
+        public void AreaTotals_KeepTheShallowestOccurrence_AndBracketTheDepthRange()
+        {
+            var record = new SurveyRecord(PlotSize);
+
+            record.RecordSample(1, 40, 1, Iron, 20, AreaA);   // deep, plot (0,0)
+            record.RecordSample(16, 70, 1, Iron, 3, AreaA);   // shallowest, plot (2,0)
+            record.RecordSample(17, 55, 1, Iron, 11, AreaA);  // middle, plot (2,0)
+
+            var total = Assert.Single(SurveyRecord.AreaTotals(record.Findings(AreaA)));
+            var direct = record.MaterialFinding(AreaA, Iron);
+
+            Assert.Equal(direct.Position, total.Position);
+            Assert.Equal(new BlockPos(16, 70, 1), total.Position);
+            Assert.Equal(3, total.DepthBelowSurface);
+            Assert.Equal(20, total.DepthMax);
+        }
+
+        [Fact]
+        public void AreaTotals_SeparateTheOres_AndKeepTheAreaAttribution()
+        {
+            var record = new SurveyRecord(PlotSize);
+
+            record.RecordSample(1, 60, 1, Iron, 4, AreaA);
+            record.RecordSample(16, 58, 1, Gold, 6, AreaA);
+            record.RecordSample(17, 58, 1, Gold, 6, AreaA);
+
+            var totals = SurveyRecord.AreaTotals(record.Findings(AreaA)).ToList();
+
+            Assert.Equal(2, totals.Count);
+            Assert.Equal(1, totals.Single(t => t.OreType == Iron).Count);
+            Assert.Equal(2, totals.Single(t => t.OreType == Gold).Count);
+            Assert.All(totals, t => Assert.Equal(AreaA, t.AreaId));
+        }
+
+        [Fact]
+        public void AreaTotals_OfNoRows_IsEmpty()
+        {
+            Assert.Empty(SurveyRecord.AreaTotals(System.Linq.Enumerable.Empty<SurveyFinding>()));
+            Assert.Empty(SurveyRecord.AreaTotals(null));
+        }
+
+        [Fact]
+        public void AreaTotals_Concentration_IsTheRatioOverTheSampledBlocksTheRowsAccountFor()
+        {
+            var record = new SurveyRecord(PlotSize);
+
+            // Plot (0,0): 1 iron out of 2 sampled blocks. Plot (2,0): 1 iron out of 4 sampled.
+            record.RecordSample(1, 60, 1, Iron, 4, AreaA);
+            record.RecordSample(1, 59, 1, null, 5, AreaA);
+            record.RecordSample(16, 60, 1, Iron, 4, AreaA);
+            record.RecordSample(17, 60, 1, null, 4, AreaA);
+            record.RecordSample(18, 60, 1, null, 4, AreaA);
+            record.RecordSample(19, 60, 1, null, 4, AreaA);
+
+            var total = Assert.Single(SurveyRecord.AreaTotals(record.Findings(AreaA)));
+
+            // 2 iron blocks over the 6 sampled blocks in the plots that carry iron.
+            Assert.Equal(2f / 6f, total.Concentration, 4);
+        }
+
+        // --- U1: the findings-version marker that detects a pre-U1 save (KTD1) ---
+
+        [Fact]
+        public void FindingsVersion_Zero_IsStale_SoAnOldSavesFindingsAreDiscarded()
+        {
+            Assert.True(FindingsVersion.IsStale(0));
+        }
+
+        [Fact]
+        public void FindingsVersion_Current_IsNotStale_EvenForAnAreaHoldingPlotZeroZero()
+        {
+            // The marker is an explicit version, never an absent plot: plot (0,0) is a real plot
+            // near the world origin, so it can never stand in for "this row predates U1".
+            Assert.False(FindingsVersion.IsStale(FindingsVersion.Current));
+            Assert.True(FindingsVersion.Current > 0);
+
+            var record = new SurveyRecord(PlotSize);
+            record.RecordSample(1, 60, 1, Iron, 4, AreaA);
+            var row = Assert.Single(record.Findings(AreaA));
+            Assert.Equal(new PlotCoord(0, 0), row.Plot);
+            Assert.True(row.HasPlot);
+        }
+
+        [Fact]
+        public void FindingsVersion_AFutureVersion_IsNotTreatedAsStale()
+        {
+            Assert.False(FindingsVersion.IsStale(FindingsVersion.Current + 1));
+        }
+
+        // --- U1: the plot rides on the finding itself ---
+
+        [Fact]
+        public void SurveyFinding_CreatedWithoutAPlot_ReportsHasPlotFalse()
+        {
+            var f = SurveyFinding.Create(AreaA, Iron, 3, new BlockPos(1, 2, 3), 4, 9, 0.5f);
+
+            Assert.True(f.Found);
+            Assert.False(f.HasPlot);
+            Assert.Equal(default(PlotCoord), f.Plot);
+        }
+
+        [Fact]
+        public void SurveyFinding_CreatedInAPlot_CarriesItAndComparesOnIt()
+        {
+            var a = SurveyFinding.CreateInPlot(AreaA, new PlotCoord(3, -2), Iron, 3, new BlockPos(1, 2, 3), 4, 9, 0.5f);
+            var b = SurveyFinding.CreateInPlot(AreaA, new PlotCoord(3, -2), Iron, 3, new BlockPos(1, 2, 3), 4, 9, 0.5f);
+            var elsewhere = SurveyFinding.CreateInPlot(AreaA, new PlotCoord(4, -2), Iron, 3, new BlockPos(1, 2, 3), 4, 9, 0.5f);
+
+            Assert.True(a.HasPlot);
+            Assert.Equal(new PlotCoord(3, -2), a.Plot);
+            Assert.Equal(a, b);
+            Assert.NotEqual(a, elsewhere);
+            Assert.NotEqual(a, SurveyFinding.Create(AreaA, Iron, 3, new BlockPos(1, 2, 3), 4, 9, 0.5f));
+        }
+
+        [Fact]
+        public void SurveyFinding_NotFound_HasNoPlot()
+        {
+            Assert.False(SurveyFinding.NotFound.HasPlot);
+        }
     }
 }
