@@ -848,10 +848,17 @@ namespace Eco.Mods.TechTree
             this.Parent is IDroneToolbearer bearer ? bearer.Job : null;
 
         /// <summary>The change-detection token for whichever assignment this drone's job kind reads (U10).</summary>
-        private string CurrentAssignedToken() =>
-            this.CurrentJobKind() == DroneJobKind.Mining
-                ? this.HomeDock.AssignedMiningAreaToken
-                : this.HomeDock.AssignedAreaToken;
+        private string CurrentAssignedToken() => this.CurrentJobKind() switch
+        {
+            DroneJobKind.Mining => this.HomeDock.AssignedMiningAreaToken,
+
+            // A farm holds several areas at once, so its token folds every assigned area
+            // and each one's own edit epoch together: assigning, unassigning or redrawing
+            // any of them re-dispatches, exactly as a single area's change does elsewhere.
+            DroneJobKind.Farm => this.HomeDock.AssignedFarmAreasToken,
+
+            _ => this.HomeDock.AssignedAreaToken
+        };
 
         /// <summary>
         /// Resolves the Eco-free area this drone is currently assigned to work, regardless
@@ -920,6 +927,31 @@ namespace Eco.Mods.TechTree
                         noAreaReason = "assigned mining area did not resolve";
                         return null;
                 }
+            }
+
+            if (this.CurrentJobKind() == DroneJobKind.Farm)
+            {
+                // Every assigned farm area's plots as one working ground. The lifecycle asks
+                // this question to decide where the drone may fly and whether it has arrived,
+                // and for a farm the honest answer spans several areas -- which area a given
+                // plot belongs to is the strategy's business, not the router's.
+                // Built with a loop rather than LINQ on purpose: this file carries no
+                // System.Linq import, and adding one here would put a pile of extension
+                // methods in scope across the mod's most fragile type for one call site.
+                var plots = new List<PlotCoord>();
+                var seenPlots = new HashSet<PlotCoord>();
+                foreach (var farmArea in this.HomeDock.AssignedFarmAreas)
+                    foreach (var farmPlot in farmArea.Plots())
+                        if (seenPlots.Add(farmPlot))
+                            plots.Add(farmPlot);
+
+                if (plots.Count == 0)
+                {
+                    noAreaReason = "no farm area assigned";
+                    return null;
+                }
+
+                return new SurveyArea(0, "farm", plots);
             }
 
             var entry = this.HomeDock.AssignedSurveyArea;
@@ -994,6 +1026,29 @@ namespace Eco.Mods.TechTree
                     link,
                     PlotUtil.PropertyPlotLength,
                     MiningTierDepth,
+                    MiningHoldCapacityEstimate);
+            }
+
+            if (this.CurrentJobKind() == DroneJobKind.Farm)
+            {
+                if (this.HomeDock.GetComponent(typeof(PublicStorageComponent), DroneCargo.HoldName) is not PublicStorageComponent farmHold
+                    || !this.HomeDock.TryGetComponent<LinkComponent>(out var farmLink))
+                    return null;
+
+                // No job ledger to rehydrate, unlike mining. A farm records nothing per plot
+                // (R7) -- it reads the ground fresh every visit -- so a strategy built now is
+                // as informed as one that had been running for hours.
+                return new FarmingStrategy(
+                    this.HomeDock,
+                    new EcoWorldSampler(),
+                    new EcoGroundFitness(),
+                    new FarmingActionService(),
+                    new BlockPlacementService(),
+                    new MiningRemovalService(),
+                    Item.Get<HarvestArmItem>(),
+                    Item.Get<MiningArmItem>(),
+                    farmHold.Storage,
+                    farmLink,
                     MiningHoldCapacityEstimate);
             }
 

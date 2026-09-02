@@ -995,6 +995,18 @@ namespace Eco.Mods.TechTree
             if (this.TryGetComponent<MiningComponent>(out var miningTab))
                 miningTab.RefreshAll();
 
+            // The farm's storage watch is re-pointed from here rather than from a link event,
+            // because the link component raises none for its own membership changing -- the
+            // same reason the unload retry lives on this tick. Comparing the resolved set
+            // against the watched one makes it a no-op when nothing moved.
+            this.RefreshLinkedStorageWatch();
+
+            if (this.TryGetComponent<FarmingComponent>(out var farmingTab))
+                farmingTab.RefreshAll();
+
+            if (this.TryGetComponent<CropCeilingComponent>(out var ceilingTab))
+                ceilingTab.RefreshAll();
+
             // Temporary, with the U1 probe: drives the showcase's server-state mirror so a write
             // can be observed without a restart. Goes when the showcase does.
             if (this.TryGetComponent<UIShowcaseComponent>(out var showcase))

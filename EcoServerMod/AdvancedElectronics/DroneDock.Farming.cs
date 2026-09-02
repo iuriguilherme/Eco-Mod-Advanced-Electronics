@@ -4,6 +4,7 @@ using System.Linq;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Utils;
 using Eco.Gameplay.Components;
+using Eco.Gameplay.Items;
 using Eco.Gameplay.Players;
 using Eco.Shared.Serialization;
 
@@ -423,6 +424,114 @@ namespace Eco.Mods.TechTree
         /// <summary>The configured ceiling for a crop, or zero when it has none -- the value an untouched grid row shows.</summary>
         public int CropCeilingFor(string crop) =>
             this.CropCeilings.FirstOrDefault(c => string.Equals(c.Crop, crop, StringComparison.Ordinal))?.Ceiling ?? 0;
+
+        // ---------------------------------------------------------------
+        // R30's wake. The drone must not poll: scanning every column of every assigned area
+        // on every tick to discover that nothing has changed is exactly the poll the
+        // requirement forbids, and it costs the same whether or not anyone is farming.
+        //
+        // So the drone scans when something might have changed. Two things can change it:
+        // linked storage (a seed delivery, or produce leaving and dropping a crop back under
+        // its ceiling), and a crop coming due. The first is this subscription; the second is
+        // a time the strategy computes from the least-grown plant (R31).
+        //
+        // The dock's existing storage subscription is NOT extended to do this. That one
+        // watches the dock's own drone-bay slot and spawns or despawns the paired drone; it
+        // never fires for a linked container, and giving it a second job would put drone
+        // pairing and farm waking on one callback.
+        // ---------------------------------------------------------------
+
+        private readonly List<Inventory> watchedFarmStorage = new();
+        private Action<User> farmStorageCallback;
+
+        // In-memory and starting non-zero, so a freshly loaded dock scans once before
+        // settling. A restart is exactly the case where a cached "nothing to do" cannot be
+        // trusted: the world may have changed while the server was down.
+        private int farmWakeToken = 1;
+
+        /// <summary>
+        /// Changes whenever something might have given the farm work to do. The strategy
+        /// compares it against the value it last scanned at, so an unchanged token plus a
+        /// due time still in the future means there is nothing to look at.
+        /// </summary>
+        public int FarmWakeToken => this.farmWakeToken;
+
+        /// <summary>Marks the farm worth re-scanning.</summary>
+        public void RequestFarmWake() => this.farmWakeToken++;
+
+        /// <summary>
+        /// Re-points the watch at whatever the dock's link currently resolves.
+        ///
+        /// Driven from the dock's own throttled tick rather than from a link-network event,
+        /// because the link component raises none for its membership changing -- the same
+        /// reason the mining unload retries from the tick. Comparing the resolved set
+        /// against the watched one is what makes this idempotent: an unchanged network
+        /// re-subscribes nothing, and a changed one releases the old set before taking the
+        /// new, so a container that left the network stops waking this dock.
+        /// </summary>
+        public void RefreshLinkedStorageWatch()
+        {
+            var citizen = this.StampedCitizen;
+            if (citizen == null || !this.TryGetComponent<LinkComponent>(out var link))
+            {
+                this.ReleaseLinkedStorageWatch();
+                return;
+            }
+
+            var current = link.GetSortedLinkedEnabledStorages(citizen)
+                .Where(storage => storage.Parent is not DroneDockObject)
+                .Select(storage => storage.Inventory)
+                .Where(inventory => inventory != null)
+                .ToList();
+
+            if (current.Count == this.watchedFarmStorage.Count
+                && current.All(this.watchedFarmStorage.Contains))
+                return;
+
+            this.ReleaseLinkedStorageWatch();
+
+            this.farmStorageCallback ??= this.OnLinkedStorageChanged;
+            foreach (var inventory in current)
+            {
+                inventory.OnChanged.Add(this.farmStorageCallback);
+                this.watchedFarmStorage.Add(inventory);
+            }
+        }
+
+        /// <summary>
+        /// Drops every subscription this dock holds. Called when the link network changes
+        /// and when the dock is destroyed -- the destroyed case is the one that matters,
+        /// since a container outlives the dock and would otherwise keep a callback into a
+        /// world object that no longer exists.
+        /// </summary>
+        public void ReleaseLinkedStorageWatch()
+        {
+            if (this.farmStorageCallback != null)
+                foreach (var inventory in this.watchedFarmStorage)
+                    inventory.OnChanged.Remove(this.farmStorageCallback);
+
+            this.watchedFarmStorage.Clear();
+        }
+
+        /// <summary>
+        /// Releases the farm's storage subscriptions when the dock goes away.
+        ///
+        /// Declared in the farming partial rather than in DroneDock.cs so the whole watch --
+        /// take, re-point and release -- reads in one file. A linked container outlives the
+        /// dock, so without this it keeps a callback into a destroyed world object.
+        /// </summary>
+        protected override void OnDestroy()
+        {
+            this.ReleaseLinkedStorageWatch();
+            base.OnDestroy();
+        }
+
+        /// <summary>
+        /// A linked container changed. The token is bumped unconditionally and cheaply; a
+        /// drone already working never consults it mid-plot, so a change arriving during
+        /// work interrupts nothing and is still seen when the drone next asks for a target.
+        /// </summary>
+        private void OnLinkedStorageChanged(User user) => this.RequestFarmWake();
 
         /// <summary>
         /// Records who is accountable for this dock's work. Shared with the mining side on
