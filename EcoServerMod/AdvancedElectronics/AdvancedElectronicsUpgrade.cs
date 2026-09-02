@@ -112,24 +112,26 @@ namespace Eco.Mods.TechTree
     // vanilla's Addressables plus every mod bundle, so any name vanilla registered is a name a
     // mod can ask for -- no asset, no scene object, no bundle rebuild.
     //
-    // WHY HasStaticIcon RATHER THAN [HasIcon("ModernUpgrade")]. GetIconName reads the static one FIRST
-    // and unconditionally (ControllerMarshalerService.cs:414); the [HasIcon] path below it takes
-    // the first match of an INHERITED lookup, and every Item already inherits Item's own bare
-    // [HasIcon] whose IconName is null -- so the name falls back to the class name and the
-    // explicit one is ignored. That is why vanilla only ever passes a name to [HasIcon] on
-    // components, never on an Item subclass: it does not work there.
+    // FOUR fields drive FOUR consumers and there is no shared default. That is why this looked
+    // unfixable across several restarts: each fix worked, each looked like it had failed, and the
+    // next guess was aimed at a different field.
+    //
+    //   [HasStaticIcon]           -> ViewClassInfo.IconName (ControllerMarshalerService.cs:414).
+    //                                Ecopedia pages.
+    //   [HasIcon("...")]          -> read at TypeTooltips.cs:46. Type tooltips.
+    //   public override IconName  -> Item.IconName, synced per instance. Inventory, hotbar,
+    //                                storage, recipe rows.
+    //   ItemIconUILink            -> ItemLinkable.cs:56. Inline icons in tooltip and chat text.
+    //
+    // An Item sets all four and they all name the same picture below; a Skill has only the two
+    // attributes. Changing one alone leaves the others asking for the class name.
+    //
+    // [HasIcon] on an Item subclass looks inert, because the lookup is INHERITED and every Item
+    // already carries a bare [HasIcon] whose IconName is null -- so the name falls back to the
+    // class name. That is why vanilla only ever passes a name to [HasIcon] on components. Setting
+    // all four sidesteps the question rather than answering it.
     //
     // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
-    // Three consumers, three fields, and they are NOT interchangeable -- this is why the icon
-    // appeared to be unfixable for two restarts:
-    //
-    //   [HasStaticIcon]              -> ViewClassInfo.IconName, the CLASS icon. Ecopedia pages.
-    //   [HasIcon("...")]             -> read directly by TypeTooltips.cs:46 for type tooltips.
-    //   public override IconName     -> Item.IconName, the INSTANCE value synced per item and
-    //                                   drawn in inventory, recipe rows and the hotbar.
-    //
-    // All three name the same picture below. Changing one alone leaves the others asking for the
-    // class name, which resolves to whatever placeholder the mod's own bundle registered.
     //
     // BORROWED SIBLING PLACEHOLDER, and unlike the book and scroll this one IS a placeholder.
     // Every skill-book icon in the game is byte-identical, so naming one borrows nothing; skill
