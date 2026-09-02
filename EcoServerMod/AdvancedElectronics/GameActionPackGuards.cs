@@ -48,10 +48,22 @@ namespace Eco.Mods.TechTree
         /// Best-effort classification of a refusal, run only after the pack has already
         /// been refused.
         ///
-        /// Law before property, which is the pipeline's own evaluation order, so the
-        /// answer matches what actually stopped the action. Neither check mutates
-        /// anything -- both are the same read-only calls the pipeline makes. A refusal
-        /// that clears both came from a pretest.
+        /// Law before property, which is the pipeline's own evaluation order, so the answer
+        /// matches what actually stopped the action.
+        ///
+        /// NOT read-only, contrary to what this comment claimed and what the mining
+        /// service's copy still claims. <c>ILawManager.Perform</c> reaches
+        /// <c>LawSection.CheckConditionsAndApplyEffects</c>, which sets
+        /// <c>action.CurrentSettlement</c> and runs each law's if/then blocks -- so
+        /// classifying a refusal re-evaluates every matched law a second time. The
+        /// currency half lands in the pack's own <c>AccountChangeSet</c>, which a refused
+        /// pack never commits, but any effect that does not travel through that change set
+        /// is applied for real, once per refusal.
+        ///
+        /// Left in place rather than rewritten under review: the same call is the mining
+        /// drone's most exercised world-write path, the blast radius depends on effects
+        /// this mod cannot enumerate statically, and a live session is the only way to
+        /// settle it. Recorded as a known defect for both paths rather than papered over.
         /// </summary>
         public static RemovalRefusalStage ClassifyRefusal(GameActionPack pack, IReadOnlyList<GameAction> actions)
         {

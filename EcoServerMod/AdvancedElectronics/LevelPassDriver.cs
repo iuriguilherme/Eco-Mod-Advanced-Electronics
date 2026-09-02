@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using AdvancedElectronics.Navigation;
@@ -121,15 +122,16 @@ namespace Eco.Mods.TechTree
             if (columns.Count == 0)
                 return LevelPassResult.Blocked(FarmStallReason.LevelPassBlocked, "the area covers no ground");
 
+            // R18, re-checked every dispatch rather than once at entry. A pass runs across
+            // many dispatches, and a citizen who plants in the area meanwhile would
+            // otherwise have the crop dug up and buried without the pass ever looking again.
+            // The columns are re-sampled anyway, so this costs a plant lookup per column.
+            if (this.AnyPlantStanding(columns))
+                return LevelPassResult.Blocked(
+                    FarmStallReason.LevelPassBlocked, "plants are still standing here; clear them first");
+
             if (!this.area.LevelPassStarted)
             {
-                // R18: the entry check, once per pass rather than per block. Levelling an
-                // area with a crop standing in it would bury the crop to flatten the ground
-                // it is growing in, which is never what a citizen meant by "level this".
-                if (this.AnyPlantStanding(columns))
-                    return LevelPassResult.Blocked(
-                        FarmStallReason.LevelPassBlocked, "plants are still standing here; clear them first");
-
                 this.area.LevelTargetHeight = LevelPlan.Build(columns).TargetHeight;
                 this.area.LevelPassStarted = true;
                 this.area.LevelBankedSpoil = 0;
@@ -165,6 +167,8 @@ namespace Eco.Mods.TechTree
                 .Select(p => (Position: p, Classification: BlockClassification.Excavatable))
                 .ToList();
 
+            var dirtBefore = this.DirtInHold();
+
             var result = this.removal.Remove(
                 positions,
                 citizen,
@@ -176,7 +180,11 @@ namespace Eco.Mods.TechTree
             if (result.Outcome == RemovalOutcome.Refused)
                 return LevelPassResult.Blocked(StallFor(result.RefusalStage), result.Message);
 
-            this.area.LevelBankedSpoil += positions.Count;
+            // Banked spoil is DIRT, counted from what the hold actually gained -- not a
+            // tally of blocks removed. A stone hillside yields stone, and counting those
+            // as banked dirt made the fill phase believe it held material it never had,
+            // then request no new dirt and stall the pass with no way out.
+            this.area.LevelBankedSpoil += Math.Max(0, this.DirtInHold() - dirtBefore);
             return LevelPassResult.Working();
         }
 
@@ -200,7 +208,7 @@ namespace Eco.Mods.TechTree
 
             // Spent from what the pass banked first, and only then from new dirt (R20). The
             // count is what tells the two apart on the next dispatch.
-            this.area.LevelBankedSpoil = System.Math.Max(0, this.area.LevelBankedSpoil - positions.Count);
+            this.area.LevelBankedSpoil = Math.Max(0, this.area.LevelBankedSpoil - positions.Count);
             return LevelPassResult.Working();
         }
 
@@ -247,6 +255,12 @@ namespace Eco.Mods.TechTree
 
             return columns;
         }
+
+        /// <summary>How much dirt the drone is carrying, which is what the fill phase can spend.</summary>
+        private int DirtInHold() =>
+            this.hold.NonEmptyStacks
+                .Where(stack => stack.Item?.Type == typeof(DirtItem))
+                .Sum(stack => stack.Quantity);
 
         /// <summary>Whether anything is growing anywhere in the area (R18's entry check).</summary>
         private bool AnyPlantStanding(IEnumerable<SurfaceColumn> columns) =>

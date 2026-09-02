@@ -77,11 +77,21 @@ namespace AdvancedElectronics.Navigation
         /// <summary>The engine's condition for that refusal, when it named one.</summary>
         public string UnfitCondition { get; }
 
-        internal FarmPlotOutcome(FarmAction action, bool refusedForFitness, string unfitCondition)
+        /// <summary>
+        /// The surface height this decision was made against.
+        ///
+        /// Carried on the outcome so the caller acts on the block it actually judged. Where
+        /// the caller re-sampled the ground to find the position, a plant growing or a
+        /// neighbour digging between the two reads would have it act one block off.
+        /// </summary>
+        public int SurfaceY { get; }
+
+        internal FarmPlotOutcome(FarmAction action, bool refusedForFitness, string unfitCondition, int surfaceY)
         {
             Action = action;
             WasRefusedForFitness = refusedForFitness;
             UnfitCondition = unfitCondition;
+            SurfaceY = surfaceY;
         }
     }
 
@@ -98,16 +108,17 @@ namespace AdvancedElectronics.Navigation
         /// leaves the ground to recover on its own and R34 keeps one bad plot from
         /// stalling the area around it.
         /// </summary>
-        public static FarmPlotOutcome Decide(FarmBlockFacts facts, string areaCrop, GroundFitness fitness)
+        public static FarmPlotOutcome Decide(
+            FarmBlockFacts facts, string areaCrop, GroundFitness fitness, int surfaceY = 0)
         {
             var action = FarmBlockDecision.Decide(facts, areaCrop);
 
             if (action != FarmAction.Sow || fitness.IsFit)
-                return new FarmPlotOutcome(action, refusedForFitness: false, unfitCondition: null);
+                return new FarmPlotOutcome(action, refusedForFitness: false, unfitCondition: null, surfaceY);
 
             // Left alone rather than skipped-with-an-error: the plot is fine, the ground
             // is not, and it becomes sowable again by itself once the condition lifts.
-            return new FarmPlotOutcome(FarmAction.LeaveAlone, refusedForFitness: true, fitness.Condition);
+            return new FarmPlotOutcome(FarmAction.LeaveAlone, refusedForFitness: true, fitness.Condition, surfaceY);
         }
     }
 }

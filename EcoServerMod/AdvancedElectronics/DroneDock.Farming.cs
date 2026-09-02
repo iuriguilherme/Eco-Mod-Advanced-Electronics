@@ -73,8 +73,15 @@ namespace Eco.Mods.TechTree
         /// <summary>Last reported next action as a <see cref="FarmAction"/> ordinal, or -1 for none.</summary>
         [Serialized] public int LastNextAction { get; set; } = -1;
 
-        /// <summary>Hours until this area's least-grown plant comes due (R31); negative for none.</summary>
+        /// <summary>Hours until this area's least-grown plant comes due (R31); negative for none. Display only.</summary>
         [Serialized] public double LastNextDueHours { get; set; } = -1;
+
+        /// <summary>
+        /// When that plant comes due, as an absolute world time. The scheduling value:
+        /// a stored DURATION re-anchored to the clock on every settle walks the wake
+        /// forward each time anyone touches a chest, and the crop never gets picked.
+        /// </summary>
+        [Serialized] public double LastDueAtWorldSeconds { get; set; }
 
         /// <summary>Plots held by an overlap with another dock's area (R37).</summary>
         [Serialized] public int LastHeldPlotCount { get; set; }
@@ -127,6 +134,7 @@ namespace Eco.Mods.TechTree
             this.LastStallReason = -1;
             this.LastNextAction = -1;
             this.LastNextDueHours = -1;
+            this.LastDueAtWorldSeconds = 0;
             this.LastHeldPlotCount = 0;
             this.LastUnfitCondition = null;
             this.LastMissingMaterial = null;
@@ -642,6 +650,8 @@ namespace Eco.Mods.TechTree
                 case FarmStallReason.LevelPassBlocked:
                     return FarmAreaState.LevelPassBlocked(
                         area.Name, cropName, area.LastUnfitCondition ?? "the pass cannot run");
+                case FarmStallReason.PackRejected:
+                    return FarmAreaState.PackRejected(area.Name, cropName);
                 case FarmStallReason.LawRefusal:
                     return FarmAreaState.RefusedByLaw(area.Name, cropName);
                 case FarmStallReason.PropertyRefusal:

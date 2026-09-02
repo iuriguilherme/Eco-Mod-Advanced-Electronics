@@ -58,7 +58,17 @@ namespace AdvancedElectronics.Navigation
         ///
         /// Appended rather than inserted: persisted by ordinal.
         /// </summary>
-        LevelPassBlocked
+        LevelPassBlocked,
+
+        /// <summary>
+        /// This mod built a malformed game-action pack and its own fail-closed guards
+        /// refused it. Not a condition of the world and not something a citizen can clear
+        /// -- it is a defect -- so it stops the area loudly rather than being retried in
+        /// silence forever.
+        ///
+        /// Appended rather than inserted: persisted by ordinal.
+        /// </summary>
+        PackRejected
     }
 
     /// <summary>Whether the job has work, is waiting, or has hit something a citizen must clear.</summary>
@@ -190,6 +200,10 @@ namespace AdvancedElectronics.Navigation
         /// </summary>
         public static FarmAreaState Skipped(string areaName, string crop) =>
             new FarmAreaState(areaName, RequireCrop(crop), FarmStallReason.Skipped);
+
+        /// <summary>A pack this mod built was refused by its own invariants. A defect, not a world condition.</summary>
+        public static FarmAreaState PackRejected(string areaName, string crop) =>
+            new FarmAreaState(areaName, RequireCrop(crop), FarmStallReason.PackRejected);
 
         /// <summary>R18: the level pass will not run, and says why in its own words.</summary>
         public static FarmAreaState LevelPassBlocked(string areaName, string crop, string detail)

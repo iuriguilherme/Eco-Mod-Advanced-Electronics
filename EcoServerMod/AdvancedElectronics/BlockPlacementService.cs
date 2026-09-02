@@ -8,6 +8,7 @@ using Eco.Gameplay.GameActions;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Occupancy;
 using Eco.Gameplay.Players;
+using Eco.Gameplay.Rooms;
 using Eco.Shared.IoC;
 using Eco.Shared.Items;
 using Eco.Shared.Math;
@@ -69,6 +70,11 @@ namespace Eco.Mods.TechTree
     /// 9. The world write is a post-effect, so a refused pack sets no block.
     /// 10. The item leaves the inventory through the pack's own change set, so a refused
     ///     pack consumes no dirt.
+    ///
+    /// Two divergences from <c>AtomicActions.PlaceBlock</c> are deliberate and neither is
+    /// reachable from this mod's use: no <c>FractionalBlockItem</c> split-from-stack (dirt
+    /// is not fractional) and no stackable <c>targetBlockType</c> branch (the drone always
+    /// places into an available cell, never onto a stack it is upgrading).
     /// </summary>
     public sealed class BlockPlacementService
     {
@@ -162,7 +168,15 @@ namespace Eco.Mods.TechTree
                 // A post-effect, never a direct write: nothing reaches the world unless
                 // the whole pack succeeds.
                 var setPos = wrapped;
-                pack.AddPostEffect(() => EcoWorld.SetBlock(blockType, setPos));
+                pack.AddPostEffect(() =>
+                {
+                    EcoWorld.SetBlock(blockType, setPos);
+
+                    // The engine queues this after its own placement (AtomicActions.PlaceBlock).
+                    // Without it a block the drone places never re-evaluates the room it
+                    // encloses, so room volume, tier and housing value all stay stale.
+                    RoomData.QueueRoomTest(setPos);
+                });
             }
 
             // Reproduced from the engine's own placement helper rather than invented, and

@@ -78,6 +78,9 @@ namespace Eco.Mods.TechTree
         /// <summary>Set when a scan exhausted the sweep; consumed when a target from the restarted sweep is taken.</summary>
         private bool sweepRestartPending;
 
+        /// <summary>The dock's wake token as it stood when the current scan began.</summary>
+        private int tokenAtScanStart;
+
         public FarmingStrategy(
             DroneDockObject homeDock,
             IWorldSampler sampler,
@@ -224,9 +227,10 @@ namespace Eco.Mods.TechTree
                     continue;
                 }
 
-                var surfaceY = (int)this.sampler.GroundHeightAt(column.X, column.Z);
-                var ground = new BlockPos(column.X, surfaceY, column.Z);
-                var above = new BlockPos(column.X, surfaceY + 1, column.Z);
+                // The height Evaluate actually decided on. Re-sampling here would let the
+                // drone act on a different block than the one it judged.
+                var ground = new BlockPos(column.X, outcome.SurfaceY, column.Z);
+                var above = new BlockPos(column.X, outcome.SurfaceY + 1, column.Z);
 
                 var performed = this.Perform(outcome.Action, area, ground, above, citizen);
                 if (performed != null)
@@ -270,6 +274,7 @@ namespace Eco.Mods.TechTree
             {
                 case FarmStallReason.LawRefusal:
                 case FarmStallReason.PropertyRefusal:
+                case FarmStallReason.PackRejected:
                     return true;
 
                 case FarmStallReason.MissingMaterial:
@@ -369,6 +374,11 @@ namespace Eco.Mods.TechTree
         {
             RemovalRefusalStage.SettlementLaw => new PerformRefusal(FarmStallReason.LawRefusal),
             RemovalRefusalStage.Property => new PerformRefusal(FarmStallReason.PropertyRefusal),
+            // A tripped fail-closed invariant is not an awkward block: it means the pack
+            // this mod built was malformed, and retrying it forever in silence is the one
+            // outcome those guards exist to prevent.
+            RemovalRefusalStage.Unrecognised => new PerformRefusal(FarmStallReason.PackRejected),
+
             _ => materialType == null
                 ? new PerformRefusal(FarmStallReason.Skipped)
                 : new PerformRefusal(FarmStallReason.MissingMaterial, materialType, materialName)
@@ -400,7 +410,8 @@ namespace Eco.Mods.TechTree
                     plant.Ripe,
                     ledger.MayHarvest(area.Crop, stored));
 
-            return FarmPlotDecision.Decide(facts, area.Crop, this.fitness.Rate(area.Crop, column.X, surfaceY + 1, column.Z));
+            return FarmPlotDecision.Decide(
+                facts, area.Crop, this.fitness.Rate(area.Crop, column.X, surfaceY + 1, column.Z), surfaceY);
         }
 
         /// <summary>
@@ -429,7 +440,17 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private (int AreaId, PlotCoord Plot)? PeekTarget()
         {
-            if (this.peekValid) return this.peekedTarget;
+            // A cached NULL is only good while there is still no reason to look. Holding
+            // one unconditionally latches the farm off for the life of the strategy: the
+            // invalidation points are all things that happen when there IS work, so a farm
+            // that settled once would never scan again, however much seed arrived.
+            if (this.peekValid && !(this.peekedTarget == null && this.ShouldScan()))
+                return this.peekedTarget;
+
+            // Snapshot BEFORE scanning: a storage change that lands while the scan is
+            // running would otherwise be recorded as already-seen, and the farm would
+            // sleep through the very delivery it was waiting for.
+            this.tokenAtScanStart = this.homeDock.FarmWakeToken;
 
             this.peekedTarget = this.ShouldScan() ? this.Scan() : null;
             this.peekValid = true;
@@ -465,19 +486,23 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private void SettleUntilSomethingChanges()
         {
-            this.lastScanToken = this.homeDock.FarmWakeToken;
+            // The token as it stood when the scan STARTED, not as it stands now -- see
+            // PeekTarget. Recording the current value here would swallow any wake raised
+            // during the scan.
+            this.lastScanToken = this.tokenAtScanStart;
 
             double? earliest = null;
             foreach (var area in this.homeDock.AssignedFarmAreas)
             {
                 if (area.LastStallReason != (int)FarmStallReason.WaitingOnGrowth) continue;
-                if (area.LastNextDueHours < 0) continue;
-                if (earliest == null || area.LastNextDueHours < earliest) earliest = area.LastNextDueHours;
+                if (area.LastDueAtWorldSeconds <= 0) continue;
+                if (earliest == null || area.LastDueAtWorldSeconds < earliest) earliest = area.LastDueAtWorldSeconds;
             }
 
-            this.nextScanAtWorldSeconds = earliest == null
-                ? double.MaxValue
-                : WorldTime.Seconds + (earliest.Value * TimeUtil.SecondsPerHour);
+            // An ABSOLUTE due time, carried on the area. Re-anchoring a stored duration to
+            // the current clock on every settle pushed the wake further out each time
+            // anyone touched a chest, so a crop could stay ripe indefinitely.
+            this.nextScanAtWorldSeconds = earliest ?? double.MaxValue;
         }
 
         private (int AreaId, PlotCoord Plot)? Scan()
@@ -577,13 +602,16 @@ namespace Eco.Mods.TechTree
             // The area's due time is the earliest across every plot of it, not whichever
             // plot happened to be walked last -- otherwise the farm sleeps past the crop
             // that was ready first.
+            var dueAt = WorldTime.Seconds + (earliest.Value * TimeUtil.SecondsPerHour);
+
             var alreadyWaiting = area.LastStallReason == (int)FarmStallReason.WaitingOnGrowth
-                && area.LastNextDueHours >= 0;
+                && area.LastDueAtWorldSeconds > 0;
 
             area.LastStallReason = (int)FarmStallReason.WaitingOnGrowth;
-            area.LastNextDueHours = alreadyWaiting
-                ? Math.Min(area.LastNextDueHours, earliest.Value)
-                : earliest.Value;
+            area.LastDueAtWorldSeconds = alreadyWaiting
+                ? Math.Min(area.LastDueAtWorldSeconds, dueAt)
+                : dueAt;
+            area.LastNextDueHours = earliest.Value;
             area.LastNextAction = -1;
         }
 
