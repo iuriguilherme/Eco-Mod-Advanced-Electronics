@@ -358,10 +358,14 @@ namespace Eco.Mods.TechTree
             // per area would put an O(areas x world objects) sweep on a repeating path.
             var exclusionHolders = DroneDockObject.DocksHoldingExclusions();
 
+            // And the overlap projections likewise, for the same reason -- read RAW (R34), so the
+            // overlay sees past both the owner test and the dock-network radius.
+            var published = MiningComponent.AllAreaProjections();
+
             var sb = new StringBuilder();
             var position = 1;
             foreach (var area in dock.SurveyAreas)
-                sb.Append(DockReadout.FormatAreaLine(Snapshot(area, position++, dock, exclusionHolders))).Append('\n');
+                sb.Append(DockReadout.FormatAreaLine(Snapshot(area, position++, dock, exclusionHolders, published))).Append('\n');
 
             return DockReadout.AtReadableSize(sb.ToString());
         }
@@ -562,19 +566,16 @@ namespace Eco.Mods.TechTree
         /// dock-local ones, so two areas from two different docks are directly comparable.
         ///
         /// <para>
-        /// A local set intersection rather than a shared geometry helper on purpose: the shared
-        /// one is <c>AreaOverlap</c>, which the overlap unit introduces in
-        /// <c>AdvancedElectronics.Navigation</c> and which does not exist yet. This is the same
-        /// test, and it is the thing to delete when that lands.
+        /// The test itself is <see cref="AreaOverlap"/>'s, in the pure assembly where it is unit
+        /// tested; the local set intersection this replaces was a placeholder for exactly that.
+        /// What is passed across is PLOT COORDINATES, never the entries: <c>busy.Area</c> may
+        /// belong to another player, and the geometry API takes coordinates so that an entry
+        /// carrying findings, stamps and exclusions cannot reach a surface meant only to say that
+        /// two areas collide (R41).
         /// </para>
         /// </summary>
-        private static bool Overlaps(SurveyAreaEntry a, SurveyAreaEntry b)
-        {
-            if (a == null || b == null) return false;
-
-            var plots = new HashSet<PlotCoord>(a.Plots());
-            return plots.Count != 0 && b.Plots().Any(plots.Contains);
-        }
+        private static bool Overlaps(SurveyAreaEntry a, SurveyAreaEntry b) =>
+            a != null && b != null && AreaOverlap.Overlaps(a.Plots(), b.Plots());
 
         /// <summary>
         /// How much of a colliding area a refusal may name (R36, R42). Named in full when the
@@ -596,7 +597,8 @@ namespace Eco.Mods.TechTree
             SurveyAreaEntry area,
             int position,
             DroneDockObject dock,
-            IReadOnlyCollection<DroneDockObject> exclusionHolders = null)
+            IReadOnlyCollection<DroneDockObject> exclusionHolders = null,
+            IReadOnlyList<AreaProjection> published = null)
         {
             var top = area.ReadFindings()
                 .Where(f => f.Found && dock.IsMaterialShown(f.OreType))
@@ -619,9 +621,14 @@ namespace Eco.Mods.TechTree
             // overwrites one status with another.
             var status = DroneDockObject.StatusOfArea(dock.ObjectID, area, exclusionHolders, area.Kind);
 
+            // R35/R36: this tab, like the Mining tab, says only THAT the area collides. The plots
+            // it shares and whether the other area holds them go to the diagnostic command --
+            // both lines come through the one annotation channel, so they cannot disagree.
+            var hasOverlap = MiningComponent.OverlapsAnything(dock, area, published);
+
             return new AreaSnapshot(
                 position, area.Name, area.PlotCount, area.CoveragePercent, top, status,
-                isAssigned, isUnreachable);
+                isAssigned, isUnreachable, hasOverlap);
         }
 
         // --- Material filter ---

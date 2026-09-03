@@ -14,6 +14,7 @@ using Eco.Shared.IoC;
 using Eco.Shared.Items;
 using Eco.Shared.Services;
 using Eco.Shared.SharedTypes;
+using Eco.Shared.Voxel;
 
 namespace Eco.Mods.TechTree
 {
@@ -491,6 +492,22 @@ namespace Eco.Mods.TechTree
                     user.MsgLocStr($"  {exclusionLine}");
             }
 
+            // R36: the panel says an overlap EXISTS; this says exactly where. The centre block of
+            // every shared plot, so the player can fly there and look, and whether the other area
+            // holds those plots right now -- the one thing that answers "will this block ever
+            // lift", which is the same obligation R27 puts on a blocked area.
+            //
+            // It names nothing else about the other area, and cannot: the overlap path only ever
+            // received that area's geometry, its identity and its claim (R41, R42). Not its name,
+            // not its owner, and deliberately not what it is FOR -- R39's claim test is
+            // kind-blind, so the kind would disclose something about another player's ground
+            // while answering nothing about the player's own block.
+            //
+            // Here rather than on a roster line or a new panel row: this is where the mod already
+            // answers "why was that plot skipped", the roster stays at its budgeted length, and
+            // KTD10 adds no control to either tab.
+            ReportOverlaps(user, dock);
+
             user.MsgLocStr($"  Mining halted server-wide: {MiningHalt.IsHalted}");
             user.MsgLocStr($"  Anim state Working: {FormatAnimState(dock, DroneDockObject.WorkingStateName)}");
 
@@ -554,6 +571,58 @@ namespace Eco.Mods.TechTree
                 if (area.SurveyDepth > 0)
                     user.MsgLocStr($"    Scanned to {area.SurveyDepth} blocks below surface; median surface level {area.MedianSurface}.");
             }
+        }
+
+        /// <summary>
+        /// The per-plot overlap detail R36 sends here rather than to the panel: one line per
+        /// collision, per area this dock is working with.
+        ///
+        /// <para>
+        /// The areas reported are the dock's OWN published ones plus the mining area it is
+        /// assigned to -- the two the player operating this dock is already entitled to see, so
+        /// naming them discloses nothing new. The other side of every collision is named only as
+        /// ground and a claim, which is all the projection carries (R41).
+        /// </para>
+        /// <para>
+        /// The projections are collected ONCE and reused across every area, rather than per area:
+        /// this command can be run against a dock holding many areas, and a world walk apiece
+        /// would be an O(areas x world objects) sweep for one printout.
+        /// </para>
+        /// </summary>
+        private static void ReportOverlaps(User user, DroneDockObject dock)
+        {
+            var published = MiningComponent.AllAreaProjections();
+            var reported = new HashSet<(Guid Dock, int Area)>();
+            var headerShown = false;
+
+            void Report(DroneDockObject owner, SurveyAreaEntry area)
+            {
+                // An assigned area this dock also owns would otherwise print twice.
+                if (owner == null || area == null || !reported.Add((owner.ObjectID, area.Id))) return;
+
+                var lines = AreaOverlap.FormatOverlapDetail(
+                    MiningComponent.OverlapsOf(owner, area, published), PlotUtil.PropertyPlotLength);
+                if (lines.Count == 0) return;
+
+                if (!headerShown)
+                {
+                    user.MsgLocStr("  Overlaps:");
+                    headerShown = true;
+                }
+
+                foreach (var line in lines)
+                    user.MsgLocStr($"    '{area.Name}': {line}");
+            }
+
+            foreach (var own in dock.SurveyAreas)
+                Report(dock, own);
+
+            if (dock.AssignedMiningArea is { } assigned
+                && assigned.Resolve(out var owningDock, out var minedArea) == AreaLookupSignal.Found)
+                Report(owningDock, minedArea);
+
+            if (!headerShown)
+                user.MsgLocStr("  Overlaps: none");
         }
 
         /// <summary>

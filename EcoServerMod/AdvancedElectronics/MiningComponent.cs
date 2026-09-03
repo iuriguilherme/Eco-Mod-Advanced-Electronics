@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -178,8 +179,127 @@ namespace Eco.Mods.TechTree
         public static IEnumerable<(DroneDockObject Dock, SurveyAreaEntry Area)> AllPublishedAreas() =>
             ServiceHolder<IWorldObjectManager>.Obj.All
                 .OfType<DroneDockObject>()
-                .Where(d => !d.IsDestroyed && d.HasComponent<SurveyComponent>())
+                .Where(Publishes)
                 .SelectMany(d => d.SurveyAreas.Select(a => (Dock: d, Area: a)));
+
+        /// <summary>Whether a dock is one whose survey areas the raw walk yields.</summary>
+        private static bool Publishes(DroneDockObject dock) =>
+            dock != null && !dock.IsDestroyed && dock.HasComponent<SurveyComponent>();
+
+        /// <summary>
+        /// <b>The same raw walk (KTD8), reduced to what the overlap path is allowed to know
+        /// (R41, R34).</b> Every published area in the world as an
+        /// <see cref="AreaProjection"/> -- plots, identity, claim, kind -- and nothing else.
+        ///
+        /// <para>
+        /// The projection is built HERE, at the enumeration site, and that placement is the
+        /// mechanism rather than a convention. R41 makes this channel internal: the system may
+        /// see where two areas want the same ground, but a dock near another player's area grants
+        /// no sight of it. If a <see cref="SurveyAreaEntry"/> were handed on instead, every
+        /// present and future consumer would be one dereference away from that area's findings,
+        /// stamps and exclusions, and the rule would hold only as long as nobody added a call
+        /// site. Projecting at the boundary makes the leak unrepresentable downstream.
+        /// </para>
+        /// <para>
+        /// Unfiltered in both directions, exactly as <see cref="AllPublishedAreas"/> is: no owner
+        /// test and no radius, because two areas collide however far apart their docks sit and
+        /// whoever owns them (R34).
+        /// </para>
+        /// <para>
+        /// ONE world walk, not two. Claim holders are docks that need not publish anything --
+        /// a mining dock holds its claim through <see cref="DroneDockObject.AssignedMiningArea"/>
+        /// while owning no areas of its own -- so the claim pass cannot reuse the published
+        /// subset. Both passes run off the single materialised dock list instead, because this
+        /// feeds a roster refresh that runs on the dock's tick.
+        /// </para>
+        /// </summary>
+        public static IReadOnlyList<AreaProjection> AllAreaProjections()
+        {
+            var docks = ServiceHolder<IWorldObjectManager>.Obj.All
+                .OfType<DroneDockObject>()
+                .Where(d => !d.IsDestroyed)
+                .ToList();
+
+            var claimed = ClaimedAreas(docks);
+
+            var projections = new List<AreaProjection>();
+            foreach (var dock in docks)
+            {
+                if (!Publishes(dock)) continue;
+
+                foreach (var area in dock.SurveyAreas)
+                    projections.Add(new AreaProjection(
+                        area.Id, dock.ObjectID, area.Plots(),
+                        claimed.Contains((dock.ObjectID, area.Id)),
+                        area.Kind));
+            }
+
+            return projections;
+        }
+
+        /// <summary>
+        /// Whether one area collides with any other area in the world (R34, R35) -- the single
+        /// bit both roster lines carry as an uncoloured <c>[overlap]</c>.
+        /// </summary>
+        /// <param name="published">
+        /// The projections, hoisted by a caller rendering a whole roster. Null makes this collect
+        /// them itself, which is right for a one-area read and wrong for a roster: a refresh runs
+        /// off the dock's TICK, and re-walking the world once per area would put an
+        /// O(areas x world objects) sweep on a repeating path.
+        /// </param>
+        public static bool OverlapsAnything(
+            DroneDockObject owner, SurveyAreaEntry area, IReadOnlyList<AreaProjection> published = null) =>
+            AreaOverlap.HasAny(Project(owner, area), published ?? AllAreaProjections());
+
+        /// <summary>
+        /// Every collision one area has, with the plots each covers -- what the diagnostic
+        /// command turns into a centre block per shared plot (R36).
+        /// </summary>
+        public static IReadOnlyList<AreaOverlapMatch> OverlapsOf(
+            DroneDockObject owner, SurveyAreaEntry area, IReadOnlyList<AreaProjection> published = null) =>
+            AreaOverlap.Matches(Project(owner, area), published ?? AllAreaProjections());
+
+        /// <summary>
+        /// One area as the geometry side of a comparison. The claim flag and the kind are left at
+        /// their defaults deliberately: this is the area being ASKED about, and nothing reads
+        /// either field off the asking side -- the answer is about what the OTHER areas hold.
+        /// </summary>
+        private static AreaProjection Project(DroneDockObject owner, SurveyAreaEntry area) =>
+            owner == null || area == null
+                ? null
+                : new AreaProjection(area.Id, owner.ObjectID, area.Plots());
+
+        /// <summary>
+        /// Which areas are assigned to a dock right now, keyed by (owning dock, area id) -- the
+        /// claim R36 reports and R39 enforces, in the terms the mod can express today.
+        ///
+        /// <para>
+        /// Assignment is the test, not "a drone is working": AE12 turns on the freshly drawn area
+        /// holding nothing until it is assigned, which is why the farm keeps working the ground
+        /// they share. Both assignment channels count -- a survey dock working its own area, and
+        /// a mining dock pointed at someone else's.
+        /// </para>
+        /// <para>
+        /// The mining reference is read as stored rather than resolved: <c>Resolve</c> carries
+        /// per-reference failure counters that decide when a vanished area is confirmed gone, and
+        /// a roster refresh must not advance them. A stale pair simply matches no live area.
+        /// </para>
+        /// </summary>
+        private static HashSet<(Guid Dock, int Area)> ClaimedAreas(IEnumerable<DroneDockObject> docks)
+        {
+            var claimed = new HashSet<(Guid, int)>();
+
+            foreach (var dock in docks)
+            {
+                if (dock.AssignedSurveyAreaId != 0)
+                    claimed.Add((dock.ObjectID, dock.AssignedSurveyAreaId));
+
+                if (dock.AssignedMiningArea is { } mining)
+                    claimed.Add((mining.OwningDockId, mining.AreaId));
+            }
+
+            return claimed;
+        }
 
         /// <summary>
         /// The raw walk narrowed by ownership alone (R15) -- everything this dock is entitled to
@@ -231,10 +351,15 @@ namespace Eco.Mods.TechTree
             // per area would put an O(areas x world objects) sweep on a repeating path.
             var exclusionHolders = DroneDockObject.DocksHoldingExclusions();
 
+            // Hoisted for the same reason, and read RAW (R34): the overlay has to see past the
+            // radius this list was just narrowed by, and past ownership -- two areas collide
+            // however far apart their docks sit and whoever owns them.
+            var published = AllAreaProjections();
+
             this.AvailableAreas = DockReadout.AtReadableSize(MiningReadout.FormatAvailableAreas(
                 offered
                     .Select((o, i) => MiningReadout.FormatOfferedAreaLine(
-                        Snapshot(dock, o.Dock, o.Area, i + 1, assigned, exclusionHolders), o.Dock.Name))
+                        Snapshot(dock, o.Dock, o.Area, i + 1, assigned, exclusionHolders, published), o.Dock.Name))
                     .ToList(),
                 outOfRangeDocks,
                 DroneDockObject.DockNetworkRadius));
@@ -324,7 +449,10 @@ namespace Eco.Mods.TechTree
             SurveyAreaEntry area,
             int position,
             MiningAreaRef assigned,
-            IReadOnlyCollection<DroneDockObject> exclusionHolders)
+            IReadOnlyCollection<DroneDockObject> exclusionHolders,
+            // No default: this tab only ever renders a whole roster, and a per-area collection
+            // here would be the O(areas x world objects) sweep the hoists above exist to avoid.
+            IReadOnlyList<AreaProjection> published)
         {
             var top = area.ReadFindings()
                 .Where(f => f.Found && reader.IsMaterialShown(f.OreType))
@@ -347,7 +475,11 @@ namespace Eco.Mods.TechTree
                 isAssigned,
                 // Reachability is a fact about a trip in progress, so only the assigned area has
                 // an answer at all -- an unassigned one has none rather than a negative one.
-                isUnreachable: isAssigned && DroneReportsUnreachable(reader));
+                isUnreachable: isAssigned && DroneReportsUnreachable(reader),
+                // R35/R36: the panel says only THAT this area collides with another. Which plots,
+                // and whether the other area holds them, is the diagnostic command's to say --
+                // one summary row per fact here, a row per plot there.
+                hasOverlap: OverlapsAnything(owner, area, published));
         }
 
         /// <summary>True when this dock's drone is currently reporting that it cannot reach its area.</summary>
