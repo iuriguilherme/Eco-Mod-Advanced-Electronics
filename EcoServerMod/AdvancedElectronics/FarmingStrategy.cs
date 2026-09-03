@@ -313,9 +313,23 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>Performs one action, returning null on success or the refusal to classify.</summary>
+        /// <remarks>
+        /// Every branch below writes ground, so the whole switch runs inside one attribution
+        /// scope (R43): without it the farm drone's own work reads as an outside change to the
+        /// world-change handler, and a mining area covering the same plots would unsurvey itself
+        /// as the farm worked -- losing findings to a writer the mod knew about all along. The
+        /// scope wraps the switch rather than each case so an action added later is covered
+        /// without anyone remembering to wrap it.
+        ///
+        /// The farm's areas live on its own dock, so the dock that owns the served area and the
+        /// dock running this strategy are the same object.
+        /// </remarks>
         private PerformRefusal? Perform(
             FarmAction action, FarmAreaEntry area, BlockPos ground, BlockPos above, User citizen)
         {
+            using var attribution = ModGroundWrite.Attribute(GroundWriteAttribution.ByDrone(
+                this.homeDock.ObjectID.ToString(), area.Id, AreaKind.Farming));
+
             switch (action)
             {
                 case FarmAction.PlaceDirt:
