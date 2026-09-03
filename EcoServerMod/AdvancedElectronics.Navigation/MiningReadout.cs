@@ -88,10 +88,98 @@ namespace AdvancedElectronics.Navigation
         /// rendered a finished job's end reason. A control that works but cannot be seen working is
         /// indistinguishable from a broken mod.
         /// </summary>
-        public static string FormatBlockedReason(bool haltedServerWide, MiningEndReason? jobEndReason) =>
-            haltedServerWide
-                ? "an administrator has halted mining server-wide"
-                : FormatStopReason(jobEndReason);
+        /// <param name="assignmentOutOfRange">
+        /// R23, R24: the assignment still resolves, but its survey dock now sits outside this
+        /// dock's network radius. Ranked above the job's end reason because the job ends on the
+        /// vanished-area path (R24) and would otherwise report "the area is gone" about an area
+        /// that is plainly still on the map -- which is the guess R23 exists to remove.
+        /// </param>
+        public static string FormatBlockedReason(
+            bool haltedServerWide, MiningEndReason? jobEndReason, bool assignmentOutOfRange = false)
+        {
+            if (haltedServerWide) return "an administrator has halted mining server-wide";
+            if (assignmentOutOfRange) return OutOfRangeAssignmentReason;
+            return FormatStopReason(jobEndReason);
+        }
+
+        private const string OutOfRangeAssignmentReason =
+            "the assigned area's survey dock is out of range of this dock's network";
+
+        /// <summary>
+        /// Whether a survey dock <paramref name="distance"/> metres away lies inside a mining
+        /// dock's network radius (R14, KTD9).
+        ///
+        /// <para>
+        /// The radius itself is NOT declared here: it is a dock constant, deliberately separate
+        /// from the storage link radius, because R14 expects it to become an upgrade-module
+        /// effect and a shared constant could not carry that. This function only decides which
+        /// side of a given radius a given distance falls on.
+        /// </para>
+        /// <para>
+        /// Inclusive at the boundary and with no tolerance band, so a pair sitting exactly at the
+        /// radius is in range and stays there. A hysteresis band would make the same pair read
+        /// differently depending on which way it last crossed, which is the one thing a placement
+        /// rule must not do -- the player is holding the dock and watching the list.
+        /// </para>
+        /// </summary>
+        public static bool IsWithinDockNetwork(float distance, float radius) =>
+            !float.IsNaN(distance) && distance <= radius;
+
+        /// <summary>
+        /// The out-of-range notice on the offered-areas list (R23). Empty when every survey dock
+        /// the owner test admits is also in range.
+        ///
+        /// <para>
+        /// It counts DOCKS rather than areas: what the player has to move is a dock, and a
+        /// distant dock holding nine areas is one problem, not nine.
+        /// </para>
+        /// </summary>
+        public static string FormatOutOfRangeDocks(int dockCount, float radius)
+        {
+            if (dockCount <= 0) return string.Empty;
+
+            var subject = dockCount == 1 ? "1 survey dock is" : $"{dockCount} survey docks are";
+            return $"{subject} out of range -- beyond this dock's {radius:F0} m network. "
+                 + "Move a dock closer to work its areas.";
+        }
+
+        /// <summary>
+        /// The whole offered-areas body (R23): the numbered roster, the out-of-range notice, or
+        /// both.
+        ///
+        /// <para>
+        /// The empty-and-out-of-range case is the reason this exists. Filtering the roster by
+        /// radius without saying so leaves a dock reporting "no survey docks with an area were
+        /// found" while the player is looking at one thirty metres away -- and nothing on the
+        /// panel distinguishes "too far" from "has no areas". Those are different problems with
+        /// different fixes, so they get different words.
+        /// </para>
+        /// </summary>
+        public static string FormatAvailableAreas(
+            IReadOnlyList<string> offeredLines, int outOfRangeDockCount, float radius)
+        {
+            var notice = FormatOutOfRangeDocks(outOfRangeDockCount, radius);
+
+            if (offeredLines == null || offeredLines.Count == 0)
+                return string.IsNullOrEmpty(notice)
+                    ? "No survey docks with an area were found."
+                    : notice;
+
+            var roster = string.Join("\n", offeredLines);
+            return string.IsNullOrEmpty(notice) ? roster : $"{roster}\n{notice}";
+        }
+
+        /// <summary>
+        /// The assigned-area row (R24). A world upgrading into the radius can separate a pair
+        /// that was legally assigned before it existed; the assignment is REPORTED out of range
+        /// rather than cleared, because silently dropping a player's assignment on load is
+        /// indistinguishable from the mod losing it.
+        /// </summary>
+        public static string FormatAssignedArea(string owningDockName, string areaName, bool withinDockNetwork)
+        {
+            var line = $"{owningDockName} -- {areaName}";
+            return withinDockNetwork ? line : $"{line} -- out of range";
+        }
 
         /// <summary>
         /// One line of the Mining tab's offered-areas list. Not a second formatter: it is

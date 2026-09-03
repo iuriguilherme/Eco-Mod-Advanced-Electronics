@@ -158,10 +158,41 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject self) return Enumerable.Empty<(DroneDockObject, SurveyAreaEntry)>();
 
-            return ServiceHolder<IWorldObjectManager>.Obj.All
+            // R14: the radius sits on top of the owner test, never inside the walk.
+            return this.OwnedAreas().Where(o => self.IsInDockNetwork(o.Dock));
+        }
+
+        /// <summary>
+        /// The RAW enumeration (KTD8): every dock in the world that publishes survey areas, with
+        /// no owner test and no distance test applied.
+        ///
+        /// <para>
+        /// This is split out rather than inlined because two consumers want the same walk under
+        /// different rules and would otherwise contradict each other. Offering areas is narrowed
+        /// by ownership and by the dock-network radius; overlap detection has to see PAST both,
+        /// since two areas overlap on the ground whether or not the docks that drew them are
+        /// neighbours or share a deed. Folding either filter in here would silently make overlap
+        /// blind to exactly the cases it exists to catch. Nothing may be filtered here.
+        /// </para>
+        /// </summary>
+        public static IEnumerable<(DroneDockObject Dock, SurveyAreaEntry Area)> AllPublishedAreas() =>
+            ServiceHolder<IWorldObjectManager>.Obj.All
                 .OfType<DroneDockObject>()
-                .Where(d => !d.IsDestroyed && d.HasComponent<SurveyComponent>() && SharesOwnerWith(self, d))
+                .Where(d => !d.IsDestroyed && d.HasComponent<SurveyComponent>())
                 .SelectMany(d => d.SurveyAreas.Select(a => (Dock: d, Area: a)));
+
+        /// <summary>
+        /// The raw walk narrowed by ownership alone (R15) -- everything this dock is entitled to
+        /// see, whether or not it can reach it. The distance filter is applied one layer up, so
+        /// this is also what answers "how many owned docks are merely too far away" for R23's
+        /// notice: a dock that fails the owner test is none of this player's business and must
+        /// not be counted, or the panel would report strangers' docks as out of range.
+        /// </summary>
+        private IEnumerable<(DroneDockObject Dock, SurveyAreaEntry Area)> OwnedAreas()
+        {
+            if (this.Parent is not DroneDockObject self) return Enumerable.Empty<(DroneDockObject, SurveyAreaEntry)>();
+
+            return AllPublishedAreas().Where(o => SharesOwnerWith(self, o.Dock));
         }
 
         /// <summary>
@@ -176,7 +207,22 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
 
-            var offered = this.OfferedAreas().ToList();
+            // The owner-filtered list is materialised ONCE and the radius applied to it here,
+            // rather than calling OfferedAreas() and then walking the world a second time for the
+            // out-of-range count. This runs off the dock's tick; a second world sweep per refresh
+            // is not a cost this path can absorb. Order is the raw walk's order either way, so the
+            // positions the selector commits by are unchanged.
+            var owned = this.OwnedAreas().ToList();
+            var offered = owned.Where(o => dock.IsInDockNetwork(o.Dock)).ToList();
+
+            // R23: counted as DOCKS, so one distant dock holding nine areas reads as one thing to
+            // move. Distinct because the walk yields one entry per area.
+            var outOfRangeDocks = owned
+                .Where(o => !dock.IsInDockNetwork(o.Dock))
+                .Select(o => o.Dock)
+                .Distinct()
+                .Count();
+
             this.browseIndex = DockReadout.ClampCursor(this.browseIndex, offered.Count);
 
             var assigned = dock.AssignedMiningArea;
@@ -185,13 +231,19 @@ namespace Eco.Mods.TechTree
             // per area would put an O(areas x world objects) sweep on a repeating path.
             var exclusionHolders = DroneDockObject.DocksHoldingExclusions();
 
-            this.AvailableAreas = DockReadout.AtReadableSize(offered.Count == 0
-                ? "No survey docks with an area were found."
-                : string.Join("\n", offered.Select((o, i) => MiningReadout.FormatOfferedAreaLine(
-                    Snapshot(dock, o.Dock, o.Area, i + 1, assigned, exclusionHolders), o.Dock.Name))));
+            this.AvailableAreas = DockReadout.AtReadableSize(MiningReadout.FormatAvailableAreas(
+                offered
+                    .Select((o, i) => MiningReadout.FormatOfferedAreaLine(
+                        Snapshot(dock, o.Dock, o.Area, i + 1, assigned, exclusionHolders), o.Dock.Name))
+                    .ToList(),
+                outOfRangeDocks,
+                DroneDockObject.DockNetworkRadius));
 
             var reference = assigned;
-            this.AssignedArea = reference == null ? "none" : this.DescribeAssignment(dock, reference);
+            var assignmentOutOfRange = false;
+            this.AssignedArea = reference == null
+                ? "none"
+                : DescribeAssignment(dock, reference, out assignmentOutOfRange);
 
             var citizen = dock.StampedCitizen;
             this.CurrentOwner = citizen == null ? "unstamped" : citizen.Name;
@@ -229,7 +281,8 @@ namespace Eco.Mods.TechTree
                 this.Progress = string.Empty;
             }
 
-            var blocked = MiningReadout.FormatBlockedReason(MiningHalt.IsHalted, job?.EndReason);
+            var blocked = MiningReadout.FormatBlockedReason(
+                MiningHalt.IsHalted, job?.EndReason, assignmentOutOfRange);
             if (!string.IsNullOrWhiteSpace(blocked))
                 this.JobStatus = blocked;
 
@@ -284,7 +337,13 @@ namespace Eco.Mods.TechTree
 
             return new AreaSnapshot(
                 position, area.Name, area.PlotCount, area.CoveragePercent, top,
-                DroneDockObject.StatusOfArea(owner.ObjectID, area, exclusionHolders),
+                // The area's KIND selects which status is derived at all (R30, R46), exactly as
+                // the Survey tab does it. Omitting it here defaulted every line to the mining
+                // ladder, so a farming area listed on this tab rendered a ladder rung instead of
+                // [farm] -- a hole in an invariant whose whole point is that it is structural.
+                // The choice is made once, inside StatusOfArea; nothing here derives a mining
+                // status and then corrects it.
+                DroneDockObject.StatusOfArea(owner.ObjectID, area, exclusionHolders, area.Kind),
                 isAssigned,
                 // Reachability is a fact about a trip in progress, so only the assigned area has
                 // an answer at all -- an unassigned one has none rather than a negative one.
@@ -302,15 +361,39 @@ namespace Eco.Mods.TechTree
                        || lifecycle.CannotReachAssignedArea);
         }
 
-        private string DescribeAssignment(DroneDockObject dock, MiningAreaRef reference)
+        /// <summary>
+        /// The assigned-area row, and whether that assignment has fallen outside the dock network
+        /// (R23, R24).
+        ///
+        /// <para>
+        /// Both answers come out of ONE resolve. <see cref="MiningAreaRef.Resolve"/> is not a
+        /// pure query -- it carries the consecutive-failure count that decides when a reference
+        /// is finally called gone -- so asking it twice per refresh would burn that tolerance at
+        /// double rate and shorten the load-ordering grace period the counter exists to provide.
+        /// </para>
+        /// </summary>
+        private static string DescribeAssignment(
+            DroneDockObject dock, MiningAreaRef reference, out bool outOfRange)
         {
+            outOfRange = false;
+
             var signal = reference.Resolve(out var sourceDock, out var area);
-            return signal switch
+            switch (signal)
             {
-                AreaLookupSignal.Found => $"{sourceDock.Name} -- {area.Name}",
-                AreaLookupSignal.NotYetResolved => "resolving...",
-                _ => "gone"
-            };
+                case AreaLookupSignal.Found:
+                    // R24: the area still exists and the assignment is untouched. Being out of
+                    // range is something the dock REPORTS, never something it acts on by
+                    // clearing -- a world that upgrades into the radius must not look like the
+                    // mod quietly losing the player's assignment.
+                    outOfRange = !dock.IsInDockNetwork(sourceDock);
+                    return MiningReadout.FormatAssignedArea(sourceDock.Name, area.Name, !outOfRange);
+
+                case AreaLookupSignal.NotYetResolved:
+                    return "resolving...";
+
+                default:
+                    return "gone";
+            }
         }
     }
 }

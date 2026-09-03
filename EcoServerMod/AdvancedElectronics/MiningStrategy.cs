@@ -185,7 +185,7 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private SurveyAreaEntry ResolveSourceArea()
         {
-            var signal = this.areaRef.Resolve(out _, out var area);
+            var signal = this.areaRef.Resolve(out var owningDock, out var area);
             var outcome = AreaResolutionPolicy.Resolve(signal, this.areaRef.StoredChangeToken, area == null ? null : MiningAreaRef.CurrentChangeToken(area));
 
             switch (outcome)
@@ -206,6 +206,25 @@ namespace Eco.Mods.TechTree
                 case AreaResolutionOutcome.NotYetResolved:
                     return null;
                 default:
+                    // R24: a world upgrading into the dock-network radius can separate a pair
+                    // that was legally assigned before the radius existed, with a drone already
+                    // out over the ground. The area is not gone and the assignment is not
+                    // cleared -- but this dock may no longer work it, so the pass ends here and
+                    // the drone comes home on the SAME path a destroyed area takes: the job goes
+                    // terminal, TryGetNextTarget reports no target, and the lifecycle's
+                    // return-to-dock branch fires unchanged. No second homecoming route is added.
+                    //
+                    // The end reason is AreaGone because that is the path, and MiningEndReason
+                    // has no member for this. The panel does not repeat that word: an assignment
+                    // that resolves but is out of range outranks the job's end reason in
+                    // MiningReadout.FormatBlockedReason, so the player reads "out of range" about
+                    // an area still plainly on the map (R23).
+                    if (owningDock != null && !this.homeDock.IsInDockNetwork(owningDock))
+                    {
+                        this.job.End(MiningEndReason.AreaGone);
+                        return null;
+                    }
+
                     return area;
             }
         }

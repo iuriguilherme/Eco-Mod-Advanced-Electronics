@@ -156,6 +156,42 @@ namespace Eco.Mods.TechTree
         /// <summary>R26: the vanilla Store's own radius, not the engine's default of 9.</summary>
         private const float LinkRadius = 20f;
 
+        /// <summary>
+        /// R14, KTD9: how far a mining dock reaches for another dock's survey areas, in metres.
+        ///
+        /// <para>
+        /// Deliberately its OWN number, not <see cref="LinkRadius"/>, and the two must not be
+        /// folded together however tempting the coincidence gets. They answer different
+        /// questions: the link radius is the vanilla Store's own reach and is bound to a
+        /// believability question about hauling goods, while this one describes how far a built
+        /// network of docks can spread. R14 also expects this one to become an upgrade-module
+        /// effect, which a constant shared with storage could never carry -- widening the network
+        /// would silently widen every dock's storage reach with it.
+        /// </para>
+        /// <para>
+        /// Sixty is three times the link radius: far enough that a survey dock and its mining
+        /// docks read as one installation, close enough that the network is something the player
+        /// places rather than something that happens. The number is the user's, confirmed in play.
+        /// </para>
+        /// </summary>
+        public const float DockNetworkRadius = 60f;
+
+        /// <summary>
+        /// Whether <paramref name="other"/> is close enough to be part of this dock's network
+        /// (R14). Wrapped distance, because a world seam between two docks is not distance.
+        ///
+        /// <para>
+        /// A dock is always in its own network, which falls out of a zero distance rather than
+        /// being special-cased -- the self case reaches here through
+        /// <c>MiningComponent.OfferedAreas</c> whenever one dock both surveys and mines.
+        /// </para>
+        /// </summary>
+        public bool IsInDockNetwork(DroneDockObject other) =>
+            other != null
+            && !other.IsDestroyed
+            && MiningReadout.IsWithinDockNetwork(
+                SVector3.WrappedDistance(this.Position, other.Position), DockNetworkRadius);
+
         public override LocString DisplayName => Localizer.DoStr("Drone Dock");
 
         /// <summary>
