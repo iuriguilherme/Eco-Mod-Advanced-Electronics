@@ -344,15 +344,15 @@ flowchart TB
     SUB -->|outside change| SS
 ```
 
-How one status is derived. The ladder runs once and returns the first status that holds; both the render and the offer test call it.
+How one status is derived. The ladder runs once and returns the first status that holds; both the render and the offer test call it. "Finished" follows R7: a plot is finished when it is down at bedrock, or when a recorded exclusion accounts for what is left on it — which is why a settlement-law plot with material still standing reads `[cleared]` rather than blocking it.
 
 ```mermaid
 flowchart TB
     A["area"] --> B{"any plot unsurveyed?"}
     B -->|yes, one or more| U["unsurveyed"]
-    B -->|none| C{"every plot at bedrock?"}
+    B -->|none| C{"every plot finished? at bedrock, or an exclusion accounts for it"}
     C -->|no| D{"any plot mined since its survey?"}
-    C -->|yes| E{"any exclusion accounts for material left?"}
+    C -->|yes| E{"was any exclusion involved?"}
     E -->|yes| CLR["cleared"]
     E -->|no| EMP["empty"]
     D -->|none| SUR["surveyed"]
