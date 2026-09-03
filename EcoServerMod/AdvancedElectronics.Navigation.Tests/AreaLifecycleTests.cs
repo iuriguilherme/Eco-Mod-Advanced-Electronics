@@ -377,6 +377,103 @@ namespace AdvancedElectronics.Navigation.Tests
             }
         }
 
+        // --------------------------------------------------- U11: kind on the area itself
+
+        /// <summary>
+        /// R30, KTD11. Kind defaults to mining, and the default is the CLR default rather than a
+        /// value someone has to remember to write. That is what makes the upgrade silent: an
+        /// existing save holds only mining areas and has no kind field at all, so the persisted
+        /// ordinal loads as 0 and the area reads mining without anything being set.
+        /// </summary>
+        [Fact]
+        public void NothingSet_IsMiningGround_WhichIsWhatEveryExistingSaveHolds()
+        {
+            Assert.Equal(AreaKind.Mining, default(AreaKind));
+            Assert.Equal(AreaKind.Mining, (AreaKind)0);
+        }
+
+        /// <summary>
+        /// The ordinals are the persisted wire format (the survey area stores kind as
+        /// <c>(int)</c>, the way every other enum this mod persists is stored), so reordering the
+        /// enum would silently repurpose saved areas. Pinned here rather than trusted.
+        /// </summary>
+        [Fact]
+        public void TheKindOrdinals_ArePinned_BecauseTheyAreWhatIsPersisted()
+        {
+            Assert.Equal(0, (int)AreaKind.Mining);
+            Assert.Equal(1, (int)AreaKind.Farming);
+
+            // A kind added later must claim its own ordinal rather than displacing one of these.
+            foreach (AreaKind kind in Enum.GetValues(typeof(AreaKind)))
+                Assert.Equal(kind, (AreaKind)(int)kind);
+        }
+
+        /// <summary>
+        /// <b>R46, structurally.</b> U11 is what makes the collision possible: R31 lets an
+        /// exhausted mining area be repurposed as farmland, and the area keeps its mined stamps
+        /// and bedrock observations. Every input the ladder reads is still sitting on the area and
+        /// still true about its past, so the ladder would answer <c>[empty]</c> if asked.
+        ///
+        /// <para>
+        /// The ladder here THROWS. A farming area that returns <c>[farm]</c> is therefore proof
+        /// the ladder was never consulted -- not proof that its answer was outranked. Deriving a
+        /// mining status and then overwriting it would pass a precedence test and fail this one.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void RepurposedGround_NeverConsultsTheLadder_EvenThoughEveryMiningInputSurvives()
+        {
+            var plots = Plots(2).ToList();
+            var exhausted = Ledger(bedrock: plots);
+
+            var consulted = 0;
+            Func<AreaLifecycleStatus> ladder = () =>
+            {
+                consulted++;
+                return AreaLifecycle.DeriveStatus(plots, All(100), All(200), exhausted);
+            };
+
+            Assert.Equal(AreaLifecycleStatus.Farm, AreaLifecycle.StatusFor(AreaKind.Farming, ladder));
+            Assert.Equal(0, consulted);
+
+            // And the inputs really did survive the repurposing: turned back to mining ground the
+            // same area still reads [empty] off the same stamps and observations (R31, R32). The
+            // farm status is not achieved by discarding what the mine recorded.
+            Assert.Equal(AreaLifecycleStatus.Empty, AreaLifecycle.StatusFor(AreaKind.Mining, ladder));
+            Assert.Equal(1, consulted);
+        }
+
+        /// <summary>
+        /// The slot holds one value of one type, so "a mining status AND <c>[farm]</c>" is not a
+        /// state the render can be handed -- for any kind, over the whole small input space.
+        /// </summary>
+        [Fact]
+        public void TheStatusSlotIsSingleValued_ForEveryKindAndEveryLadderInput()
+        {
+            var plots = Plots(2).ToList();
+
+            foreach (AreaKind kind in Enum.GetValues(typeof(AreaKind)))
+            foreach (var surveyed in new long[] { 0, 100, 300 })
+            foreach (var mined in new long[] { 0, 200 })
+            foreach (var bedrock in new[] { null, plots })
+            {
+                var status = AreaLifecycle.StatusFor(
+                    kind,
+                    () => AreaLifecycle.DeriveStatus(plots, All(surveyed), All(mined), Ledger(bedrock: bedrock)));
+
+                if (kind == AreaKind.Mining)
+                {
+                    Assert.Contains(status, AreaLifecycle.MiningRamp);
+                    Assert.NotEqual(AreaLifecycleStatus.Farm, status);
+                }
+                else
+                {
+                    Assert.Equal(AreaLifecycleStatus.Farm, status);
+                    Assert.DoesNotContain(status, AreaLifecycle.MiningRamp);
+                }
+            }
+        }
+
         // ------------------------------------------------------------- guards and totality
 
         [Fact]

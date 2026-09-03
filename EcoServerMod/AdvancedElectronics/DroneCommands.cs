@@ -114,7 +114,7 @@ namespace Eco.Mods.TechTree
 
             user.MsgLocStr($"Survey areas on {dock.Name} (assigned id: {dock.AssignedSurveyAreaId}):");
             foreach (var a in dock.SurveyAreas)
-                user.MsgLocStr($"  {a.Id}. {a.Name} -- {a.PlotCount} plots{(a.Id == dock.AssignedSurveyAreaId ? " [assigned]" : string.Empty)}");
+                user.MsgLocStr($"  {a.Id}. {a.Name} -- {a.PlotCount} plots, for {KindWord(a.Kind)}{(a.Id == dock.AssignedSurveyAreaId ? " [assigned]" : string.Empty)}");
         }
 
         /// <summary>
@@ -135,6 +135,95 @@ namespace Eco.Mods.TechTree
                 user.MsgLocStr($"Assigned survey area {id} to {dock.Name}. The drone will head there.");
             else
                 user.MsgLocStr($"No survey area with id {id} on {dock.Name}. Use /drone areas to list them.");
+        }
+
+        /// <summary>
+        /// Reads or changes what a survey area is FOR (U11, R30, R31, R32).
+        ///
+        /// <para>
+        /// <b>This command is the only way to invoke the change, and that is a decision rather
+        /// than a gap.</b> An RPC on the Survey tab would render a fourth <c>BigButton</c> — ~3.2
+        /// standard rows each, two-thirds of the width dead — on a tab already carrying three
+        /// against a stated budget of one (KTD10). Repurposing an area is rare under R31: ground
+        /// reaches <c>[empty]</c> once and is turned to farmland once. A command is the right home
+        /// for an action of that shape, not a placeholder for a control that should exist.
+        /// </para>
+        /// <para>
+        /// The refusal logic is <see cref="SurveyComponent.ChangeAreaKind"/>'s, not this method's:
+        /// the gate belongs beside the areas, so a second caller cannot forget it. Everything the
+        /// area recorded — findings, mined stamps, exclusions — survives a change (R32).
+        /// </para>
+        /// </summary>
+        [ChatSubCommand("Drone", "Read or set what a survey area is for. Usage: /drone areakind <id> [mining|farming]", "areakind", ChatAuthorizationLevel.User)]
+        public static void AreaPurpose(User user, int id, string kind = "")
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
+
+            var area = dock.SurveyAreas.FirstOrDefault(a => a.Id == id);
+            if (area == null)
+            {
+                user.MsgLocStr($"No survey area with id {id} on {dock.Name}. Use /drone areas to list them.");
+                return;
+            }
+
+            // No argument reads rather than writes, so a player can ask what an area is for
+            // without risking changing it.
+            if (string.IsNullOrWhiteSpace(kind))
+            {
+                user.MsgLocStr($"'{area.Name}' on {dock.Name} is for {KindWord(area.Kind)}. Change it with /drone areakind {id} mining|farming.");
+                return;
+            }
+
+            if (!TryParseKind(kind, out var wanted))
+            {
+                user.MsgLocStr($"'{kind}' is not a kind of area. Use mining or farming.", NotificationStyle.Error);
+                return;
+            }
+
+            if (area.Kind == wanted)
+            {
+                user.MsgLocStr($"'{area.Name}' is already for {KindWord(wanted)}. Nothing changed.");
+                return;
+            }
+
+            if (!SurveyComponent.ChangeAreaKind(dock, area, wanted, user, out var refusalReason))
+            {
+                user.MsgLocStr($"Cannot change '{area.Name}' yet: {refusalReason}.", NotificationStyle.Error);
+                return;
+            }
+
+            // Naming what survived is the point of saying anything at all: R31's whole promise is
+            // that repurposing exhausted ground costs nothing it recorded.
+            user.MsgLocStr(
+                $"'{area.Name}' on {dock.Name} is now for {KindWord(wanted)}. Its survey findings, mined record and exclusions are untouched.",
+                NotificationStyle.Info);
+        }
+
+        /// <summary>The player-facing word for a kind. Not the roster tag — that is the status slot's (R30).</summary>
+        private static string KindWord(AreaKind kind) => kind == AreaKind.Farming ? "farming" : "mining";
+
+        /// <summary>
+        /// Parses the kind argument. Deliberately not <c>Enum.TryParse</c>: that would silently
+        /// accept "0" and "1" as kinds, so a mistyped area id in the kind slot would repurpose an
+        /// area instead of being refused.
+        /// </summary>
+        private static bool TryParseKind(string value, out AreaKind kind)
+        {
+            switch (value.Trim().ToLowerInvariant())
+            {
+                case "mining":
+                case "mine":
+                    kind = AreaKind.Mining;
+                    return true;
+                case "farming":
+                case "farm":
+                    kind = AreaKind.Farming;
+                    return true;
+                default:
+                    kind = AreaKind.Mining;
+                    return false;
+            }
         }
 
         /// <summary>

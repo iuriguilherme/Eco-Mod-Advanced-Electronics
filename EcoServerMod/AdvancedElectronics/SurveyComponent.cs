@@ -10,6 +10,7 @@ using Eco.Gameplay.Civics.GameValues;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
+using Eco.Shared.IoC;
 using Eco.Shared.Items;
 using Eco.Shared.Localization;
 using Eco.Shared.Networking;
@@ -445,6 +446,147 @@ namespace Eco.Mods.TechTree
         private SurveyAreaEntry ViewedArea(DroneDockObject dock) =>
             dock.SurveyAreas.Count == 0 ? null : dock.SurveyAreas[this.viewIndex];
 
+        // ---------------------------------------------------------------
+        // U11: changing what an area is FOR (R30, R31, R32).
+        //
+        // The refusal logic lives here, on the tab that owns survey areas. The INVOCATION does
+        // not: it is `/drone areakind`, and there is deliberately no RPC beside it. A commit
+        // control is a BigButton, ~3.2 standard rows with two-thirds of the width dead, and this
+        // tab already declares three against a stated budget of one (KTD10, and
+        // docs/solutions/design-patterns/vertical-stack-only-ui-design.md). Repurposing an area
+        // is a rare act under R31 -- rare enough that a command is the right home for it rather
+        // than a compromise, and this plan does not make the row budget worse.
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// Changes what <paramref name="area"/> is for (R30, R31, R32), or refuses and says why.
+        ///
+        /// <para>
+        /// <b>The drone-activity refusal is the only gate.</b> R32's "explicit" means the change
+        /// never happens as a side effect of other work -- not that it carries a permission level
+        /// of its own -- so nothing here re-tests authorization. Reaching this at all already
+        /// required full access on the dock, and adding a second, differently-worded auth check
+        /// beside the one the caller passed would be a rule nobody wrote down.
+        /// </para>
+        /// <para>
+        /// <b>Nothing is discarded.</b> The whole change is one field write. The area's findings,
+        /// its mined stamps and its exclusions survive exactly as R20 preserves them across an
+        /// edit -- and that is precisely why R46 has to be structural: repurposed ground still
+        /// carries every input the mining ladder reads, all of it still true about its past.
+        /// <see cref="SurveyAreaEntry.Kind"/> is what stops the ladder being asked.
+        /// </para>
+        /// </summary>
+        /// <param name="dock">The dock that owns <paramref name="area"/>.</param>
+        /// <param name="actingCitizen">
+        /// Whoever is operating the dock. Used ONLY to decide how much of a foreign area a
+        /// refusal may name (R36, R42) -- never as a gate.
+        /// </param>
+        /// <param name="refusalReason">
+        /// Why the change was refused, in the same shape the assign path already returns
+        /// (KTD10); null on success.
+        /// </param>
+        public static bool ChangeAreaKind(
+            DroneDockObject dock,
+            SurveyAreaEntry area,
+            AreaKind kind,
+            User actingCitizen,
+            out string refusalReason)
+        {
+            refusalReason = null;
+
+            if (dock == null || area == null)
+            {
+                refusalReason = "that area is gone";
+                return false;
+            }
+
+            foreach (var busy in AreasUnderAWorkingDroneNow())
+            {
+                var isThisArea = ReferenceEquals(busy.Area, area)
+                                 || (busy.Owner.ObjectID == dock.ObjectID && busy.Area.Id == area.Id);
+
+                // Overlap is tested against the OTHER area only when it is not this one, so an
+                // area never reports as overlapping itself.
+                if (!isThisArea && !Overlaps(area, busy.Area)) continue;
+
+                refusalReason = isThisArea
+                    ? $"'{busy.Dock.Name}' has a drone working this area right now -- recall it, or wait for the pass to finish"
+                    : $"a drone from '{busy.Dock.Name}' is working {DescribeForRefusal(busy.Owner, busy.Area, actingCitizen)}, which covers some of the same ground -- recall it, or wait for the pass to finish";
+                return false;
+            }
+
+            area.Kind = kind;
+            return true;
+        }
+
+        /// <summary>
+        /// Every (dock, owning dock, area) an actively working drone is on right now -- both the
+        /// survey area a dock is sweeping and the mining area a dock is consuming, since either
+        /// pass is one R32 refuses to change the ground out from under.
+        ///
+        /// <para>
+        /// "Mid-pass" is <c>DroneIsWorking</c>, the one definition of working the fuel, wear and
+        /// Operating channels already share, so this refusal cannot drift from what the panel
+        /// says the drone is doing. A pass that STOPPED part-way leaves
+        /// <see cref="SurveyAreaEntry.SweepInProgress"/> set with no drone in the air; that is a
+        /// resumable record, not a drone mid-pass, and it does not block a change the player is
+        /// deliberately asking for.
+        /// </para>
+        /// <para>
+        /// Enumerated raw over every dock in the world, deliberately past both the owner filter
+        /// and the dock-network radius (KTD8): a drone working ground that overlaps this area is
+        /// a real collision however far apart the two docks sit and whoever owns them. What the
+        /// refusal may SAY about a foreign area is gated separately, in
+        /// <see cref="DescribeForRefusal"/>.
+        /// </para>
+        /// </summary>
+        private static IEnumerable<(DroneDockObject Dock, DroneDockObject Owner, SurveyAreaEntry Area)> AreasUnderAWorkingDroneNow()
+        {
+            foreach (var obj in ServiceHolder<IWorldObjectManager>.Obj.All)
+            {
+                if (!(obj is DroneDockObject dock) || dock.IsDestroyed) continue;
+                if (!dock.DroneIsWorking) continue;
+
+                var surveyed = dock.AssignedSurveyArea;
+                if (surveyed != null)
+                    yield return (dock, dock, surveyed);
+
+                var mining = dock.AssignedMiningArea;
+                if (mining != null && mining.Resolve(out var sourceDock, out var minedArea) == AreaLookupSignal.Found)
+                    yield return (dock, sourceDock, minedArea);
+            }
+        }
+
+        /// <summary>
+        /// True when the two areas cover any plot in common. Plot coordinates are world plots, not
+        /// dock-local ones, so two areas from two different docks are directly comparable.
+        ///
+        /// <para>
+        /// A local set intersection rather than a shared geometry helper on purpose: the shared
+        /// one is <c>AreaOverlap</c>, which the overlap unit introduces in
+        /// <c>AdvancedElectronics.Navigation</c> and which does not exist yet. This is the same
+        /// test, and it is the thing to delete when that lands.
+        /// </para>
+        /// </summary>
+        private static bool Overlaps(SurveyAreaEntry a, SurveyAreaEntry b)
+        {
+            if (a == null || b == null) return false;
+
+            var plots = new HashSet<PlotCoord>(a.Plots());
+            return plots.Count != 0 && b.Plots().Any(plots.Contains);
+        }
+
+        /// <summary>
+        /// How much of a colliding area a refusal may name (R36, R42). Named in full when the
+        /// citizen already has full access to the dock that published it; otherwise the refusal
+        /// says the consequence and nothing about the area itself -- a dock placed near another
+        /// player's ground grants no sight of it.
+        /// </summary>
+        private static string DescribeForRefusal(DroneDockObject owner, SurveyAreaEntry area, User actingCitizen) =>
+            actingCitizen != null && owner != null && !owner.IsDestroyed && owner.HasFullAccess(actingCitizen)
+                ? $"'{owner.Name} -- {area.Name}'"
+                : "an area you do not have access to";
+
         /// <summary>
         /// Reduces an area to the Eco-free shape <see cref="DockReadout"/> formats. The material
         /// filter is applied HERE, not there: the formatter is handed the top finding the player can
@@ -469,7 +611,13 @@ namespace Eco.Mods.TechTree
 
             // The area's own status (R3), derived from the shared record rather than from
             // anything this dock knows -- which is what makes the Mining tab's line agree.
-            var status = DroneDockObject.StatusOfArea(dock.ObjectID, area, exclusionHolders);
+            //
+            // The area's KIND is what chooses which status is derived at all (R30, R46): pass it
+            // in and a farming area reads [farm] with the mining ladder never consulted, even
+            // though a repurposed one is still carrying every stamp and observation the ladder
+            // would have read. The choice is made once, inside StatusOfArea; nothing here
+            // overwrites one status with another.
+            var status = DroneDockObject.StatusOfArea(dock.ObjectID, area, exclusionHolders, area.Kind);
 
             return new AreaSnapshot(
                 position, area.Name, area.PlotCount, area.CoveragePercent, top, status,

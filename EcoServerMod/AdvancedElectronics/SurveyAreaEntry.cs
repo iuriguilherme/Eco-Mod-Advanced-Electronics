@@ -106,6 +106,55 @@ namespace Eco.Mods.TechTree
         [Serialized] public int Epoch { get; set; }
 
         /// <summary>
+        /// <see cref="AreaKind"/>'s ordinal — what this area is FOR (U11, R30, KTD11), persisted
+        /// as a plain int the way <c>MiningExclusionEntry.CategoryValue</c> already persists
+        /// <c>SkipCategory</c>. Every other member of this class is a flat primitive or a
+        /// <see cref="ThreadSafeList{T}"/> of them, for the reason this class's header gives: the
+        /// shape's serializability is not in question. An enum out of a mod assembly would be a
+        /// new question, and the failure it risks is the silent one — a clean build and a server
+        /// that never prints its load line (see
+        /// <c>docs/solutions/conventions/serialized-needs-a-member-to-write-back-into.md</c>).
+        ///
+        /// <para>
+        /// <b>0 is mining, and that is what makes the upgrade silent.</b> An existing save holds
+        /// only mining areas and has no field for this at all, so it loads as 0 and every area
+        /// reads mining without anything being written. Read and write it through
+        /// <see cref="Kind"/>, never directly.
+        /// </para>
+        /// </summary>
+        [Serialized] public int KindValue { get; set; }
+
+        /// <summary>
+        /// What this area is for (R30) — the enum face of <see cref="KindValue"/>.
+        ///
+        /// <para>
+        /// <b>Kind is not a field the roster renders and not an annotation competing for an
+        /// overlay slot.</b> It SELECTS which status is derived at all (R46): a mining area runs
+        /// the lifecycle ladder and reads its rung, a farming area reads <c>[farm]</c> and the
+        /// ladder is never consulted. <c>DroneDockObject.StatusOfArea</c> is where that choice is
+        /// made, through <see cref="AreaLifecycle.StatusFor"/>, which takes the ladder as a
+        /// deferred delegate precisely so there is no moment at which both values exist.
+        /// </para>
+        /// <para>
+        /// That matters most for ground repurposed under R31: an exhausted mining area turned
+        /// into farmland KEEPS its <see cref="MinedStamps"/> and its
+        /// <see cref="BedrockPlotCoords"/> — every input the ladder reads is still sitting here
+        /// and still true about this area's past. Only never asking the question keeps the answer
+        /// out. Nothing in the change action clears any of it (R32).
+        /// </para>
+        /// <para>
+        /// NOT <c>[Serialized]</c>: <see cref="KindValue"/> is the member the serializer writes
+        /// back into, and a second serialized view of one value would be a second thing to keep
+        /// in step.
+        /// </para>
+        /// </summary>
+        public AreaKind Kind
+        {
+            get => (AreaKind)this.KindValue;
+            set => this.KindValue = (int)value;
+        }
+
+        /// <summary>
         /// This area's survey findings as one row per (plot, ore) (KTD1), persisted with the area
         /// (KTD11 design change): available until the area is deleted or edited. Reassigning the
         /// drone away and back does NOT clear them — they belong to the area, not the drone or the
