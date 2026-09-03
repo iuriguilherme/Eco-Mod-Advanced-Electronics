@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using AdvancedElectronics.Navigation;
 using Xunit;
@@ -119,7 +119,6 @@ namespace AdvancedElectronics.Navigation.Tests
             // A second dock brings no mined record of its own to the question -- there is nowhere
             // for one to live any more. It reads the area and gets the same 200.
             Assert.False(area.IsMineable(P));
-            Assert.True(PlotFreshness.IsMinedOut(new[] { P }, area.Surveyed.StampFor, area.Mined.StampFor));
         }
 
         [Fact]
@@ -241,7 +240,6 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.True(area.Mined.IsEmpty);
             Assert.Equal(0, area.Mined.StampFor(untouched)); // "never", not "unknown"
             Assert.True(area.IsMineable(untouched));
-            Assert.False(PlotFreshness.IsMinedOut(new[] { untouched }, area.Surveyed.StampFor, area.Mined.StampFor));
         }
     }
 }

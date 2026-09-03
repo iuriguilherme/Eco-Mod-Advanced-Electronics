@@ -129,11 +129,20 @@ namespace Eco.Mods.TechTree
             var dock = FindNearestAuthorizedDock(user);
             if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
 
-            dock.AssignSurveyArea(id);
+            var assigned = dock.AssignSurveyArea(id, out var refusalReason, out var released);
+
+            // R38's release rides here too. This command reaches the same state operation the tab
+            // does, and a claim dropped through it is dropped just as silently otherwise.
+            var release = MiningReadout.FormatClaimRelease(released, PlotUtil.PropertyPlotLength);
+
             if (id == 0)
-                user.MsgLocStr($"Cleared the survey area assignment on {dock.Name}.");
-            else if (dock.AssignedSurveyAreaId == id)
+                user.MsgLocStr(release.Length == 0
+                    ? $"Cleared the survey area assignment on {dock.Name}."
+                    : $"Cleared the survey area assignment on {dock.Name} -- {release}.");
+            else if (assigned)
                 user.MsgLocStr($"Assigned survey area {id} to {dock.Name}. The drone will head there.");
+            else if (refusalReason != null)
+                user.MsgLocStr($"Could not assign survey area {id} on {dock.Name} -- {refusalReason}.");
             else
                 user.MsgLocStr($"No survey area with id {id} on {dock.Name}. Use /drone areas to list them.");
         }

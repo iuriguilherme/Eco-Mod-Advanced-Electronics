@@ -134,6 +134,14 @@ is free to a dock of any kind. Ground that reads [[Empty]] is the one exception:
 to hold it for, so it is claimable even where another area still covers it. A [[Cleared]] area does
 keep its claim, because the [[Exclusion]] behind it may lift.
 
+Farmland qualifies that kind-blindness in one direction only. Ground a farming area covers is reserved
+against a mining dock whether or not that farm is currently assigned: the `[farm]` mark reserves the
+ground, not the assignment, because an unassigned farm is between passes rather than finished — farmland
+never reaches an exhausted state the way a mine does. Releasing it is an explicit act by the farm's
+owner, who deletes the farming area; the plots then read as ordinary ground. The asymmetry runs one way
+and is deliberate: a farm may take ground a mine has finished with, and a mine may not take ground a
+farm has not been released from.
+
 ### Kind
 What an area is for — the job it exists to serve. Kind belongs to the area rather than the dock that
 owns it, so the purpose survives being reassigned, and it can change over an area's life.

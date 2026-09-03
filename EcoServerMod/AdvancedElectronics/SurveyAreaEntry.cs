@@ -298,6 +298,88 @@ namespace Eco.Mods.TechTree
         /// </summary>
         [Serialized] public bool SweepInProgress { get; set; }
 
+        // ---------------------------------------------------------------
+        // U13: the claim (R37, R38, R39, KTD6). Recorded AT ASSIGNMENT rather than re-derived
+        // while a drone works, which is the whole point: a drone works only plots its own dock
+        // has claimed, so it never has to ask mid-pass what another dock is currently doing.
+        //
+        // Two flat primitives, for the reason this class's header gives — and both carry a
+        // setter, because a [Serialized] member the serializer cannot write back into stops the
+        // mod loading with a clean build and a completely silent log
+        // (docs/solutions/conventions/serialized-needs-a-member-to-write-back-into.md).
+        //
+        // Read and write through the methods below, never the members: HasClaim is what every
+        // reader wants, and the pair is meaningless apart.
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// Object id of the dock holding this area, stringified, or null/empty when unclaimed.
+        /// Stringified for the same reason <c>MiningExclusionEntry.SourceDockId</c> is: a flat
+        /// primitive is a shape this class already proves serializable.
+        /// </summary>
+        [Serialized] public string ClaimHolderDockId { get; set; }
+
+        /// <summary>
+        /// The holder's assignment epoch at the moment the claim was taken (KTD6). It is what
+        /// makes a released-and-reassigned claim a NEW record rather than a resumed one: the same
+        /// dock claiming the same area twice writes two different epochs, so nothing downstream
+        /// can mistake the second for a continuation of the first.
+        /// </summary>
+        [Serialized] public int ClaimEpoch { get; set; }
+
+        /// <summary>
+        /// Whether any dock holds this area right now. NOT <c>[Serialized]</c>:
+        /// <see cref="ClaimHolderDockId"/> is the member the serializer writes into, and a
+        /// computed property carrying the attribute is exactly the silent load failure above.
+        /// </summary>
+        public bool HasClaim => !string.IsNullOrEmpty(this.ClaimHolderDockId);
+
+        /// <summary>Whether <paramref name="dockId"/> is the dock holding this area.</summary>
+        public bool IsClaimedBy(Guid dockId) =>
+            this.HasClaim && this.ClaimHolderDockId == dockId.ToString();
+
+        /// <summary>
+        /// Records <paramref name="holdingDockId"/> as holding this area's plots, at the
+        /// assignment epoch that produced the claim (R37). Overwrites any previous claim: the
+        /// assignment paths refuse a contested claim BEFORE reaching here, under the one lock
+        /// KTD6 defines, so an unrefused call is by construction the new holder.
+        /// </summary>
+        public void RecordClaim(Guid holdingDockId, int assignmentEpoch)
+        {
+            this.ClaimHolderDockId = holdingDockId.ToString();
+            this.ClaimEpoch = assignmentEpoch;
+        }
+
+        /// <summary>
+        /// Drops the claim and returns the plots it covered — what R38's message names. An area
+        /// holding no claim releases nothing, which is why the return is a list rather than a
+        /// bool: the caller states what was freed, and "nothing" is a real answer.
+        ///
+        /// <para>
+        /// The plots are the area's CURRENT geometry, because a claim is keyed to the assignment
+        /// rather than to the geometry (KTD6) — it simply stands over whatever plots the area
+        /// holds now. Plots an EDIT removed left the claim at the moment of the edit, and
+        /// <c>AreaEditPlan.ReleasedFromClaim</c> is what names those.
+        /// </para>
+        /// </summary>
+        public IReadOnlyList<PlotCoord> ReleaseClaim()
+        {
+            if (!this.HasClaim) return Array.Empty<PlotCoord>();
+
+            var released = this.Plots().ToList();
+            this.ClaimHolderDockId = null;
+            this.ClaimEpoch = 0;
+            return released;
+        }
+
+        /// <summary>
+        /// As <see cref="ReleaseClaim"/>, but only when <paramref name="dockId"/> is the holder.
+        /// A dock walking away from an area must not drop a claim some other dock took in the
+        /// meantime — the reference it is releasing may be stale.
+        /// </summary>
+        public IReadOnlyList<PlotCoord> ReleaseClaimBy(Guid dockId) =>
+            this.IsClaimedBy(dockId) ? this.ReleaseClaim() : Array.Empty<PlotCoord>();
+
         /// <summary>Sentinel in the surfaceY slot of a <see cref="SweepColumns"/> row: no surface was recorded for that column.</summary>
         public const int NoSurfaceRecorded = int.MinValue;
 
@@ -397,7 +479,12 @@ namespace Eco.Mods.TechTree
                 this.SweepColumnCursor = cursor.ColumnCursor;
             }
 
-            return plan.Removed;
+            // The plots an edit removed are exactly the plots that leave the claim (U9, R38). Named
+            // through ReleasedFromClaim rather than Removed because that is the question the
+            // caller is asking of them: the claim ITSELF stands -- it is keyed to the assignment
+            // rather than to the geometry (KTD6), so it simply stands over whatever plots the area
+            // holds now, and only these fall out of it.
+            return plan.ReleasedFromClaim;
         }
 
         /// <summary>

@@ -493,16 +493,75 @@ namespace Eco.Mods.TechTree
         /// the assignment when <paramref name="id"/> is 0. Ignores an id that does not resolve to
         /// one of this dock's areas.
         /// </summary>
-        public void AssignSurveyArea(int id)
-        {
-            if (id == 0)
-            {
-                this.AssignedSurveyAreaId = 0;
-                return;
-            }
+        public void AssignSurveyArea(int id) => this.AssignSurveyArea(id, out _, out _);
 
-            if (this.SurveyAreas.Any(a => a.Id == id))
+        /// <summary>
+        /// <inheritdoc cref="AssignSurveyArea(int)"/>
+        ///
+        /// <para>
+        /// Assignment is what CLAIMS the area's plots (U13, R37), so this carries the same two
+        /// answers the mining path does: whether the claim could be taken, and what the previous
+        /// one released. A drone works only plots its own dock has claimed, which is what keeps
+        /// it from having to ask mid-pass what another dock is doing.
+        /// </para>
+        /// </summary>
+        /// <param name="refusalReason">Why the claim could not be taken; null on success.</param>
+        /// <param name="released">Plots the previous claim gave up (R38); empty when there was none.</param>
+        public bool AssignSurveyArea(int id, out string refusalReason, out IReadOnlyList<PlotCoord> released)
+        {
+            refusalReason = null;
+            released = Array.Empty<PlotCoord>();
+
+            // The same single lock the mining path takes, for the same reason (KTD6): the
+            // conflict spans every area overlapping this one, so the unit of exclusion is the
+            // operation and not the entry.
+            lock (AreaClaimLock)
+            {
+                if (id == 0)
+                {
+                    released = this.ReleaseHeldSurveyClaim();
+                    this.AssignedSurveyAreaId = 0;
+                    return true;
+                }
+
+                var area = this.SurveyAreas.FirstOrDefault(a => a.Id == id);
+                if (area == null) return false;
+
+                // The claimant's kind is the AREA's own (R30): a survey pass serves whatever the
+                // area is for and removes nothing from the ground, so surveying farmland is
+                // farming work and R47's one-way reservation does not fire against it. R47 names
+                // the mining dock, and DroneDock.Mining.cs is where that is enforced.
+                var conflicts = AreaClaims.Conflicts(
+                    area.Kind,
+                    MiningComponent.OverlapsOf(this, area, MiningComponent.AllAreaProjections()),
+                    this.HoldsClaimOn);
+
+                if (conflicts.Count > 0)
+                {
+                    refusalReason = MiningReadout.FormatClaimRefusal(conflicts, PlotUtil.PropertyPlotLength);
+                    return false;
+                }
+
+                released = this.ReleaseHeldSurveyClaim();
+
                 this.AssignedSurveyAreaId = id;
+                this.assignedAreaEpoch++;
+                area.RecordClaim(this.ObjectID, this.assignedAreaEpoch);
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Drops the claim this dock holds through its survey assignment. Caller holds
+        /// <see cref="AreaClaimLock"/>. Scoped by holder, so a dock never drops a claim another
+        /// dock took in the meantime.
+        /// </summary>
+        private IReadOnlyList<PlotCoord> ReleaseHeldSurveyClaim()
+        {
+            if (this.AssignedSurveyAreaId == 0) return Array.Empty<PlotCoord>();
+
+            var held = this.SurveyAreas.FirstOrDefault(a => a.Id == this.AssignedSurveyAreaId);
+            return held == null ? Array.Empty<PlotCoord>() : held.ReleaseClaimBy(this.ObjectID);
         }
 
         /// <summary>

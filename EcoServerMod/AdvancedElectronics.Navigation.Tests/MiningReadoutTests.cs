@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using AdvancedElectronics.Navigation;
@@ -114,8 +114,6 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal(wordings.Count, wordings.Distinct().Count());
         }
 
-        private static readonly PlotCoord[] TwoPlots = { new PlotCoord(0, 0), new PlotCoord(1, 0) };
-
         private static AreaSnapshot Area(
             int position = 1,
             string name = "North Ridge",
@@ -205,30 +203,6 @@ namespace AdvancedElectronics.Navigation.Tests
 
             Assert.EndsWith("   [overlap]   [unreachable]</color>", line);
             Assert.DoesNotContain("[assigned]", line);
-        }
-
-        [Fact]
-        public void MinedOut_NeedsEveryPlotMined_AndNoneReSurveyedSince()
-        {
-            long Surveyed(PlotCoord p) => 100;
-
-            // Both plots mined after their survey: nothing to do here.
-            Assert.True(PlotFreshness.IsMinedOut(TwoPlots, Surveyed, _ => 200));
-
-            // One plot never mined: the area still has work.
-            Assert.False(PlotFreshness.IsMinedOut(TwoPlots, Surveyed, p => p.X == 0 ? 200 : 0));
-
-            // Mined, then re-surveyed to open the next tier: a whole pass is waiting.
-            Assert.False(PlotFreshness.IsMinedOut(TwoPlots, p => p.X == 0 ? 300 : 100, _ => 200));
-        }
-
-        [Fact]
-        public void MinedOut_IsFalseForAnAreaNobodyHasTouched()
-        {
-            // Both stamps 0 means no plot is mineable, which is "nothing to do" -- and reading
-            // that as "nothing left" would paint an untouched area green.
-            Assert.False(PlotFreshness.IsMinedOut(TwoPlots, _ => 0, _ => 0));
-            Assert.False(PlotFreshness.IsMinedOut(System.Array.Empty<PlotCoord>(), _ => 0, _ => 0));
         }
 
         [Fact]

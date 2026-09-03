@@ -198,7 +198,21 @@ namespace Eco.Mods.TechTree
                 // scope anything is dropped at (U9, R20) — the retained plots keep their findings,
                 // stamps and place in the sweep on both sides of the seam.
                 if (plots.Count > 0 && !SamePlots(area.Plots(), plots))
-                    dock.OnAreaEdited(area.Id, area.SetPlots(plots));
+                {
+                    var held = area.HasClaim;
+                    var released = area.SetPlots(plots);
+                    dock.OnAreaEdited(area.Id, released);
+
+                    // R38: the plots an edit removed leave the claim with it, and the player is
+                    // told which. The claim itself stands over what the area holds now (KTD6), so
+                    // this is a release of ground rather than of the assignment -- and an
+                    // add-only edit releases nothing and says nothing (U9).
+                    if (held)
+                    {
+                        var release = MiningReadout.FormatClaimRelease(released, PlotUtil.PropertyPlotLength);
+                        if (release.Length > 0) player.User?.MsgLocStr($"'{area.Name}': {release}");
+                    }
+                }
             }
         }
 

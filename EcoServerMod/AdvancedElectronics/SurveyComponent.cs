@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -17,6 +17,7 @@ using Eco.Shared.Networking;
 using Eco.Shared.Serialization;
 using Eco.Shared.Services;
 using Eco.Shared.SharedTypes;
+using Eco.Shared.Voxel;
 
 namespace Eco.Mods.TechTree
 {
@@ -227,7 +228,20 @@ namespace Eco.Mods.TechTree
             }
 
             var area = dock.SurveyAreas[this.viewIndex];
-            dock.AssignSurveyArea(area.Id);
+
+            // R39's refusal rides the string the assign path already returns -- no control is
+            // added to the tab (KTD10).
+            if (!dock.AssignSurveyArea(area.Id, out var refusalReason, out _))
+            {
+                this.RefreshAll();
+                player?.MsgLocStr(
+                    refusalReason == null
+                        ? $"Could not assign '{area.Name}'."
+                        : $"Could not assign '{area.Name}' -- {refusalReason}.",
+                    NotificationStyle.Error);
+                return;
+            }
+
             this.RefreshAll();
             player?.MsgLocStr($"Survey area '{area.Name}' assigned.", NotificationStyle.Info);
         }
@@ -249,9 +263,18 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
-            dock.AssignSurveyArea(0);
+            dock.AssignSurveyArea(0, out _, out var released);
             this.RefreshAll();
-            player?.MsgLocStr("Survey area unassigned. The drone returns to its dock.", NotificationStyle.Info);
+
+            // R38 rides this message, which is the one surface that fires on EVERY successful
+            // unassign -- the refusal string exists only on a refused assignment and could never
+            // carry something unconditional (KTD10).
+            var release = MiningReadout.FormatClaimRelease(released, PlotUtil.PropertyPlotLength);
+            player?.MsgLocStr(
+                release.Length == 0
+                    ? "Survey area unassigned. The drone returns to its dock."
+                    : $"Survey area unassigned. The drone returns to its dock -- {release}.",
+                NotificationStyle.Info);
         }
 
         public override void Initialize()

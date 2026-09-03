@@ -286,4 +286,167 @@ namespace AdvancedElectronics.Navigation
                 .ToArray();
         }
     }
+
+    /// <summary>Why a claim was refused — the two are lifted by different acts, so they are told apart.</summary>
+    public enum AreaClaimBlock
+    {
+        /// <summary>
+        /// Another area holds these plots through its assignment (R39). Kind-blind: any assigned
+        /// area holds its plots against every dock. Lifted by that area being unassigned.
+        /// </summary>
+        HeldByAssignment,
+
+        /// <summary>
+        /// The ground is farmland (R47), whether or not that farm is currently assigned. Lifted
+        /// only by the farm's owner deleting the farming area.
+        /// </summary>
+        FarmlandReserved
+    }
+
+    /// <summary>One reason one claim cannot be taken: what blocks it, over which plots, and why.</summary>
+    public readonly struct AreaClaimConflict
+    {
+        /// <summary>The blocking area, as the projection R41 limits it to.</summary>
+        public AreaProjection Holder { get; }
+
+        /// <summary>The plots it blocks — exactly the ones the two areas share, in raster order.</summary>
+        public IReadOnlyList<PlotCoord> Plots { get; }
+
+        public AreaClaimBlock Reason { get; }
+
+        public AreaClaimConflict(AreaProjection holder, IReadOnlyList<PlotCoord> plots, AreaClaimBlock reason)
+        {
+            Holder = holder;
+            Plots = plots ?? Array.Empty<PlotCoord>();
+            Reason = reason;
+        }
+    }
+
+    /// <summary>
+    /// <b>Who may take which ground (U13, R37, R39, R44, R47).</b> The decidable half of
+    /// assignment, per KTD12: plain values in, a verdict out, and no Eco type anywhere near it.
+    ///
+    /// <para>
+    /// Three questions, deliberately separate. <see cref="HoldsClaim"/> is what an area holds —
+    /// assignment is the act that takes ground, and <c>[empty]</c> is the one status that drops
+    /// it again. <see cref="Conflicts"/> is whether a claimant may take what it overlaps.
+    /// <see cref="MayBeOfferedToMiningDock"/> is whether a mining dock is shown the area at all.
+    /// They are asked at different moments — the first when a projection is built, the second
+    /// under the assignment lock, the third on the roster tick — and folding them together would
+    /// put a world walk on the render path.
+    /// </para>
+    /// <para>
+    /// Nothing here writes a claim, and nothing here is atomic. R39's atomicity is the caller's:
+    /// ONE lock spanning the overlap scan and the write, held by the Eco-side assignment path
+    /// (KTD6). A lock per area cannot do it — two docks assigning two DIFFERENT overlapping areas
+    /// would each take a different area's lock and neither would serialise against the other.
+    /// </para>
+    /// </summary>
+    public static class AreaClaims
+    {
+        /// <summary>
+        /// Whether an area holds its plots against other docks right now (R37).
+        ///
+        /// <para>
+        /// Assignment is the whole of it, with one exception. An unassigned area holds nothing —
+        /// which is why AE12's freshly drawn mining area does not stop the farm working the ground
+        /// they share. And neither does an area whose ground reads <c>[empty]</c>: there is
+        /// nothing left to hold it for, and that is precisely what lets land pass from one purpose
+        /// to the next without a release being negotiated.
+        /// </para>
+        /// <para>
+        /// <c>[cleared]</c> is NOT that exception and the difference is the reason the two
+        /// statuses exist. <c>[cleared]</c> says the drone is finished because it was refused, and
+        /// R19 lets a survey lift that refusal, so the material behind it may yet be taken by the
+        /// dock that holds the ground.
+        /// </para>
+        /// <para>
+        /// Farmland is not read here at all. Its reservation OUTLIVES its assignment (R47), so it
+        /// is not something a claim flag can express — see <see cref="Conflicts"/>.
+        /// </para>
+        /// </summary>
+        public static bool HoldsClaim(bool assigned, AreaLifecycleStatus status) =>
+            assigned && status != AreaLifecycleStatus.Empty;
+
+        /// <summary>
+        /// Whether a mining dock may be offered an area for assignment (R44, R47).
+        ///
+        /// <para>
+        /// Two independent refusals. <c>[cleared]</c> and <c>[empty]</c> are withheld by the
+        /// ladder's own test (R44): there is nothing a mining drone could take, and both stay
+        /// visible on both tabs and assignable to a SURVEY dock, which is the only thing that
+        /// returns them to the ramp. Farmland is withheld by KIND (R47), which the ladder cannot
+        /// answer because a farming area never reads a rung of the ramp at all — it reads
+        /// <c>[farm]</c>, and <see cref="AreaLifecycle.IsOfferableToMiningDock"/> is deliberately
+        /// a question about a mining status.
+        /// </para>
+        /// </summary>
+        public static bool MayBeOfferedToMiningDock(AreaKind kind, AreaLifecycleStatus status) =>
+            kind == AreaKind.Mining && AreaLifecycle.IsOfferableToMiningDock(status);
+
+        /// <summary>
+        /// Everything standing between a claimant and the ground it overlaps (R39, R47), or an
+        /// empty list when it may take all of it.
+        ///
+        /// <para>
+        /// Two rules, tested in this order for a reason. <b>R47 first:</b> if the claimant is
+        /// mining and the other area is farmland, the ground is reserved whether or not that farm
+        /// is assigned — an unassigned farm is between passes, not finished, because farmland
+        /// never reaches an exhausted state the way a mine does. Reporting that case as an
+        /// ordinary held claim would send the player to unassign the farm, which changes nothing.
+        /// <b>R39 second, and kind-blind:</b> any assigned area holds its plots against every
+        /// dock. The <c>[empty]</c> exception is already folded into
+        /// <see cref="AreaProjection.HoldsClaim"/> by <see cref="HoldsClaim"/>.
+        /// </para>
+        /// <para>
+        /// The asymmetry runs ONE way and is deliberate: a farm may take ground a mine has
+        /// finished with, and a mine may not take ground a farm has not been released from.
+        /// </para>
+        /// </summary>
+        /// <param name="claimantKind">
+        /// The kind of work the claim is for. A mining dock passes <see cref="AreaKind.Mining"/>;
+        /// a survey dock passes the area's own kind, because a survey pass serves whatever the
+        /// area is for and removes nothing from the ground itself.
+        /// </param>
+        /// <param name="claimantAlreadyHolds">
+        /// Which of the overlapping areas the claimant itself already holds, so reassigning a dock
+        /// onto ground beside its own standing claim does not report the dock as blocking itself.
+        /// Null means "none". It is a PREDICATE rather than a field on the projection because the
+        /// holder's identity is exactly what R41 keeps out of this channel: the Eco side knows
+        /// which areas it holds, this path only knows that they are held.
+        ///
+        /// <para>
+        /// It lifts <see cref="AreaClaimBlock.HeldByAssignment"/> only. R47 is a fact about the
+        /// ground rather than about who is asking, so farmland stays reserved even against the
+        /// dock that holds the farm.
+        /// </para>
+        /// </param>
+        public static IReadOnlyList<AreaClaimConflict> Conflicts(
+            AreaKind claimantKind,
+            IEnumerable<AreaOverlapMatch> matches,
+            Func<AreaProjection, bool> claimantAlreadyHolds = null)
+        {
+            if (matches == null) return Array.Empty<AreaClaimConflict>();
+
+            var conflicts = new List<AreaClaimConflict>();
+            foreach (var match in matches)
+            {
+                var other = match.Other;
+                if (other == null || match.SharedPlots.Count == 0) continue;
+
+                if (claimantKind == AreaKind.Mining && other.Kind == AreaKind.Farming)
+                {
+                    conflicts.Add(new AreaClaimConflict(other, match.SharedPlots, AreaClaimBlock.FarmlandReserved));
+                    continue;
+                }
+
+                if (!other.HoldsClaim) continue;
+                if (claimantAlreadyHolds != null && claimantAlreadyHolds(other)) continue;
+
+                conflicts.Add(new AreaClaimConflict(other, match.SharedPlots, AreaClaimBlock.HeldByAssignment));
+            }
+
+            return conflicts;
+        }
+    }
 }

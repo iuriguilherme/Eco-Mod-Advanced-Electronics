@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using AdvancedElectronics.Navigation;
@@ -10,6 +10,7 @@ using Eco.Shared.IoC;
 using Eco.Shared.Items;
 using Eco.Shared.Serialization;
 using Eco.Shared.SharedTypes;
+using Eco.Shared.Voxel;
 
 namespace Eco.Mods.TechTree
 {
@@ -72,6 +73,34 @@ namespace Eco.Mods.TechTree
         // mining JOB and its ledger (R2), further down this file.
         // ---------------------------------------------------------------
 
+        /// <summary>
+        /// <b>The one lock every claim test-and-write on every assignment path takes (U13,
+        /// KTD6, R39).</b>
+        ///
+        /// <para>
+        /// One static object for the whole server, deliberately NOT a lock per area entry. The
+        /// conflict a claim has to be tested against spans every area OVERLAPPING the one being
+        /// assigned, so two docks assigning two different overlapping areas would each take a
+        /// different entry's lock, neither would serialise against the other, and both would
+        /// succeed -- which is precisely the outcome R39 forbids. The unit of exclusion has to be
+        /// the operation, not the object.
+        /// </para>
+        /// <para>
+        /// The mod contains no other synchronisation, and this one is affordable because
+        /// assignment is a player action the plan already keeps off the drone's hot path. Whether
+        /// Eco serialises interaction RPCs onto one thread is unverified; if it does, this is
+        /// belt-and-braces and may be removed -- against evidence from the engine's own dispatch,
+        /// never against an absence of observed races.
+        /// </para>
+        /// <para>
+        /// Both assignment paths take it: this file's <see cref="AssignMiningArea(DroneDockObject,
+        /// SurveyAreaEntry, User, out string)"/> and <c>DroneDock.cs</c>'s
+        /// <c>AssignSurveyArea</c>, plus the release each of them runs. Nothing inside it blocks
+        /// on anything else, so it is a leaf.
+        /// </para>
+        /// </summary>
+        internal static readonly object AreaClaimLock = new object();
+
         /// <summary>The area this mining dock currently consumes, or null when unassigned.</summary>
         [Serialized] public MiningAreaRef AssignedMiningArea { get; set; }
 
@@ -96,6 +125,19 @@ namespace Eco.Mods.TechTree
         ///
         /// A no-op when the dock is unassigned or the area has gone: there is no ground record
         /// to write into, and a vanished area ends the job on the next tick anyway.
+        ///
+        /// <para>
+        /// <b>This IS R40's record for the mining kind, and it is the whole of it.</b> A dock
+        /// working an area writes its own kind's data onto that area, and that record is what
+        /// tells every other dock what the ground is now for -- which is what makes
+        /// <c>[empty]</c> a waypoint rather than a permanent condition. For mining the data is
+        /// these per-plot stamps, because a pass completes plot by plot and the survey has to know
+        /// which plots went stale. For farming it is the area-level <c>[farm]</c> mark the farming
+        /// plan defines, because that drone decides from the ground each time it looks. Nothing
+        /// new is stored for R40 on either side: a record no kind reads would only go stale, and
+        /// handover therefore needs no ceremony -- no release is negotiated and neither area is
+        /// edited (AE13).
+        /// </para>
         /// </summary>
         public void RecordMinedPlot(PlotCoord plot, long stampValue)
         {
@@ -408,44 +450,146 @@ namespace Eco.Mods.TechTree
                     return false;
                 }
 
-                this.StampedCitizenName = actingCitizen.Name;
-                this.StampedCitizenId = actingCitizen.Id;
+                // R44 and R47, applied at the state operation as well as at the offer: a
+                // [cleared] or [empty] area has nothing a mining drone could take, and farmland
+                // is reserved ground. Read through the same StatusOfArea every render reads, so
+                // the offer test and the display cannot drift apart (KTD3). Checked before the
+                // lock because it is a fact about this one area and needs no scan.
+                if (!AreaClaims.MayBeOfferedToMiningDock(
+                        area.Kind, StatusOfArea(sourceDock.ObjectID, area, null, area.Kind)))
+                {
+                    refusalReason = area.Kind == AreaKind.Farming
+                        ? $"'{area.Name}' is farmland -- a mining dock cannot work it"
+                        : $"'{area.Name}' has nothing left to mine -- survey it again first";
+                    return false;
+                }
 
-                // R45: assignment IS the retry, so it lifts this dock's exclusions on this area
-                // before the pass begins. Only a mining drone can learn a refusal -- it attempts
-                // the action in place and captures the engine's reason -- so only another attempt
-                // can learn the refusal has gone, and the player asking for that attempt is the
-                // only signal the mod gets. Nothing here polls, re-tests a permit, or asks a
-                // survey to answer for one.
+                // ---------------------------------------------------------------
+                // R39's claim test and its write, under the ONE lock KTD6 defines.
                 //
-                // Placed after every gate above, so a REFUSED assignment lifts nothing: the whole
-                // call is meant to be a no-op on refusal, and clearing early would let a player
-                // with no access wipe a record by trying.
+                // The lock is a single static object, NOT one per area entry, and the difference
+                // is the whole requirement. The conflict spans every area overlapping the one
+                // being assigned, so two docks assigning two DIFFERENT overlapping areas would
+                // each take a different entry's lock and neither would serialise against the
+                // other -- both would scan a world in which the other had not yet written, and
+                // both would succeed. One lock over the scan AND the write is what makes exactly
+                // one of them win.
                 //
-                // Scoped to this dock and this area. Another dock's exclusions on the same area
-                // stand -- they are its own knowledge -- and so do this dock's on other areas.
-                this.ClearMiningExclusions(sourceDock.ObjectID, area.Id);
+                // Assignment is a player action already off the drone's hot path, so the
+                // contention costs little. If Eco turns out to serialise interaction RPCs onto
+                // one thread this is belt-and-braces -- remove it then against that evidence from
+                // the engine's own dispatch, never against an absence of observed races.
+                // ---------------------------------------------------------------
+                lock (AreaClaimLock)
+                {
+                    var conflicts = AreaClaims.Conflicts(
+                        AreaKind.Mining,
+                        MiningComponent.OverlapsOf(sourceDock, area, MiningComponent.AllAreaProjections()),
+                        this.HoldsClaimOn);
+
+                    if (conflicts.Count > 0)
+                    {
+                        refusalReason = MiningReadout.FormatClaimRefusal(conflicts, PlotUtil.PropertyPlotLength);
+                        return false;
+                    }
+
+                    this.StampedCitizenName = actingCitizen.Name;
+                    this.StampedCitizenId = actingCitizen.Id;
+
+                    this.ClearMiningExclusions(sourceDock.ObjectID, area.Id);
+
+                    // The previous claim goes before the new one is taken, and inside the same
+                    // lock: a dock holds one mining area, so the ground it is walking away from
+                    // must be free the instant the ground it is taking is held.
+                    this.ReleaseHeldMiningClaim();
+
+                    this.AssignedMiningArea = MiningAreaRef.For(sourceDock, area);
+                    this.miningAssignmentEpoch++;
+                    area.RecordClaim(this.ObjectID, this.miningAssignmentEpoch);
+                }
+
+                return true;
             }
 
-            this.AssignedMiningArea = area == null ? null : MiningAreaRef.For(sourceDock, area);
-            this.miningAssignmentEpoch++;
+            // area == null is the unassign call. It releases like any other unassignment.
+            this.UnassignMiningArea();
             return true;
         }
 
         /// <summary>
-        /// Clears this dock's mining area assignment (R7). The hold and the citizen stamp are
-        /// untouched, and so is the area's mined record -- which the dock never owned and cannot
-        /// drop by walking away from the area (U2, R1).
+        /// Clears this dock's mining area assignment (R7) and RELEASES the claim it held,
+        /// returning the plots that are now free for any dock to claim (R38). The citizen stamp
+        /// and the exclusions are untouched, and so is the area's mined record -- which the dock
+        /// never owned and cannot drop by walking away from the area (U2, R1).
+        ///
+        /// <para>
+        /// The return is what R38's message names, and it is why this hands back a list rather
+        /// than nothing: the message is UNCONDITIONAL, not fired only on contested ground,
+        /// because the claim is what assignment means and a player who does not know they dropped
+        /// it cannot know they are exposed.
+        /// </para>
         /// </summary>
-        public void UnassignMiningArea()
+        public IReadOnlyList<PlotCoord> UnassignMiningArea()
         {
-            this.AssignedMiningArea = null;
-            this.miningAssignmentEpoch++;
+            IReadOnlyList<PlotCoord> released;
+
+            // The same lock the assignment takes (KTD6). A release racing a claim on the same
+            // ground would otherwise be able to drop a claim the winner had just written.
+            lock (AreaClaimLock)
+            {
+                released = this.ReleaseHeldMiningClaim();
+                this.AssignedMiningArea = null;
+                this.miningAssignmentEpoch++;
+            }
 
             // A job outlives its assignment otherwise, and the panel keeps reporting "working"
             // at whatever plot count it had reached while the drone flies home to nothing.
             this.MiningJob?.End(MiningEndReason.Unassigned);
             this.PersistMiningJob();
+
+            return released;
+        }
+
+        /// <summary>
+        /// Drops the claim this dock holds through its mining assignment, if it still holds one.
+        /// Caller holds <see cref="AreaClaimLock"/>.
+        ///
+        /// <para>
+        /// Scoped by holder (<c>ReleaseClaimBy</c>): the reference may be stale, and a dock must
+        /// not drop a claim another dock took in the meantime.
+        /// </para>
+        /// </summary>
+        private IReadOnlyList<PlotCoord> ReleaseHeldMiningClaim()
+        {
+            if (this.AssignedMiningArea == null) return Array.Empty<PlotCoord>();
+            if (this.AssignedMiningArea.Resolve(out _, out var held) != AreaLookupSignal.Found)
+                return Array.Empty<PlotCoord>();
+
+            return held.ReleaseClaimBy(this.ObjectID);
+        }
+
+        /// <summary>
+        /// Whether this dock is itself the holder of an overlapping area (U13) -- what stops a
+        /// dock reassigning beside its own standing claim from reporting itself as the blocker.
+        ///
+        /// <para>
+        /// It is a predicate handed to <see cref="AreaClaims.Conflicts"/> rather than a field on
+        /// <see cref="AreaProjection"/> because the holder's identity is exactly what R41 keeps
+        /// out of that channel. This dock knows which areas it holds; the projection only says
+        /// that they are held.
+        /// </para>
+        /// </summary>
+        private bool HoldsClaimOn(AreaProjection other)
+        {
+            if (other == null) return false;
+
+            if (this.AssignedMiningArea is { } mining
+                && mining.OwningDockId == other.OwningDockId && mining.AreaId == other.AreaId)
+                return true;
+
+            return this.AssignedSurveyAreaId != 0
+                && this.ObjectID == other.OwningDockId
+                && this.AssignedSurveyAreaId == other.AreaId;
         }
 
         /// <summary>

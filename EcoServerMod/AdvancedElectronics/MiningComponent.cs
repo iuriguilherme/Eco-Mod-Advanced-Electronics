@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -15,6 +15,7 @@ using Eco.Shared.Networking;
 using Eco.Shared.Serialization;
 using Eco.Shared.Services;
 using Eco.Shared.SharedTypes;
+using Eco.Shared.Voxel;
 
 namespace Eco.Mods.TechTree
 {
@@ -127,9 +128,19 @@ namespace Eco.Mods.TechTree
                 return;
             }
 
-            dock.UnassignMiningArea();
+            var released = dock.UnassignMiningArea();
             this.RefreshAll();
-            player?.MsgLocStr("Mining area unassigned. The drone returns to its dock.", NotificationStyle.Info);
+
+            // R38 rides this message. It is a DIFFERENT carrier from R39's refusal on purpose:
+            // the refusal string exists only on a refused assignment, while this has to be
+            // unconditional -- a player who does not know they dropped their claim cannot know
+            // they are exposed (KTD10).
+            var release = MiningReadout.FormatClaimRelease(released, PlotUtil.PropertyPlotLength);
+            player?.MsgLocStr(
+                release.Length == 0
+                    ? "Mining area unassigned. The drone returns to its dock."
+                    : $"Mining area unassigned. The drone returns to its dock -- {release}.",
+                NotificationStyle.Info);
         }
 
         public override void Initialize()
@@ -159,9 +170,42 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject self) return Enumerable.Empty<(DroneDockObject, SurveyAreaEntry)>();
 
-            // R14: the radius sits on top of the owner test, never inside the walk.
-            return this.OwnedAreas().Where(o => self.IsInDockNetwork(o.Dock));
+            var exclusionHolders = DroneDockObject.DocksHoldingExclusions();
+
+            // R14: the radius sits on top of the owner test, never inside the walk. R44 and R47
+            // sit on top of both.
+            return this.OwnedAreas()
+                .Where(o => self.IsInDockNetwork(o.Dock))
+                .Where(o => OfferableToMiningDock(o.Dock, o.Area, exclusionHolders))
+                .ToList();
         }
+
+        /// <summary>
+        /// Whether one area may appear on a mining dock's offered list (R44, R47) -- the same test
+        /// <see cref="RefreshAll"/> applies, factored out because the two lists must agree PLOT
+        /// FOR PLOT. The selector commits by POSITION in the offered list, so a filter applied to
+        /// one list and not the other assigns the area the player did not pick.
+        ///
+        /// <para>
+        /// <c>[cleared]</c> and <c>[empty]</c> are withheld because there is nothing a mining
+        /// drone could take; both stay visible on both tabs and stay assignable to a survey dock,
+        /// which is the only thing that returns them to the ramp (R44). Farmland is withheld
+        /// because its ground is reserved (R47), whether or not the farm is assigned -- which is a
+        /// question about KIND that the lifecycle ladder cannot answer, since a farming area never
+        /// reads a rung of the ramp at all.
+        /// </para>
+        /// <para>
+        /// This is the OFFER half only. Whether the ground is already held is settled at the
+        /// assignment itself, under the one lock KTD6 defines, because it depends on every area
+        /// overlapping this one and that is a world walk per area -- not something a roster tick
+        /// can absorb.
+        /// </para>
+        /// </summary>
+        private static bool OfferableToMiningDock(
+            DroneDockObject sourceDock, SurveyAreaEntry area, IReadOnlyCollection<DroneDockObject> exclusionHolders) =>
+            AreaClaims.MayBeOfferedToMiningDock(
+                area.Kind,
+                DroneDockObject.StatusOfArea(sourceDock.ObjectID, area, exclusionHolders, area.Kind));
 
         /// <summary>
         /// The RAW enumeration (KTD8): every dock in the world that publishes survey areas, with
@@ -206,11 +250,10 @@ namespace Eco.Mods.TechTree
         /// whoever owns them (R34).
         /// </para>
         /// <para>
-        /// ONE world walk, not two. Claim holders are docks that need not publish anything --
-        /// a mining dock holds its claim through <see cref="DroneDockObject.AssignedMiningArea"/>
-        /// while owning no areas of its own -- so the claim pass cannot reuse the published
-        /// subset. Both passes run off the single materialised dock list instead, because this
-        /// feeds a roster refresh that runs on the dock's tick.
+        /// ONE world walk, not two. The claim is now the area's OWN record (U13), so the walk no
+        /// longer has to find the holders -- but the <c>[empty]</c> test does need the docks
+        /// carrying exclusions, and those are the same objects. Both come off the single
+        /// materialised list, because this feeds a roster refresh that runs on the dock's tick.
         /// </para>
         /// </summary>
         public static IReadOnlyList<AreaProjection> AllAreaProjections()
@@ -220,7 +263,9 @@ namespace Eco.Mods.TechTree
                 .Where(d => !d.IsDestroyed)
                 .ToList();
 
-            var claimed = ClaimedAreas(docks);
+            // The same subset DocksHoldingExclusions() collects, taken off the list already in
+            // hand rather than by walking the world a second time.
+            var exclusionHolders = docks.Where(d => d.MiningExclusions.Count > 0).ToList();
 
             var projections = new List<AreaProjection>();
             foreach (var dock in docks)
@@ -228,10 +273,18 @@ namespace Eco.Mods.TechTree
                 if (!Publishes(dock)) continue;
 
                 foreach (var area in dock.SurveyAreas)
+                {
+                    // R37's [empty] exception, which is why the status is read here at all: an
+                    // area with nothing left to take holds nothing, and that is what lets ground
+                    // pass from one purpose to the next with no release negotiated. A [cleared]
+                    // area keeps its claim -- its exclusion may lift.
+                    var holds = AreaClaims.HoldsClaim(
+                        area.HasClaim,
+                        DroneDockObject.StatusOfArea(dock.ObjectID, area, exclusionHolders, area.Kind));
+
                     projections.Add(new AreaProjection(
-                        area.Id, dock.ObjectID, area.Plots(),
-                        claimed.Contains((dock.ObjectID, area.Id)),
-                        area.Kind));
+                        area.Id, dock.ObjectID, area.Plots(), holds, area.Kind));
+                }
             }
 
             return projections;
@@ -270,38 +323,6 @@ namespace Eco.Mods.TechTree
                 : new AreaProjection(area.Id, owner.ObjectID, area.Plots());
 
         /// <summary>
-        /// Which areas are assigned to a dock right now, keyed by (owning dock, area id) -- the
-        /// claim R36 reports and R39 enforces, in the terms the mod can express today.
-        ///
-        /// <para>
-        /// Assignment is the test, not "a drone is working": AE12 turns on the freshly drawn area
-        /// holding nothing until it is assigned, which is why the farm keeps working the ground
-        /// they share. Both assignment channels count -- a survey dock working its own area, and
-        /// a mining dock pointed at someone else's.
-        /// </para>
-        /// <para>
-        /// The mining reference is read as stored rather than resolved: <c>Resolve</c> carries
-        /// per-reference failure counters that decide when a vanished area is confirmed gone, and
-        /// a roster refresh must not advance them. A stale pair simply matches no live area.
-        /// </para>
-        /// </summary>
-        private static HashSet<(Guid Dock, int Area)> ClaimedAreas(IEnumerable<DroneDockObject> docks)
-        {
-            var claimed = new HashSet<(Guid, int)>();
-
-            foreach (var dock in docks)
-            {
-                if (dock.AssignedSurveyAreaId != 0)
-                    claimed.Add((dock.ObjectID, dock.AssignedSurveyAreaId));
-
-                if (dock.AssignedMiningArea is { } mining)
-                    claimed.Add((mining.OwningDockId, mining.AreaId));
-            }
-
-            return claimed;
-        }
-
-        /// <summary>
         /// The raw walk narrowed by ownership alone (R15) -- everything this dock is entitled to
         /// see, whether or not it can reach it. The distance filter is applied one layer up, so
         /// this is also what answers "how many owned docks are merely too far away" for R23's
@@ -332,8 +353,16 @@ namespace Eco.Mods.TechTree
             // out-of-range count. This runs off the dock's tick; a second world sweep per refresh
             // is not a cost this path can absorb. Order is the raw walk's order either way, so the
             // positions the selector commits by are unchanged.
+            // Hoisted once for the whole list: this runs off the dock's tick, and collecting it
+            // per area would put an O(areas x world objects) sweep on a repeating path. Collected
+            // BEFORE the offered list because R44's filter reads it.
+            var exclusionHolders = DroneDockObject.DocksHoldingExclusions();
+
             var owned = this.OwnedAreas().ToList();
-            var offered = owned.Where(o => dock.IsInDockNetwork(o.Dock)).ToList();
+            var offered = owned
+                .Where(o => dock.IsInDockNetwork(o.Dock))
+                .Where(o => OfferableToMiningDock(o.Dock, o.Area, exclusionHolders))
+                .ToList();
 
             // R23: counted as DOCKS, so one distant dock holding nine areas reads as one thing to
             // move. Distinct because the walk yields one entry per area.
@@ -347,11 +376,7 @@ namespace Eco.Mods.TechTree
 
             var assigned = dock.AssignedMiningArea;
 
-            // Hoisted once for the whole list: this runs off the dock's tick, and collecting it
-            // per area would put an O(areas x world objects) sweep on a repeating path.
-            var exclusionHolders = DroneDockObject.DocksHoldingExclusions();
-
-            // Hoisted for the same reason, and read RAW (R34): the overlay has to see past the
+            // Hoisted for the same reason as exclusionHolders above, and read RAW (R34): the overlay has to see past the
             // radius this list was just narrowed by, and past ownership -- two areas collide
             // however far apart their docks sit and whoever owns them.
             var published = AllAreaProjections();

@@ -331,5 +331,88 @@ namespace AdvancedElectronics.Navigation
                 return $"~{headroom} items of headroom -- enough for the current hold";
             return $"~{headroom} items of headroom -- not enough for the current hold";
         }
+
+        // ---------------------------------------------------------------
+        // U13: the two claim surfaces (R38, R39, KTD10). Neither adds a control to a tab.
+        // The refusal rides the string AssignMiningArea already returns; the release rides the
+        // message the unassign path already sends, which is a DIFFERENT carrier for a reason --
+        // the refusal string exists only on a refused assignment and could never carry a message
+        // R38 requires to be unconditional.
+        // ---------------------------------------------------------------
+
+        /// <summary>How many centre blocks a claim message names before it starts counting instead.</summary>
+        private const int NamedPlotsCap = 6;
+
+        /// <summary>
+        /// Why an assignment was refused (R39): which plots, and what holds them.
+        ///
+        /// <para>
+        /// The plots are named as centre blocks — the mod's own way of pointing a player at
+        /// ground, the same one the overlap diagnostic uses (R36) — and capped, because an area
+        /// may hold sixty-four plots and a chat line may not.
+        /// </para>
+        /// <para>
+        /// What holds them is worded by the act that would LIFT it, which is the only part the
+        /// player can do anything about (R27's obligation, applied here). An assignment can be
+        /// unassigned; farmland cannot — R47 releases it only when its owner deletes the farming
+        /// area, so telling that player to unassign the farm would send them to do the one thing
+        /// that changes nothing. That is also the whole of why the farmland case names a kind at
+        /// all: the kind-blind case does not, because knowing it would answer nothing and R41
+        /// keeps this channel from disclosing another player's area beyond the ground and the
+        /// block.
+        /// </para>
+        /// </summary>
+        public static string FormatClaimRefusal(IReadOnlyList<AreaClaimConflict> conflicts, int plotSize)
+        {
+            if (conflicts == null || conflicts.Count == 0) return string.Empty;
+
+            return string.Join("; ", conflicts.Select(c =>
+            {
+                var lifted = c.Reason == AreaClaimBlock.FarmlandReserved
+                    ? "reserved as farmland -- delete that farming area to release the ground"
+                    : "held by another area's assignment -- unassign it, or draw clear of it";
+
+                return $"{PlotCount(c.Plots.Count)} {lifted}: {NamePlots(c.Plots, plotSize)}";
+            }));
+        }
+
+        /// <summary>
+        /// What an unassignment or an edit released (R38): these plots are no longer held, and any
+        /// dock may claim them.
+        ///
+        /// <para>
+        /// Unconditional on the unassign path rather than fired only on contested ground — the
+        /// claim is what assignment MEANS, and a player who does not know they dropped it cannot
+        /// know they are exposed. It says nothing whatever about any other area, so there is
+        /// nothing here for R41 to gate.
+        /// </para>
+        /// <para>
+        /// Empty for an empty release, which is the add-only edit (U9): a message about nothing
+        /// released is noise on a path a player crosses often.
+        /// </para>
+        /// </summary>
+        public static string FormatClaimRelease(IReadOnlyList<PlotCoord> plots, int plotSize)
+        {
+            if (plots == null || plots.Count == 0) return string.Empty;
+
+            return $"released {PlotCount(plots.Count)} -- no dock holds them now, "
+                 + $"and any dock may claim them: {NamePlots(plots, plotSize)}";
+        }
+
+        private static string PlotCount(int count) => count == 1 ? "1 plot" : $"{count} plots";
+
+        /// <summary>
+        /// The centre block of each plot, capped so a large area cannot grow the line without
+        /// limit. The remainder is counted rather than dropped: "and 58 more" is what tells the
+        /// player the list they are reading is not the whole of it.
+        /// </summary>
+        private static string NamePlots(IReadOnlyList<PlotCoord> plots, int plotSize)
+        {
+            var named = string.Join(", ", plots.Take(NamedPlotsCap).Select(p => AreaOverlap.FormatCentreBlock(p, plotSize)));
+
+            return plots.Count <= NamedPlotsCap
+                ? $"centre blocks {named}"
+                : $"centre blocks {named} and {plots.Count - NamedPlotsCap} more";
+        }
     }
 }
