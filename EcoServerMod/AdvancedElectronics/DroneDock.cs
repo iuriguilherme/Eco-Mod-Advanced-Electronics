@@ -465,15 +465,63 @@ namespace Eco.Mods.TechTree
 
         // The dock's live, in-memory survey record (KTD11): the OreSensorComponent feeds every
         // sample here attributed to the assigned area id, and RefreshReadout projects the assigned
-        // area's findings into that area's serialized snapshot for persistence + display. NOT
-        // serialized itself — it is the running accumulator (raw sampled blocks + per-plot
-        // concentration); the durable, restart-surviving copy is the per-area OreFindingSnapshot
-        // list on each SurveyAreaEntry. plotSize matches IsPositionInAssignedArea's plot mapping.
+        // area's findings into that area's serialized snapshot for persistence + display. The
+        // FIELD is not serialized -- it is the running accumulator -- but since U7 its contents
+        // are: the durable copy is the per-area OreFindingSnapshot rows plus the per-column
+        // SweepColumns rows on each SurveyAreaEntry, and StartOrResumeSurveyPass rehydrates it
+        // from them. plotSize matches IsPositionInAssignedArea's plot mapping.
         private SurveyRecord surveyRecord;
 
         /// <summary>The dock's per-area survey accumulator, created on first use.</summary>
         public SurveyRecord SurveyRecord =>
             this.surveyRecord ??= new SurveyRecord(PlotUtil.PropertyPlotLength);
+
+        /// <summary>
+        /// Opens a survey pass on <paramref name="entry"/> and returns the sweep cursor it should
+        /// begin from. This is the one place the two halves of U7 are decided between:
+        ///
+        /// A pass RESUMING one that stopped (R25) keeps everything the stopped pass reached — its
+        /// findings, its coverage, its sampled blocks and its place in the sweep — so the drone
+        /// picks up where it left off instead of re-flying ground already covered.
+        ///
+        /// A NEWLY STARTED pass (R10) clears the area's findings rows, its live sample record and
+        /// its at-bedrock observations before the drone samples anything, so the resurvey reports
+        /// only what it observes (R12) and coverage starts at zero and climbs (R11).
+        ///
+        /// The clear deliberately does NOT reach <see cref="SurveyAreaEntry.MinedStamps"/> (R13).
+        /// A finding is a claim about what is in the ground and a resurvey replaces it; a mined
+        /// stamp records that digging happened, which no later survey makes untrue — and keeping
+        /// it is what makes the resurveyed area mineable again rather than merely un-mined.
+        /// </summary>
+        public SweepCursor StartOrResumeSurveyPass(SurveyAreaEntry entry)
+        {
+            if (entry == null)
+                return default;
+
+            var record = this.SurveyRecord;
+
+            // Always rehydrate first: after a restart the live record is empty, and even a
+            // newly started pass wants the persisted state loaded before it is cleared, so the
+            // clear is what empties the record rather than the restart having emptied it.
+            entry.RestoreInto(record);
+
+            if (entry.SweepInProgress)
+                return record.SweepCursorFor(entry.Id);
+
+            entry.ClearFindings();          // findings, coverage, surveyed stamps, at-bedrock, sweep
+            record.ClearArea(entry.Id);     // and the live sample record this pass must not dedupe against
+            entry.SweepInProgress = true;
+            return default;
+        }
+
+        /// <summary>
+        /// Closes a finished survey pass on <paramref name="entry"/>: the sweep is no longer in
+        /// progress, so the next dispatch reads as a new pass and clears (R10) rather than
+        /// resuming into a completed one. Drops the per-column pass rows with it — they exist to
+        /// let a stopped pass resume, and a finished pass has nothing to resume into, so keeping
+        /// them would persist the mod's largest structure for no reader.
+        /// </summary>
+        public void EndSurveyPass(SurveyAreaEntry entry) => entry?.ClearSweep();
 
         /// <summary>
         /// Copies the assigned area's live findings into its persisted snapshot (KTD11), so they
@@ -510,6 +558,13 @@ namespace Eco.Mods.TechTree
             // projection is empty — "nothing is at bedrock any more" is the answer that returns a
             // filled-in area to the ramp (AE5).
             entry.SetBedrockPlots(this.surveyRecord.BedrockPlots(entry.Id));
+
+            // The pass itself (U7, R25): the per-column sample record and the sweep cursor,
+            // written on the same tick as the findings they were derived from, so a pass stopped
+            // by fuel, a reassignment or a restart resumes from where the drone stopped rather
+            // than starting the area over.
+            if (entry.SweepInProgress)
+                entry.SetSweep(this.surveyRecord);
         }
 
         /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>

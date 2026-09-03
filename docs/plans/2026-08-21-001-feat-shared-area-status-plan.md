@@ -123,6 +123,10 @@ A third constraint here is deliberate rather than a repair. A mining dock today 
 
 - R26. An area reads `[empty]` when every plot is down at bedrock and no exclusion accounts for any material still in it — there is genuinely nothing left to take. `[cleared]` says only that the drone is finished, which may be because it was refused; `[empty]` says the ground itself is exhausted. Both read every recorded exclusion regardless of which dock recorded it, so the area has one status that every dock agrees on. What varies per dock is which plots it is *offered*, never what the area says it is.
 - R27. An area whose `[cleared]` rests on an exclusion names the refusal reason where the mining tab already reports reasons — the stop-reason and skip rows, which already word property, settlement-law, unreachable and obstructed refusals — not on the area's roster line, which stays at its budgeted length. Blocked ground never reads as spent ground, and the player can see what they would have to change to unblock it.
+- R47. Ground a farming area covers is not offered to, and cannot be claimed by, a mining dock — whether or not that farming area is currently assigned. The `[farm]` mark reserves the ground, not the assignment: an unassigned farm is between passes, not finished, and farmland never finishes the way a mine is exhausted. Releasing it is an explicit act by the farm's owner, who deletes the farming area; the plots then carry no mark and read as ordinary ground that any dock may take.
+
+  This qualifies R39 rather than overturning it. Claiming stays kind-blind between docks doing the same job, and an assigned area of any kind still holds its plots against every other dock. What R47 adds is that farmland's reservation outlives its assignment, because a farm has no exhausted state to reach. The asymmetry with `[empty]` is deliberate and runs one way: a farm may take ground a mine has finished with, and a mine may not take ground a farm has not been released from.
+
 - R44. A `[cleared]` or `[empty]` area is not offered to a mining dock for assignment. It stays visible on both tabs and stays assignable to a survey dock, which is the only thing that can return it to the ramp.
 
 **What the roster compresses**
@@ -436,7 +440,7 @@ flowchart TB
 | U5 | Lifecycle derivation as a pure function | `AreaLifecycle.cs` (new), `PlotFreshness.cs` | U2, U3, U4 |
 | U6 | One roster line, both tabs | `DockReadout.cs`, `MiningReadout.cs`, `SurveyComponent.cs`, `MiningComponent.cs` | U5 |
 | U7 | A resurvey clears; a resumed pass does not | `SurveyRecord.cs`, `SurveyStrategy.cs`, `DroneDock.cs` | U1 |
-| U8 | React to ground the mod did not change | `DroneDock.cs`, `SurveyAreaEntry.cs`, `MiningStrategy.cs` | U1, U2 |
+| U8 | React to ground the mod did not change | `DroneDock.cs`, `SurveyAreaEntry.cs`, `MiningStrategy.cs` | U1, U2, U4, U7 |
 | U9 | An edit preserves what it retains | `SurveyAreaEntry.cs`, `DroneDock.cs`, `MiningComponent.cs` | U1, U2, U3, U4 |
 | U10 | The dock-network radius | `MiningComponent.cs`, `MiningReadout.cs`, `DroneDock.cs` | — |
 | U11 | Area kind and the change action | `SurveyAreaEntry.cs`, `SurveyComponent.cs` | — |
@@ -681,7 +685,7 @@ flowchart TB
 
 **Requirements:** R16, R17, R43.
 
-**Dependencies:** U1, U2.
+**Dependencies:** U1, U2, U4, U7. Its reset drops plots from the persisted sample record U7 introduces and clears the at-bedrock observations U4 introduces, so neither can be assumed absent.
 
 **Files:**
 - `EcoServerMod/AdvancedElectronics/DroneDock.cs` — subscribe on initialize, detach on destroy.
@@ -811,7 +815,7 @@ flowchart TB
 
 **Goal:** Find where two areas cover the same ground, mark it, and say where without exposing another player's area.
 
-**Requirements:** R34, R35, R36, R41, R42.
+**Requirements:** R34, R35, R36, R41, R42, R47.
 
 **Dependencies:** U10, U11.
 
@@ -844,7 +848,7 @@ flowchart TB
 
 **Goal:** Make assignment the moment ground is taken, so a drone never has to ask what another dock is doing.
 
-**Requirements:** R37, R38, R39, R40, R44.
+**Requirements:** R37, R38, R39, R40, R44, R47.
 
 **Dependencies:** U5, U11, U12.
 

@@ -32,30 +32,55 @@ namespace AdvancedElectronics.Navigation
     /// without observing anything new about the world.
     /// </para>
     /// <para>
-    /// <b>Not persisted.</b> This record is session-scoped by design (R8/KTD3) —
-    /// the world already stores block data. The Eco side holds one of these on
-    /// the dock and never serializes it.
+    /// <b>Persisted with the area, since U7 (R25).</b> This paragraph used to say the
+    /// opposite — that the record was session-scoped by design and never serialized. That
+    /// decision is reversed. A pass that stops before finishing has to resume from where it
+    /// stopped rather than re-fly ground it already covered, and the sampled-block set is
+    /// what "already covered" means, so the set and the sweep cursor persist together on the
+    /// survey area (<c>SurveyAreaEntry.SweepColumns</c>, projected by
+    /// <see cref="PassColumns"/> and rebuilt by <see cref="RestorePassColumn"/>).
+    /// </para>
+    /// <para>
+    /// That reversal is only safe because a NEWLY STARTED pass clears this record for the
+    /// area first (R10). Without the clear, <see cref="RecordSample"/>'s idempotency — a
+    /// block already seen is a no-op — would survive the restart, and the stale-findings
+    /// fault that used to be intermittent (it healed whenever the server restarted) would
+    /// become permanent. Clear-on-start and persist-across-restart are one decision; neither
+    /// half is correct on its own.
+    /// </para>
+    /// <para>
+    /// <b>Per area, not per record.</b> Everything here — samples, columns, cursor — is
+    /// keyed by area id, including the sampled-block dedupe set. Two areas may cover the
+    /// same ground (R35), and an area-blind dedupe set meant clearing one area could not
+    /// drop a block another area's geometry still covered.
     /// </para>
     /// </remarks>
     public sealed class SurveyRecord
     {
         private readonly int _plotSize;
-        private readonly HashSet<BlockPos> _sampledBlocks = new HashSet<BlockPos>();
+
+        // areaId -> the exact blocks sampled for THAT area. Per area rather than global so a
+        // clear can actually drop them (R10) and so two overlapping areas each sample the
+        // ground they cover.
+        private readonly Dictionary<int, HashSet<BlockPos>> _sampledBlocks =
+            new Dictionary<int, HashSet<BlockPos>>();
 
         // areaId -> plot -> aggregated counts for that plot.
         private readonly Dictionary<int, Dictionary<PlotCoord, PlotData>> _byArea =
             new Dictionary<int, Dictionary<PlotCoord, PlotData>>();
 
-        // areaId -> column (x, z) -> surface height, so the area's median surface level can be
-        // reported. Keyed by column (deduped) because every column has one surface, sampled once.
-        private readonly Dictionary<int, Dictionary<(int X, int Z), int>> _surfaceByArea =
-            new Dictionary<int, Dictionary<(int X, int Z), int>>();
+        // areaId -> column (x, z) -> everything the pass learned about that column: its surface
+        // height, how many of its blocks were sampled, and whether it rests on the world floor.
+        // One map rather than three because a column is the unit the sweep advances in, and the
+        // persisted projection is one row per column (PassColumns).
+        private readonly Dictionary<int, Dictionary<(int X, int Z), ColumnState>> _columnsByArea =
+            new Dictionary<int, Dictionary<(int X, int Z), ColumnState>>();
 
-        // areaId -> column (x, z) -> does that column rest on the world floor (U4, KTD4).
-        // Per COLUMN, not per plot: the walk is a column-scoped observation, and the plot
-        // answer is a fold over the columns (every one of them, see PlotRestsOnBedrock).
-        private readonly Dictionary<int, Dictionary<(int X, int Z), bool>> _bedrockByArea =
-            new Dictionary<int, Dictionary<(int X, int Z), bool>>();
+        // areaId -> how far the sweep got. Kept beside the samples deliberately (U7): resuming
+        // without the cursor re-flies ground the sampled set already treats as done, and
+        // resuming with a cursor but no samples reports coverage the pass never earned.
+        private readonly Dictionary<int, SweepCursor> _cursorByArea =
+            new Dictionary<int, SweepCursor>();
 
         public SurveyRecord(int plotSize)
         {
@@ -76,7 +101,7 @@ namespace AdvancedElectronics.Navigation
         /// <param name="depthBelowSurface">Blocks below the surface (0 = surface). The shallowest sighting per ore per plot is kept as the dig target.</param>
         public void RecordSample(int x, int y, int z, string oreType, int depthBelowSurface, int areaId)
         {
-            if (!_sampledBlocks.Add(new BlockPos(x, y, z)))
+            if (!Sampled(areaId).Add(new BlockPos(x, y, z)))
                 return;
 
             var plot = PlotCoord.FromWorldColumn(x, z, _plotSize);
@@ -94,8 +119,34 @@ namespace AdvancedElectronics.Navigation
             }
 
             data.SampledCount++;
+            Column(areaId, x, z).SampledBlocks++;
             if (!string.IsNullOrEmpty(oreType))
                 data.RecordOre(oreType, new BlockPos(x, y, z), depthBelowSurface);
+        }
+
+        private HashSet<BlockPos> Sampled(int areaId)
+        {
+            if (!_sampledBlocks.TryGetValue(areaId, out var blocks))
+            {
+                blocks = new HashSet<BlockPos>();
+                _sampledBlocks[areaId] = blocks;
+            }
+            return blocks;
+        }
+
+        private ColumnState Column(int areaId, int x, int z)
+        {
+            if (!_columnsByArea.TryGetValue(areaId, out var columns))
+            {
+                columns = new Dictionary<(int X, int Z), ColumnState>();
+                _columnsByArea[areaId] = columns;
+            }
+            if (!columns.TryGetValue((x, z), out var column))
+            {
+                column = new ColumnState();
+                columns[(x, z)] = column;
+            }
+            return column;
         }
 
         /// <summary>
@@ -104,14 +155,7 @@ namespace AdvancedElectronics.Navigation
         /// terrain elevation. Idempotent per column (one surface per column).
         /// </summary>
         public void RecordSurface(int areaId, int x, int z, int surfaceY)
-        {
-            if (!_surfaceByArea.TryGetValue(areaId, out var columns))
-            {
-                columns = new Dictionary<(int X, int Z), int>();
-                _surfaceByArea[areaId] = columns;
-            }
-            columns[(x, z)] = surfaceY;
-        }
+            => Column(areaId, x, z).SurfaceY = surfaceY;
 
         /// <summary>
         /// The median surface height across the columns sampled in <paramref name="areaId"/>, or null
@@ -120,10 +164,13 @@ namespace AdvancedElectronics.Navigation
         /// </summary>
         public int? MedianSurfaceLevel(int areaId)
         {
-            if (!_surfaceByArea.TryGetValue(areaId, out var columns) || columns.Count == 0)
+            if (!_columnsByArea.TryGetValue(areaId, out var columns))
                 return null;
 
-            var sorted = columns.Values.OrderBy(v => v).ToList();
+            var sorted = columns.Values.Where(c => c.SurfaceY.HasValue).Select(c => c.SurfaceY.Value).OrderBy(v => v).ToList();
+            if (sorted.Count == 0)
+                return null;
+
             var mid = sorted.Count / 2;
             return (sorted.Count % 2 == 1)
                 ? sorted[mid]
@@ -141,14 +188,7 @@ namespace AdvancedElectronics.Navigation
         /// <see cref="RecordSurface"/> already treats a column's surface height.
         /// </summary>
         public void RecordColumnBedrock(int areaId, int x, int z, bool restsOnBedrock)
-        {
-            if (!_bedrockByArea.TryGetValue(areaId, out var columns))
-            {
-                columns = new Dictionary<(int X, int Z), bool>();
-                _bedrockByArea[areaId] = columns;
-            }
-            columns[(x, z)] = restsOnBedrock;
-        }
+            => Column(areaId, x, z).RestsOnBedrock = restsOnBedrock;
 
         /// <summary>
         /// True when <paramref name="plot"/> of <paramref name="areaId"/> is down at bedrock:
@@ -162,15 +202,17 @@ namespace AdvancedElectronics.Navigation
         /// </summary>
         public bool PlotRestsOnBedrock(int areaId, PlotCoord plot)
         {
-            if (!_bedrockByArea.TryGetValue(areaId, out var columns))
+            if (!_columnsByArea.TryGetValue(areaId, out var columns))
                 return false;
 
             var observed = 0;
             foreach (var entry in columns)
             {
+                if (!entry.Value.RestsOnBedrock.HasValue)
+                    continue;
                 if (!PlotCoord.FromWorldColumn(entry.Key.X, entry.Key.Z, _plotSize).Equals(plot))
                     continue;
-                if (!entry.Value)
+                if (!entry.Value.RestsOnBedrock.Value)
                     return false;
                 observed++;
             }
@@ -184,11 +226,12 @@ namespace AdvancedElectronics.Navigation
         /// </summary>
         public IEnumerable<PlotCoord> BedrockPlots(int areaId)
         {
-            if (!_bedrockByArea.TryGetValue(areaId, out var columns))
+            if (!_columnsByArea.TryGetValue(areaId, out var columns))
                 yield break;
 
-            var candidates = columns.Keys
-                .Select(c => PlotCoord.FromWorldColumn(c.X, c.Z, _plotSize))
+            var candidates = columns
+                .Where(c => c.Value.RestsOnBedrock.HasValue)
+                .Select(c => PlotCoord.FromWorldColumn(c.Key.X, c.Key.Z, _plotSize))
                 .Distinct()
                 .ToList();
 
@@ -386,18 +429,130 @@ namespace AdvancedElectronics.Navigation
             return (float)surveyedInArea / area.PlotCount;
         }
 
-        /// <summary>Discards every finding for <paramref name="areaId"/>. Used when an area is deleted or reassigned away.</summary>
+        /// <summary>
+        /// Discards everything this record holds about <paramref name="areaId"/> — its per-plot
+        /// findings, its sampled-block set, its column observations (surface and at-bedrock) and
+        /// its sweep cursor. Used when an area is deleted or redrawn, and by the R10 clear a
+        /// newly started resurvey performs.
+        ///
+        /// Dropping the sampled-block set is the load-bearing half: <see cref="RecordSample"/> is
+        /// idempotent per exact block, so a resurvey that did not clear here would be deduped
+        /// against the previous pass and re-report material the ground no longer holds. Because
+        /// the set is keyed by area, this drops exactly this area's blocks even where another
+        /// area covers the same plots (R35).
+        ///
+        /// Nothing about MINED ground lives in this record, and nothing here can reach it (R13):
+        /// the mined stamps are the area's, they record that digging happened, and no later
+        /// survey makes that untrue.
+        /// </summary>
         public void ClearArea(int areaId)
         {
-            _surfaceByArea.Remove(areaId);
-            _bedrockByArea.Remove(areaId);
-            if (_byArea.Remove(areaId))
+            _columnsByArea.Remove(areaId);
+            _cursorByArea.Remove(areaId);
+            _sampledBlocks.Remove(areaId);
+            _byArea.Remove(areaId);
+        }
+
+        // --- The pass projection: what the Eco side persists on the area so a stopped pass
+        //     resumes instead of restarting (U7, R25). ---
+
+        /// <summary>
+        /// One row per column this pass has touched in <paramref name="areaId"/> — the shape the
+        /// area persists (<c>SurveyAreaEntry.SweepColumns</c>) and hands back to
+        /// <see cref="RestorePassColumn"/> after a restart.
+        ///
+        /// Per COLUMN rather than per block, because the sweep is column-atomic: the sensor scans
+        /// a column top-down in one call, so "how many of its blocks were sampled" plus its
+        /// surface height names the same block set that listing every block would, at a
+        /// fifteenth of the size. This is the largest structure the mod persists and the shape is
+        /// the reason it stays affordable.
+        /// </summary>
+        public IEnumerable<SurveyColumnState> PassColumns(int areaId)
+        {
+            if (!_columnsByArea.TryGetValue(areaId, out var columns))
+                yield break;
+
+            foreach (var entry in columns)
+                yield return new SurveyColumnState(
+                    entry.Key.X, entry.Key.Z, entry.Value.SurfaceY, entry.Value.SampledBlocks, entry.Value.RestsOnBedrock);
+        }
+
+        /// <summary>
+        /// Rebuilds one column of <paramref name="areaId"/> from its persisted row, replaying the
+        /// blocks the pass sampled there as "sampled, no ore" — the ore attribution comes back
+        /// separately from the area's persisted findings rows (<see cref="RestoreFinding"/>),
+        /// which are the authoritative record of what was found.
+        ///
+        /// The blocks are replayed downward from the recorded surface exactly as the sensor
+        /// walked them, so the rebuilt sampled-block set, the per-plot sampled counts, and
+        /// therefore <see cref="Coverage"/> match what the stopped pass had reached.
+        /// </summary>
+        public void RestorePassColumn(int areaId, SurveyColumnState column)
+        {
+            if (column.SurfaceY.HasValue)
             {
-                // Drop this area's sampled blocks so re-surveying it later records
-                // fresh rather than being silently deduped against stale positions.
-                _sampledBlocks.RemoveWhere(b =>
-                    !_byArea.Values.Any(plots => plots.ContainsKey(PlotCoord.FromWorldColumn(b.X, b.Z, _plotSize))));
+                RecordSurface(areaId, column.X, column.Z, column.SurfaceY.Value);
+                for (var depth = 0; depth < column.SampledBlocks; depth++)
+                {
+                    var y = column.SurfaceY.Value - depth;
+                    if (y < 0)
+                        break;
+                    RecordSample(column.X, y, column.Z, null, depth, areaId);
+                }
             }
+
+            if (column.RestsOnBedrock.HasValue)
+                RecordColumnBedrock(areaId, column.X, column.Z, column.RestsOnBedrock.Value);
+        }
+
+        /// <summary>
+        /// Restores one persisted per-plot findings row into the live record, so a resumed pass
+        /// keeps what the stopped one found rather than projecting an emptied record back over
+        /// the area's snapshot. Ignores a row that is not found or carries no plot.
+        /// </summary>
+        public void RestoreFinding(int areaId, SurveyFinding row)
+        {
+            if (!row.Found || !row.HasPlot || string.IsNullOrEmpty(row.OreType) || row.Count <= 0)
+                return;
+
+            if (!_byArea.TryGetValue(areaId, out var plots))
+            {
+                plots = new Dictionary<PlotCoord, PlotData>();
+                _byArea[areaId] = plots;
+            }
+            if (!plots.TryGetValue(row.Plot, out var data))
+            {
+                data = new PlotData();
+                plots[row.Plot] = data;
+            }
+
+            data.RestoreOre(row.OreType, row.Count, row.Position, row.DepthBelowSurface, row.DepthMax);
+        }
+
+        /// <summary>
+        /// Records how far the sweep of <paramref name="areaId"/> has got, so a pass that stops
+        /// resumes from here (R25) instead of re-flying ground the sampled set already treats as
+        /// done. Held beside the samples on purpose — they are one fact about the pass.
+        /// </summary>
+        public void SetSweepCursor(int areaId, int plotIndex, int columnCursor)
+            => _cursorByArea[areaId] = new SweepCursor(plotIndex, columnCursor);
+
+        /// <summary>The sweep cursor for <paramref name="areaId"/>, or the origin when no pass has recorded one.</summary>
+        public SweepCursor SweepCursorFor(int areaId)
+            => _cursorByArea.TryGetValue(areaId, out var cursor) ? cursor : default;
+
+        /// <summary>
+        /// What the pass learned about one world column: its surface height, how many of its
+        /// blocks were sampled, and whether it rests on the world floor. Surface and bedrock are
+        /// nullable because either can be recorded without the other (the sensor records both,
+        /// but the record's API lets each be written alone), and "not observed" is a different
+        /// answer from "observed false" for the at-bedrock fold.
+        /// </summary>
+        private sealed class ColumnState
+        {
+            public int? SurfaceY;
+            public int SampledBlocks;
+            public bool? RestsOnBedrock;
         }
 
         /// <summary>Per-plot accumulation: total sampled blocks plus, per ore, count and shallowest sighting.</summary>
@@ -427,6 +582,20 @@ namespace AdvancedElectronics.Navigation
                     ore.DeepestDepth = depthBelowSurface;
             }
 
+            /// <summary>
+            /// Reinstates one ore's already-aggregated totals from a persisted row, rather than
+            /// replaying the blocks that produced them (the persisted record keeps counts, not
+            /// individual ore sightings). Used only by <see cref="RestoreFinding"/>.
+            /// </summary>
+            public void RestoreOre(string oreType, int count, BlockPos shallowestPos, int shallowestDepth, int deepestDepth)
+                => _ores[oreType] = new OreData
+                {
+                    Count = count,
+                    ShallowestDepth = shallowestDepth,
+                    ShallowestPos = shallowestPos,
+                    DeepestDepth = deepestDepth,
+                };
+
             public bool TryGetOre(string oreType, out int count, out int shallowestDepth, out BlockPos shallowestPos, out int deepestDepth)
             {
                 if (_ores.TryGetValue(oreType, out var ore))
@@ -453,5 +622,57 @@ namespace AdvancedElectronics.Navigation
                 public int DeepestDepth;
             }
         }
+    }
+
+    /// <summary>
+    /// One column of a survey pass as it crosses the persistence boundary (U7, R25): where the
+    /// column is, the surface the sensor found there, how many of its blocks the pass sampled,
+    /// and whether it rests on the world floor.
+    ///
+    /// The unit is a column rather than a block because the sensor scans a column top-down in
+    /// one call, so a count plus a surface names the same block set that listing every block
+    /// would — the difference between roughly 5 ints and roughly 75 per column, over every
+    /// column of every area a dock owns.
+    /// </summary>
+    public readonly struct SurveyColumnState
+    {
+        public SurveyColumnState(int x, int z, int? surfaceY, int sampledBlocks, bool? restsOnBedrock)
+        {
+            this.X = x;
+            this.Z = z;
+            this.SurfaceY = surfaceY;
+            this.SampledBlocks = sampledBlocks;
+            this.RestsOnBedrock = restsOnBedrock;
+        }
+
+        public int X { get; }
+        public int Z { get; }
+
+        /// <summary>The surface height recorded for this column, or null when none was.</summary>
+        public int? SurfaceY { get; }
+
+        /// <summary>How many blocks of this column the pass sampled, counting downward from <see cref="SurfaceY"/>.</summary>
+        public int SampledBlocks { get; }
+
+        /// <summary>Whether this column was observed to rest on the world floor, or null when it was not observed at all (U4).</summary>
+        public bool? RestsOnBedrock { get; }
+    }
+
+    /// <summary>
+    /// How far a survey sweep has got: which plot of the pass's raster order it is on, and which
+    /// column of that plot. Travels with the sampled-block set (U7) — a cursor without the
+    /// samples reports coverage the pass never earned, and samples without the cursor re-fly
+    /// ground the record already treats as done.
+    /// </summary>
+    public readonly struct SweepCursor
+    {
+        public SweepCursor(int plotIndex, int columnCursor)
+        {
+            this.PlotIndex = plotIndex;
+            this.ColumnCursor = columnCursor;
+        }
+
+        public int PlotIndex { get; }
+        public int ColumnCursor { get; }
     }
 }

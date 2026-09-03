@@ -629,5 +629,237 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.False(record.PlotRestsOnBedrock(AreaA, new PlotCoord(0, 0)));
             Assert.Empty(record.BedrockPlots(AreaA));
         }
+
+        // --- U7: a resurvey clears; a resumed pass does not (R10-R13, R25) ---
+
+        /// <summary>
+        /// Covers AE2, R12. The stale-findings fault, written as the failing case the U7
+        /// execution note asks for: a record that already holds a block, re-sampled after
+        /// that block changed. The clear a newly started pass performs (R10) has to reach
+        /// the SAMPLED-BLOCK set as well as the findings, or the second pass is silently
+        /// deduped against the first and reports material the ground no longer holds.
+        ///
+        /// A second area overlapping the same plot is what makes the fault reachable
+        /// rather than hypothetical (R35 allows exactly this): the sampled-block set was
+        /// area-blind, so clearing one area could not drop a block another area's geometry
+        /// still covered.
+        /// </summary>
+        [Fact]
+        public void ResampledBlockWhoseMaterialChanged_ReportsWhatTheNewPassSaw_NotWhatTheOldOneDid()
+        {
+            var record = new SurveyRecord(PlotSize);
+
+            record.RecordSample(4, 64, 4, Iron, 3, AreaA);
+            record.RecordSample(5, 64, 5, Iron, 3, AreaB); // AreaB covers plot (0, 0) too
+
+            // A player digs the iron out and backfills with limestone. The resurvey starts,
+            // clearing AreaA (R10), and samples the same block again.
+            record.ClearArea(AreaA);
+            record.RecordSample(4, 64, 4, Limestone, 3, AreaA);
+
+            Assert.False(record.MaterialFinding(AreaA, Iron).Found);
+            Assert.True(record.MaterialFinding(AreaA, Limestone).Found);
+            Assert.Equal(1f, record.Coverage(Area(AreaA, new PlotCoord(0, 0))));
+        }
+
+        /// <summary>
+        /// Sweeps one column the way <c>OreSensorComponent.SampleColumn</c> does: surface height,
+        /// at-bedrock observation, then <paramref name="depth"/> blocks downward from the surface,
+        /// with ore at <paramref name="oreDepth"/> if one is named. Column-shaped on purpose --
+        /// the persisted pass record is one row per column, so a test that samples loose blocks
+        /// would not exercise the shape that actually round-trips.
+        /// </summary>
+        private static void SweepColumn(SurveyRecord record, int areaId, int x, int z,
+            int surfaceY, int depth, string ore = null, int oreDepth = -1, bool restsOnBedrock = false)
+        {
+            record.RecordSurface(areaId, x, z, surfaceY);
+            record.RecordColumnBedrock(areaId, x, z, restsOnBedrock);
+            for (var d = 0; d < depth; d++)
+                record.RecordSample(x, surfaceY - d, z, d == oreDepth ? ore : null, d, areaId);
+        }
+
+        /// <summary>Rehydrates a fresh record from what the area would have persisted: the pass's columns, its findings rows, its cursor.</summary>
+        private static SurveyRecord Rehydrate(SurveyRecord source, int areaId, int plotSize)
+        {
+            var columns = source.PassColumns(areaId).ToList();
+            var rows = source.Findings(areaId).ToList();
+            var cursor = source.SweepCursorFor(areaId);
+
+            var restored = new SurveyRecord(plotSize);
+            foreach (var column in columns)
+                restored.RestorePassColumn(areaId, column);
+            foreach (var row in rows)
+                restored.RestoreFinding(areaId, row);
+            restored.SetSweepCursor(areaId, cursor.PlotIndex, cursor.ColumnCursor);
+            return restored;
+        }
+
+        /// <summary>
+        /// Covers AE7, R11. A newly started pass clears the area, so coverage reads zero however
+        /// complete the previous pass was, and climbs from there. It never shows a figure blending
+        /// the two passes.
+        /// </summary>
+        [Fact]
+        public void NewlyStartedPass_ReadsZeroCoverage_ThenClimbs()
+        {
+            var record = new SurveyRecord(PlotSize);
+            var area = Area(AreaA, new PlotCoord(0, 0), new PlotCoord(1, 0));
+
+            SweepColumn(record, AreaA, 0, 0, 64, 15, Iron, 3);
+            SweepColumn(record, AreaA, 8, 0, 64, 15);
+            Assert.Equal(1f, record.Coverage(area));
+
+            record.ClearArea(AreaA); // R10: a newly started resurvey
+
+            Assert.Equal(0f, record.Coverage(area));
+            Assert.Empty(record.Findings(AreaA));
+
+            SweepColumn(record, AreaA, 0, 0, 64, 15);
+            Assert.Equal(0.5f, record.Coverage(area));
+        }
+
+        /// <summary>
+        /// R25. A pass stopped at 40% resumes at 40%, not zero: the persisted per-column record
+        /// rebuilds the sampled-block set and the per-plot sampled counts, which is what coverage
+        /// is measured over.
+        /// </summary>
+        [Fact]
+        public void PassInterruptedAtFortyPercent_ResumesAtFortyPercent_NotZero()
+        {
+            var record = new SurveyRecord(PlotSize);
+            var area = Area(AreaA,
+                new PlotCoord(0, 0), new PlotCoord(1, 0), new PlotCoord(2, 0), new PlotCoord(3, 0), new PlotCoord(4, 0));
+
+            SweepColumn(record, AreaA, 0, 0, 64, 15, Iron, 2);
+            SweepColumn(record, AreaA, 8, 0, 70, 15);
+            record.SetSweepCursor(AreaA, 2, 0);
+            Assert.Equal(0.4f, record.Coverage(area));
+
+            var resumed = Rehydrate(record, AreaA, PlotSize);
+
+            Assert.Equal(0.4f, resumed.Coverage(area));
+            Assert.Equal(2, resumed.SweepCursorFor(AreaA).PlotIndex);
+            Assert.Equal(0, resumed.SweepCursorFor(AreaA).ColumnCursor);
+        }
+
+        /// <summary>
+        /// R25. A resumed pass does not re-sample blocks the stopped pass recorded: the rebuilt
+        /// sampled-block set still dedupes them, so ground already covered cannot be counted twice
+        /// (nor, with the cursor, re-flown).
+        /// </summary>
+        [Fact]
+        public void ResumedPass_DoesNotReSampleBlocksTheStoppedPassRecorded()
+        {
+            var record = new SurveyRecord(PlotSize);
+            SweepColumn(record, AreaA, 0, 0, 64, 15, Iron, 2);
+
+            var resumed = Rehydrate(record, AreaA, PlotSize);
+            var before = resumed.Findings(AreaA).Single(f => f.OreType == Iron);
+
+            // The drone flies the same column again -- the block is already recorded, so nothing
+            // moves: not the count, not the sampled denominator behind the concentration.
+            for (var d = 0; d < 15; d++)
+                resumed.RecordSample(0, 64 - d, 0, d == 2 ? Iron : null, d, AreaA);
+
+            var after = resumed.Findings(AreaA).Single(f => f.OreType == Iron);
+            Assert.Equal(before.Count, after.Count);
+            Assert.Equal(before.Concentration, after.Concentration);
+        }
+
+        /// <summary>
+        /// R25. The record round-trips through its projection with its sampled set, its column
+        /// observations and its cursor intact -- the whole of what a stopped pass knew.
+        /// </summary>
+        [Fact]
+        public void Record_RoundTripsThroughItsProjection_WithSampledSetAndCursorIntact()
+        {
+            var record = new SurveyRecord(TinyPlot);
+            SweepColumn(record, AreaA, 0, 0, 64, 4, Iron, 1, restsOnBedrock: true);
+            SweepColumn(record, AreaA, 1, 0, 64, 4, restsOnBedrock: true);
+            SweepColumn(record, AreaA, 0, 1, 64, 4, restsOnBedrock: true);
+            SweepColumn(record, AreaA, 1, 1, 64, 4, restsOnBedrock: true);
+            record.SetSweepCursor(AreaA, 1, 3);
+
+            var restored = Rehydrate(record, AreaA, TinyPlot);
+
+            Assert.Equal(record.Coverage(Area(AreaA, new PlotCoord(0, 0))), restored.Coverage(Area(AreaA, new PlotCoord(0, 0))));
+            Assert.Equal(record.MedianSurfaceLevel(AreaA), restored.MedianSurfaceLevel(AreaA));
+            Assert.True(restored.PlotRestsOnBedrock(AreaA, new PlotCoord(0, 0)));
+            Assert.Equal(new[] { new PlotCoord(0, 0) }, restored.BedrockPlots(AreaA).ToArray());
+            Assert.Equal(1, restored.SweepCursorFor(AreaA).PlotIndex);
+            Assert.Equal(3, restored.SweepCursorFor(AreaA).ColumnCursor);
+
+            var before = record.Findings(AreaA).Single();
+            var after = restored.Findings(AreaA).Single();
+            Assert.Equal(before.OreType, after.OreType);
+            Assert.Equal(before.Count, after.Count);
+            Assert.Equal(before.Position, after.Position);
+            Assert.Equal(before.DepthBelowSurface, after.DepthBelowSurface);
+            Assert.Equal(before.DepthMax, after.DepthMax);
+            Assert.Equal(before.Concentration, after.Concentration);
+        }
+
+        /// <summary>
+        /// R25. A rehydrated record does not clobber the persisted findings snapshot it was
+        /// rehydrated from. The dock projects the LIVE record back over the area every readout
+        /// tick, so a record restored with samples but WITHOUT their findings would read as
+        /// covered-and-empty and overwrite a good snapshot with nothing on the first tick after a
+        /// restart. Restoring both halves is what makes the write-back a no-op.
+        /// </summary>
+        [Fact]
+        public void RehydratedRecord_ProjectsBackThePersistedFindings_NotAnEmptySnapshot()
+        {
+            var record = new SurveyRecord(PlotSize);
+            SweepColumn(record, AreaA, 0, 0, 64, 15, Iron, 2);
+            SweepColumn(record, AreaA, 8, 0, 64, 15, Gold, 5);
+            var persisted = record.Findings(AreaA).ToList();
+
+            var restored = Rehydrate(record, AreaA, PlotSize);
+            var writtenBack = restored.Findings(AreaA).ToList();
+
+            Assert.Equal(persisted.Count, writtenBack.Count);
+            Assert.NotEmpty(writtenBack);
+            foreach (var row in persisted)
+                Assert.Contains(writtenBack, w => w.Plot.Equals(row.Plot) && w.OreType == row.OreType && w.Count == row.Count);
+
+            // And the empty case the persist guard is there for stays empty, so the guard still fires.
+            Assert.Empty(new SurveyRecord(PlotSize).Findings(AreaA));
+        }
+
+        /// <summary>
+        /// Covers AE3, R13. The inversion the plan flags as most likely to be coded backwards: a
+        /// resurvey clears the area's findings and leaves the MINED stamps, so an area mined at
+        /// 200 and resurveyed at 300 is mineable again -- 300 has a 200 left to postdate.
+        ///
+        /// Mirrors the sequence <c>SurveyAreaEntry.ClearFindings</c> performs on the Eco side,
+        /// where the guarantee is structural: the clear touches Findings, SurveyedStamps,
+        /// BedrockPlotCoords and the sweep, and never MinedStamps.
+        /// </summary>
+        [Fact]
+        public void Resurvey_ClearsTheFindings_AndLeavesTheMinedStamps()
+        {
+            var plot = new PlotCoord(0, 0);
+            var record = new SurveyRecord(PlotSize);
+            var surveyed = new PlotStampAccumulator();
+            var mined = new PlotStampAccumulator();
+
+            SweepColumn(record, AreaA, 0, 0, 64, 15, Iron, 2);
+            surveyed.Record(plot, 100);
+            mined.Record(plot, 200);
+            Assert.False(PlotFreshness.IsMineable(surveyed.StampFor(plot), mined.StampFor(plot)));
+
+            // A newly started resurvey: findings, live record and surveyed stamps go (R10); the
+            // mined stamps are not among the things a survey may falsify (R13).
+            record.ClearArea(AreaA);
+            surveyed = new PlotStampAccumulator();
+
+            Assert.Empty(record.Findings(AreaA));
+            Assert.Equal(200, mined.StampFor(plot));
+
+            // The pass completes at 300 and the area is mineable again.
+            surveyed.Record(plot, 300);
+            Assert.Equal(200, mined.StampFor(plot));
+            Assert.True(PlotFreshness.IsMineable(surveyed.StampFor(plot), mined.StampFor(plot)));
+        }
     }
 }
