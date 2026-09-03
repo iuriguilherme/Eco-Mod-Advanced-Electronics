@@ -148,9 +148,12 @@ namespace Eco.Mods.TechTree
             // Raster order (by Z then X) gives a stable, roughly lawn-mower visitation. The
             // resumed cursor indexes into THIS list, which is why a redraw clears the pass --
             // the same index would name a different plot.
-            this.plots = entry.ToSurveyArea().EnumeratePlots()
-                .OrderBy(p => p.Z).ThenBy(p => p.X)
-                .ToList();
+            //
+            // The order comes from SweepOrder rather than an OrderBy written here, because since
+            // U8 a second caller depends on it meaning the same thing: an outside change resets
+            // plots and has to rewind the cursor to the earliest of them, which it can only do by
+            // knowing where in this exact order they sit.
+            this.plots = SweepOrder.RasterOrder(entry.ToSurveyArea().EnumeratePlots()).ToList();
 
             // Clamped rather than trusted: a persisted cursor outliving a change to the plot list
             // must land the sweep somewhere real, and "past the end" is the finished sweep, which

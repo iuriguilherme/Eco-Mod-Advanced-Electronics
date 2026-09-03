@@ -214,14 +214,16 @@ namespace Eco.Mods.TechTree
                     // terminal, TryGetNextTarget reports no target, and the lifecycle's
                     // return-to-dock branch fires unchanged. No second homecoming route is added.
                     //
-                    // The end reason is AreaGone because that is the path, and MiningEndReason
-                    // has no member for this. The panel does not repeat that word: an assignment
-                    // that resolves but is out of range outranks the job's end reason in
-                    // MiningReadout.FormatBlockedReason, so the player reads "out of range" about
-                    // an area still plainly on the map (R23).
+                    // The end reason is its own member. It used to be AreaGone -- the path, borrowed
+                    // for want of a word -- and the panel corrected it, because an assignment that
+                    // resolves but is out of range outranks the job's end reason in
+                    // MiningReadout.FormatBlockedReason. But the panel is not the only reader:
+                    // /drone state prints job.EndReason directly, and it said the area was gone
+                    // about an area plainly still on the map (R23). A borrowed member is only
+                    // correct in the one place that knows to override it.
                     if (owningDock != null && !this.homeDock.IsInDockNetwork(owningDock))
                     {
-                        this.job.End(MiningEndReason.AreaGone);
+                        this.job.End(MiningEndReason.AreaOutOfRange);
                         return null;
                     }
 
@@ -357,13 +359,27 @@ namespace Eco.Mods.TechTree
                 return ParkedWorkOutcome.StillWorking;
             }
 
-            var result = this.removalService.Remove(
-                removable.Select(c => (c.Position, c.Classification)).ToList(),
-                this.homeDock.StampedCitizen,
-                this.tool,
-                this.hold,
-                this.yieldTable,
-                this.classifier);
+            // U8, R17/R43: mark this write as the mod's own before the pack runs. The engine's
+            // top-block-changed event does not name its writer, and the blocks are actually
+            // deleted by the pack's post-effects -- which run synchronously on THIS thread inside
+            // TryPerform -- so an ambient thread-scoped attribution is what carries "the drone did
+            // this, serving area N of dock D" across the frames in between.
+            //
+            // Without it the mod's own digging looks exactly like a player's to the handler, and
+            // the area it is being dug for would unsurvey itself plot by plot as the drone worked
+            // -- losing the findings that are the whole reason the player can see what was taken.
+            RemovalResult result;
+            using (ModGroundWrite.Attribute(GroundWriteAttribution.ByDrone(
+                       this.areaRef.OwningDockId.ToString(), this.areaRef.AreaId, AreaKind.Mining)))
+            {
+                result = this.removalService.Remove(
+                    removable.Select(c => (c.Position, c.Classification)).ToList(),
+                    this.homeDock.StampedCitizen,
+                    this.tool,
+                    this.hold,
+                    this.yieldTable,
+                    this.classifier);
+            }
 
             if (result.Outcome == RemovalOutcome.Refused && !this.hold.IsEmpty)
             {

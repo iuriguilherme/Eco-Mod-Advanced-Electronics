@@ -674,6 +674,12 @@ namespace Eco.Mods.TechTree
                     new() { TypeName = nameof(SteelGearItem), Quantity = 2},
                 });
             }
+
+            // U8, KTD7: watch for ground changing under this dock's areas, and register the
+            // detach on the dock's destroy path in the same call. LAST in Initialize on purpose --
+            // a throw above aborts the rest of it and leaves a half-built dock behind, and a
+            // half-built dock that never subscribed is the harmless version of that.
+            this.SubscribeToGroundChanges();
         }
 
         /// <summary>

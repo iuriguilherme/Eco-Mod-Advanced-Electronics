@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using AdvancedElectronics.Navigation;
 using Xunit;
 
@@ -860,6 +860,128 @@ namespace AdvancedElectronics.Navigation.Tests
             surveyed.Record(plot, 300);
             Assert.Equal(200, mined.StampFor(plot));
             Assert.True(PlotFreshness.IsMineable(surveyed.StampFor(plot), mined.StampFor(plot)));
+        }
+
+        // ---------------------------------------------------------------- U8: forgetting one plot
+
+        /// <summary>
+        /// R16, U8 step 3. Forgetting one plot drops that plot's findings and leaves every other
+        /// plot's alone -- the per-plot rows are what make a targeted reset possible at all.
+        /// </summary>
+        [Fact]
+        public void ForgetPlot_DropsThatPlotsFindings_AndLeavesTheOtherPlotsAlone()
+        {
+            var record = new SurveyRecord(PlotSize);
+            SweepColumn(record, AreaA, 0, 0, 64, 15, Iron, 3);    // plot (0,0)
+            SweepColumn(record, AreaA, 8, 0, 64, 15, Gold, 3);    // plot (1,0)
+            SweepColumn(record, AreaA, 16, 0, 64, 15, Limestone, 3); // plot (2,0)
+
+            record.ForgetPlot(AreaA, new PlotCoord(1, 0));
+
+            var ores = record.Findings(AreaA).Select(f => f.OreType).ToList();
+            Assert.Contains(Iron, ores);
+            Assert.Contains(Limestone, ores);
+            Assert.DoesNotContain(Gold, ores);
+        }
+
+        /// <summary>
+        /// R16, U8. Coverage drops in proportion to the plots forgotten, not to zero. The
+        /// whole point of a per-plot reset is that the rest of the area keeps what it knows.
+        /// </summary>
+        [Fact]
+        public void ForgetPlot_CoverageDropsInProportion_NotToZero()
+        {
+            var record = new SurveyRecord(PlotSize);
+            var area = Area(AreaA,
+                new PlotCoord(0, 0), new PlotCoord(1, 0), new PlotCoord(2, 0), new PlotCoord(3, 0));
+
+            for (var i = 0; i < 4; i++)
+                SweepColumn(record, AreaA, i * PlotSize, 0, 64, 15);
+            Assert.Equal(1f, record.Coverage(area));
+
+            record.ForgetPlot(AreaA, new PlotCoord(1, 0));
+
+            Assert.Equal(0.75f, record.Coverage(area));
+        }
+
+        /// <summary>
+        /// U8 step 4, and the fault it exists to prevent. <see cref="SurveyRecord.RecordSample"/>
+        /// is idempotent per exact block, so a plot that is marked unsurveyed but LEFT in the
+        /// sample record is skipped by every later pass -- an area that reads unsurveyed and can
+        /// never be re-read. Forgetting the plot has to drop its sampled blocks, not merely its
+        /// findings, or the reset is cosmetic.
+        /// </summary>
+        [Fact]
+        public void ForgetPlot_TheNextPassReSamplesIt_RatherThanSkippingItAsAlreadySeen()
+        {
+            var record = new SurveyRecord(PlotSize);
+            var area = Area(AreaA, new PlotCoord(0, 0), new PlotCoord(1, 0));
+            SweepColumn(record, AreaA, 0, 0, 64, 15, Iron, 3);
+            SweepColumn(record, AreaA, 8, 0, 64, 15, Gold, 3);
+
+            record.ForgetPlot(AreaA, new PlotCoord(0, 0));
+            Assert.Equal(0.5f, record.Coverage(area));
+
+            // The next pass flies exactly the same columns it flew before.
+            SweepColumn(record, AreaA, 0, 0, 64, 15, Iron, 3);
+
+            Assert.Equal(1f, record.Coverage(area));
+            Assert.Contains(record.Findings(AreaA), f => f.OreType == Iron && f.Plot.Equals(new PlotCoord(0, 0)));
+        }
+
+        /// <summary>
+        /// U8 step 4. The plot's column observations go with its samples: a bedrock observation is
+        /// a claim about ground that has just changed, so a pass that has not re-walked the plot
+        /// must not be able to answer for it.
+        /// </summary>
+        [Fact]
+        public void ForgetPlot_DropsItsColumnObservations_SoBedrockIsNoLongerRestatedForIt()
+        {
+            var record = new SurveyRecord(TinyPlot);
+            SweepColumn(record, AreaA, 0, 0, 64, 4, restsOnBedrock: true);
+            SweepColumn(record, AreaA, 1, 0, 64, 4, restsOnBedrock: true);
+            SweepColumn(record, AreaA, 0, 1, 64, 4, restsOnBedrock: true);
+            SweepColumn(record, AreaA, 1, 1, 64, 4, restsOnBedrock: true);
+            Assert.True(record.PlotRestsOnBedrock(AreaA, new PlotCoord(0, 0)));
+
+            record.ForgetPlot(AreaA, new PlotCoord(0, 0));
+
+            Assert.False(record.PlotRestsOnBedrock(AreaA, new PlotCoord(0, 0)));
+            Assert.Empty(record.BedrockPlots(AreaA));
+            Assert.Empty(record.PassColumns(AreaA));
+        }
+
+        /// <summary>
+        /// R35. The sampled set is keyed by area, so forgetting a plot in one area leaves another
+        /// area covering the same ground untouched -- which is what stops one dock's reset
+        /// silently unsurveying a neighbour's.
+        /// </summary>
+        [Fact]
+        public void ForgetPlot_LeavesAnotherAreaCoveringTheSameGroundAlone()
+        {
+            var record = new SurveyRecord(PlotSize);
+            var plot = new PlotCoord(0, 0);
+            SweepColumn(record, AreaA, 0, 0, 64, 15, Iron, 3);
+            SweepColumn(record, AreaB, 0, 0, 64, 15, Iron, 3);
+
+            record.ForgetPlot(AreaA, plot);
+
+            Assert.Empty(record.Findings(AreaA));
+            Assert.Equal(1f, record.Coverage(Area(AreaB, plot)));
+            Assert.NotEmpty(record.Findings(AreaB));
+        }
+
+        /// <summary>Forgetting a plot no pass ever touched, or an area with no record at all, is a no-op rather than a throw.</summary>
+        [Fact]
+        public void ForgetPlot_OnUnknownGround_IsANoOp()
+        {
+            var record = new SurveyRecord(PlotSize);
+            record.ForgetPlot(AreaA, new PlotCoord(9, 9));
+
+            SweepColumn(record, AreaA, 0, 0, 64, 15, Iron, 3);
+            record.ForgetPlot(AreaA, new PlotCoord(9, 9));
+
+            Assert.NotEmpty(record.Findings(AreaA));
         }
     }
 }

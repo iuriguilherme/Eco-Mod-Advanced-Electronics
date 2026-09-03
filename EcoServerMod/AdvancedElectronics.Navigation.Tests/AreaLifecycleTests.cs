@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using AdvancedElectronics.Navigation;
@@ -601,6 +601,328 @@ namespace AdvancedElectronics.Navigation.Tests
 
                 if (i < 0) yield break;
             }
+        }
+
+        // ================================================================
+        // U8: reacting to ground the mod did not change (R16, R17, R43, AE16).
+        // ================================================================
+
+        private const int PlotSide = 8;
+        private const int AreaOne = 1;
+        private const int AreaTwo = 2;
+        private const string Iron = "IronOre";
+        private const string Gold = "GoldOre";
+
+        /// <summary>A strip of plots (0,0)..(n-1,0), spanning world x 0..8n-1.</summary>
+        private static IReadOnlyList<PlotCoord> Strip(int count) =>
+            Enumerable.Range(0, count).Select(i => new PlotCoord(i, 0)).ToList();
+
+        private static GroundWriteAttribution MiningDroneOn(string ownerDockId, int areaId) =>
+            GroundWriteAttribution.ByDrone(ownerDockId, areaId, AreaKind.Mining);
+
+        private static GroundWriteAttribution FarmingDroneOn(string ownerDockId, int areaId) =>
+            GroundWriteAttribution.ByDrone(ownerDockId, areaId, AreaKind.Farming);
+
+        // ---- which plots a changed column reaches ----
+
+        /// <summary>
+        /// Covers AE16, R16. One hand-dug block inside a large area maps to exactly one of its
+        /// plots. The mapping is the ordinary world-column-to-plot fold, so a column on a plot
+        /// boundary belongs to the plot that starts there.
+        /// </summary>
+        [Fact]
+        public void OneChangedColumn_ReachesOnlyThePlotThatContainsIt()
+        {
+            var affected = GroundChange.AffectedPlots(Strip(4), new[] { (X: 9, Z: 3) }, PlotSide);
+
+            Assert.Equal(new[] { new PlotCoord(1, 0) }, affected);
+        }
+
+        /// <summary>R16. A map-editor edit spanning three plots reaches exactly those three.</summary>
+        [Fact]
+        public void AnEditSpanningThreePlots_ReachesExactlyThoseThree()
+        {
+            var affected = GroundChange.AffectedPlots(
+                Strip(6),
+                new[] { (X: 1, Z: 0), (X: 9, Z: 1), (X: 10, Z: 2), (X: 20, Z: 0) },
+                PlotSide);
+
+            Assert.Equal(3, affected.Count);
+            Assert.Contains(new PlotCoord(0, 0), affected);
+            Assert.Contains(new PlotCoord(1, 0), affected);
+            Assert.Contains(new PlotCoord(2, 0), affected);
+        }
+
+        /// <summary>R16. A change outside every plot of the area reaches nothing at all.</summary>
+        [Fact]
+        public void AChangeOutsideEveryPlot_ReachesNothing()
+        {
+            var affected = GroundChange.AffectedPlots(Strip(4), new[] { (X: 900, Z: 900) }, PlotSide);
+
+            Assert.Empty(affected);
+        }
+
+        // ---- attributing the change before choosing the reset ----
+
+        /// <summary>
+        /// Covers AE16, R16. A write the mod cannot account for -- a player digging, an admin
+        /// command, a map-editor paste -- resets the plots it touched.
+        /// </summary>
+        [Fact]
+        public void AnUnattributedWrite_ResetsTheAreaItTouched()
+        {
+            Assert.Equal(
+                GroundChangeVerdict.ResetToUnsurveyed,
+                GroundChange.VerdictFor(GroundWriteAttribution.Outside, DockA, AreaOne, AreaKind.Mining));
+        }
+
+        /// <summary>
+        /// R17, R43. A mining drone digging its own dock's area records that area's own state --
+        /// the mined stamps already say the survey is stale, and the findings stay so the player
+        /// can still see what was taken.
+        /// </summary>
+        [Fact]
+        public void AMiningDroneOnItsOwnArea_IsRecordedAsOwnWork_NotAReset()
+        {
+            Assert.Equal(
+                GroundChangeVerdict.RecordedAsOwnWork,
+                GroundChange.VerdictFor(MiningDroneOn(DockA, AreaOne), DockA, AreaOne, AreaKind.Mining));
+        }
+
+        /// <summary>
+        /// R43's second half. A drone changing ground that belongs to a DIFFERENT dock's area of
+        /// the same kind still falls to R16 there: whether a survey still holds is a question
+        /// about the ground, not about who changed it.
+        /// </summary>
+        [Fact]
+        public void AMiningDroneOnAnotherDocksMiningArea_StillResetsThatArea()
+        {
+            Assert.Equal(
+                GroundChangeVerdict.ResetToUnsurveyed,
+                GroundChange.VerdictFor(MiningDroneOn(DockA, AreaOne), DockB, AreaOne, AreaKind.Mining));
+        }
+
+        /// <summary>R43. Same dock, different area of the same kind: still that area's ground changing under it.</summary>
+        [Fact]
+        public void AMiningDroneOnADifferentAreaOfTheSameDock_StillResetsThatArea()
+        {
+            Assert.Equal(
+                GroundChangeVerdict.ResetToUnsurveyed,
+                GroundChange.VerdictFor(MiningDroneOn(DockA, AreaOne), DockA, AreaTwo, AreaKind.Mining));
+        }
+
+        /// <summary>
+        /// R43. A write is attributed to the area whose KIND it serves. Ground two areas cover at
+        /// once -- handed-over plots are exactly that -- records the state of the work actually
+        /// being done on it, so a farming write does not unsurvey the mining area underneath.
+        /// </summary>
+        [Fact]
+        public void AFarmingWriteOnFarmland_DoesNotUnsurveyTheMiningAreaCoveringTheSameGround()
+        {
+            Assert.Equal(
+                GroundChangeVerdict.RecordedAsOwnWork,
+                GroundChange.VerdictFor(FarmingDroneOn(DockA, AreaOne), DockA, AreaOne, AreaKind.Farming));
+
+            Assert.Equal(
+                GroundChangeVerdict.NotThisKindsWork,
+                GroundChange.VerdictFor(FarmingDroneOn(DockA, AreaOne), DockA, AreaTwo, AreaKind.Mining));
+
+            Assert.False(GroundChange.RequiresReset(
+                GroundChange.VerdictFor(FarmingDroneOn(DockA, AreaOne), DockB, AreaTwo, AreaKind.Mining)));
+        }
+
+        /// <summary>Only one verdict asks for a reset, and the reset path keys off exactly that.</summary>
+        [Fact]
+        public void OnlyTheResetVerdict_RequiresAReset()
+        {
+            foreach (var verdict in Enum.GetValues(typeof(GroundChangeVerdict)).Cast<GroundChangeVerdict>())
+                Assert.Equal(verdict == GroundChangeVerdict.ResetToUnsurveyed, GroundChange.RequiresReset(verdict));
+        }
+
+        // ---- the scope that marks the mod's own writes ----
+
+        /// <summary>
+        /// The engine's block-write event does not name its writer, so the mod marks its own
+        /// writes as it makes them. Outside the scope there is no attribution, which is what makes
+        /// every other writer in the world read as outside.
+        /// </summary>
+        [Fact]
+        public void OutsideAnyScope_TheCurrentAttribution_IsOutside()
+        {
+            Assert.False(ModGroundWrite.Current.IsModsOwn);
+            Assert.Equal(GroundChangeVerdict.ResetToUnsurveyed,
+                GroundChange.VerdictFor(ModGroundWrite.Current, DockA, AreaOne, AreaKind.Mining));
+        }
+
+        /// <summary>The scope attributes writes while it is open and releases the attribution when it closes.</summary>
+        [Fact]
+        public void AScope_AttributesWhileOpen_AndReleasesOnDispose()
+        {
+            using (ModGroundWrite.Attribute(MiningDroneOn(DockA, AreaOne)))
+            {
+                Assert.True(ModGroundWrite.Current.IsModsOwn);
+                Assert.Equal(AreaOne, ModGroundWrite.Current.ServedAreaId);
+                Assert.Equal(DockA, ModGroundWrite.Current.ServedAreaOwnerId);
+                Assert.Equal(AreaKind.Mining, ModGroundWrite.Current.ServedKind);
+            }
+
+            Assert.False(ModGroundWrite.Current.IsModsOwn);
+        }
+
+        /// <summary>A nested scope restores the one it replaced rather than clearing the attribution outright.</summary>
+        [Fact]
+        public void ANestedScope_RestoresTheOneItReplaced()
+        {
+            using (ModGroundWrite.Attribute(MiningDroneOn(DockA, AreaOne)))
+            {
+                using (ModGroundWrite.Attribute(FarmingDroneOn(DockB, AreaTwo)))
+                    Assert.Equal(AreaTwo, ModGroundWrite.Current.ServedAreaId);
+
+                Assert.True(ModGroundWrite.Current.IsModsOwn);
+                Assert.Equal(AreaOne, ModGroundWrite.Current.ServedAreaId);
+                Assert.Equal(AreaKind.Mining, ModGroundWrite.Current.ServedKind);
+            }
+
+            Assert.False(ModGroundWrite.Current.IsModsOwn);
+        }
+
+        // ---- the sweep cursor a reset has to rewind ----
+
+        /// <summary>
+        /// U8 step 4's other half. The sweep cursor is a monotonic index into the raster-ordered
+        /// plot list, so a plot reset BEHIND the cursor would never be revisited by the pass now
+        /// running -- unsurveyed, and never re-read. The reset rewinds to the earliest plot it
+        /// dropped.
+        /// </summary>
+        [Fact]
+        public void AResetBehindTheCursor_RewindsTheSweepToTheEarliestPlotItDropped()
+        {
+            var order = SweepOrder.RasterOrder(Strip(6));
+
+            var rewound = SweepOrder.RewindIndex(
+                order, new[] { new PlotCoord(4, 0), new PlotCoord(1, 0) }, currentPlotIndex: 5);
+
+            Assert.Equal(1, rewound);
+        }
+
+        /// <summary>A reset AHEAD of the cursor costs nothing: the pass has not got there yet.</summary>
+        [Fact]
+        public void AResetAheadOfTheCursor_LeavesTheSweepWhereItIs()
+        {
+            var order = SweepOrder.RasterOrder(Strip(6));
+
+            Assert.Equal(2, SweepOrder.RewindIndex(order, new[] { new PlotCoord(4, 0) }, currentPlotIndex: 2));
+        }
+
+        /// <summary>A plot the area does not contain cannot move the cursor.</summary>
+        [Fact]
+        public void APlotOutsideTheArea_CannotMoveTheSweepCursor()
+        {
+            var order = SweepOrder.RasterOrder(Strip(6));
+
+            Assert.Equal(3, SweepOrder.RewindIndex(order, new[] { new PlotCoord(40, 40) }, currentPlotIndex: 3));
+        }
+
+        /// <summary>Raster order is by Z then X -- the order the sweep itself visits plots in.</summary>
+        [Fact]
+        public void RasterOrder_IsByZThenX()
+        {
+            var order = SweepOrder.RasterOrder(new[]
+            {
+                new PlotCoord(1, 1), new PlotCoord(0, 1), new PlotCoord(1, 0), new PlotCoord(0, 0),
+            });
+
+            Assert.Equal(
+                new[] { new PlotCoord(0, 0), new PlotCoord(1, 0), new PlotCoord(0, 1), new PlotCoord(1, 1) },
+                order);
+        }
+
+        // ---- the whole reaction, end to end over the pure half ----
+
+        /// <summary>
+        /// Covers AE16. A player digs one block inside a large surveyed area. Only the plot holding
+        /// that block returns to unsurveyed; the rest of the area keeps its findings, its coverage
+        /// falls by one plot's worth rather than to zero, and the area reads `[unsurveyed]` because
+        /// one unsurveyed plot outranks everything else on the ladder (R3).
+        /// </summary>
+        [Fact]
+        public void AHandDugBlock_ResetsOnlyItsPlot_AndTheRestOfTheAreaKeepsItsFindings()
+        {
+            var plots = Strip(4);
+            var area = new SurveyArea(AreaOne, "big area", plots);
+            var record = new SurveyRecord(PlotSide);
+            var surveyed = new PlotStampAccumulator();
+
+            for (var i = 0; i < 4; i++)
+            {
+                var x = i * PlotSide;
+                record.RecordSurface(AreaOne, x, 0, 64);
+                record.RecordSample(x, 64, 0, i == 1 ? Gold : Iron, 0, AreaOne);
+                surveyed.Record(new PlotCoord(i, 0), 100);
+            }
+            Assert.Equal(1f, record.Coverage(area));
+            Assert.Equal(AreaLifecycleStatus.Surveyed,
+                AreaLifecycle.DeriveStatus(plots, surveyed.StampFor, _ => 0L, Ledger()));
+
+            // One block, dug by hand, inside plot (1,0). Nothing marked it, so it is outside work.
+            var affected = GroundChange.AffectedPlots(plots, new[] { (X: 9, Z: 3) }, PlotSide);
+            Assert.Single(affected);
+            Assert.True(GroundChange.RequiresReset(
+                GroundChange.VerdictFor(ModGroundWrite.Current, DockA, AreaOne, AreaKind.Mining)));
+
+            var reset = new HashSet<PlotCoord>(affected);
+            foreach (var plot in affected)
+                record.ForgetPlot(AreaOne, plot);
+
+            Assert.Equal(0.75f, record.Coverage(area));
+            Assert.DoesNotContain(record.Findings(AreaOne), f => f.OreType == Gold);
+            Assert.Equal(3, record.Findings(AreaOne).Count(f => f.OreType == Iron));
+            Assert.Equal(
+                AreaLifecycleStatus.Unsurveyed,
+                AreaLifecycle.DeriveStatus(
+                    plots,
+                    plot => reset.Contains(plot) ? 0L : surveyed.StampFor(plot),
+                    _ => 0L,
+                    Ledger()));
+        }
+
+        /// <summary>
+        /// R17. The mod's own mining dig marks the area `[mined]` through the stamps alone and
+        /// leaves its findings and its coverage intact -- the player can still see what was there
+        /// before it was taken.
+        /// </summary>
+        [Fact]
+        public void TheModsOwnDig_MarksTheAreaMined_AndLeavesItsFindingsAndCoverageIntact()
+        {
+            var plots = Strip(3);
+            var area = new SurveyArea(AreaOne, "mining area", plots);
+            var record = new SurveyRecord(PlotSide);
+            var surveyed = new PlotStampAccumulator();
+            var mined = new PlotStampAccumulator();
+
+            for (var i = 0; i < 3; i++)
+            {
+                record.RecordSurface(AreaOne, i * PlotSide, 0, 64);
+                record.RecordSample(i * PlotSide, 64, 0, Iron, 0, AreaOne);
+                surveyed.Record(new PlotCoord(i, 0), 100);
+            }
+
+            // The drone digs, with its own write marked as it is made.
+            using (ModGroundWrite.Attribute(MiningDroneOn(DockA, AreaOne)))
+            {
+                var verdict = GroundChange.VerdictFor(ModGroundWrite.Current, DockA, AreaOne, AreaKind.Mining);
+                Assert.Equal(GroundChangeVerdict.RecordedAsOwnWork, verdict);
+                Assert.False(GroundChange.RequiresReset(verdict));
+            }
+
+            // What the dig does record is the mined stamp -- R17's whole mechanism.
+            foreach (var plot in plots) mined.Record(plot, 200);
+
+            Assert.Equal(1f, record.Coverage(area));
+            Assert.Equal(3, record.Findings(AreaOne).Count(f => f.OreType == Iron));
+            Assert.Equal(
+                AreaLifecycleStatus.Mined,
+                AreaLifecycle.DeriveStatus(plots, surveyed.StampFor, mined.StampFor, Ledger()));
         }
     }
 }

@@ -453,6 +453,42 @@ namespace AdvancedElectronics.Navigation
             _byArea.Remove(areaId);
         }
 
+        /// <summary>
+        /// Discards everything this record holds about ONE plot of <paramref name="areaId"/>
+        /// (U8, R16): its findings, its column observations, and the sampled blocks that dedupe
+        /// it. Used when ground the mod did not change moves under a surveyed plot, which is why
+        /// it is a plot and not an area -- the rest of the area still describes its own ground,
+        /// and <see cref="Coverage"/> therefore falls by that plot's share rather than to zero.
+        ///
+        /// <para>
+        /// <b>Dropping the sampled BLOCKS is the load-bearing half</b>, exactly as it is in
+        /// <see cref="ClearArea"/>. <see cref="RecordSample"/> is idempotent per exact block, so a
+        /// plot whose findings are gone but whose blocks are still in the set is skipped by every
+        /// later pass -- a plot that reads unsurveyed and can never be re-read. Since U7 that set
+        /// survives a restart, so getting this half wrong makes the stale-findings fault durable
+        /// rather than intermittent.
+        /// </para>
+        /// <para>
+        /// Scoped to one area: two areas may cover the same ground (R35), and the sampled set is
+        /// keyed by area precisely so one area's reset cannot reach into another's.
+        /// </para>
+        /// </summary>
+        public void ForgetPlot(int areaId, PlotCoord plot)
+        {
+            if (_byArea.TryGetValue(areaId, out var plots))
+                plots.Remove(plot);
+
+            if (_columnsByArea.TryGetValue(areaId, out var columns))
+                foreach (var key in columns.Keys.Where(k => InPlot(k.X, k.Z, plot)).ToList())
+                    columns.Remove(key);
+
+            if (_sampledBlocks.TryGetValue(areaId, out var blocks))
+                blocks.RemoveWhere(b => InPlot(b.X, b.Z, plot));
+        }
+
+        private bool InPlot(int x, int z, PlotCoord plot) =>
+            PlotCoord.FromWorldColumn(x, z, _plotSize).Equals(plot);
+
         // --- The pass projection: what the Eco side persists on the area so a stopped pass
         //     resumes instead of restarting (U7, R25). ---
 

@@ -1,8 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Utils;
 using Eco.Shared.Serialization;
+using Eco.Shared.Voxel;
 
 namespace Eco.Mods.TechTree
 {
@@ -363,6 +365,137 @@ namespace Eco.Mods.TechTree
             this.SurveyedStamps = new ThreadSafeList<long>();
             this.BedrockPlotCoords = new ThreadSafeList<int>();
             this.ClearSweep();
+        }
+
+        /// <summary>True when this area covers <paramref name="plot"/>. Scans the flat pair list rather than building a set: this is on the world's block-write path (U8).</summary>
+        public bool CoversPlot(PlotCoord plot)
+        {
+            for (var i = 0; i + 1 < this.PlotCoords.Count; i += 2)
+                if (this.PlotCoords[i] == plot.X && this.PlotCoords[i + 1] == plot.Z)
+                    return true;
+            return false;
+        }
+
+        /// <summary>
+        /// True when this area holds anything a reset could take. The cheap first gate on the
+        /// block-write path (U8): an area no pass has ever touched has nothing to invalidate, so
+        /// it never reaches the plot scan.
+        /// </summary>
+        public bool HasSurveyState =>
+            this.SurveyedStamps.Count > 0
+            || this.Findings.Count > 0
+            || this.BedrockPlotCoords.Count > 0
+            || this.SweepColumns.Count > 0;
+
+        /// <summary>
+        /// Returns the named plots to unsurveyed because their ground changed under them and the
+        /// mod did not do it (U8, R16). Returns the plots it actually reset -- those this area
+        /// covers -- so the caller can drop the same plots from the live record.
+        ///
+        /// <para>
+        /// Everything a survey CLAIMED about those plots goes: their findings rows, their surveyed
+        /// stamps (which is what makes them read unsurveyed on the ladder), their at-bedrock
+        /// observations, and their rows in the persisted pass record. Everything the rest of the
+        /// area claims stays -- that is the whole point of the rows being per plot (KTD1), and it
+        /// is why coverage falls by the reset plots' share rather than to zero.
+        /// </para>
+        /// <para>
+        /// <b>The pass record and the sweep cursor are the half that is easy to miss, and the
+        /// only half that fails silently.</b> Sampling is idempotent per exact position and, since
+        /// U7, the record survives a restart -- so a plot left in the record is skipped by every
+        /// later pass, and a plot marked unsurveyed that the drone will never re-read is the
+        /// stale-findings fault reintroduced and made durable. Dropping the rows is not enough on
+        /// its own either: the cursor is a monotonic index into the raster-ordered plot list, so a
+        /// plot reset BEHIND it would never be revisited by the pass now running. Both are
+        /// handled here, together, because either alone is a plot that can never be re-read.
+        /// </para>
+        /// <para>
+        /// <see cref="MinedStamps"/> is untouched, for R13's reason: digging having happened is
+        /// not a claim a later event makes untrue. Nor is <see cref="Epoch"/> bumped -- the
+        /// geometry did not change, and a bump would invalidate every mining job pointed at this
+        /// area (KTD2) over ground that is still the same shape.
+        /// </para>
+        /// </summary>
+        public IReadOnlyList<PlotCoord> ResetPlotsToUnsurveyed(IEnumerable<PlotCoord> plots)
+        {
+            if (plots == null)
+                return Array.Empty<PlotCoord>();
+
+            var targets = new HashSet<PlotCoord>(plots.Where(this.CoversPlot));
+            if (targets.Count == 0)
+                return Array.Empty<PlotCoord>();
+
+            // 1. The findings rows for those plots (KTD1) -- one plot's rows, not the area's.
+            var findings = new ThreadSafeList<OreFindingSnapshot>();
+            foreach (var row in this.Findings)
+                if (!targets.Contains(row.Plot))
+                    findings.Add(row);
+            this.Findings = findings;
+            // An area whose rows have just been filtered is in the current shape by construction,
+            // so stamping keeps the KTD1 upgrade a one-shot exactly as ClearFindings does.
+            this.FindingsShapeVersion = FindingsVersion.Current;
+
+            // 2. Their surveyed stamps. This is what the ladder's unsurveyed guard reads, and the
+            //    count of stamps actually dropped is what coverage falls by -- a plot that was
+            //    never surveyed contributed nothing to subtract.
+            var surveyed = new ThreadSafeList<long>();
+            var droppedSurveyed = 0;
+            for (var i = 0; i + 2 < this.SurveyedStamps.Count; i += 3)
+            {
+                var plot = new PlotCoord((int)this.SurveyedStamps[i], (int)this.SurveyedStamps[i + 1]);
+                if (targets.Contains(plot))
+                {
+                    if (this.SurveyedStamps[i + 2] > 0) droppedSurveyed++;
+                    continue;
+                }
+                surveyed.Add(this.SurveyedStamps[i]);
+                surveyed.Add(this.SurveyedStamps[i + 1]);
+                surveyed.Add(this.SurveyedStamps[i + 2]);
+            }
+            this.SurveyedStamps = surveyed;
+
+            // 3. Their at-bedrock observations (U4). A claim about what the ground is like NOW,
+            //    and the ground has just changed, so a pass that has not re-walked the plot must
+            //    not be able to answer for it -- the same reasoning ClearFindings applies.
+            var bedrock = new ThreadSafeList<int>();
+            for (var i = 0; i + 1 < this.BedrockPlotCoords.Count; i += 2)
+                if (!targets.Contains(new PlotCoord(this.BedrockPlotCoords[i], this.BedrockPlotCoords[i + 1])))
+                {
+                    bedrock.Add(this.BedrockPlotCoords[i]);
+                    bedrock.Add(this.BedrockPlotCoords[i + 1]);
+                }
+            this.BedrockPlotCoords = bedrock;
+
+            // 4. Their rows in the persisted pass record, and the cursor that would sail past them.
+            var sweep = new ThreadSafeList<int>();
+            for (var i = 0; i + 4 < this.SweepColumns.Count; i += 5)
+            {
+                var plot = GroundChange.PlotOf(this.SweepColumns[i], this.SweepColumns[i + 1], PlotUtil.PropertyPlotLength);
+                if (targets.Contains(plot)) continue;
+                for (var k = 0; k < 5; k++)
+                    sweep.Add(this.SweepColumns[i + k]);
+            }
+            this.SweepColumns = sweep;
+
+            if (this.SweepInProgress)
+            {
+                // Ordered over ToSurveyArea().EnumeratePlots(), which is the exact projection the
+                // sweep itself indexes into -- it is a set, so a duplicated pair in PlotCoords
+                // collapses there and would otherwise shift every index past it by one.
+                var rewound = SweepOrder.RewindIndex(
+                    SweepOrder.RasterOrder(this.ToSurveyArea().EnumeratePlots()), targets, this.SweepPlotIndex);
+                if (rewound != this.SweepPlotIndex)
+                {
+                    this.SweepPlotIndex = rewound;
+                    this.SweepColumnCursor = 0; // the rewound plot starts from its first column again.
+                }
+            }
+
+            // 5. Coverage, in proportion to what was actually dropped (R16) -- never to zero.
+            if (this.PlotCount > 0 && droppedSurveyed > 0)
+                this.CoveragePercent = Math.Max(0f, this.CoveragePercent - 100f * droppedSurveyed / this.PlotCount);
+
+            return targets.ToList();
         }
 
         /// <summary>
