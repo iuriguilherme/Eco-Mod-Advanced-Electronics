@@ -535,6 +535,13 @@ namespace Eco.Mods.TechTree
             if (plots == null)
                 return Array.Empty<PlotCoord>();
 
+            // Rows written before findings became per-plot carry no plot, so filtering by plot
+            // keeps every one of them and the stamp below would then freeze that attribution as
+            // current. The KTD1 upgrade runs first for the same reason SetPlots runs it: on such
+            // a save there is nothing to attribute, so the area reads unsurveyed and is surveyed
+            // once more. Without this the two reset paths disagree about the same old save.
+            this.UpgradeFindingsIfStale();
+
             var targets = new HashSet<PlotCoord>(plots.Where(this.CoversPlot));
             if (targets.Count == 0)
                 return Array.Empty<PlotCoord>();
