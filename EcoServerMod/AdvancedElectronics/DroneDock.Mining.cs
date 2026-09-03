@@ -455,8 +455,9 @@ namespace Eco.Mods.TechTree
                 // is reserved ground. Read through the same StatusOfArea every render reads, so
                 // the offer test and the display cannot drift apart (KTD3). Checked before the
                 // lock because it is a fact about this one area and needs no scan.
-                if (!AreaClaims.MayBeOfferedToMiningDock(
-                        area.Kind, StatusOfArea(sourceDock.ObjectID, area, null, area.Kind)))
+                var status = StatusOfArea(sourceDock.ObjectID, area, null, area.Kind);
+
+                if (!AreaClaims.MayBeOfferedToMiningDock(area.Kind, status))
                 {
                     refusalReason = area.Kind == AreaKind.Farming
                         ? $"'{area.Name}' is farmland -- a mining dock cannot work it"
@@ -482,10 +483,24 @@ namespace Eco.Mods.TechTree
                 // ---------------------------------------------------------------
                 lock (AreaClaimLock)
                 {
-                    var conflicts = AreaClaims.Conflicts(
-                        AreaKind.Mining,
-                        MiningComponent.OverlapsOf(sourceDock, area, MiningComponent.AllAreaProjections()),
-                        this.HoldsClaimOn);
+                    // Two tests, and neither subsumes the other. The FIRST is the area's own
+                    // claim: two mining docks never both work one area (R37, R39), and the
+                    // overlap scan below cannot see this because it skips self by identity -- an
+                    // area does not overlap itself. Re-assigning to the dock that already holds
+                    // it still goes through, which R45 depends on: that call is the retry that
+                    // lifts this dock's exclusions, so refusing a dock its own claim would remove
+                    // the only lift a refusal ever gets.
+                    var conflicts = AreaClaims.ConflictOnTheAreaItself(
+                            new AreaProjection(
+                                area.Id, sourceDock.ObjectID, area.Plots(),
+                                AreaClaims.HoldsClaim(area.HasClaim, status), area.Kind),
+                            claimantIsHolder: area.IsClaimedBy(this.ObjectID))
+                        // The SECOND is every OTHER area this one overlaps.
+                        .Concat(AreaClaims.Conflicts(
+                            AreaKind.Mining,
+                            MiningComponent.OverlapsOf(sourceDock, area, MiningComponent.AllAreaProjections()),
+                            this.HoldsClaimOn))
+                        .ToList();
 
                     if (conflicts.Count > 0)
                     {

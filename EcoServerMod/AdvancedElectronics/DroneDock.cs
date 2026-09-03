@@ -527,14 +527,27 @@ namespace Eco.Mods.TechTree
                 var area = this.SurveyAreas.FirstOrDefault(a => a.Id == id);
                 if (area == null) return false;
 
-                // The claimant's kind is the AREA's own (R30): a survey pass serves whatever the
-                // area is for and removes nothing from the ground, so surveying farmland is
-                // farming work and R47's one-way reservation does not fire against it. R47 names
-                // the mining dock, and DroneDock.Mining.cs is where that is enforced.
-                var conflicts = AreaClaims.Conflicts(
-                    area.Kind,
-                    MiningComponent.OverlapsOf(this, area, MiningComponent.AllAreaProjections()),
-                    this.HoldsClaimOn);
+                // The area's own claim first: one area, one holder (R37, R39). The overlap scan
+                // below skips self by identity, so this is the only thing that sees it. Assigning
+                // the area to the dock that already holds it is the ordinary re-dispatch and is
+                // not refused.
+                var status = StatusOfArea(this.ObjectID, area, null, area.Kind);
+
+                var conflicts = AreaClaims.ConflictOnTheAreaItself(
+                        new AreaProjection(
+                            area.Id, this.ObjectID, area.Plots(),
+                            AreaClaims.HoldsClaim(area.HasClaim, status), area.Kind),
+                        claimantIsHolder: area.IsClaimedBy(this.ObjectID))
+                    // Then every OTHER area this one overlaps. The claimant's kind is the AREA's
+                    // own (R30): a survey pass serves whatever the area is for and removes nothing
+                    // from the ground, so surveying farmland is farming work and R47's one-way
+                    // reservation does not fire against it. R47 names the mining dock, and
+                    // DroneDock.Mining.cs is where that is enforced.
+                    .Concat(AreaClaims.Conflicts(
+                        area.Kind,
+                        MiningComponent.OverlapsOf(this, area, MiningComponent.AllAreaProjections()),
+                        this.HoldsClaimOn))
+                    .ToList();
 
                 if (conflicts.Count > 0)
                 {

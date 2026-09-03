@@ -385,6 +385,49 @@ namespace AdvancedElectronics.Navigation
             kind == AreaKind.Mining && AreaLifecycle.IsOfferableToMiningDock(status);
 
         /// <summary>
+        /// The area's OWN claim, standing between a second dock and the area itself (R37, R39):
+        /// one conflict when another dock already holds it, none otherwise.
+        ///
+        /// <para>
+        /// <b>Two docks never both work one area.</b> A drone works only plots its own dock has
+        /// claimed (R37), and any assigned area holds its plots against every dock (R39) -- so a
+        /// second dock assigned to the same area would be working ground it does not hold. The
+        /// job state stays per dock; what does not happen is two docks holding one area at once.
+        /// </para>
+        /// <para>
+        /// This is a SEPARATE test from <see cref="Conflicts"/> and neither subsumes the other.
+        /// <see cref="AreaOverlap.Matches"/> skips self by identity -- correctly, because an area
+        /// does not overlap itself and comparing ids alone would read a real collision between two
+        /// docks' area #1 as an area colliding with itself. The consequence is that an area's own
+        /// claim is invisible to the overlap scan, so it has to be asked about directly.
+        /// </para>
+        /// <para>
+        /// The <c>[empty]</c> exception needs no handling here: <see cref="HoldsClaim"/> has
+        /// already folded it into <paramref name="self"/>'s flag, so spent ground arrives reading
+        /// unheld and passes to any dock.
+        /// </para>
+        /// </summary>
+        /// <param name="self">
+        /// The area being assigned, carrying its REAL claim flag -- unlike the projection the
+        /// overlap scan builds for the asking side, which leaves it at its default because nothing
+        /// there reads it.
+        /// </param>
+        /// <param name="claimantIsHolder">
+        /// Whether the dock asking is the one that already holds this area. True is the ordinary
+        /// re-dispatch, and it must NOT be refused: R45 makes re-assignment the retry that lifts
+        /// that dock's attempt-fact exclusions, so refusing a dock its own claim would remove the
+        /// only way a refusal is ever lifted.
+        /// </param>
+        public static IReadOnlyList<AreaClaimConflict> ConflictOnTheAreaItself(
+            AreaProjection self, bool claimantIsHolder)
+        {
+            if (self == null || !self.HoldsClaim || claimantIsHolder)
+                return Array.Empty<AreaClaimConflict>();
+
+            return new[] { new AreaClaimConflict(self, self.Plots, AreaClaimBlock.HeldByAssignment) };
+        }
+
+        /// <summary>
         /// Everything standing between a claimant and the ground it overlaps (R39, R47), or an
         /// empty list when it may take all of it.
         ///

@@ -199,6 +199,59 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Empty(ConflictsFor(farm, AreaKind.Farming, mine));
         }
 
+        // --- R37, R39: one area, one holder ---
+
+        [Fact]
+        public void AnAreaAlreadyHeldByAnotherDock_IsRefusedToASecondDock()
+        {
+            // Two docks never both work one area. R37 says a drone works only plots ITS OWN dock
+            // has claimed and R39 says any assigned area holds its plots against every dock, so
+            // the second dock would be working ground it does not hold.
+            //
+            // This is the SAME-area case, and it is a separate test from the overlap scan on
+            // purpose: AreaOverlap.Matches skips self by identity -- correctly, since an area does
+            // not overlap itself -- so an area's own claim is invisible to that path and has to be
+            // asked about directly.
+            var held = Area(1, DockA, Block(0, 0, 2, 2), holdsClaim: true);
+
+            var conflict = Assert.Single(AreaClaims.ConflictOnTheAreaItself(held, claimantIsHolder: false));
+
+            Assert.Equal(AreaClaimBlock.HeldByAssignment, conflict.Reason);
+            Assert.Equal(4, conflict.Plots.Count);
+
+            // Named in the same shape every other refusal uses, through the same formatter.
+            var refusal = MiningReadout.FormatClaimRefusal(new[] { conflict }, PlotSize);
+            Assert.Contains("4 plots", refusal);
+            Assert.Contains("(2, 2)", refusal);
+            Assert.Contains("held by", refusal);
+        }
+
+        [Fact]
+        public void ReassigningToTheDockThatAlreadyHoldsIt_IsNotRefused()
+        {
+            // The ordinary re-dispatch path, and the one R45 makes load-bearing: assignment IS
+            // the retry that lifts this dock's attempt-fact exclusions, so a dock re-pointed at
+            // the area it already holds must go through, not be refused by its own claim.
+            var held = Area(1, DockA, Block(0, 0, 2, 2), holdsClaim: true);
+
+            Assert.Empty(AreaClaims.ConflictOnTheAreaItself(held, claimantIsHolder: true));
+        }
+
+        [Fact]
+        public void AnUnheldArea_IsRefusedToNobody()
+        {
+            // Including the [empty] case: HoldsClaim has already folded that in, so ground with
+            // nothing left to take reaches here reading unheld and passes to any dock (R37).
+            var free = Area(1, DockA, Block(0, 0, 2, 2), holdsClaim: false);
+
+            Assert.Empty(AreaClaims.ConflictOnTheAreaItself(free, claimantIsHolder: false));
+            Assert.Empty(AreaClaims.ConflictOnTheAreaItself(
+                Area(1, DockA, Block(0, 0, 2, 2),
+                     holdsClaim: AreaClaims.HoldsClaim(assigned: true, AreaLifecycleStatus.Empty)),
+                claimantIsHolder: false));
+            Assert.Empty(AreaClaims.ConflictOnTheAreaItself(null, claimantIsHolder: false));
+        }
+
         [Fact]
         public void AClaimantSkipsGroundItAlreadyHolds()
         {
