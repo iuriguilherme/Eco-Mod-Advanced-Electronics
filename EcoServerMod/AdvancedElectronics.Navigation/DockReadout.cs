@@ -16,10 +16,17 @@ namespace AdvancedElectronics.Navigation
     /// area stops this trip, and an assignment merely says which area the drone is on.
     /// </para>
     /// <para>
-    /// The two kind-and-ground tags follow, because neither blocks anything: <c>[farm]</c> says
-    /// what the area is FOR (R30) and <c>[flat]</c> says what the ground is fit for by hand.
     /// <c>[flat]</c> is last of all, which the farming plan's R10 states outright -- it yields
-    /// whenever a higher-priority tag needs the room, and shows again once the room is free.
+    /// whenever a higher-priority tag needs the room, and shows again once the room is free. It
+    /// blocks nothing: what it says about the ground stays true while a drone works the area,
+    /// because a citizen can farm that ground by hand at the same time.
+    /// </para>
+    /// <para>
+    /// <b><c>[farm]</c> is deliberately not here.</b> It is what an area IS, not something
+    /// annotating it, so it takes the exclusive status slot where a mining area shows its
+    /// lifecycle rung -- see <see cref="AreaLifecycleStatus.Farm"/>. Keeping it out of this enum
+    /// is what stops it ever competing for an overlay slot, and what makes "a mining status and
+    /// [farm] on one line" unrepresentable rather than merely unlikely.
     /// </para>
     /// <para>
     /// None of these carries a colour. Under R9 they inherit the line's lifecycle colour, which
@@ -37,11 +44,8 @@ namespace AdvancedElectronics.Navigation
         /// <summary>The area the dock's drone is working on.</summary>
         Assigned = 2,
 
-        /// <summary>The area's kind is farming (R30).</summary>
-        Farm = 3,
-
         /// <summary>The surface is flat enough to farm by hand or by tractor. Lowest priority of all.</summary>
-        Flat = 4
+        Flat = 3
     }
 
     /// <summary>
@@ -143,9 +147,26 @@ namespace AdvancedElectronics.Navigation
         public const string EmptyColor = "#808080";
 
         /// <summary>
-        /// The word every lifecycle status carries (R4). A word as WELL as a colour, so no state
-        /// depends on colour vision to read -- and the only reading that survives the grey/default
-        /// pair at all.
+        /// The colour for <c>[farm]</c> (R30), which shares the status slot with the mining ramp
+        /// and so must not be mistaken for a rung of it.
+        ///
+        /// <para>
+        /// Dark orange, and the choice is one of elimination. Green, magenta, yellow, red and the
+        /// grey each already mean a rung of the mining life, and no-colour means unsurveyed; the
+        /// blue family is spoken for by R4's reserved <c>[landfill]</c> (light blue) and
+        /// <c>[filled]</c> (dark blue). That leaves orange as the only saturated hue still free.
+        /// Purple was the other candidate and was rejected: it is the same hue as magenta at half
+        /// the brightness, so it reads as a variant of <c>[digging]</c> rather than as something
+        /// else entirely. <c>#FF8C00</c> rather than the named <c>orange</c> (<c>#FFA500</c>)
+        /// because the darker value separates further from yellow at a glance.
+        /// </para>
+        /// </summary>
+        public const string FarmColor = "#FF8C00";
+
+        /// <summary>
+        /// The word every status carries (R4). A word as WELL as a colour, so no state depends on
+        /// colour vision to read -- and the only reading that survives the grey/default pair at
+        /// all.
         /// </summary>
         public static string StatusWord(AreaLifecycleStatus status)
         {
@@ -157,6 +178,7 @@ namespace AdvancedElectronics.Navigation
                 case AreaLifecycleStatus.Mined: return "[mined]";
                 case AreaLifecycleStatus.Cleared: return "[cleared]";
                 case AreaLifecycleStatus.Empty: return "[empty]";
+                case AreaLifecycleStatus.Farm: return "[farm]";
                 default: return $"[{status.ToString().ToLowerInvariant()}]";
             }
         }
@@ -176,6 +198,7 @@ namespace AdvancedElectronics.Navigation
                 case AreaLifecycleStatus.Mined: return "yellow";
                 case AreaLifecycleStatus.Cleared: return "red";
                 case AreaLifecycleStatus.Empty: return EmptyColor;
+                case AreaLifecycleStatus.Farm: return FarmColor;
                 default: return null;
             }
         }
@@ -200,7 +223,6 @@ namespace AdvancedElectronics.Navigation
                 case AreaAnnotation.Overlap: return "[overlap]";
                 case AreaAnnotation.Unreachable: return "[unreachable]";
                 case AreaAnnotation.Assigned: return "[assigned]";
-                case AreaAnnotation.Farm: return "[farm]";
                 case AreaAnnotation.Flat: return "[flat]";
                 default: return $"[{annotation.ToString().ToLowerInvariant()}]";
             }
@@ -214,10 +236,10 @@ namespace AdvancedElectronics.Navigation
         /// dangling separator.
         ///
         /// <para>
-        /// Everything that annotates an area goes through here, farming's <c>[farm]</c> and
-        /// <c>[flat]</c> included. Appending a marker directly to a line is what let two of them
-        /// ship with no ordering and no cap, and a per-caller append cannot honour a cap it
-        /// cannot see.
+        /// Everything that annotates an area goes through here, farming's <c>[flat]</c> included.
+        /// Appending a marker directly to a line is what let two of them ship with no ordering and
+        /// no cap, and a per-caller append cannot honour a cap it cannot see. <c>[farm]</c> does
+        /// NOT come through here: it is a status, not an annotation.
         /// </para>
         /// </summary>
         public static string FormatAnnotations(IEnumerable<AreaAnnotation> annotations)

@@ -17,29 +17,36 @@ namespace AdvancedElectronics.Navigation
         ///
         /// <para>
         /// <c>[farm]</c> and <c>[flat]</c> shipped here as this tab's own strings, appended
-        /// unconditionally with no ordering and no cap, because the shared annotation channel
-        /// did not exist yet. They now go through <see cref="DockReadout.FormatAnnotations(System.Collections.Generic.IEnumerable{AreaAnnotation})"/>
-        /// like every other tag: same two markers, same two conditions, one path that owns
-        /// priority (R10 puts <c>[flat]</c> last of all) and the two-tag cap (R29). Nothing about
-        /// what either marker MEANS or when it applies has changed.
+        /// unconditionally: <c>line += FarmMarker; if (isFlat) line += FlatMarker;</c>. They now
+        /// go to two different places, because they are two different KINDS of fact.
+        /// <c>[farm]</c> is what the area IS, so it takes the exclusive status slot through
+        /// <see cref="AreaLifecycle.StatusFor"/> -- and the mining ladder is never consulted for
+        /// a farming area, so no rung of that ramp can reach this line. <c>[flat]</c> is an
+        /// observation about the ground and rides the shared annotation channel, last in priority
+        /// (R10), where the ordering and the cap live.
         /// </para>
         /// </summary>
         public static string FormatAreaLine(int position, FarmAreaState area, bool isFlat)
         {
             var crop = string.IsNullOrEmpty(area.Crop) ? "no crop selected" : area.Crop;
 
-            return $"{position}. {area.AreaName} -- {crop}"
-                   + DockReadout.FormatAnnotations(Annotations(isFlat));
+            // Farmland has no ladder to run, which is exactly why none is passed: the kind is
+            // what decides, not a comparison between two computed answers.
+            var status = AreaLifecycle.StatusFor(AreaKind.Farming, miningLadder: null);
+
+            var line = $"{position}. {area.AreaName} -- {crop}"
+                       + DockReadout.TagSeparator + DockReadout.StatusWord(status)
+                       + DockReadout.FormatAnnotations(Annotations(isFlat));
+
+            return DockReadout.InStatusColor(line, status);
         }
 
         /// <summary>
-        /// A farm area is always <c>[farm]</c> -- it is what the area is FOR (R30) -- and
         /// <c>[flat]</c> only while the ground is, which is re-derived from a surface sample
-        /// rather than stored (R9 of the farming plan).
+        /// rather than stored (R9 of the farming plan). Nothing else annotates this line today.
         /// </summary>
         private static IEnumerable<AreaAnnotation> Annotations(bool isFlat)
         {
-            yield return AreaAnnotation.Farm;
             if (isFlat) yield return AreaAnnotation.Flat;
         }
 

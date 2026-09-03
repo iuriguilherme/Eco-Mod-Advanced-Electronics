@@ -151,36 +151,57 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
-        public void BothMarkersGoThroughTheOneOrderedAnnotationChannel()
+        public void FarmIsTheStatusSlot_AndFlatIsTheAnnotationBesideIt()
         {
-            // They used to be appended here unconditionally, each with its own string and no
-            // ordering: `line += FarmMarker; if (isFlat) line += FlatMarker;`. Same two markers,
-            // same two conditions, one shared path -- so ordering and the cap apply to them too.
+            // Both used to be appended here as this tab's own strings, unconditionally and with
+            // no ordering: `line += FarmMarker; if (isFlat) line += FlatMarker;`. They now go to
+            // two different places, because they are two different KINDS of fact. [farm] is what
+            // the area IS and takes the exclusive status slot; [flat] is an observation about the
+            // ground and rides the ordered, capped annotation channel with the lowest priority.
             var line = FarmReadout.FormatAreaLine(
                 position: 2,
                 area: FarmAreaState.Workable(North, Corn, FarmAction.Harvest),
                 isFlat: true);
 
+            Assert.Contains(DockReadout.StatusWord(AreaLifecycleStatus.Farm), line);
             Assert.EndsWith(
-                DockReadout.FormatAnnotations(AreaAnnotation.Farm, AreaAnnotation.Flat),
+                DockReadout.StatusWord(AreaLifecycleStatus.Farm)
+                + DockReadout.FormatAnnotations(AreaAnnotation.Flat)
+                + "</color>",
                 line);
-
-            // [flat] has the lowest display priority of any annotation (farming R10), so it is
-            // never the one that pushes [farm] off.
-            Assert.True(line.IndexOf("[farm]", System.StringComparison.Ordinal)
-                        < line.IndexOf("[flat]", System.StringComparison.Ordinal));
         }
 
         [Fact]
-        public void NeitherMarkerCarriesAColourOfItsOwn()
+        public void TheFarmLineTakesTheFarmStatusColour_AndFlatCarriesNoneOfItsOwn()
         {
-            // R11 of the farming plan, and R9 here: an annotation inherits the line's colour.
+            // [farm] is a status, so it colours the line exactly as a mining rung does. [flat] is
+            // an annotation and inherits that colour rather than bringing one -- so the line
+            // carries one colour tag, not two.
             var line = FarmReadout.FormatAreaLine(
                 position: 1,
                 area: FarmAreaState.Workable(North, Corn, FarmAction.Sow),
                 isFlat: true);
 
-            Assert.DoesNotContain("<color", line);
+            Assert.StartsWith($"<color={DockReadout.StatusColor(AreaLifecycleStatus.Farm)}>", line);
+            Assert.EndsWith("</color>", line);
+            // Exactly one opening tag on the whole line ("</color>" does not match "<color").
+            Assert.Equal(1, line.Split("<color").Length - 1);
+            Assert.DoesNotContain("<color", line.Substring(line.IndexOf("[flat]", System.StringComparison.Ordinal)));
+        }
+
+        [Fact]
+        public void TheFarmLineNeverCarriesAMiningStatusWord()
+        {
+            // The invariant at this surface: a farming area reads [farm] and the mining ladder is
+            // never consulted for it, so no rung of that ramp can reach this line.
+            var line = FarmReadout.FormatAreaLine(
+                position: 1,
+                area: FarmAreaState.Workable(North, Corn, FarmAction.Harvest),
+                isFlat: true);
+
+            var miningWords = AreaLifecycle.MiningRamp.Select(DockReadout.StatusWord);
+
+            Assert.All(miningWords, w => Assert.DoesNotContain(w, line));
         }
 
         [Fact]

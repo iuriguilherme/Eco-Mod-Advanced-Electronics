@@ -407,12 +407,26 @@ namespace AdvancedElectronics.Navigation.Tests
                 "   [overlap]   [unreachable]",
                 DockReadout.FormatAnnotations(AreaAnnotation.Assigned, AreaAnnotation.Unreachable, AreaAnnotation.Overlap));
 
-            // Declaration order is display priority, and [flat] is last of all (farming R10).
             Assert.Equal(
-                "   [assigned]   [farm]",
-                DockReadout.FormatAnnotations(AreaAnnotation.Flat, AreaAnnotation.Farm, AreaAnnotation.Assigned));
+                "   [overlap]   [assigned]",
+                DockReadout.FormatAnnotations(AreaAnnotation.Assigned, AreaAnnotation.Overlap));
+        }
 
-            Assert.Equal("   [farm]   [flat]", DockReadout.FormatAnnotations(AreaAnnotation.Flat, AreaAnnotation.Farm));
+        [Fact]
+        public void Flat_YieldsToEveryOtherAnnotation_AndShowsAgainOnceTheRoomIsFree()
+        {
+            // Lowest display priority of any annotation. It yields for want of space alone: what
+            // it says about the ground stays true while a drone works the area, because a citizen
+            // can farm that ground by hand at the same time.
+            Assert.Equal(
+                "   [overlap]   [assigned]",
+                DockReadout.FormatAnnotations(AreaAnnotation.Flat, AreaAnnotation.Assigned, AreaAnnotation.Overlap));
+
+            Assert.Equal(
+                "   [assigned]   [flat]",
+                DockReadout.FormatAnnotations(AreaAnnotation.Flat, AreaAnnotation.Assigned));
+
+            Assert.Equal("   [flat]", DockReadout.FormatAnnotations(AreaAnnotation.Flat));
         }
 
         [Fact]
@@ -420,9 +434,92 @@ namespace AdvancedElectronics.Navigation.Tests
         {
             var all = DockReadout.FormatAnnotations(
                 AreaAnnotation.Overlap, AreaAnnotation.Unreachable, AreaAnnotation.Assigned,
-                AreaAnnotation.Farm, AreaAnnotation.Flat);
+                AreaAnnotation.Flat);
 
             Assert.DoesNotContain("<color", all);
+        }
+
+        [Fact]
+        public void Farm_IsNotAnAnnotation_AndCannotBeAskedForAsOne()
+        {
+            // [farm] is what an area IS, so it occupies the exclusive status slot where a mining
+            // area shows its lifecycle rung. It never competes for an overlay slot, which is why
+            // the annotation vocabulary does not contain it at all.
+            var names = Enum.GetNames(typeof(AreaAnnotation));
+
+            Assert.DoesNotContain("Farm", names);
+            Assert.All(
+                Enum.GetValues(typeof(AreaAnnotation)).Cast<AreaAnnotation>(),
+                a => Assert.NotEqual("[farm]", DockReadout.AnnotationWord(a)));
+        }
+
+        [Fact]
+        public void AFarmingArea_ReadsFarmInTheStatusSlot_WhereAMiningAreaReadsItsRung()
+        {
+            var farm = DockReadout.FormatAreaLine(Area(status: AreaLifecycleStatus.Farm));
+            var mining = DockReadout.FormatAreaLine(Area(status: AreaLifecycleStatus.Digging));
+
+            Assert.Contains("[farm]", farm);
+            Assert.Contains($"<color={DockReadout.StatusColor(AreaLifecycleStatus.Farm)}>", farm);
+
+            // Same slot, same position on the line: only the word and the colour differ.
+            Assert.Equal(
+                mining.Replace("[digging]", "[farm]")
+                      .Replace("<color=magenta>", $"<color={DockReadout.StatusColor(AreaLifecycleStatus.Farm)}>"),
+                farm);
+        }
+
+        [Fact]
+        public void AnAssignedOverlappingFarmArea_ShowsAllThreeFacts_BecauseFarmTakesNoOverlaySlot()
+        {
+            // The case that prompted the question. [farm] used to be an annotation and lost the
+            // cap to [overlap] and [assigned]; now it is the status, so nothing is dropped.
+            var line = DockReadout.FormatAreaLine(
+                Area(status: AreaLifecycleStatus.Farm, assigned: true, overlap: true));
+
+            Assert.Contains("[farm]", line);
+            Assert.Contains("[overlap]", line);
+            Assert.Contains("[assigned]", line);
+            Assert.EndsWith("   [farm]   [overlap]   [assigned]</color>", line);
+        }
+
+        [Fact]
+        public void AFarmLineNeverCarriesAMiningStatusWord_ForAnyKindAndAnyInputs()
+        {
+            // The invariant, asserted as a property rather than as a list of scenarios, and driven
+            // off the status vocabulary so a rung added later is covered without anyone
+            // remembering this test exists.
+            //
+            // It matters most for a case that cannot arise yet: once kind lives on the survey
+            // area, an exhausted mining area repurposed as farmland still carries its mined stamps
+            // and bedrock observations, so every input the mining ladder reads is still sitting on
+            // it and still truthful about its past. The kind is what stops the ladder being asked.
+            var vocabulary = Enum.GetValues(typeof(AreaLifecycleStatus))
+                .Cast<AreaLifecycleStatus>()
+                .ToDictionary(s => s, DockReadout.StatusWord);
+
+            var miningWords = AreaLifecycle.MiningRamp.Select(s => vocabulary[s]).ToList();
+
+            foreach (AreaKind kind in Enum.GetValues(typeof(AreaKind)))
+            foreach (var laddersTo in AreaLifecycle.MiningRamp)
+            foreach (var assigned in new[] { false, true })
+            foreach (var unreachable in new[] { false, true })
+            foreach (var overlap in new[] { false, true })
+            {
+                // The kind chooses which status is derived at all: the ladder is a delegate, and
+                // for farmland it is never invoked.
+                var status = AreaLifecycle.StatusFor(kind, () => laddersTo);
+
+                var line = DockReadout.FormatAreaLine(Area(
+                    status: status, assigned: assigned, unreachable: unreachable, overlap: overlap));
+
+                var present = vocabulary.Values.Where(w => line.Contains(w)).ToList();
+                Assert.Single(present);
+                Assert.Equal(vocabulary[status], present[0]);
+
+                if (line.Contains("[farm]"))
+                    Assert.All(miningWords, w => Assert.DoesNotContain(w, line));
+            }
         }
 
         [Fact]

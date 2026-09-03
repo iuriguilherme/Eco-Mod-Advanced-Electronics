@@ -274,23 +274,43 @@ namespace Eco.Mods.TechTree
                 .ToList();
 
         /// <summary>
-        /// One area's lifecycle status (R3), read the same way by every surface that shows it --
+        /// One area's status slot (R3, R30), read the same way by every surface that shows it --
         /// both roster lines and, when it lands, the offer test R44 defines. Computed on read and
         /// never stored (KTD3).
+        ///
+        /// <para>
+        /// The KIND chooses first: a mining area runs the ladder, a farming area reads
+        /// <c>[farm]</c> and the ladder is never consulted. That is why the ladder is passed to
+        /// <see cref="AreaLifecycle.StatusFor"/> as a delegate rather than computed here -- for
+        /// farmland this method does not even assemble the exclusion set, so there is no moment
+        /// at which a mining status and <c>[farm]</c> both exist.
+        /// </para>
+        /// <para>
+        /// Every area a survey dock owns is mining ground today, so <paramref name="kind"/>
+        /// defaults accordingly. When kind moves onto the area itself, this parameter is the seam
+        /// it fills -- and a repurposed area's surviving mined stamps and bedrock observations
+        /// stop being read at that moment, rather than needing a render-order rule to hide them.
+        /// </para>
         /// </summary>
         public static AreaLifecycleStatus StatusOfArea(
-            Guid owningDockId, SurveyAreaEntry area, IReadOnlyCollection<DroneDockObject> exclusionHolders = null)
+            Guid owningDockId,
+            SurveyAreaEntry area,
+            IReadOnlyCollection<DroneDockObject> exclusionHolders = null,
+            AreaKind kind = AreaKind.Mining)
         {
             if (area == null) return AreaLifecycleStatus.Unsurveyed;
 
-            var surveyed = area.ReadSurveyedStamps();
-            var mined = area.ReadMinedStamps();
+            return AreaLifecycle.StatusFor(kind, () =>
+            {
+                var surveyed = area.ReadSurveyedStamps();
+                var mined = area.ReadMinedStamps();
 
-            return AreaLifecycle.DeriveStatus(
-                area.ToSurveyArea().EnumeratePlots(),
-                surveyed.StampFor,
-                mined.StampFor,
-                AssembleAreaExclusions(owningDockId, area, exclusionHolders));
+                return AreaLifecycle.DeriveStatus(
+                    area.ToSurveyArea().EnumeratePlots(),
+                    surveyed.StampFor,
+                    mined.StampFor,
+                    AssembleAreaExclusions(owningDockId, area, exclusionHolders));
+            });
         }
 
         /// <summary>

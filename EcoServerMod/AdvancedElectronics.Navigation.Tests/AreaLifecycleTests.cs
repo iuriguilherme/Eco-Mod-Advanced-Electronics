@@ -304,6 +304,79 @@ namespace AdvancedElectronics.Navigation.Tests
                 AreaLifecycle.IsOfferableToMiningDock(status);   // total: no status throws
         }
 
+        // ------------------------------------------------------- kind selects the status slot
+
+        [Fact]
+        public void AFarmingArea_NeverConsultsTheMiningLadder()
+        {
+            // Structural, not a precedence rule. The ladder is a delegate and is simply never
+            // invoked for farmland -- there is no moment at which a mining status and [farm] both
+            // exist and only the render order keeps them apart.
+            var status = AreaLifecycle.StatusFor(
+                AreaKind.Farming,
+                () => throw new InvalidOperationException("the mining ladder must never run for farmland"));
+
+            Assert.Equal(AreaLifecycleStatus.Farm, status);
+        }
+
+        [Fact]
+        public void AMiningArea_ReadsWhateverItsLadderReturns()
+        {
+            foreach (var rung in AreaLifecycle.MiningRamp)
+                Assert.Equal(rung, AreaLifecycle.StatusFor(AreaKind.Mining, () => rung));
+        }
+
+        [Fact]
+        public void TheRampIsTheEnumMinusFarm_SoTheVocabularyNeedsNoHandWrittenList()
+        {
+            Assert.DoesNotContain(AreaLifecycleStatus.Farm, AreaLifecycle.MiningRamp);
+            Assert.False(AreaLifecycle.IsMiningRung(AreaLifecycleStatus.Farm));
+            Assert.Equal(
+                Enum.GetValues(typeof(AreaLifecycleStatus)).Cast<AreaLifecycleStatus>().Count() - 1,
+                AreaLifecycle.MiningRamp.Count);
+        }
+
+        [Fact]
+        public void AMiningAreaWithNoLadder_IsACallerBug_ButFarmlandNeedingNoneIsNormal()
+        {
+            Assert.Throws<ArgumentNullException>(() => AreaLifecycle.StatusFor(AreaKind.Mining, null));
+            Assert.Equal(AreaLifecycleStatus.Farm, AreaLifecycle.StatusFor(AreaKind.Farming, null));
+        }
+
+        [Fact]
+        public void RepurposedGround_StillCarryingEveryMiningInput_ReadsFarmOnceItsKindIsFarming()
+        {
+            // The case a later unit creates, when kind lives on the survey area and an exhausted
+            // mining area becomes farmland. Its mined stamps and bedrock observations are still
+            // there and still truthful about its past -- so the ladder would happily answer, and
+            // the kind is the only thing that stops it being asked.
+            var plots = Plots(2).ToList();
+            var exhausted = Ledger(bedrock: plots);
+
+            Func<AreaLifecycleStatus> ladder =
+                () => AreaLifecycle.DeriveStatus(plots, All(100), All(200), exhausted);
+
+            Assert.Equal(AreaLifecycleStatus.Empty, AreaLifecycle.StatusFor(AreaKind.Mining, ladder));
+            Assert.Equal(AreaLifecycleStatus.Farm, AreaLifecycle.StatusFor(AreaKind.Farming, ladder));
+        }
+
+        [Fact]
+        public void TheLadderNeverProducesFarm_BecauseFarmIsNotARungOfIt()
+        {
+            var plots = Plots(2).ToList();
+
+            foreach (var surveyed in new long[] { 0, 100, 300 })
+            foreach (var mined in new long[] { 0, 200 })
+            foreach (var bedrock in new[] { null, plots })
+            {
+                var status = AreaLifecycle.DeriveStatus(
+                    plots, All(surveyed), All(mined), Ledger(bedrock: bedrock));
+
+                Assert.NotEqual(AreaLifecycleStatus.Farm, status);
+                Assert.Contains(status, AreaLifecycle.MiningRamp);
+            }
+        }
+
         // ------------------------------------------------------------- guards and totality
 
         [Fact]
@@ -332,8 +405,11 @@ namespace AdvancedElectronics.Navigation.Tests
         [Fact]
         public void EveryInputCombination_ReturnsExactlyOneDeclaredStatus()
         {
-            var declared = new HashSet<AreaLifecycleStatus>(
-                Enum.GetValues(typeof(AreaLifecycleStatus)).Cast<AreaLifecycleStatus>());
+            // The ladder's OWN vocabulary, not the whole enum: [farm] shares the status slot but
+            // is not a rung, and the kind is what selects it (R30). A status added later counts
+            // as a rung by default, so it lands here as unreachable and whoever added it has to
+            // say which slot it belongs to -- which is the point of failing that way round.
+            var declared = new HashSet<AreaLifecycleStatus>(AreaLifecycle.MiningRamp);
             var seen = new HashSet<AreaLifecycleStatus>();
             long[] surveyedValues = { 0, 100, 300 };
             long[] minedValues = { 0, 200 };
