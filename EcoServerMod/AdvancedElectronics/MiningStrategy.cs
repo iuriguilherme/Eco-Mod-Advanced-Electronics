@@ -186,7 +186,25 @@ namespace Eco.Mods.TechTree
         private SurveyAreaEntry ResolveSourceArea()
         {
             var signal = this.areaRef.Resolve(out var owningDock, out var area);
-            var outcome = AreaResolutionPolicy.Resolve(signal, this.areaRef.StoredChangeToken, area == null ? null : MiningAreaRef.CurrentChangeToken(area));
+
+            // R21: an edit ends this job only when it removed plots the job STILL HAS TO WORK.
+            // The job's ledger is the pre-edit plot list — it is built from the area's plots at
+            // dispatch and never re-keyed — so asking which of its unworked plots the area no
+            // longer holds is the whole test, and nothing has to remember the old geometry.
+            var outcome = AreaResolutionPolicy.Resolve(
+                signal,
+                this.areaRef.StoredChangeToken,
+                area == null ? null : MiningAreaRef.CurrentChangeToken(area),
+                () => area != null && AreaEdit.RemovesPendingWork(this.job.PendingPlots(), area.Plots()));
+
+            if (outcome == AreaResolutionOutcome.Reacquired)
+            {
+                // The job runs on over the plots the edit retained, and this reference stops
+                // reporting the edit. The ASSIGNMENT is untouched either way -- it outlives a
+                // job, so nothing here reaches the claim it carries (U9 step 5, KTD6).
+                this.areaRef.AdoptEpoch(area);
+                outcome = AreaResolutionOutcome.StillValid;
+            }
 
             switch (outcome)
             {

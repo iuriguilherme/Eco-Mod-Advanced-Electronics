@@ -899,10 +899,27 @@ namespace Eco.Mods.TechTree
                 }
 
                 var signal = reference.Resolve(out _, out var miningEntry);
+
+                // R21's narrowing, run here with the same inputs the mining strategy runs it
+                // with -- the agreement this method's header describes has to hold for the
+                // narrowed test too, or an edit that leaves the job running would still ground
+                // the drone. The job is read off the dock rather than through the strategy,
+                // because this method is called before a strategy exists; a job belonging to
+                // another area is not this reference's job and pends nothing here.
                 var outcome = AreaResolutionPolicy.Resolve(
                     signal,
                     reference.StoredChangeToken,
-                    miningEntry == null ? null : MiningAreaRef.CurrentChangeToken(miningEntry));
+                    miningEntry == null ? null : MiningAreaRef.CurrentChangeToken(miningEntry),
+                    () => miningEntry != null
+                        && this.HomeDock.MiningJob != null
+                        && this.HomeDock.MiningJobAreaId == reference.AreaId
+                        && AreaEdit.RemovesPendingWork(this.HomeDock.MiningJob.PendingPlots(), miningEntry.Plots()));
+
+                if (outcome == AreaResolutionOutcome.Reacquired)
+                {
+                    reference.AdoptEpoch(miningEntry);
+                    outcome = AreaResolutionOutcome.StillValid;
+                }
 
                 switch (outcome)
                 {

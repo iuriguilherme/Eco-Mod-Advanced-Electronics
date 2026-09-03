@@ -302,6 +302,23 @@ namespace AdvancedElectronics.Navigation
                 .OrderBy(s => s.Plot.Z).ThenBy(s => s.Plot.X)
                 .ToList();
 
+        /// <summary>
+        /// Every plot this job STILL HAS TO WORK — recorded neither worked nor skipped (U9,
+        /// R21). This is the ledger an edit is tested against: a redraw ends the job when it
+        /// removes any of these, and leaves it running when it does not.
+        ///
+        /// Deliberately not filtered by whether the plot is surveyed. <see cref="NextPlot"/>
+        /// takes that filter because an unsurveyed plot cannot be worked YET; here it would be
+        /// wrong, because a plot the job is waiting on a resurvey for is still work it has to
+        /// do, and an edit that takes it away has still taken it away.
+        /// </summary>
+        public IReadOnlyList<PlotCoord> PendingPlots() =>
+            _ledger
+                .Where(kv => kv.Value == PlotOutcome.Unworked)
+                .Select(kv => kv.Key)
+                .OrderBy(p => p.Z).ThenBy(p => p.X)
+                .ToList();
+
         private void RequirePlot(PlotCoord plot)
         {
             if (!_ledger.ContainsKey(plot))

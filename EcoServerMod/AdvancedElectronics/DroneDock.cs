@@ -428,9 +428,15 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// Drops an area's findings from both the serialized snapshot (if the entry still exists)
-        /// and the live in-memory record (KTD11). Called on delete and on edit — an edit redraws
-        /// the geometry, so its old survey no longer describes it. Reassignment does NOT call this:
-        /// findings belong to the area, not the drone's current target.
+        /// and the live in-memory record (KTD11). Called on DELETE. Reassignment does not call
+        /// this: findings belong to the area, not the drone's current target.
+        ///
+        /// <para>
+        /// An EDIT no longer calls it either (U9, R20). It used to, and wholesale is the wrong
+        /// scope for an edit: the plots a redraw retains still describe their own ground, so only
+        /// the plots it removed leave the record — see <see cref="OnAreaEdited"/>. Delete is
+        /// still wholesale, because there is no area left for anything to describe.
+        /// </para>
         /// </summary>
         public void ClearSurveyData(int id)
         {
@@ -454,13 +460,30 @@ namespace Eco.Mods.TechTree
             this.AssignedSurveyAreaId != 0 ? $"area:{this.AssignedSurveyAreaId}:{this.assignedAreaEpoch}" : null;
 
         /// <summary>
-        /// Called after an area's plots are redrawn (edit): clears its survey data (new geometry =
-        /// new survey) and, when it is the assigned area, bumps the epoch so the drone restarts its
-        /// pathfinding and sweep for the new shape as if it had been unassigned and reassigned.
+        /// Called after an area's plots are redrawn (edit), with the plots the edit REMOVED —
+        /// which is what <see cref="SurveyAreaEntry.SetPlots"/> hands back.
+        ///
+        /// <para>
+        /// Only those plots leave the live record (U9, R20/R22). The retained plots keep their
+        /// samples, and with them their coverage and their place in the sweep, so a pass in
+        /// flight carries on rather than restarting: the dock's next readout tick projects the
+        /// live record back onto the area, and a record cleared here would overwrite everything
+        /// <c>SetPlots</c> just took care to preserve. <c>SurveyRecord.Coverage</c> reads the
+        /// area's CURRENT plots, so dropping the removed plots is also what takes them out of
+        /// the coverage denominator.
+        /// </para>
+        /// <para>
+        /// The re-dispatch epoch still bumps for the assigned area: the drone rebuilds its
+        /// strategy against the new shape, and the sweep cursor it picks up has already been
+        /// remapped onto that shape.
+        /// </para>
         /// </summary>
-        public void OnAreaEdited(int id)
+        public void OnAreaEdited(int id, IEnumerable<PlotCoord> removedPlots = null)
         {
-            this.ClearSurveyData(id);
+            if (removedPlots != null && this.surveyRecord != null)
+                foreach (var plot in removedPlots)
+                    this.surveyRecord.ForgetPlot(id, plot);
+
             if (this.AssignedSurveyAreaId == id)
                 this.assignedAreaEpoch++;
         }

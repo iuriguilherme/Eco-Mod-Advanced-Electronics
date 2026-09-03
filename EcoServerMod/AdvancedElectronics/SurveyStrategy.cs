@@ -146,13 +146,20 @@ namespace Eco.Mods.TechTree
             var cursor = this.homeDock.StartOrResumeSurveyPass(entry);
 
             // Raster order (by Z then X) gives a stable, roughly lawn-mower visitation. The
-            // resumed cursor indexes into THIS list, which is why a redraw clears the pass --
-            // the same index would name a different plot.
+            // resumed cursor indexes into THIS list, so anything that changes the list has to
+            // move the cursor with it -- the same index would otherwise name a different plot.
+            //
+            // A redraw is exactly that, and it no longer ends the pass (U9, R22). SetPlots remaps
+            // the persisted cursor onto the new plot list by NAME before the edit's epoch bump
+            // re-dispatches the drone, so what this reads back is already the right place in the
+            // new order: the plot the sweep was on if the edit kept it, the next surviving plot
+            // if it did not, and earlier still if the edit added a plot that sorts behind either.
             //
             // The order comes from SweepOrder rather than an OrderBy written here, because since
-            // U8 a second caller depends on it meaning the same thing: an outside change resets
-            // plots and has to rewind the cursor to the earliest of them, which it can only do by
-            // knowing where in this exact order they sit.
+            // U8 two other callers depend on it meaning the same thing: an outside change resets
+            // plots and has to rewind the cursor to the earliest of them, and an edit has to
+            // carry the cursor across two versions of the order. Neither can do it without
+            // knowing where in this exact order a plot sits.
             this.plots = SweepOrder.RasterOrder(entry.ToSurveyArea().EnumeratePlots()).ToList();
 
             // Clamped rather than trusted: a persisted cursor outliving a change to the plot list

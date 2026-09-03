@@ -475,5 +475,136 @@ namespace AdvancedElectronics.Navigation.Tests
             job.TryComplete(AllSurveyed);
             Assert.False(job.TryComplete(AllSurveyed)); // already Complete
         }
+
+        // --- U9/R21: an edit ends a job only when it removes plots the job still has to work ---
+
+        [Fact]
+        public void PendingPlots_AreTheOnesNeitherWorkedNorSkipped()
+        {
+            var job = new MiningJob(new[] { P00, P10, P01 });
+            job.Dispatch();
+            job.MarkWorked(P00);
+            job.MarkSkipped(P10, SkipCategory.SettlementLaw);
+
+            Assert.Equal(new[] { P01 }, job.PendingPlots());
+        }
+
+        /// <summary>
+        /// R21. An edit that only adds plots leaves a running job alive: every plot it was built
+        /// against is still there, so there is nothing it can no longer finish. This is what makes
+        /// R20's preservation something the player can actually see rather than a fact about
+        /// storage.
+        /// </summary>
+        [Fact]
+        public void AnEditThatOnlyAddsPlots_LeavesTheJobRunning()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkWorked(P00);
+
+            var after = new[] { P00, P10, P01, new PlotCoord(1, 1) };
+
+            Assert.False(AreaEdit.RemovesPendingWork(job.PendingPlots(), after));
+            Assert.Equal(
+                AreaResolutionOutcome.Reacquired,
+                AreaResolutionPolicy.Resolve(AreaLookupSignal.Found, "1:0", "1:1", editRemovedPendingWork: () => false));
+        }
+
+        /// <summary>
+        /// R21. An edit that removes a plot the job has NOT reached yet takes work the job can
+        /// never finish and never account for, so the job ends with the redraw reason.
+        /// </summary>
+        [Fact]
+        public void AnEditRemovingAPlotTheJobStillHasToWork_EndsTheJobAsRedrawn()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkWorked(P00);
+
+            Assert.True(AreaEdit.RemovesPendingWork(job.PendingPlots(), new[] { P00 }));
+            Assert.Equal(
+                AreaResolutionOutcome.Invalidated,
+                AreaResolutionPolicy.Resolve(AreaLookupSignal.Found, "1:0", "1:1", editRemovedPendingWork: () => true));
+
+            job.End(MiningEndReason.AreaRedrawn);
+            Assert.Equal(MiningJobStatus.Ended, job.Status);
+            Assert.Equal(MiningEndReason.AreaRedrawn, job.EndReason);
+        }
+
+        /// <summary>
+        /// R21. A plot the job has ALREADY worked leaving the area takes nothing with it: the
+        /// outcome is recorded and the job is done with it, so the job runs on.
+        /// </summary>
+        [Fact]
+        public void AnEditRemovingAPlotTheJobAlreadyWorked_DoesNotEndIt()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkWorked(P00);
+
+            Assert.False(AreaEdit.RemovesPendingWork(job.PendingPlots(), new[] { P10 }));
+        }
+
+        /// <summary>
+        /// R21. The same for a plot the job SKIPPED. A skip is an outcome, not an omission --
+        /// it is exactly what the exclusion ledger is built from (U3) -- so the job has no more
+        /// business with that plot either.
+        /// </summary>
+        [Fact]
+        public void AnEditRemovingAPlotTheJobSkipped_DoesNotEndIt()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkSkipped(P00, SkipCategory.SettlementLaw);
+            job.MarkWorked(P10);
+
+            Assert.False(AreaEdit.RemovesPendingWork(job.PendingPlots(), new[] { P10 }));
+        }
+
+        /// <summary>
+        /// R21. The narrowing is on the change token only. An area CONFIRMED GONE still ends the
+        /// job whatever it has left to do -- there is no area to run on -- which is why a vanished
+        /// area and a reshaped one stay different answers.
+        /// </summary>
+        [Fact]
+        public void AVanishedArea_StillEndsTheJob_EvenWithNothingPendingToRemove()
+        {
+            Assert.Equal(
+                AreaResolutionOutcome.Invalidated,
+                AreaResolutionPolicy.Resolve(AreaLookupSignal.ConfirmedGone, "1:0", null, editRemovedPendingWork: () => false));
+        }
+
+        /// <summary>
+        /// R21. An unedited area is untouched by the narrowing: a matching token is still
+        /// straightforwardly valid, and a tick that did not resolve is still retried silently.
+        /// </summary>
+        [Fact]
+        public void TheNarrowedResolve_LeavesTheUneditedOutcomesAlone()
+        {
+            Assert.Equal(
+                AreaResolutionOutcome.StillValid,
+                AreaResolutionPolicy.Resolve(AreaLookupSignal.Found, "1:0", "1:0", editRemovedPendingWork: () => true));
+            Assert.Equal(
+                AreaResolutionOutcome.NotYetResolved,
+                AreaResolutionPolicy.Resolve(AreaLookupSignal.NotYetResolved, "1:0", "1:0", editRemovedPendingWork: () => true));
+        }
+
+        /// <summary>
+        /// U9 step 5. A job ending under R21 changes nothing about the ASSIGNMENT, and therefore
+        /// nothing about the claim the assignment carries (KTD6): assignment already outlives a
+        /// job, which is why an unassign has to end the job explicitly and a job's own end does
+        /// not unassign anything.
+        /// </summary>
+        [Fact]
+        public void EndingAJobUnderR21_IsNotAnUnassign()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.End(MiningEndReason.AreaRedrawn);
+
+            // The redraw reason is its own; nothing here reports the assignment as cleared.
+            Assert.Equal(MiningEndReason.AreaRedrawn, job.EndReason);
+            Assert.NotEqual(MiningEndReason.Unassigned, job.EndReason);
+        }
     }
 }

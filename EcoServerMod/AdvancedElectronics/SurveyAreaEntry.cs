@@ -102,8 +102,17 @@ namespace Eco.Mods.TechTree
         /// Bumped every time this area's geometry is set or redrawn (U8, KTD2). A mining
         /// dock's <c>MiningAreaRef</c> stores the epoch observed at assignment time, so a
         /// later redraw of THIS area -- whether or not it is the source dock's own
-        /// currently-assigned area -- invalidates the mining job the same way a delete
-        /// does, without the mining dock needing to compare geometry itself.
+        /// currently-assigned area -- tells that dock its reference describes ground that
+        /// has moved, without the mining dock needing to compare geometry itself.
+        ///
+        /// <para>
+        /// Since U9 the bump is a NOTIFICATION rather than a verdict. It used to end the
+        /// referring job outright; now the reader asks what the edit actually did -- see
+        /// <see cref="AreaResolutionPolicy.Resolve(AreaLookupSignal, string, string, bool)"/>
+        /// -- and ends the job only when the edit removed plots that job still has to work
+        /// (R21). An edit that only adds plots leaves the job running over the plots it
+        /// retained, which is what makes R20's preservation something the player can see.
+        /// </para>
         /// </summary>
         [Serialized] public int Epoch { get; set; }
 
@@ -158,10 +167,11 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// This area's survey findings as one row per (plot, ore) (KTD1), persisted with the area
-        /// (KTD11 design change): available until the area is deleted or edited. Reassigning the
-        /// drone away and back does NOT clear them — they belong to the area, not the drone or the
-        /// dock's current assignment. Cleared by <see cref="SetPlots"/> (an edit redraws the
-        /// geometry, so it is effectively a new area), by the owning dock on delete, and by a
+        /// (KTD11 design change): available until the area is deleted or resurveyed. Reassigning
+        /// the drone away and back does NOT clear them — they belong to the area, not the drone or
+        /// the dock's current assignment. Nor does an EDIT: since U9 <see cref="SetPlots"/> drops
+        /// only the rows of plots the edit removed and leaves every retained plot's rows standing
+        /// (R20). They are cleared by the owning dock on delete, and by a
         /// NEWLY STARTED resurvey before the drone samples anything (R10) — which is what makes a
         /// resurvey report the ground as it is now rather than re-stating what the last pass
         /// found. A pass merely RESUMING one that stopped is not a new start and does not clear
@@ -197,9 +207,10 @@ namespace Eco.Mods.TechTree
         /// the persisted mirror of the live <see cref="PlotStampAccumulator"/> the sweep
         /// writes into. Compared against this area's <see cref="MinedStamps"/>
         /// (<see cref="PlotFreshness.IsMineable"/>) to decide which plots a mining job may
-        /// work. Follows the same lifecycle as <see cref="Findings"/>: cleared on a redraw
-        /// or delete, since a plot's old stamp says nothing about the new geometry -- which
-        /// is exactly where the mined stamps beside them part company (R13).
+        /// work. Follows the same lifecycle as <see cref="Findings"/>: dropped on delete, and on
+        /// an edit for the plots the edit REMOVED only (U9, R20) -- a retained plot's stamp still
+        /// describes the very same ground, and dropping it would leave that plot reading
+        /// unsurveyed and refusing to be mined.
         /// </summary>
         [Serialized] public ThreadSafeList<long> SurveyedStamps { get; set; } = new();
 
@@ -217,6 +228,10 @@ namespace Eco.Mods.TechTree
         /// actually happened and the record of when is what makes the resurveyed area mineable
         /// again rather than merely un-mined. What stays per dock is the mining JOB and its
         /// ledger (R2).
+        ///
+        /// An EDIT does reach them, for the plots it removed and no others (U9). R13's reason
+        /// stops at the area's edge: digging having happened stays true, but a plot the area no
+        /// longer holds has no reader left to tell it to.
         /// </summary>
         [Serialized] public ThreadSafeList<long> MinedStamps { get; set; } = new();
 
@@ -300,20 +315,113 @@ namespace Eco.Mods.TechTree
         public int PlotCount => this.PlotCoords.Count / 2;
 
         /// <summary>
-        /// Replaces the stored plots with <paramref name="plots"/>, flattening to (x, z) pairs.
-        /// Also clears any findings: a redraw changes the area's geometry, so the old survey no
-        /// longer describes it — the drone re-surveys the new shape from scratch (KTD11).
+        /// Replaces the stored plots with <paramref name="plots"/>, flattening to (x, z) pairs,
+        /// and returns the plots the edit REMOVED so the caller can drop the same plots from the
+        /// live record.
+        ///
+        /// <para>
+        /// An edit preserves what it retains (U9, R20). Every plot still in the area keeps its
+        /// surveyed stamp, its findings rows, its mined stamp, its at-bedrock observation and its
+        /// rows in the running pass; only the plots the edit removed lose theirs, and the plots
+        /// it added are unsurveyed because nothing has ever looked at them (R3). This replaces
+        /// the old behaviour, where any redraw called <see cref="ClearFindings"/> and discarded
+        /// the whole area's survey — including the SURVEYED STAMPS, which is what makes a plot
+        /// count as surveyed at all, so extending an area by one plot un-mined the other fifteen.
+        /// </para>
+        /// <para>
+        /// <see cref="Epoch"/> is still bumped, and still invalidates a stale
+        /// <c>MiningAreaRef</c> — but under R21 that invalidation is now narrowed at the point
+        /// it is read: an edit ends an in-flight mining job only when it removed plots that job
+        /// still has to work. The bump remains the signal that the geometry moved; what the
+        /// reader does with it is no longer unconditionally "end the job".
+        /// </para>
+        /// <para>
+        /// A pass in flight survives too (R22). Its cursor is REMAPPED onto the new plot list
+        /// rather than cleared: the cursor is an index into the raster order, so an edit makes
+        /// the same index name a different plot, and neither keeping it nor dropping the pass is
+        /// the requirement. <see cref="AreaEdit.RemapSweep"/> carries it across by name.
+        /// </para>
         /// </summary>
-        public void SetPlots(IEnumerable<PlotCoord> plots)
+        public IReadOnlyList<PlotCoord> SetPlots(IEnumerable<PlotCoord> plots)
         {
+            // Rows written in a pre-U1 shape carry no plot, so they cannot be sorted into
+            // retained and removed — the whole of this method is per plot. The KTD1 upgrade runs
+            // first for that reason: on such a save there is nothing to attribute and nothing to
+            // migrate, so the area reads unsurveyed and is surveyed once more, exactly as it
+            // would on the first ordinary read.
+            this.UpgradeFindingsIfStale();
+
+            var after = (plots ?? Enumerable.Empty<PlotCoord>()).ToList();
+            var before = this.Plots().ToList();
+            var plan = AreaEdit.Plan(before, after);
+
+            // Where the sweep stands NOW, read before anything moves it. The drop below rewinds
+            // the cursor for its own reasons (U8) and the remap must start from where the pass
+            // actually was, not from that intermediate.
+            var sweepPlotIndex = this.SweepPlotIndex;
+            var sweepColumnCursor = this.SweepColumnCursor;
+            var plotsBefore = this.PlotCount;
+
+            // 1. Everything the removed plots claimed, dropped by the method U8 already wrote for
+            //    a plot whose ground moved under it — the two want exactly the same thing, down
+            //    to coverage falling by the removed plots' share rather than to zero. It reaches
+            //    only plots the area still covers, so it runs BEFORE the geometry is replaced.
+            this.ResetPlotsToUnsurveyed(plan.Removed);
+
+            // 2. ...and their mined stamps, which that method deliberately keeps (R13). R13's
+            //    reason is that digging having happened stays true — it does not extend to ground
+            //    the area no longer holds, where the row names a plot no reader will ever ask
+            //    about and no survey will ever refresh.
+            this.DropMinedStamps(plan.Removed);
+
             this.PlotCoords = new ThreadSafeList<int>();
-            foreach (var p in plots)
+            foreach (var p in after)
             {
                 this.PlotCoords.Add(p.X);
                 this.PlotCoords.Add(p.Z);
             }
             this.Epoch++;
-            this.ClearFindings();
+
+            // 3. Coverage against the new denominator. Step 1 took the removed plots' share out
+            //    over the OLD plot count, so what is left only needs restating over the new one:
+            //    ten surveyed plots read 100% of ten and 83% of twelve.
+            this.CoveragePercent = AreaEdit.RescaleCoverage(this.CoveragePercent, plotsBefore, this.PlotCount);
+
+            // 4. The pass in flight (R22). Untouched when none is running — SweepInProgress is
+            //    the flag that tells a resuming pass from a newly started one, and an edit is
+            //    neither.
+            if (this.SweepInProgress)
+            {
+                var cursor = AreaEdit.RemapSweep(before, after, sweepPlotIndex, sweepColumnCursor);
+                this.SweepPlotIndex = cursor.PlotIndex;
+                this.SweepColumnCursor = cursor.ColumnCursor;
+            }
+
+            return plan.Removed;
+        }
+
+        /// <summary>
+        /// Drops the mined stamps of plots this area no longer holds (U9). The one record
+        /// <see cref="ResetPlotsToUnsurveyed"/> keeps and an edit does not, because the two are
+        /// answering different questions: that method's plots are still the area's and their
+        /// digging still happened, while these plots have left the area entirely.
+        /// </summary>
+        private void DropMinedStamps(IReadOnlyCollection<PlotCoord> plots)
+        {
+            if (plots == null || plots.Count == 0)
+                return;
+
+            var dropped = new HashSet<PlotCoord>(plots);
+            var kept = new ThreadSafeList<long>();
+            for (var i = 0; i + 2 < this.MinedStamps.Count; i += 3)
+            {
+                if (dropped.Contains(new PlotCoord((int)this.MinedStamps[i], (int)this.MinedStamps[i + 1])))
+                    continue;
+                kept.Add(this.MinedStamps[i]);
+                kept.Add(this.MinedStamps[i + 1]);
+                kept.Add(this.MinedStamps[i + 2]);
+            }
+            this.MinedStamps = kept;
         }
 
         /// <summary>
@@ -335,8 +443,14 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Discards this area's findings, surveyed stamps and at-bedrock observations (delete, an
-        /// edit that redraws the geometry, or a newly started resurvey).
+        /// Discards this area's findings, surveyed stamps and at-bedrock observations (delete, or
+        /// a newly started resurvey).
+        ///
+        /// <b>An edit no longer comes here</b> (U9, R20). It used to, and that is what made
+        /// extending an area by one plot discard the survey of every plot it kept — including
+        /// their surveyed stamps, so the retained plots read unsurveyed and stopped being
+        /// mineable. <see cref="SetPlots"/> now drops per plot instead, and only what the edit
+        /// removed.
         ///
         /// The bedrock observations go with the findings, not with the mined stamps (R10): they
         /// are a claim about what the ground is like NOW, so a pass that has not yet re-observed

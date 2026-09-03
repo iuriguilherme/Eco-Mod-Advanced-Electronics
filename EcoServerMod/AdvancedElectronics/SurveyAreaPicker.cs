@@ -189,14 +189,16 @@ namespace Eco.Mods.TechTree
                 if (!string.IsNullOrWhiteSpace(name) && name != area.Name)
                     dock.RenameSurveyArea(area.Id, name);
 
-                // Replace plots only on a real geometry change: SetPlots clears the area's findings and
-                // OnAreaEdited bumps the re-dispatch epoch, so replacing unconditionally would wipe
-                // every area's survey data on every confirm, including areas the player never touched.
+                // Replace plots only on a real geometry change: OnAreaEdited bumps the re-dispatch
+                // epoch and SetPlots bumps the area's own, so replacing unconditionally would
+                // re-dispatch the drone over every area on every confirm, including areas the
+                // player never touched.
+                //
+                // What SetPlots hands back is the plots the edit REMOVED, and that is the only
+                // scope anything is dropped at (U9, R20) — the retained plots keep their findings,
+                // stamps and place in the sweep on both sides of the seam.
                 if (plots.Count > 0 && !SamePlots(area.Plots(), plots))
-                {
-                    area.SetPlots(plots);
-                    dock.OnAreaEdited(area.Id);
-                }
+                    dock.OnAreaEdited(area.Id, area.SetPlots(plots));
             }
         }
 
