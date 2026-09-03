@@ -181,14 +181,14 @@ namespace Eco.Mods.TechTree
 
             var assigned = dock.AssignedMiningArea;
 
+            // Hoisted once for the whole list: this runs off the dock's tick, and collecting it
+            // per area would put an O(areas x world objects) sweep on a repeating path.
+            var exclusionHolders = DroneDockObject.DocksHoldingExclusions();
+
             this.AvailableAreas = DockReadout.AtReadableSize(offered.Count == 0
                 ? "No survey docks with an area were found."
                 : string.Join("\n", offered.Select((o, i) => MiningReadout.FormatOfferedAreaLine(
-                    i + 1, o.Dock.Name, o.Area.Name, o.Area.PlotCount,
-                    isAssigned: assigned != null
-                                && assigned.OwningDockId == o.Dock.ObjectID
-                                && assigned.AreaId == o.Area.Id,
-                    isMined: IsMinedOut(dock, o.Area)))));
+                    Snapshot(dock, o.Dock, o.Area, i + 1, assigned, exclusionHolders), o.Dock.Name))));
 
             var reference = assigned;
             this.AssignedArea = reference == null ? "none" : this.DescribeAssignment(dock, reference);
@@ -253,35 +253,53 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
-        /// Whether there is nothing left to mine in <paramref name="area"/>: every plot mined at
-        /// least once, none re-surveyed since.
+        /// One offered area reduced to the same shape the Survey tab renders (R29), so the two
+        /// tabs cannot disagree about anything but the dock prefix and this dock's own filter.
         ///
-        /// The stamp half of this is now read entirely off the AREA (U2, R1) -- both the surveyed
-        /// and the mined stamps come off one object, so two mining docks pointed at one area give
-        /// the same verdict without exchanging anything. Before U2 the mined stamps lived on the
-        /// dock, and a second dock read a freshly dug area as untouched.
-        ///
-        /// The dock is still a parameter because the JOB half stays per dock (R2): a dock's own
-        /// completed job is its own knowledge and does not bind another dock.
+        /// <para>
+        /// The old per-tab mined test lived here and is gone: it mixed a fact about the AREA (the
+        /// stamps) with a fact about THIS DOCK's last job, and a status the area owns cannot be
+        /// answered partly from the reader. <see cref="DroneDockObject.StatusOfArea"/> answers it
+        /// once, from the shared record, for every dock that looks (KTD3).
+        /// </para>
         /// </summary>
-        private static bool IsMinedOut(DroneDockObject dock, SurveyAreaEntry area)
+        /// <param name="reader">The mining dock doing the reading -- its material filter narrows the summary, and nothing else.</param>
+        /// <param name="owner">The survey dock that owns the area, whose name prefixes the line.</param>
+        private static AreaSnapshot Snapshot(
+            DroneDockObject reader,
+            DroneDockObject owner,
+            SurveyAreaEntry area,
+            int position,
+            MiningAreaRef assigned,
+            IReadOnlyCollection<DroneDockObject> exclusionHolders)
         {
-            // A completed job is the stronger signal and has to be checked first, because a plot
-            // the job SKIPPED never gets a mined stamp -- it was refused by law, or by property, or
-            // could not be reached, so nothing was removed and nothing was recorded. Judging by
-            // stamps alone, an area finished with one skip stays unmarked forever, which is the
-            // opposite of what the marker is for: the job's own verdict was "nothing left here".
-            if (dock.MiningJob?.Status == MiningJobStatus.Complete && dock.MiningJobAreaId == area.Id)
-                return true;
+            var top = area.ReadFindings()
+                .Where(f => f.Found && reader.IsMaterialShown(f.OreType))
+                .OrderByDescending(f => f.Count)
+                .FirstOrDefault();
 
-            // Otherwise fall back to the stamps, which is what answers for an area this dock
-            // worked under an earlier job it no longer holds -- or, since U2, one it never
-            // worked at all and another dock did.
-            var surveyed = area.ReadSurveyedStamps();
-            var mined = area.ReadMinedStamps();
+            var isAssigned = assigned != null
+                             && assigned.OwningDockId == owner.ObjectID
+                             && assigned.AreaId == area.Id;
 
-            return PlotFreshness.IsMinedOut(
-                area.ToSurveyArea().EnumeratePlots(), surveyed.StampFor, mined.StampFor);
+            return new AreaSnapshot(
+                position, area.Name, area.PlotCount, area.CoveragePercent, top,
+                DroneDockObject.StatusOfArea(owner.ObjectID, area, exclusionHolders),
+                isAssigned,
+                // Reachability is a fact about a trip in progress, so only the assigned area has
+                // an answer at all -- an unassigned one has none rather than a negative one.
+                isUnreachable: isAssigned && DroneReportsUnreachable(reader));
+        }
+
+        /// <summary>True when this dock's drone is currently reporting that it cannot reach its area.</summary>
+        private static bool DroneReportsUnreachable(DroneDockObject dock)
+        {
+            var drone = dock.SpawnedDrone;
+            return drone != null
+                   && !drone.IsDestroyed
+                   && drone.TryGetComponent<DroneLifecycle>(out var lifecycle)
+                   && (lifecycle.Status == AdvancedElectronics.Navigation.DroneStatus.Unreachable
+                       || lifecycle.CannotReachAssignedArea);
         }
 
         private string DescribeAssignment(DroneDockObject dock, MiningAreaRef reference)

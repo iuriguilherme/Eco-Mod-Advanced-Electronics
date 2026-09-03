@@ -353,10 +353,14 @@ namespace Eco.Mods.TechTree
             if (dock.SurveyAreas.Count == 0)
                 return "No survey areas yet. Use Manage Areas on Map to draw your first one.";
 
+            // Hoisted once for the whole roster: this runs off the dock's tick, and collecting it
+            // per area would put an O(areas x world objects) sweep on a repeating path.
+            var exclusionHolders = DroneDockObject.DocksHoldingExclusions();
+
             var sb = new StringBuilder();
             var position = 1;
             foreach (var area in dock.SurveyAreas)
-                sb.Append(DockReadout.FormatAreaLine(Snapshot(area, position++, dock))).Append('\n');
+                sb.Append(DockReadout.FormatAreaLine(Snapshot(area, position++, dock, exclusionHolders))).Append('\n');
 
             return DockReadout.AtReadableSize(sb.ToString());
         }
@@ -446,7 +450,11 @@ namespace Eco.Mods.TechTree
         /// filter is applied HERE, not there: the formatter is handed the top finding the player can
         /// actually see, which is why "nothing matching" and "nothing found" collapse to one case.
         /// </summary>
-        private static AreaSnapshot Snapshot(SurveyAreaEntry area, int position, DroneDockObject dock)
+        private static AreaSnapshot Snapshot(
+            SurveyAreaEntry area,
+            int position,
+            DroneDockObject dock,
+            IReadOnlyCollection<DroneDockObject> exclusionHolders = null)
         {
             var top = area.ReadFindings()
                 .Where(f => f.Found && dock.IsMaterialShown(f.OreType))
@@ -459,8 +467,12 @@ namespace Eco.Mods.TechTree
             // report it -- and only while the drone that would make the trip actually says so.
             var isUnreachable = isAssigned && DroneReportsUnreachable(dock);
 
+            // The area's own status (R3), derived from the shared record rather than from
+            // anything this dock knows -- which is what makes the Mining tab's line agree.
+            var status = DroneDockObject.StatusOfArea(dock.ObjectID, area, exclusionHolders);
+
             return new AreaSnapshot(
-                position, area.Name, area.PlotCount, area.CoveragePercent, top,
+                position, area.Name, area.PlotCount, area.CoveragePercent, top, status,
                 isAssigned, isUnreachable);
         }
 

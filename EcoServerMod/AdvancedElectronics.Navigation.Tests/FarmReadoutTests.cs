@@ -151,6 +151,39 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
+        public void BothMarkersGoThroughTheOneOrderedAnnotationChannel()
+        {
+            // They used to be appended here unconditionally, each with its own string and no
+            // ordering: `line += FarmMarker; if (isFlat) line += FlatMarker;`. Same two markers,
+            // same two conditions, one shared path -- so ordering and the cap apply to them too.
+            var line = FarmReadout.FormatAreaLine(
+                position: 2,
+                area: FarmAreaState.Workable(North, Corn, FarmAction.Harvest),
+                isFlat: true);
+
+            Assert.EndsWith(
+                DockReadout.FormatAnnotations(AreaAnnotation.Farm, AreaAnnotation.Flat),
+                line);
+
+            // [flat] has the lowest display priority of any annotation (farming R10), so it is
+            // never the one that pushes [farm] off.
+            Assert.True(line.IndexOf("[farm]", System.StringComparison.Ordinal)
+                        < line.IndexOf("[flat]", System.StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void NeitherMarkerCarriesAColourOfItsOwn()
+        {
+            // R11 of the farming plan, and R9 here: an annotation inherits the line's colour.
+            var line = FarmReadout.FormatAreaLine(
+                position: 1,
+                area: FarmAreaState.Workable(North, Corn, FarmAction.Sow),
+                isFlat: true);
+
+            Assert.DoesNotContain("<color", line);
+        }
+
+        [Fact]
         public void AnAreaWithNoCropSaysSoWhereTheCropWouldGo()
         {
             var line = FarmReadout.FormatAreaLine(

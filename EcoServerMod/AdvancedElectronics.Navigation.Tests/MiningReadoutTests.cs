@@ -116,25 +116,95 @@ namespace AdvancedElectronics.Navigation.Tests
 
         private static readonly PlotCoord[] TwoPlots = { new PlotCoord(0, 0), new PlotCoord(1, 0) };
 
+        private static AreaSnapshot Area(
+            int position = 1,
+            string name = "North Ridge",
+            int plotCount = 12,
+            float coverage = 100f,
+            SurveyFinding? top = null,
+            AreaLifecycleStatus status = AreaLifecycleStatus.Surveyed,
+            bool assigned = false,
+            bool unreachable = false,
+            bool overlap = false) =>
+            new AreaSnapshot(
+                position, name, plotCount, coverage, top ?? SurveyFinding.NotFound, status,
+                assigned, unreachable, overlap);
+
         [Fact]
-        public void OfferedArea_CarriesBothMarkers_WhenAMinedAreaIsStillAssigned()
+        public void OfferedArea_CarriesTheStatusAndTheAnnotation_WhenAMinedAreaIsStillAssigned()
         {
             // A real state, not a contradiction: the pass finished and nobody unassigned it.
-            var line = MiningReadout.FormatOfferedAreaLine(1, "Survey Dock", "North Ridge", 12,
-                isAssigned: true, isMined: true);
+            // R4 moved [mined] from green to yellow, and R9 stripped the annotation's own colour.
+            var line = MiningReadout.FormatOfferedAreaLine(
+                Area(status: AreaLifecycleStatus.Mined, assigned: true), "Survey Dock");
 
-            Assert.Contains(DockReadout.AssignedMarker, line);
-            Assert.Contains(DockReadout.MinedMarker, line);
-            Assert.StartsWith("<color=green>", line);
+            Assert.Contains("[mined]", line);
+            Assert.Contains("[assigned]", line);
+            Assert.StartsWith("<color=yellow>", line);
+            Assert.DoesNotContain("<color=yellow>[assigned]", line);
         }
 
         [Fact]
-        public void OfferedArea_WithNothingSpecial_CarriesNoMarkup()
+        public void OfferedArea_WithNothingSpecial_CarriesOnlyTheStatusItsRampGivesIt()
         {
-            var line = MiningReadout.FormatOfferedAreaLine(2, "Survey Dock", "Creek Bend", 8,
-                isAssigned: false, isMined: false);
+            var line = MiningReadout.FormatOfferedAreaLine(
+                Area(position: 2, name: "Creek Bend", plotCount: 8, coverage: 0f,
+                     status: AreaLifecycleStatus.Unsurveyed), "Survey Dock");
 
-            Assert.Equal("2. Survey Dock -- Creek Bend (8 plots)", line);
+            Assert.Equal("2. Survey Dock -- Creek Bend -- 8 plots, not surveyed yet   [unsurveyed]", line);
+        }
+
+        [Fact]
+        public void AE14_TheMiningCopy_IsTheSurveyLineWithTheOwningDockPrefixed()
+        {
+            // R29: identical fields in an identical order on both tabs. The prefix is the only
+            // structural difference, and it exists because the selector commits by position and
+            // area names are not unique.
+            var area = Area(
+                position: 1, name: "Iron Ridge", plotCount: 16, coverage: 100f,
+                top: SurveyFinding.Create(1, "IronOre", 180, new BlockPos(412, 63, -88), 9, 22, 0.12f),
+                status: AreaLifecycleStatus.Digging, assigned: true);
+
+            var survey = DockReadout.FormatAreaLine(area);
+            var mining = MiningReadout.FormatOfferedAreaLine(area, "North Dock");
+
+            Assert.Equal(
+                "<color=magenta>1. Iron Ridge -- 16 plots, 100% surveyed, most IronOre (~180 blocks)"
+                + "   [digging]   [assigned]</color>",
+                survey);
+            Assert.Equal(
+                "<color=magenta>1. North Dock -- Iron Ridge -- 16 plots, 100% surveyed, most IronOre (~180 blocks)"
+                + "   [digging]   [assigned]</color>",
+                mining);
+
+            // Same line but for the prefix: nothing else is allowed to drift.
+            Assert.Equal(survey, mining.Replace("North Dock -- ", string.Empty));
+        }
+
+        [Fact]
+        public void TwoAreasSharingAName_AreDistinguishableOnTheMiningTab_ButNotOnTheSurveyTab()
+        {
+            var first = Area(position: 1, name: "North Ridge");
+            var second = Area(position: 1, name: "North Ridge");
+
+            Assert.NotEqual(
+                MiningReadout.FormatOfferedAreaLine(first, "North Dock"),
+                MiningReadout.FormatOfferedAreaLine(second, "South Dock"));
+
+            // The survey tab lists one dock's own areas, so it has nothing to disambiguate with
+            // and deliberately adds nothing.
+            Assert.Equal(DockReadout.FormatAreaLine(first), DockReadout.FormatAreaLine(second));
+        }
+
+        [Fact]
+        public void OfferedArea_CapsItsAnnotationsAtTwo_InTheSameOrderTheSurveyTabUses()
+        {
+            var line = MiningReadout.FormatOfferedAreaLine(
+                Area(status: AreaLifecycleStatus.Digging, assigned: true, unreachable: true, overlap: true),
+                "Survey Dock");
+
+            Assert.EndsWith("   [overlap]   [unreachable]</color>", line);
+            Assert.DoesNotContain("[assigned]", line);
         }
 
         [Fact]

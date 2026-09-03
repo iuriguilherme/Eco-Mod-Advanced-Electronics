@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using AdvancedElectronics.Navigation;
 using Xunit;
 
@@ -19,8 +21,13 @@ namespace AdvancedElectronics.Navigation.Tests
             int plotCount = 24,
             float coverage = 43f,
             SurveyFinding? top = null,
-            bool assigned = false) =>
-            new AreaSnapshot(position, name, plotCount, coverage, top ?? SurveyFinding.NotFound, assigned);
+            AreaLifecycleStatus status = AreaLifecycleStatus.Surveyed,
+            bool assigned = false,
+            bool unreachable = false,
+            bool overlap = false) =>
+            new AreaSnapshot(
+                position, name, plotCount, coverage, top ?? SurveyFinding.NotFound, status,
+                assigned, unreachable, overlap);
 
         // --- Per-material line: shipped behaviour, characterized here for the first time ---
 
@@ -123,13 +130,19 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
-        public void AreaLine_ColoursAFullySurveyedArea_AndLeavesAPartialOnePlain()
+        public void AreaLine_TakesItsColourFromTheLifecycleStatus_NotFromCoverage()
         {
-            var complete = DockReadout.FormatAreaLine(Area(coverage: 100f, top: Finding("Coal", 4)));
-            var partial = DockReadout.FormatAreaLine(Area(coverage: 99f, top: Finding("Coal", 4)));
+            // R4 moved the colour onto the ramp. Coverage is a survey-progress figure and says
+            // nothing about whether the ground has been dug, so a 100%-surveyed area that has
+            // since been mined must not still read green.
+            var surveyed = DockReadout.FormatAreaLine(
+                Area(coverage: 12f, status: AreaLifecycleStatus.Surveyed, top: Finding("Coal", 4)));
+            var mined = DockReadout.FormatAreaLine(
+                Area(coverage: 100f, status: AreaLifecycleStatus.Mined, top: Finding("Coal", 4)));
 
-            Assert.Contains("<color=green>", complete);
-            Assert.DoesNotContain("<color=green>", partial);
+            Assert.StartsWith("<color=green>", surveyed);
+            Assert.StartsWith("<color=yellow>", mined);
+            Assert.DoesNotContain("<color=green>", mined);
         }
 
         // --- Area summary: the three states ---
@@ -172,21 +185,27 @@ namespace AdvancedElectronics.Navigation.Tests
         // --- Roster line ---
 
         [Fact]
-        public void AreaLine_NamesPositionNamePlotCountAndSummary()
+        public void AreaLine_NamesPositionNamePlotCountSummaryThenStatus()
         {
+            // R29's field order, stated once as an exact string so a reordering cannot pass.
             var line = DockReadout.FormatAreaLine(
-                Area(position: 2, name: "Iron Ridge", plotCount: 24, coverage: 43f, top: Finding("IronOre", 180)));
+                Area(position: 2, name: "Iron Ridge", plotCount: 24, coverage: 43f,
+                     top: Finding("IronOre", 180), status: AreaLifecycleStatus.Surveyed));
 
-            Assert.Equal("2. Iron Ridge -- 24 plots, 43% surveyed, most IronOre (~180 blocks)", line);
+            Assert.Equal(
+                "<color=green>2. Iron Ridge -- 24 plots, 43% surveyed, most IronOre (~180 blocks)   [surveyed]</color>",
+                line);
         }
 
         [Fact]
-        public void AreaLine_ForAnUnsurveyedArea_CarriesNoFinding()
+        public void AreaLine_ForAnUnsurveyedArea_CarriesNoFindingAndNoColour()
         {
             var line = DockReadout.FormatAreaLine(
-                Area(position: 3, name: "Limestone Flats", plotCount: 12, coverage: 0f));
+                Area(position: 3, name: "Limestone Flats", plotCount: 12, coverage: 0f,
+                     status: AreaLifecycleStatus.Unsurveyed));
 
-            Assert.Equal("3. Limestone Flats -- 12 plots, not surveyed yet", line);
+            Assert.Equal("3. Limestone Flats -- 12 plots, not surveyed yet   [unsurveyed]", line);
+            Assert.DoesNotContain("<color", line);
         }
 
         [Fact]
@@ -195,7 +214,7 @@ namespace AdvancedElectronics.Navigation.Tests
             var assigned = DockReadout.FormatAreaLine(Area(position: 2, assigned: true));
             var other = DockReadout.FormatAreaLine(Area(position: 3, assigned: false));
 
-            Assert.EndsWith(DockReadout.AssignedMarker, assigned);
+            Assert.Contains("[assigned]", assigned);
             Assert.DoesNotContain("[assigned]", other);
         }
 
@@ -214,7 +233,7 @@ namespace AdvancedElectronics.Navigation.Tests
         {
             var line = DockReadout.FormatViewingLine(Area(position: 2, assigned: true), totalAreas: 5);
 
-            Assert.EndsWith(DockReadout.AssignedMarker, line);
+            Assert.EndsWith("[assigned]", line);
         }
 
         // --- Overflow notice (R9) ---
@@ -288,5 +307,196 @@ namespace AdvancedElectronics.Navigation.Tests
         {
             Assert.Equal(0, DockReadout.ClampCursor(index: -1, count: 5));
         }
-    }
+    
+        // --- The lifecycle ramp and the uncoloured annotations (U6: R4, R9, R28, R29) ---
+
+        [Fact]
+        public void EveryLifecycleStatus_RendersItsOwnWord_SoNoStateDependsOnColourVision()
+        {
+            // R4: "Every state carries a word as well as a colour." Grey and no-colour differ by
+            // lightness rather than hue, so the word is the only reading that always survives.
+            var words = Enum.GetValues(typeof(AreaLifecycleStatus))
+                .Cast<AreaLifecycleStatus>()
+                .Select(DockReadout.StatusWord)
+                .ToList();
+
+            Assert.All(words, w => Assert.Matches(@"^\[[a-z]+\]$", w));
+            Assert.Equal(words.Count, words.Distinct().Count());
+
+            foreach (var status in Enum.GetValues(typeof(AreaLifecycleStatus)).Cast<AreaLifecycleStatus>())
+                Assert.Contains(DockReadout.StatusWord(status), DockReadout.FormatAreaLine(Area(status: status)));
+        }
+
+        [Fact]
+        public void EveryLifecycleStatus_CarriesItsOwnColour_AndOnlyUnsurveyedHasNone()
+        {
+            Assert.Null(DockReadout.StatusColor(AreaLifecycleStatus.Unsurveyed));
+            Assert.Equal("green", DockReadout.StatusColor(AreaLifecycleStatus.Surveyed));
+            Assert.Equal("magenta", DockReadout.StatusColor(AreaLifecycleStatus.Digging));
+            Assert.Equal("yellow", DockReadout.StatusColor(AreaLifecycleStatus.Mined));
+            Assert.Equal("red", DockReadout.StatusColor(AreaLifecycleStatus.Cleared));
+
+            // R4 asks for a mid grey "dark enough to read as deliberately coloured rather than as
+            // the panel's default text" -- so a value, not the absence of one.
+            var empty = DockReadout.StatusColor(AreaLifecycleStatus.Empty);
+            Assert.NotNull(empty);
+            Assert.Contains("<color=", DockReadout.FormatAreaLine(Area(status: AreaLifecycleStatus.Empty)));
+
+            var colours = Enum.GetValues(typeof(AreaLifecycleStatus))
+                .Cast<AreaLifecycleStatus>()
+                .Select(DockReadout.StatusColor)
+                .ToList();
+            Assert.Equal(colours.Count, colours.Distinct().Count());
+        }
+
+        [Fact]
+        public void MinedIsYellowAndSurveyedIsGreen_BecauseTheRampReassignedGreen()
+        {
+            // The vocabulary this replaces coloured [mined] green. Green now means [surveyed],
+            // and a line that still reads green for mined ground is the regression.
+            Assert.StartsWith("<color=yellow>", DockReadout.FormatAreaLine(Area(status: AreaLifecycleStatus.Mined)));
+            Assert.StartsWith("<color=green>", DockReadout.FormatAreaLine(Area(status: AreaLifecycleStatus.Surveyed)));
+        }
+
+        [Fact]
+        public void AE6_AMinedAreaStillAssigned_IsYellowWithAnUncolouredAssignedAnnotation()
+        {
+            var line = DockReadout.FormatAreaLine(Area(status: AreaLifecycleStatus.Mined, assigned: true));
+
+            Assert.StartsWith("<color=yellow>", line);
+            Assert.EndsWith("</color>", line);
+            Assert.Contains("[mined]", line);
+            Assert.Contains("[assigned]", line);
+
+            // R9: the annotation inherits the line's colour rather than carrying one. One colour
+            // tag on the line is the whole assertion -- the old marker shipped its own.
+            Assert.Equal(1, CountOccurrences(line, "<color="));
+            Assert.DoesNotContain("<color=yellow>[assigned]", line);
+        }
+
+        [Fact]
+        public void AE14_AFullySurveyedPartlyMinedAssignedArea_IsOneMagentaLineInTheFixedFieldOrder()
+        {
+            var line = DockReadout.FormatAreaLine(Area(
+                position: 1, name: "Iron Ridge", plotCount: 16, coverage: 100f,
+                top: Finding("IronOre", 180), status: AreaLifecycleStatus.Digging, assigned: true));
+
+            Assert.Equal(
+                "<color=magenta>1. Iron Ridge -- 16 plots, 100% surveyed, most IronOre (~180 blocks)"
+                + "   [digging]   [assigned]</color>",
+                line);
+
+            // R28: the line says THAT the plots differ. How much is the progress row's business.
+            Assert.DoesNotContain("worked", line);
+        }
+
+        [Fact]
+        public void ThreeApplicableAnnotations_RenderTwo_InTheOrderR29Fixes()
+        {
+            var line = DockReadout.FormatAreaLine(
+                Area(status: AreaLifecycleStatus.Digging, assigned: true, unreachable: true, overlap: true));
+
+            Assert.EndsWith("   [overlap]   [unreachable]</color>", line);
+            Assert.DoesNotContain("[assigned]", line);
+        }
+
+        [Fact]
+        public void Annotations_AreOrderedMostBlockingFirst_AndCappedAtTwo()
+        {
+            Assert.Equal(
+                "   [overlap]   [unreachable]",
+                DockReadout.FormatAnnotations(AreaAnnotation.Assigned, AreaAnnotation.Unreachable, AreaAnnotation.Overlap));
+
+            // Declaration order is display priority, and [flat] is last of all (farming R10).
+            Assert.Equal(
+                "   [assigned]   [farm]",
+                DockReadout.FormatAnnotations(AreaAnnotation.Flat, AreaAnnotation.Farm, AreaAnnotation.Assigned));
+
+            Assert.Equal("   [farm]   [flat]", DockReadout.FormatAnnotations(AreaAnnotation.Flat, AreaAnnotation.Farm));
+        }
+
+        [Fact]
+        public void Annotations_AreNeverColoured_SoTheyInheritTheLifecycleColour()
+        {
+            var all = DockReadout.FormatAnnotations(
+                AreaAnnotation.Overlap, AreaAnnotation.Unreachable, AreaAnnotation.Assigned,
+                AreaAnnotation.Farm, AreaAnnotation.Flat);
+
+            Assert.DoesNotContain("<color", all);
+        }
+
+        [Fact]
+        public void AnAreaWithNoAnnotations_RendersNoneAndNoTrailingSeparator()
+        {
+            Assert.Equal(string.Empty, DockReadout.FormatAnnotations());
+            Assert.Equal(string.Empty, DockReadout.FormatAnnotations(null));
+
+            var line = DockReadout.FormatAreaLine(Area(status: AreaLifecycleStatus.Surveyed));
+
+            Assert.EndsWith("[surveyed]</color>", line);
+            Assert.DoesNotMatch(@"\s+</color>$", line);
+        }
+
+        [Fact]
+        public void TheReadingDocksMaterialFilter_NarrowsTheSummaryAndNothingElse()
+        {
+            // R29 leaves exactly one field free to differ between docks, because a filter is a
+            // display preference rather than a fact about the area.
+            var showing = DockReadout.FormatAreaLine(Area(
+                coverage: 67f, top: Finding("IronOre", 180), status: AreaLifecycleStatus.Surveyed, assigned: true));
+            var filteredOut = DockReadout.FormatAreaLine(Area(
+                coverage: 67f, top: SurveyFinding.NotFound, status: AreaLifecycleStatus.Surveyed, assigned: true));
+
+            Assert.Contains("most IronOre (~180 blocks)", showing);
+            Assert.Contains("nothing matching", filteredOut);
+
+            const string head = "<color=green>1. Iron Ridge -- 24 plots, 67% surveyed, ";
+            const string tail = "   [surveyed]   [assigned]</color>";
+            Assert.StartsWith(head, showing);
+            Assert.StartsWith(head, filteredOut);
+            Assert.EndsWith(tail, showing);
+            Assert.EndsWith(tail, filteredOut);
+        }
+
+        [Fact]
+        public void AE7_AnAreaAt100Percent_Shows0PercentOnceAResurveyHasClearedIt()
+        {
+            // The readout carries nothing between calls: it renders the coverage it is handed and
+            // no blend of this pass with the last. Clearing the record is U7's; showing the
+            // cleared figure honestly is this line's.
+            var before = DockReadout.FormatAreaLine(Area(
+                coverage: 100f, top: Finding("IronOre", 180), status: AreaLifecycleStatus.Surveyed));
+
+            var during = DockReadout.FormatAreaLine(Area(
+                coverage: 0f, top: SurveyFinding.NotFound, status: AreaLifecycleStatus.Unsurveyed));
+
+            var partway = DockReadout.FormatAreaLine(Area(
+                coverage: 12f, top: Finding("IronOre", 9), status: AreaLifecycleStatus.Unsurveyed));
+
+            Assert.Contains("100% surveyed", before);
+            Assert.DoesNotContain("100", during);
+            Assert.DoesNotContain("IronOre", during);
+            Assert.Contains("not surveyed yet", during);
+            Assert.Contains("12% surveyed", partway);
+            Assert.DoesNotContain("100", partway);
+        }
+
+        [Fact]
+        public void TheSurveyTab_RendersTwoAreasSharingANameIdentically_BecauseItListsOneDocksAreas()
+        {
+            var first = DockReadout.FormatAreaLine(Area(position: 1, name: "North Ridge"));
+            var second = DockReadout.FormatAreaLine(Area(position: 1, name: "North Ridge"));
+
+            Assert.Equal(first, second);
+        }
+
+        private static int CountOccurrences(string haystack, string needle)
+        {
+            var count = 0;
+            for (var i = haystack.IndexOf(needle, StringComparison.Ordinal); i >= 0;
+                 i = haystack.IndexOf(needle, i + needle.Length, StringComparison.Ordinal))
+                count++;
+            return count;
+        }
+}
 }

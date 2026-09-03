@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 
 namespace AdvancedElectronics.Navigation
@@ -9,29 +10,37 @@ namespace AdvancedElectronics.Navigation
     /// </summary>
     public static class FarmReadout
     {
-        /// <summary>Marks the area as farmland. Non-exclusive, and carries no line colour of its own (R11).</summary>
-        public const string FarmMarker = "   [farm]";
-
-        /// <summary>
-        /// Marks ground flat enough to farm by hand or by tractor (R8). Lowest display
-        /// priority of any overlay (R10), so the caller drops it when the room is needed.
-        /// </summary>
-        public const string FlatMarker = "   [flat]";
-
         /// <summary>
         /// One line of the assigned-areas list (R35): the area, its crop, and its markers.
         /// What it will do next and why it will not are separate rows, so a long reason
         /// never pushes the crop off the line.
+        ///
+        /// <para>
+        /// <c>[farm]</c> and <c>[flat]</c> shipped here as this tab's own strings, appended
+        /// unconditionally with no ordering and no cap, because the shared annotation channel
+        /// did not exist yet. They now go through <see cref="DockReadout.FormatAnnotations(System.Collections.Generic.IEnumerable{AreaAnnotation})"/>
+        /// like every other tag: same two markers, same two conditions, one path that owns
+        /// priority (R10 puts <c>[flat]</c> last of all) and the two-tag cap (R29). Nothing about
+        /// what either marker MEANS or when it applies has changed.
+        /// </para>
         /// </summary>
         public static string FormatAreaLine(int position, FarmAreaState area, bool isFlat)
         {
             var crop = string.IsNullOrEmpty(area.Crop) ? "no crop selected" : area.Crop;
-            var line = $"{position}. {area.AreaName} -- {crop}";
 
-            line += FarmMarker;
-            if (isFlat) line += FlatMarker;
+            return $"{position}. {area.AreaName} -- {crop}"
+                   + DockReadout.FormatAnnotations(Annotations(isFlat));
+        }
 
-            return line;
+        /// <summary>
+        /// A farm area is always <c>[farm]</c> -- it is what the area is FOR (R30) -- and
+        /// <c>[flat]</c> only while the ground is, which is re-derived from a surface sample
+        /// rather than stored (R9 of the farming plan).
+        /// </summary>
+        private static IEnumerable<AreaAnnotation> Annotations(bool isFlat)
+        {
+            yield return AreaAnnotation.Farm;
+            if (isFlat) yield return AreaAnnotation.Flat;
         }
 
         /// <summary>What the drone does here next, or empty for an area that is doing nothing.</summary>

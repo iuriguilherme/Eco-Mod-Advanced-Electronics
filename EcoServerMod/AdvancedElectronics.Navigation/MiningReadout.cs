@@ -94,28 +94,25 @@ namespace AdvancedElectronics.Navigation
                 : FormatStopReason(jobEndReason);
 
         /// <summary>
-        /// One line of the Mining tab's offered-areas list, with the same vocabulary the survey
-        /// tab's roster uses: yellow [assigned] for the one being worked, green [mined] for one
-        /// with nothing left to do until it is re-surveyed.
+        /// One line of the Mining tab's offered-areas list. Not a second formatter: it is
+        /// <see cref="DockReadout.FormatRosterLine"/> with the owning survey dock's name
+        /// prefixed, which is the only difference R29 permits between the two tabs.
         ///
-        /// The two are not exclusive and the order matters when both apply. Assigned comes first
-        /// because it answers "what is the drone doing", which a player is looking for; mined
-        /// answers "is there anything here", which they are scanning for. A mined area that is
-        /// still assigned is a real state -- the pass finished and nobody has unassigned it -- and
-        /// showing only one of the two markers would hide it.
+        /// <para>
+        /// The vocabulary this replaces was this tab's own -- a green <c>[mined]</c> and a yellow
+        /// <c>[assigned]</c>, appended in an order argued for here rather than fixed anywhere
+        /// shared, on a line whose fields did not even match the Survey tab's. That is the drift
+        /// one builder removes. Ordering and the two-tag cap now belong to the shared channel,
+        /// and the colour to the area's own lifecycle status.
+        /// </para>
+        /// <para>
+        /// The prefix earns its place: this tab lists areas from several docks, area names are
+        /// not unique, and the selector commits by position -- without it a player can assign the
+        /// wrong area.
+        /// </para>
         /// </summary>
-        public static string FormatOfferedAreaLine(
-            int position, string dockName, string areaName, int plotCount, bool isAssigned, bool isMined)
-        {
-            var line = $"{position}. {dockName} -- {areaName} ({plotCount} plots)";
-            if (isMined) line = DockReadout.AsComplete(line);
-
-            // Appended outside the colour wrap, so each marker keeps its own.
-            if (isAssigned) line += DockReadout.AssignedMarker;
-            if (isMined) line += DockReadout.MinedMarker;
-
-            return line;
-        }
+        public static string FormatOfferedAreaLine(AreaSnapshot area, string owningDockName) =>
+            DockReadout.FormatRosterLine(area, owningDockName);
 
         /// <summary>
         /// The one progress line the Mining tab keeps: how much of the area is done, and how far

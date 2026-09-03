@@ -4,6 +4,7 @@ using System.Linq;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Utils;
 using Eco.Gameplay.Auth;
+using Eco.Gameplay.Objects;
 using Eco.Gameplay.Players;
 using Eco.Shared.IoC;
 using Eco.Shared.Items;
@@ -222,6 +223,74 @@ namespace Eco.Mods.TechTree
             ledger.RecordGroundFacts(area.ReadBedrockPlots());
             this.AddMiningExclusionsTo(ledger, owningDockId, area);
             return ledger;
+        }
+
+        /// <summary>
+        /// The exclusion set an area's STATUS is derived from (R26, U5 step 5): the area's own
+        /// at-bedrock observations unioned with the attempt facts of EVERY dock in the world, not
+        /// only the one doing the reading.
+        ///
+        /// <para>
+        /// Deliberately not <see cref="ReadMiningExclusions"/>, which is the per-dock OFFER read.
+        /// Derive the status from one dock's exclusions and the same area reads <c>[mined]</c> to
+        /// that dock and <c>[cleared]</c> to its neighbour -- the cross-dock disagreement this
+        /// whole model exists to remove. What varies per dock is which plots it is offered, never
+        /// what the area says it is.
+        /// </para>
+        /// <para>
+        /// Static because the answer must not depend on who asks. It reads the world-object
+        /// enumeration rather than a registry the mod has deliberately never had.
+        /// </para>
+        /// </summary>
+        /// <param name="exclusionHolders">
+        /// The docks to collect attempt facts from -- <see cref="DocksHoldingExclusions"/>, hoisted
+        /// by the caller. Null makes this collect them itself, which is right for a one-area read
+        /// and wrong for a roster: a roster refresh runs off the dock's TICK, so re-walking every
+        /// world object once per area would put an O(areas x world) sweep on a repeating path.
+        /// </param>
+        public static MiningExclusionLedger AssembleAreaExclusions(
+            Guid owningDockId, SurveyAreaEntry area, IReadOnlyCollection<DroneDockObject> exclusionHolders = null)
+        {
+            var ledger = new MiningExclusionLedger();
+            if (area == null) return ledger;
+
+            ledger.RecordGroundFacts(area.ReadBedrockPlots());
+
+            foreach (var dock in exclusionHolders ?? DocksHoldingExclusions())
+                dock.AddMiningExclusionsTo(ledger, owningDockId, area);
+
+            return ledger;
+        }
+
+        /// <summary>
+        /// Every dock in the world carrying at least one attempt-fact exclusion -- the only docks
+        /// <see cref="AssembleAreaExclusions"/> can learn anything from. Collected once per roster
+        /// refresh and reused across its areas.
+        /// </summary>
+        public static IReadOnlyCollection<DroneDockObject> DocksHoldingExclusions() =>
+            ServiceHolder<IWorldObjectManager>.Obj.All
+                .OfType<DroneDockObject>()
+                .Where(d => !d.IsDestroyed && d.MiningExclusions.Count > 0)
+                .ToList();
+
+        /// <summary>
+        /// One area's lifecycle status (R3), read the same way by every surface that shows it --
+        /// both roster lines and, when it lands, the offer test R44 defines. Computed on read and
+        /// never stored (KTD3).
+        /// </summary>
+        public static AreaLifecycleStatus StatusOfArea(
+            Guid owningDockId, SurveyAreaEntry area, IReadOnlyCollection<DroneDockObject> exclusionHolders = null)
+        {
+            if (area == null) return AreaLifecycleStatus.Unsurveyed;
+
+            var surveyed = area.ReadSurveyedStamps();
+            var mined = area.ReadMinedStamps();
+
+            return AreaLifecycle.DeriveStatus(
+                area.ToSurveyArea().EnumeratePlots(),
+                surveyed.StampFor,
+                mined.StampFor,
+                AssembleAreaExclusions(owningDockId, area, exclusionHolders));
         }
 
         /// <summary>
