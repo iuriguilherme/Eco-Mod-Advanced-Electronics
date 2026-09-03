@@ -72,6 +72,7 @@ namespace AdvancedElectronics.Navigation
                 case MiningEndReason.DevToolSelected: return "the stamped citizen has a permission-ignoring tool selected";
                 case MiningEndReason.Halted: return "an administrator halted mining";
                 case MiningEndReason.AreaRedrawn: return "the source area was redrawn -- reassign it to mine the new shape";
+                case MiningEndReason.AreaOutOfRange: return OutOfRangeAssignmentReason;
                 default: return reason.ToString();
             }
         }

@@ -50,7 +50,27 @@ namespace AdvancedElectronics.Navigation
         /// Appended rather than inserted: these values are persisted by ordinal in the job
         /// snapshot, so the existing members' positions are load-bearing.
         /// </summary>
-        AreaRedrawn
+        AreaRedrawn,
+
+        /// <summary>
+        /// The area still exists and is still assigned, but its survey dock sits outside this
+        /// dock's network radius, so this dock may no longer work it (R23, R24).
+        ///
+        /// <para>
+        /// This path used to report <see cref="AreaGone"/>, because ending on the vanished-area
+        /// route is how the drone comes home and no member said otherwise. The mining panel
+        /// corrected the wording above it -- an out-of-range assignment outranks the job's end
+        /// reason in <see cref="MiningReadout.FormatBlockedReason"/> -- but every other reader of
+        /// <c>EndReason</c>, <c>/drone state</c> included, still said the area was gone about an
+        /// area plainly still on the map. A borrowed member is only ever correct in the one place
+        /// that knows to override it.
+        /// </para>
+        /// <para>
+        /// Appended, like <see cref="AreaRedrawn"/> before it, for the same reason: the ordinals
+        /// are persisted in the job snapshot.
+        /// </para>
+        /// </summary>
+        AreaOutOfRange
     }
 
     /// <summary>What became of one plot: still to do, worked, or abandoned with a reason (R16, R22).</summary>

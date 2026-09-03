@@ -622,5 +622,37 @@ namespace AdvancedElectronics.Navigation.Tests
                 MiningReadout.FormatStopReason(MiningEndReason.AreaGone),
                 MiningReadout.FormatBlockedReason(haltedServerWide: false, jobEndReason: MiningEndReason.AreaGone));
         }
+
+        /// <summary>
+        /// R23. An out-of-range separation has its own end reason, so every reader of
+        /// <c>EndReason</c> -- not only the panel, which outranks it -- says something true about
+        /// an area that is still on the map.
+        /// </summary>
+        [Fact]
+        public void AnOutOfRangeJob_ReadsAsOutOfRange_NotAsAVanishedArea()
+        {
+            var wording = MiningReadout.FormatStopReason(MiningEndReason.AreaOutOfRange);
+
+            Assert.Contains("out of range", wording);
+            Assert.DoesNotContain("is gone", wording);
+            Assert.NotEqual(MiningReadout.FormatStopReason(MiningEndReason.AreaGone), wording);
+        }
+
+        /// <summary>
+        /// The panel's ranking is unchanged by the new reason: it still reports the separation
+        /// without depending on which end reason the job happens to carry, and a halt still
+        /// outranks both.
+        /// </summary>
+        [Fact]
+        public void TheNewReason_DoesNotDisturbTheBlockedRowRanking()
+        {
+            Assert.Equal(
+                MiningReadout.FormatStopReason(MiningEndReason.AreaOutOfRange),
+                MiningReadout.FormatBlockedReason(
+                    haltedServerWide: false, jobEndReason: MiningEndReason.AreaOutOfRange, assignmentOutOfRange: true));
+
+            Assert.Contains("halted", MiningReadout.FormatBlockedReason(
+                haltedServerWide: true, jobEndReason: MiningEndReason.AreaOutOfRange, assignmentOutOfRange: true));
+        }
     }
 }
