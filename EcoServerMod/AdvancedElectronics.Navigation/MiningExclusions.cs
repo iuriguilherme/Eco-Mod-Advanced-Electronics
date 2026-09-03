@@ -26,16 +26,18 @@ namespace AdvancedElectronics.Navigation
 
     /// <summary>
     /// One plot a mining pass could not take, recorded against the dock that hit the refusal
-    /// (R18, KTD5): the plot, the category the pass already filed it under, the engine's own
-    /// refusal wording, and the plot's surveyed stamp at the moment of the refusal.
+    /// (R18, KTD5): the plot, the category the pass already filed it under, and the engine's
+    /// own refusal wording.
     ///
     /// The vocabulary is <see cref="SkipCategory"/>'s, unchanged — the exclusion IS the mining
     /// job's skipped ledger entry, persisted past the job's end, and no second refusal
     /// vocabulary exists (KTD5).
     ///
-    /// The stamp is what makes the exclusion a record of the LAST ATTEMPT rather than a
-    /// permanent verdict: a survey pass that postdates it and still finds material at the plot
-    /// lifts it (R19, AE15). See <see cref="MiningExclusionLedger.LiftWhereSurveyObservedMaterial"/>.
+    /// It carries no timestamp, deliberately. Nothing expires it and no observation contradicts
+    /// it: only a mining drone can learn a refusal, by attempting the action in place and
+    /// capturing the reason, so only another mining attempt can learn the refusal has gone
+    /// (R45). What lifts it is the player assigning the area to that dock again — see
+    /// <see cref="MiningExclusionLedger.ClearAttemptFactsFor"/>.
     /// </summary>
     public readonly struct MiningExclusion : IEquatable<MiningExclusion>
     {
@@ -49,16 +51,12 @@ namespace AdvancedElectronics.Navigation
         /// <summary>The engine's own words for the refusal (R27), or null when the pass had none — an unreachable plot is refused by nobody.</summary>
         public string Detail { get; }
 
-        /// <summary>The plot's surveyed stamp when the refusal happened. A later stamp is what a lift is measured against.</summary>
-        public long SurveyedStamp { get; }
-
-        public MiningExclusion(string dockId, PlotCoord plot, SkipCategory category, string detail, long surveyedStamp)
+        public MiningExclusion(string dockId, PlotCoord plot, SkipCategory category, string detail)
         {
             this.DockId = dockId;
             this.Plot = plot;
             this.Category = category;
             this.Detail = detail;
-            this.SurveyedStamp = surveyedStamp;
         }
 
         /// <summary>
@@ -87,12 +85,11 @@ namespace AdvancedElectronics.Navigation
 
         public bool Equals(MiningExclusion other) =>
             this.DockId == other.DockId && this.Plot.Equals(other.Plot)
-            && this.Category == other.Category && this.Detail == other.Detail
-            && this.SurveyedStamp == other.SurveyedStamp;
+            && this.Category == other.Category && this.Detail == other.Detail;
 
         public override bool Equals(object obj) => obj is MiningExclusion other && this.Equals(other);
 
-        public override int GetHashCode() => (this.DockId, this.Plot, (int)this.Category, this.SurveyedStamp).GetHashCode();
+        public override int GetHashCode() => (this.DockId, this.Plot, (int)this.Category).GetHashCode();
 
         public override string ToString() =>
             $"dock {this.DockId} plot ({this.Plot.X},{this.Plot.Z}) {this.Category}";
@@ -140,7 +137,7 @@ namespace AdvancedElectronics.Navigation
         /// <summary>
         /// Records one dock's refusal. The latest record for a (dock, plot) pair replaces any
         /// earlier one — an exclusion describes the LAST attempt, so a second refusal at the
-        /// same plot restates it with a fresh stamp rather than stacking a duplicate.
+        /// same plot restates it rather than stacking a duplicate.
         /// </summary>
         public void Record(MiningExclusion exclusion)
         {
@@ -182,44 +179,28 @@ namespace AdvancedElectronics.Navigation
             areaPlots.Where(p => this.SuppressesFor(dockId, p));
 
         /// <summary>
-        /// Drops every attempt fact a later survey pass has contradicted, and returns the ones
-        /// dropped (R19, AE15).
+        /// Drops every attempt fact <paramref name="dockId"/> recorded, and returns what was
+        /// dropped. This is the ONLY way an attempt fact is lifted (R45).
         ///
-        /// An exclusion is a record of the last attempt, not a permanent verdict, and the
-        /// survey is the only thing that can ever lift one: a `[cleared]` area is offered to no
-        /// mining dock (R44), so a mining pass could never be the lifter. Two conditions, both
-        /// required:
-        /// <list type="number">
-        /// <item><description>
-        /// The pass POSTDATES the refusal — <paramref name="surveyedStampFor"/> returns a stamp
-        /// later than the one the exclusion carries. Without this an exclusion would be lifted
-        /// by the very pass that preceded it and would suppress nothing.
-        /// </description></item>
-        /// <item><description>
-        /// The pass observed MINEABLE MATERIAL there — the plot is not down at bedrock. A plot
-        /// at bedrock has nothing left to take, so there is nothing for the exclusion to be
-        /// wrong about, and the ground fact answers for it anyway.
-        /// </description></item>
-        /// </list>
+        /// Assigning the area to a mining dock is the retry, and the retry is the lift: only a
+        /// mining drone can learn a refusal — it attempts the action in place and captures the
+        /// engine's reason — so only a mining attempt can learn the refusal has gone. A survey
+        /// cannot test settlement law or property, and observing material proves nothing about
+        /// a permit refusal, because a permit refusal leaves the material exactly where it was.
+        /// The mod is deliberately never told that a permit lapsed or a boundary moved: it
+        /// neither polls nor re-tests permission, and the player who wants the ground worked
+        /// says so by assigning a drone to it.
         ///
-        /// Lifting is not scoped to a holder, because the observation is not: the survey sees
-        /// ground, not attempts, and cannot tell whose refusal it contradicts. What it drops,
-        /// it drops for every dock that recorded it.
+        /// Scoped to the one dock, and never to the ground facts: another dock's refusal is its
+        /// own knowledge, and an at-bedrock observation needs no lift at all — the survey
+        /// re-derives it from the ground on every pass, so filled-in ground stops reading at
+        /// bedrock on its own (R45, AE5).
         /// </summary>
-        public IReadOnlyList<MiningExclusion> LiftWhereSurveyObservedMaterial(
-            Func<PlotCoord, long> surveyedStampFor, Func<PlotCoord, bool> restsOnBedrock)
+        public IReadOnlyList<MiningExclusion> ClearAttemptFactsFor(string dockId)
         {
-            if (surveyedStampFor == null) throw new ArgumentNullException(nameof(surveyedStampFor));
-            if (restsOnBedrock == null) throw new ArgumentNullException(nameof(restsOnBedrock));
-
-            var lifted = this.attempts
-                .Where(e => surveyedStampFor(e.Plot) > e.SurveyedStamp && !restsOnBedrock(e.Plot))
-                .ToList();
-
-            foreach (var exclusion in lifted)
-                this.attempts.Remove(exclusion);
-
-            return lifted;
+            var cleared = this.attempts.Where(e => e.DockId == dockId).ToList();
+            this.attempts.RemoveAll(e => e.DockId == dockId);
+            return cleared;
         }
 
         /// <summary>True when this area excludes nothing at all, from anyone.</summary>

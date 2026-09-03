@@ -279,7 +279,7 @@ namespace AdvancedElectronics.Navigation.Tests
         public void SettlementLawRefusalByOneDock_DoesNotSuppressThatPlotForAnotherDock()
         {
             var ledger = new MiningExclusionLedger();
-            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused under settlement law.", 100));
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused under settlement law."));
 
             Assert.True(ledger.SuppressesFor(DockA, P00));
             Assert.False(ledger.SuppressesFor(DockB, P00));
@@ -308,7 +308,7 @@ namespace AdvancedElectronics.Navigation.Tests
             var ledger = new MiningExclusionLedger();
             ledger.RecordGroundFact(P00);
             ledger.RecordGroundFact(P10);
-            ledger.Record(new MiningExclusion(DockA, P01, SkipCategory.SettlementLaw, "Refused under settlement law.", 100));
+            ledger.Record(new MiningExclusion(DockA, P01, SkipCategory.SettlementLaw, "Refused under settlement law."));
 
             // Read with no filter on holder -- what the one shared status is derived from.
             var accounted = ledger.AttemptFacts;
@@ -322,46 +322,51 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
-        public void CoversAE15_ASurveyObservingMineableMaterialAtAnExcludedPlot_DropsTheExclusion()
+        public void CoversAE15_ReassigningTheAreaToThatDock_ClearsItsExclusions_AndNothingElseDoes()
         {
-            // No mining pass is involved: a [cleared] area is offered to no mining dock
-            // (R44), so a survey is the only thing that can ever lift this.
+            // R45: an attempt-fact exclusion is lifted by assigning the area to that mining
+            // dock again, and by nothing else. Only a mining drone can learn a refusal -- it
+            // attempts the action in place and captures the reason -- so only a mining attempt
+            // can learn the refusal has gone. A survey cannot test settlement law or property,
+            // and material proves nothing about a permit refusal: the refusal leaves the
+            // material exactly where it was. The player is the signal, and assigning is how
+            // they give it.
             var ledger = new MiningExclusionLedger();
-            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused under settlement law.", 100));
-            Assert.True(ledger.SuppressesFor(DockA, P00));
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused under settlement law."));
+            ledger.Record(new MiningExclusion(DockB, P10, SkipCategory.Property, "Refused under private property."));
+            ledger.RecordGroundFact(P01);
 
-            // A LATER survey pass sweeps the plot (stamp 300 postdates the refusal's 100) and
-            // finds it standing above bedrock -- there is mineable material there.
-            var lifted = ledger.LiftWhereSurveyObservedMaterial(_ => 300, _ => false);
+            // Resurveying in between changes nothing: there is no survey-driven lift to call,
+            // and reading the ledger any number of times leaves every record standing.
+            Assert.True(ledger.SuppressesFor(DockA, P00));
+            Assert.True(ledger.SuppressesFor(DockA, P00));
+            Assert.Equal(2, ledger.AttemptFacts.Count);
+
+            // The player assigns the area to DockA again. That, and only that, is the retry.
+            var lifted = ledger.ClearAttemptFactsFor(DockA);
 
             Assert.Equal(P00, Assert.Single(lifted).Plot);
             Assert.False(ledger.SuppressesFor(DockA, P00));
-            Assert.Empty(ledger.AttemptFacts);
+
+            // Scoped to the assigning dock: DockB's own refusal is its own knowledge, and
+            // someone else's assignment does not clear it.
+            Assert.True(ledger.SuppressesFor(DockB, P10));
+            Assert.Equal(P10, Assert.Single(ledger.AttemptFacts).Plot);
+
+            // And the ground fact needs no lift: the survey re-derives at-bedrock from the
+            // ground on every pass, so an assignment must not touch it.
+            Assert.True(ledger.SuppressesFor(DockA, P01));
+            Assert.True(ledger.SuppressesFor(DockB, P01));
         }
 
         [Fact]
-        public void ASurveyThatPredatesTheRefusal_LiftsNothing()
+        public void ClearingOneDocksExclusions_WhenItHasNone_IsANoOp()
         {
-            // Otherwise an exclusion would be lifted by the very pass that preceded it, and
-            // would suppress nothing for as long as it took to read it back.
             var ledger = new MiningExclusionLedger();
-            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.Property, "Refused under private property.", 300));
+            ledger.Record(new MiningExclusion(DockB, P10, SkipCategory.Property, "property"));
 
-            Assert.Empty(ledger.LiftWhereSurveyObservedMaterial(_ => 300, _ => false));
-            Assert.True(ledger.SuppressesFor(DockA, P00));
-        }
-
-        [Fact]
-        public void ALaterSurveyFindingThePlotAtBedrock_LiftsNothing()
-        {
-            // "Observes MINEABLE material" is the condition, not "observes". A plot down at
-            // bedrock has nothing left to take, so there is nothing for the exclusion to be
-            // wrong about.
-            var ledger = new MiningExclusionLedger();
-            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.Unreachable, null, 100));
-
-            Assert.Empty(ledger.LiftWhereSurveyObservedMaterial(_ => 300, _ => true));
-            Assert.True(ledger.SuppressesFor(DockA, P00));
+            Assert.Empty(ledger.ClearAttemptFactsFor(DockA));
+            Assert.Single(ledger.AttemptFacts);
         }
 
         [Fact]
@@ -370,8 +375,8 @@ namespace AdvancedElectronics.Navigation.Tests
             // R19's whole point, and R26's: what varies per dock is which plots it is
             // OFFERED, never what the area says it is.
             var ledger = new MiningExclusionLedger();
-            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "law", 100));
-            ledger.Record(new MiningExclusion(DockB, P10, SkipCategory.Property, "property", 100));
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "law"));
+            ledger.Record(new MiningExclusion(DockB, P10, SkipCategory.Property, "property"));
             ledger.RecordGroundFact(P01);
 
             // One shared record, both entries, whoever asks.
@@ -395,7 +400,7 @@ namespace AdvancedElectronics.Navigation.Tests
 
             var ledger = new MiningExclusionLedger();
             foreach (var skip in job.SkippedPlots())
-                ledger.Record(new MiningExclusion(DockA, skip.Plot, skip.Category, skip.Detail, 100));
+                ledger.Record(new MiningExclusion(DockA, skip.Plot, skip.Category, skip.Detail));
 
             Assert.Empty(ledger.AttemptFacts);
             Assert.False(ledger.SuppressesFor(DockA, P00));
@@ -440,12 +445,17 @@ namespace AdvancedElectronics.Navigation.Tests
             // category vocabulary the skip line uses and carrying the engine's own words. An
             // area whose [cleared] rests on this must be able to say what would unblock it.
             var ledger = new MiningExclusionLedger();
-            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused by settlement law 'No Digging'.", 100));
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused by settlement law 'No Digging'."));
 
             var line = MiningReadout.FormatExclusionLine(ledger.AttemptFacts);
 
             Assert.Contains("not authorized (settlement law)", line);
             Assert.Contains("No Digging", line);
+
+            // And it names the remedy that actually works (R45). Saying "resurvey" here would
+            // send the player to do the one thing that cannot lift this.
+            Assert.Contains("reassigned", line);
+            Assert.DoesNotContain("resurvey", line);
         }
 
         [Fact]

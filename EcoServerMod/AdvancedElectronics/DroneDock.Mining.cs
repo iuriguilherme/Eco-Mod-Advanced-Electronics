@@ -45,9 +45,6 @@ namespace Eco.Mods.TechTree
         /// <summary>The engine's own refusal wording (R27), or null when the refusal had none.</summary>
         [Serialized] public string Detail { get; set; }
 
-        /// <summary>The plot's surveyed stamp when the refusal happened — what a later survey's lift is measured against (R19).</summary>
-        [Serialized] public long SurveyedStamp { get; set; }
-
         /// <summary>Parameterless constructor required by the Eco serializer.</summary>
         public MiningExclusionEntry() { }
 
@@ -129,8 +126,12 @@ namespace Eco.Mods.TechTree
         /// and the next offer still has to know which plots this dock was refused.
         ///
         /// NOT cleared by <see cref="UnassignMiningArea"/> -- walking away from an area does
-        /// not unlearn what the drone was refused there. What clears one is the survey lifting
-        /// it (R19), applied on read in <see cref="AddMiningExclusionsTo"/>.
+        /// not unlearn what the drone was refused there. The ONE thing that clears these is the
+        /// player assigning the area to this dock again (R45), which
+        /// <see cref="AssignMiningArea(DroneDockObject, SurveyAreaEntry, User, out string)"/>
+        /// does before the pass begins. Nothing else lifts one: only a mining drone can learn a
+        /// refusal, by attempting the action in place, so only another attempt can learn it has
+        /// gone -- and the player asking for that attempt IS the assignment.
         /// </summary>
         [Serialized] public ThreadSafeList<MiningExclusionEntry> MiningExclusions { get; set; } = new();
 
@@ -159,7 +160,6 @@ namespace Eco.Mods.TechTree
             if (skipped.Count == 0) return;
 
             var sourceDockId = this.AssignedMiningArea.OwningDockId.ToString();
-            var stamps = area.ReadSurveyedStamps();
 
             // Rebuilt rather than mutated in place: every other serialized collection here is
             // replaced wholesale on write, and an entry edited inside the list is the one shape
@@ -178,7 +178,6 @@ namespace Eco.Mods.TechTree
                     PlotZ = skip.Plot.Z,
                     CategoryValue = (int)skip.Category,
                     Detail = skip.Detail,
-                    SurveyedStamp = stamps.StampFor(skip.Plot),
                 });
 
             this.MiningExclusions = rebuilt;
@@ -186,19 +185,17 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// Adds this dock's exclusions for <paramref name="area"/> into <paramref name="ledger"/>,
-        /// tagged with <see cref="ExclusionHolderId"/>, and applies R19's lift first: an
-        /// exclusion a LATER survey pass has contradicted — the plot's surveyed stamp postdates
-        /// the refusal and the plot is not down at bedrock, so there is mineable material there
-        /// — is dropped from the persisted list and never reaches the ledger (AE15).
+        /// tagged with <see cref="ExclusionHolderId"/>.
         ///
-        /// The lift lands on the read rather than on the survey pass because the exclusions sit
-        /// on the mining docks while the pass runs on the survey dock, and a survey dock does
-        /// not enumerate mining docks. The stamp comparison makes the two equivalent: the first
-        /// read after the pass is the drop.
+        /// A pure read: it drops nothing and re-tests nothing. An exclusion is lifted only by
+        /// this dock being assigned the area again (R45), never by anything a later survey
+        /// observed -- a survey cannot test settlement law or property, and material standing
+        /// at the plot proves nothing about a permit refusal, since the refusal left the
+        /// material exactly where it was.
         ///
         /// Takes the ledger rather than returning one so a caller deriving the AREA's status can
         /// merge several docks' exclusions into a single ledger and read them all regardless of
-        /// holder (R26) — the split R19 draws is between what a dock is OFFERED and what the
+        /// holder (R26) -- the split R19 draws is between what a dock is OFFERED and what the
         /// area reads, and only the offer side filters by holder.
         /// </summary>
         public void AddMiningExclusionsTo(MiningExclusionLedger ledger, Guid owningDockId, SurveyAreaEntry area)
@@ -206,27 +203,9 @@ namespace Eco.Mods.TechTree
             if (ledger == null || area == null) return;
 
             var sourceDockId = owningDockId.ToString();
-            var mine = this.MiningExclusions.Where(e => e.IsFor(sourceDockId, area.Id)).ToList();
-            if (mine.Count == 0) return;
-
-            var scratch = new MiningExclusionLedger();
-            foreach (var entry in mine)
-                scratch.Record(new MiningExclusion(
-                    this.ExclusionHolderId, entry.Plot, (SkipCategory)entry.CategoryValue, entry.Detail, entry.SurveyedStamp));
-
-            var stamps = area.ReadSurveyedStamps();
-            var lifted = scratch.LiftWhereSurveyObservedMaterial(stamps.StampFor, area.PlotRestsOnBedrock);
-            if (lifted.Count > 0)
-            {
-                var survivors = new ThreadSafeList<MiningExclusionEntry>();
-                foreach (var entry in this.MiningExclusions)
-                    if (!(entry.IsFor(sourceDockId, area.Id) && lifted.Any(l => l.Plot.X == entry.PlotX && l.Plot.Z == entry.PlotZ)))
-                        survivors.Add(entry);
-                this.MiningExclusions = survivors;
-            }
-
-            foreach (var exclusion in scratch.AttemptFacts)
-                ledger.Record(exclusion);
+            foreach (var entry in this.MiningExclusions.Where(e => e.IsFor(sourceDockId, area.Id)))
+                ledger.Record(new MiningExclusion(
+                    this.ExclusionHolderId, entry.Plot, (SkipCategory)entry.CategoryValue, entry.Detail));
         }
 
         /// <summary>
@@ -243,6 +222,33 @@ namespace Eco.Mods.TechTree
             ledger.RecordGroundFacts(area.ReadBedrockPlots());
             this.AddMiningExclusionsTo(ledger, owningDockId, area);
             return ledger;
+        }
+
+        /// <summary>
+        /// Drops this dock's attempt-fact exclusions for one area (R45) -- what an assignment
+        /// does before the pass begins, and the only thing that lifts one.
+        ///
+        /// Assignment is the retry. The mod is never told that a settlement claim lapsed or a
+        /// property boundary moved: it does not poll and does not re-test permission, because
+        /// only a mining drone can learn a refusal at all -- it attempts the action in place and
+        /// captures the engine's reason. The player who wants the ground worked says so by
+        /// assigning a drone to it, and that request is what wipes the slate.
+        ///
+        /// Scoped to this dock and this area, and to attempt facts only. Another dock's
+        /// exclusions are its own knowledge and are untouched; another area's are untouched; and
+        /// the area's ground facts are not this dock's to clear -- the survey re-derives
+        /// at-bedrock from the ground on every pass, so they need no lift (AE5).
+        /// </summary>
+        public void ClearMiningExclusions(Guid owningDockId, int areaId)
+        {
+            var sourceDockId = owningDockId.ToString();
+            if (!this.MiningExclusions.Any(e => e.IsFor(sourceDockId, areaId))) return;
+
+            var survivors = new ThreadSafeList<MiningExclusionEntry>();
+            foreach (var entry in this.MiningExclusions)
+                if (!entry.IsFor(sourceDockId, areaId))
+                    survivors.Add(entry);
+            this.MiningExclusions = survivors;
         }
 
         /// <summary>True when <paramref name="citizen"/> holds full access on this dock (R39, R40) -- the level the dig-or-mine action itself declares, not the attribute default.</summary>
@@ -315,6 +321,21 @@ namespace Eco.Mods.TechTree
 
                 this.StampedCitizenName = actingCitizen.Name;
                 this.StampedCitizenId = actingCitizen.Id;
+
+                // R45: assignment IS the retry, so it lifts this dock's exclusions on this area
+                // before the pass begins. Only a mining drone can learn a refusal -- it attempts
+                // the action in place and captures the engine's reason -- so only another attempt
+                // can learn the refusal has gone, and the player asking for that attempt is the
+                // only signal the mod gets. Nothing here polls, re-tests a permit, or asks a
+                // survey to answer for one.
+                //
+                // Placed after every gate above, so a REFUSED assignment lifts nothing: the whole
+                // call is meant to be a no-op on refusal, and clearing early would let a player
+                // with no access wipe a record by trying.
+                //
+                // Scoped to this dock and this area. Another dock's exclusions on the same area
+                // stand -- they are its own knowledge -- and so do this dock's on other areas.
+                this.ClearMiningExclusions(sourceDock.ObjectID, area.Id);
             }
 
             this.AssignedMiningArea = area == null ? null : MiningAreaRef.For(sourceDock, area);

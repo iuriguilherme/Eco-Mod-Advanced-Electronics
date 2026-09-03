@@ -101,7 +101,8 @@ A third constraint here is deliberate rather than a repair. A mining dock today 
 **What mining reports back to survey**
 
 - R18. A mining pass records what it was unable to mine, and the record's reach follows what the refusal is a fact about. Bedrock reached is a fact about the ground: it is recorded on the area, per block, and binds every dock. Property, settlement law, and pathing refusals are facts about one attempt: they are recorded against the dock that hit them, for the whole plot, because the pass stops at the refused layer and learns nothing beneath it.
-- R19. A survey excludes what R18 recorded from its findings, so the roster offers only material a drone is actually able to dig. A ground-fact exclusion suppresses material for every dock; an attempt-fact exclusion suppresses it only for the dock that recorded it, so one dock's missing permit or failed route never deletes ore another dock could take. That per-dock scoping governs what a dock is *offered*, not what the area reads: the exclusion itself is shared information and feeds the one status R26 derives. An exclusion is a record of the last attempt, not a permanent verdict, and the survey lifts what it suppresses: a survey pass that observes mineable material at an excluded location drops that exclusion, so `[cleared]` is re-derived and the area rejoins the ramp. This is what makes an exclusion reversible at all — a `[cleared]` area is offered to no mining dock, so a mining pass could never be the thing that lifts it.
+- R19. A survey excludes what R18 recorded from its findings, so the roster offers only material a drone is actually able to dig. A ground-fact exclusion suppresses material for every dock; an attempt-fact exclusion suppresses it only for the dock that recorded it, so one dock's missing permit or failed route never deletes ore another dock could take. That per-dock scoping governs what a dock is *offered*, not what the area reads: the exclusion itself is shared information and feeds the one status R26 derives.
+- R45. An attempt-fact exclusion is lifted by assigning the area to that mining dock again, and by nothing else. Only a mining drone can learn a refusal, by attempting the action in place and capturing the reason, so only a mining attempt can learn that the refusal has gone. The mod is deliberately not told when a permit lapses or a property boundary moves: it neither polls nor re-tests permission, because a player who wants the ground worked says so by assigning a drone to it. Assignment is therefore the retry, and it clears that dock's attempt-fact exclusions for that area before the pass begins. A ground-fact exclusion needs no lift — the survey re-derives at-bedrock from the ground on every pass, so filled ground stops reading at bedrock on its own.
 
 **Editing an area**
 
@@ -212,7 +213,7 @@ The diagram shows the area-level status only. R16, R20, and R25 all produce area
 - AE12. **Covers R35, R36, R37, R39.** Given a player who draws a mining area overlapping four plots of an assigned farming area, when the area is created, then it is created successfully and both areas carry an uncoloured `[overlap]` annotation naming the four shared plots — the farm keeps working them, because the new area holds no claim until it is assigned. When the player then assigns it, the assignment is refused for those four plots and names the farm as holding them.
 - AE13. **Covers R37.** Given a player who draws a farming area over a mining area whose ground reads `[empty]`, when a dock of another kind assigns those plots, then it is refused nothing — the mining area holds no claim — and no release is negotiated and neither area is edited. The second half of this behaviour, that the farming data recorded there is what marks the ground farmland from then on, belongs to R40 and is verified by the farming plan, which owns the record.
 - AE14. **Covers R28, R29.** Given an area of 16 plots that is 100% surveyed, richest in iron, currently assigned to a drone, mostly but not entirely mined, when either tab renders it, then one magenta line carries its position and name, its plot count, its coverage-and-material summary, the `[digging]` status, and an uncoloured `[assigned]` — in that order on both tabs, with the Mining tab's copy prefixed by the owning survey dock's name. The status carries that its plots differ; how much has been worked is on the progress row, not the line.
-- AE15. **Covers R19.** Given a `[cleared]` area whose blocking settlement claim has since lapsed, when a survey pass observes mineable material at the excluded plot, then the exclusion is dropped and the area returns to the ramp without any mining pass having run.
+- AE15. **Covers R45.** Given a `[cleared]` area whose blocking settlement claim has since lapsed, when the player assigns it to that mining dock again, then the dock's exclusions for that area are cleared, the drone attempts the plot, and the area returns to the ramp. Resurveying it any number of times in between changes nothing, because a survey cannot test settlement law.
 - AE16. **Covers R16.** Given a player who digs one block inside a large surveyed area, when the change is noticed, then only the plots containing that block return to unsurveyed and the rest of the area keeps its findings.
 
 ### Scope Boundaries
@@ -509,7 +510,7 @@ flowchart TB
 
 **Goal:** Record what a mining pass could not take, and scope each record to what the refusal is a fact about.
 
-**Requirements:** R18, R19, R27.
+**Requirements:** R18, R19, R27, R45.
 
 **Dependencies:** U2, U4.
 
@@ -524,7 +525,7 @@ flowchart TB
 1. Every `SkipCategory` value the mining ledger records is an attempt fact — `Unreachable`, `Property`, `SettlementLaw`, `Obstructed` and `Other` alike — recorded per plot against the dock that hit it. A mining pass records no ground facts. `Obstructed` is the classifier's catch-all for a refusal that was neither law nor property, which is R7's single-column obstruction; and bedrock never reaches this ledger at all, because the strategy filters unremovable positions out before submission and advances the layer without recording a skip.
 2. The one ground-fact exclusion is the at-bedrock observation U4 writes per column onto the area, per KTD4. This unit persists only the dock half.
 3. Filter offers by the union of the area's ground exclusions and the reading dock's own attempt exclusions, per R19. The status derivation in U5 reads every exclusion regardless of holder — that split is the whole point of R26.
-4. Add the lift: a survey pass observing mineable material at an excluded location drops that exclusion. This is why R44 matters — a `[cleared]` area is offered to no mining dock, so only a survey can ever lift one.
+4. Lift on assignment, per R45: assigning an area to a mining dock clears that dock's attempt-fact exclusions for it before the pass begins. Nothing else lifts one. Do not infer a lift from observed material — a permit refusal leaves the material exactly where it was, so material proves nothing about whether the refusal still applies, and a survey drone cannot test law or property at all.
 
 **Test scenarios:**
 - A settlement-law refusal recorded by dock A does not suppress that plot's material for dock B.

@@ -190,7 +190,11 @@ namespace AdvancedElectronics.Navigation
                 .ThenBy(g => (int)g.Key)
                 .Select(g => $"{g.Count()} {Label(g.Key)}");
 
-            var line = "excluded, awaiting a resurvey: " + string.Join(", ", parts);
+            // Names what would actually clear it (R45): assigning this area to this dock again.
+            // A resurvey will not -- a survey cannot test settlement law or property -- and
+            // telling the player to resurvey would send them to do the one thing that cannot
+            // work.
+            var line = "excluded until reassigned: " + string.Join(", ", parts);
 
             var detail = exclusions
                 .Select(e => e.Detail)
