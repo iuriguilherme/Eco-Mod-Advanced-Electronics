@@ -1,0 +1,110 @@
+{
+  "reviewer": "security",
+  "findings": [
+    {
+      "title": "Survey assign/unassign takes and frees ground claims at ConsumerAccess (OWASP A01)",
+      "severity": "P1",
+      "file": "EcoServerMod/AdvancedElectronics/SurveyComponent.cs",
+      "line": 219,
+      "why_it_matters": "Any player who only has consumer access to a drone dock (Eco grants that level broadly - unowned docks, settlement- or deed-shared objects) can now take a world ground claim in the dock owner's name, or drop the one it holds. Assignment is no longer a local preference: DroneDock.cs:510 writes area.RecordClaim(...) under AreaClaimLock, and AreaClaims.Conflicts (AreaOverlap.cs:467) then refuses every other dock in the world that overlaps those plots, past both the owner test and the dock-network radius. Unassign (SurveyComponent.cs:255) is the mirror - it calls ReleaseHeldSurveyClaim and the message itself says 'no dock holds them now, and any dock may claim them', i.e. a low-privilege caller can expose the owner's ground to a competitor. The state operation AssignSurveyArea has no acting-citizen parameter at all, so the RPC attribute is the only gate. The fix is the pattern this same diff already applied twice: the farming twin's RPCs were raised to AccessType.FullAccess AND re-check dock.HasFullAccess at the state operation (FarmingComponent.cs:251/273, DroneDock.Farming.cs SetFarmAreaCrop), and the mining assign path checks HasFullAccess on both docks inside AssignMiningArea (DroneDock.Mining.cs:427/447).",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Raise both survey RPCs to [RPC(AccessType.FullAccess)] and add a User overload of DroneDock.AssignSurveyArea that refuses when !this.HasFullAccess(actingCitizen), mirroring DroneDock.Mining.cs:427 - the gate belongs at the state operation, as AssignMiningArea's own comment argues ('a gate on one caller is a gate one new caller forgets'). Assumption: consumer access on a dock is meant to cover reading the panel and nothing that writes a claim, which is what FarmingComponent.cs:251/273 already encodes for the farming half.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/SurveyComponent.cs:219 -- [RPC(AccessType.ConsumerAccess), Autogen, UITypeName(\"BigButton\"), Description(\"Assign Selected Area\")]",
+        "EcoServerMod/AdvancedElectronics/SurveyComponent.cs:255 -- [RPC(AccessType.ConsumerAccess), Autogen, UITypeName(\"BigButton\"), Description(\"Unassign Area\")]",
+        "EcoServerMod/AdvancedElectronics/DroneDock.cs:510 -- public bool AssignSurveyArea(int id, out string refusalReason, out IReadOnlyList<PlotCoord> released)  (no User parameter; body calls area.RecordClaim(this.ObjectID, this.assignedAreaEpoch) and ReleaseHeldSurveyClaim())",
+        "EcoServerMod/AdvancedElectronics/FarmingComponent.cs:251 -- [RPC(AccessType.FullAccess), Autogen, UITypeName(\"BigButton\"), Description(\"Assign Selected Area\")]  (the parallel path, raised in this diff)",
+        "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs:427 -- if (!this.HasFullAccess(actingCitizen)) { refusalReason = \"you need full access on this mining dock\"; return false; }"
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "Mining unassign releases the dock's claim with no access check (OWASP A01)",
+      "severity": "P1",
+      "file": "EcoServerMod/AdvancedElectronics/MiningComponent.cs",
+      "line": 120,
+      "why_it_matters": "A player with only consumer access on someone else's mining dock can stop the running job and hand the ground back to the pool: UnassignArea calls dock.UnassignMiningArea(), which releases the area's claim under AreaClaimLock and ends the job, and the message it prints tells the caller the plots are now free for any dock. Assignment on this same tab is gated - AssignMiningArea refuses without full access on both the consuming and the publishing dock (DroneDock.Mining.cs:427/447) - so the write half of the pair is protected and the release half is not, which is the asymmetry an attacker uses. The farming twin's unassign was raised to FullAccess in this same diff, so the intended level is already established in the codebase.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Change MiningComponent.UnassignArea to [RPC(AccessType.FullAccess)] and give DroneDock.UnassignMiningArea a User parameter that returns an empty release (and a refusal string) when !this.HasFullAccess(actingCitizen), matching AssignMiningArea's placement of the gate at the state operation and FarmingComponent.cs:273.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/MiningComponent.cs:120 -- [RPC(AccessType.ConsumerAccess), Autogen, UITypeName(\"BigButton\"), Description(\"Unassign Area\")]",
+        "EcoServerMod/AdvancedElectronics/MiningComponent.cs:131 -- var released = dock.UnassignMiningArea();   (no access check anywhere in the method)",
+        "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs:547 -- public IReadOnlyList<PlotCoord> UnassignMiningArea()  (takes no User; body calls ReleaseHeldMiningClaim() under AreaClaimLock)",
+        "EcoServerMod/AdvancedElectronics/FarmingComponent.cs:273 -- [RPC(AccessType.FullAccess), Autogen, UITypeName(\"BigButton\"), Description(\"Unassign Selected Area\")]"
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "Area map editor at ConsumerAccess can delete the shared ground record",
+      "severity": "P1",
+      "file": "EcoServerMod/AdvancedElectronics/SurveyComponent.cs",
+      "line": 206,
+      "why_it_matters": "Consumer access to a survey dock is enough to open the map editor and delete or redraw its areas, and this diff is what makes that destructive: the area now carries the shared ground record - per-plot findings, mined stamps, at-bedrock observations, refusal exclusions and the claim - that a separate mining dock reads and works against. SurveyAreaPicker.Reconcile deletes any area whose map entry the caller removed (SurveyAreaPicker.cs:150) and drops the removed plots' claim on a redraw, so a low-privilege player can destroy another player's survey data and re-aim a drone that is working under someone else's citizen stamp. FarmingComponent.ManageAreasOnMap was raised to FullAccess in this same diff and re-checks dock.HasFullAccess with exactly that reasoning; the survey twin was left at the old level.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Raise SurveyComponent.ManageAreasOnMap to [RPC(AccessType.FullAccess)] and add the same in-method guard FarmingComponent.ManageAreasOnMap now carries: if (!dock.HasFullAccess(player?.User)) { player?.MsgLocStr(\"You need full access on this drone dock to edit its areas.\", NotificationStyle.Error); return; } before awaiting SurveyAreaPicker.ManageAreas.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/SurveyComponent.cs:206 -- [RPC(AccessType.ConsumerAccess), Autogen, UITypeName(\"BigButton\"), Description(\"Manage Areas on Map\")]",
+        "EcoServerMod/AdvancedElectronics/SurveyAreaPicker.cs:150 -- dock.DeleteSurveyArea(area.Id);   (no authorization check anywhere in ManageAreas/Reconcile)",
+        "EcoServerMod/AdvancedElectronics/FarmingComponent.cs:150 -- [RPC(AccessType.FullAccess), ...] plus 'if (!dock.HasFullAccess(player?.User)) { ... return; }' -- 'the editor can redraw or delete an ASSIGNED area, which re-aims a drone working under someone else's stamp'"
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "Ownership-blind claim conflicts let a stranger lock another player's ground",
+      "severity": "P0",
+      "file": "EcoServerMod/AdvancedElectronics.Navigation/AreaOverlap.cs",
+      "line": 480,
+      "why_it_matters": "A player needs nothing but their own drone dock to make ground they do not own permanently unmineable by its owner. AllAreaProjections() deliberately applies 'no owner test and no radius', and AreaClaims.Conflicts then refuses a claimant on any overlapping projection - so an attacker draws an area over the victim's coordinates (SurveyAreaPicker caps plot count, never location), marks it farming with /drone areakind on their own dock, and the victim's mining assign refuses forever with 'reserved as farmland -- delete that farming area to release the ground', pointing at a dock the victim cannot access. The farmland branch is the severe one because it fires whether or not the attacker's area is even assigned, so nothing times it out. Ownership-blindness is right for DETECTING an overlap (two areas do collide whoever owns them), but reusing the unfiltered set as the refusal set is what turns detection into a cross-player denial; narrowing only the conflict test keeps the overlap annotation intact.",
+      "autofix_class": "manual",
+      "owner": "human",
+      "requires_verification": true,
+      "suggested_fix": "Keep AllAreaProjections() unfiltered for the [overlap] annotation, but narrow the CONFLICT set: carry the owning dock's Owners onto AreaProjection (or pass a predicate as HoldsClaimOn already does) and have DroneDock.AssignSurveyArea / AssignMiningArea consider only conflicts from areas whose dock shares an owner with, or is authorized to, the claimant - other players' overlaps then still render as [overlap] but cannot refuse an assignment. Assumption: cross-owner arbitration is meant to be Eco's own property/deed system, not this mod's claim ledger; if strangers' claims are intended to bind, the farmland branch at least needs to expire with the farm's assignment so the lock is not permanent.",
+      "confidence": 50,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics.Navigation/AreaOverlap.cs:480 -- if (claimantKind == AreaKind.Mining && other.Kind == AreaKind.Farming) { conflicts.Add(new AreaClaimConflict(other, match.SharedPlots, AreaClaimBlock.FarmlandReserved)); continue; }",
+        "EcoServerMod/AdvancedElectronics/MiningComponent.cs:248 -- 'Unfiltered in both directions ... no owner test and no radius, because two areas collide however far apart their docks sit and whoever owns them'",
+        "EcoServerMod/AdvancedElectronics.Navigation/MiningReadout.cs (FormatClaimRefusal) -- \"reserved as farmland -- delete that farming area to release the ground\": the remedy names an action only the other player can take",
+        "EcoServerMod/AdvancedElectronics/SurveyAreaPicker.cs:161 -- the only server-side bound on a drawn area is plots.Count > maxPlots; nothing constrains WHERE the plots are"
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "Refusal classification re-runs settlement law effects on every refused pack",
+      "severity": "P1",
+      "file": "EcoServerMod/AdvancedElectronics/GameActionPackGuards.cs",
+      "line": 72,
+      "why_it_matters": "Every time a drone's removal or placement pack is refused, ClassifyRefusal calls ILawManager.Perform again per action purely to label the refusal - and Perform reaches LawSection.CheckConditionsAndApplyEffects, so each matched law's then-blocks run for real a second time. Only the currency half is contained by the pack's AccountChangeSet, which a refused pack never commits; any other effect applies once per refusal. A mining or level pass that meets a refusing law hits this on every attempted plot, so a player can drive repeated law-effect application by pointing a drone at regulated ground. This diff documents the defect in the doc comment but leaves the call site unchanged, and the mining service still carries the older 'read-only' claim.",
+      "autofix_class": "manual",
+      "owner": "human",
+      "requires_verification": true,
+      "suggested_fix": "Classify from the already-performed pack's own result instead of re-performing: capture the failure stage during the single TryPerform (the pack's Result/failure reason already distinguishes law from auth), or at minimum call the law manager against a throwaway pack whose effects cannot escape. Assumption: the label is diagnostic only, so losing precision is preferable to applying effects twice - if the exact stage is required, gate the re-perform behind a debug flag.",
+      "confidence": 50,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/GameActionPackGuards.cs:72 -- if (!ServiceHolder<ILawManager>.Obj.Perform(action, accountChangeSet)) return RemovalRefusalStage.SettlementLaw;",
+        "EcoServerMod/AdvancedElectronics/GameActionPackGuards.cs:56-66 (this diff) -- 'NOT read-only ... any effect that does not travel through that change set is applied for real, once per refusal ... Left in place rather than rewritten under review'",
+        "provenance: f0e5dc87 Iuri Guilherme 2026-09-01 - refactor(farming): share the pack guards between the two new services (call site predates base c21be8a; only the doc comment changed on this branch)"
+      ],
+      "pre_existing": true
+    }
+  ],
+  "residual_risks": [
+    "Foreign-area disclosure holds where it was designed to: AreaOverlap.FormatOverlapDetail names only shared plot centres (ground the reader's own area already covers) plus a single held/not-held bit, AreaProjection carries no name or owner name, and SurveyComponent.DescribeForRefusal gates the area's name behind HasFullAccess on the publishing dock. No path was found that dereferences a SurveyAreaEntry belonging to another owner on a render surface.",
+    "The mining-dock offer list is narrowed by SharesOwnerWith (Owners equality on a Title), which the code itself flags as sharing broadly across a company or co-owned deed; assignment is then gated by HasFullAccess on both docks, so this is a listing-visibility question rather than a write path, but a deed-mate can see the names and plot counts of every area on shared docks.",
+    "Callsite completeness for the RPC access levels is grep-only across EcoServerMod/AdvancedElectronics/*.cs; a caller reached by reflection or by Eco's autogen UI wiring would not appear in that sweep.",
+    "ModGroundWrite is [ThreadStatic] and restores on dispose, so an attribution cannot leak across drones on other threads; a write the mod makes on a pooled continuation thread would fall back to 'Outside', which is the safe direction (a resurvey, not a false 'own work')."
+  ],
+  "testing_gaps": [
+    "No test asserts the authorization level of any RPC or state operation: nothing fails if SurveyComponent.AssignSelectedArea stays at ConsumerAccess or if UnassignMiningArea forgets a HasFullAccess gate. A test over the [RPC]/[Eco] attributes on the dock's components (every state-changing member requires FullAccess) would have caught all three access findings mechanically.",
+    "AreaClaimTests cover claim conflicts between areas but never the cross-OWNER case: no test asserts what happens when the conflicting projection belongs to a dock the claimant has no access to, which is the shape of the farmland-reservation denial.",
+    "No test covers GameActionPackGuards.ClassifyRefusal's side effects - a fake ILawManager counting Perform invocations per refused pack would pin the double-apply."
+  ]
+}

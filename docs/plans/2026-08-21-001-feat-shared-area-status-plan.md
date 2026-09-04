@@ -882,6 +882,31 @@ flowchart TB
 
 ---
 
+## Known Findings
+
+A ten-lens code review ran over the whole branch on 2026-09-04, after every unit had landed. It
+returned fifteen actionable findings and none was fixed — the tree is as the units left it. The
+findings, their evidence, and the per-lens artifacts are in
+`docs/reviews/2026-09-04-shared-area-status/`.
+
+Four are worth naming here because they bear directly on requirements this plan states:
+
+- **R47 does not protect real farmland.** The claim system builds its projections from survey
+  areas only; a farm a citizen assigns is a separate persisted type that never enters them. The
+  reservation therefore applies only to a survey area manually retyped by command.
+- **R44 and R45 deadlock.** A `[cleared]` area is not offered to a mining dock, but reassigning
+  it to that dock is the only thing that lifts its refusal. When the area is cleared *because of*
+  that dock's own refusal, the retry is unreachable and the ground stays cleared.
+- **R16's reset races itself.** The engine fires its block-write notification from a parallel
+  loop, and the reset does an unsynchronised read-modify-write on the area's lists, so one of two
+  concurrent resets is silently lost.
+- **R17 and R43's attribution may not hold.** The marker identifying the mod's own writes is
+  thread-scoped, and the notification that reads it runs on the parallel loop rather than the
+  drone's thread.
+
+The first three are correctness defects with clear fixes. The fourth is unconfirmed and is the
+first thing to settle on a live server.
+
 ## Verification Contract
 
 | Gate | Command | Applies to |

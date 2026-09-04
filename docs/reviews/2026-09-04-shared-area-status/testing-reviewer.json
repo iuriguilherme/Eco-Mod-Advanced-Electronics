@@ -1,0 +1,31 @@
+{
+  "reviewer": "testing",
+  "findings": [
+    {
+      "title": "AreaResolutionPolicy.Resolve's null-delegate fallback branch is untested",
+      "severity": "P2",
+      "file": "EcoServerMod/AdvancedElectronics.Navigation/AreaResolution.cs",
+      "line": 118,
+      "why_it_matters": "The new R21-narrowing overload of AreaResolutionPolicy.Resolve documents an explicit contract for a null editRemovedPendingWork delegate: \"A caller with nothing to ask is treated as having nothing pending\" -- i.e. it must return Reacquired rather than throw or fall through to Invalidated. No test in the diff exercises this branch; every call site in MiningJobTests.cs passes a non-null lambda (either () => true or () => false), and the two production callers (DroneLifecycle.cs:909, MiningStrategy.cs:194) also always pass a non-null delegate today. This is exactly the shape KTD12's architecture exists to catch: the method lives in the Eco-free, unit-tested Navigation assembly specifically so every decidable branch can be pinned without a server, and this one is not. If a future caller (a third consumer of this policy, or a refactor of an existing one) passes null expecting the documented fallback, nothing today proves the ternary's null-check actually produces Reacquired rather than a different outcome -- the assertion exists only in a doc comment.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Add a fact to MiningJobTests.cs (alongside AnEditThatOnlyAddsPlots_LeavesTheJobRunning and TheNarrowedResolve_LeavesTheUneditedOutcomesAlone) asserting AreaResolutionPolicy.Resolve(AreaLookupSignal.Found, \"1:0\", \"1:1\", editRemovedPendingWork: null) equals AreaResolutionOutcome.Reacquired, matching the 'no job means no work an edit could have taken' contract stated in the method's own doc comment.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics.Navigation/AreaResolution.cs:118 -- return editRemovedPendingWork != null && editRemovedPendingWork() ? AreaResolutionOutcome.Invalidated : AreaResolutionOutcome.Reacquired;",
+        "EcoServerMod/AdvancedElectronics.Navigation/AreaResolution.cs:116-117 -- \"// A caller with nothing to ask is treated as having nothing pending: no job means no work an edit could have taken, and the reference simply catches up with the area.\"",
+        "EcoServerMod/AdvancedElectronics.Navigation.Tests/MiningJobTests.cs:509-589 -- every call to the 4-arg AreaResolutionPolicy.Resolve overload passes editRemovedPendingWork: () => false or () => true; none passes null.",
+        "EcoServerMod/AdvancedElectronics/DroneLifecycle.cs:909-916 and EcoServerMod/AdvancedElectronics/MiningStrategy.cs:194-198 -- both production call sites always pass a non-null lambda, so the null path is currently reachable only from a future caller, not from today's production code."
+      ],
+      "pre_existing": false
+    }
+  ],
+  "residual_risks": [
+    "The Eco-side glue this diff adds around the claim/kind model -- SurveyAreaEntry.DropMinedStamps/SetPlots, DroneDock.Mining.cs's PersistMiningExclusions rebuild-and-merge, and DroneDock.GroundChange.cs's ReactToGroundChange loop over every SurveyAreaEntry on a dock -- carries real new branches (loop bounds, list rebuild filters, per-area kind gating) that cannot be unit tested under this project's Eco-free-core architecture (only AdvancedElectronics.Navigation is xUnit-testable). This is consistent with the project's existing pattern rather than a regression introduced by this diff, but the amount of new logic living only in the untestable half is larger than in prior units, so correctness there rests entirely on manual/live-server verification.",
+    "The merge point between the two independently developed features named in the review's intent -- DroneDock.GroundChange.cs's ReactToGroundChange, which loops a dock's SurveyAreas and calls GroundChange.VerdictFor(attribution, ownerId, entry.Id, entry.Kind) per area -- has full unit coverage for the decidable kind-union logic in isolation (AreaLifecycleTests.cs's GroundChange.VerdictFor cases cover mining-on-mining, farming-on-mining, farming-on-farming), but nothing exercises a single dock holding both a mining area and a farming area whose plots overlap going through this same loop together in one call, which is the actual shape the merge introduces."
+  ],
+  "testing_gaps": [
+    "AreaResolutionPolicy.Resolve(signal, stored, current, editRemovedPendingWork) is never invoked with editRemovedPendingWork: null anywhere in the test suite, leaving the documented 'caller with nothing to ask' fallback (Reacquired) unverified -- see the P2 finding above."
+  ]
+}

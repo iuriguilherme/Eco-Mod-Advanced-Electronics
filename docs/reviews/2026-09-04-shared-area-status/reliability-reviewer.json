@@ -1,0 +1,55 @@
+{
+  "reviewer": "reliability",
+  "findings": [
+    {
+      "title": "Ground-change handler race: engine's parallel recache can lose an area's reset",
+      "severity": "P0",
+      "file": "EcoServerMod/AdvancedElectronics/SurveyAreaEntry.cs",
+      "line": 640,
+      "why_it_matters": "A bulk ground-changing event (chunk load/regen, or any operation that reaches World.ReCacheChunkColumnData) invokes the engine's OnTopBlockChanged event through Parallel.ForEach(worldPositions, ReCacheWithNotify) (Eco/Server/Eco.World/World.cs:367, invoking at :388) -- so DroneDockObject.OnTopBlockChanged (DroneDock.GroundChange.cs:126) can run concurrently on multiple thread-pool threads for different world columns. When two changed columns fall in different plots of the SAME SurveyAreaEntry, both threads reach ResetPlotsToUnsurveyed concurrently. Each builds its own filtered copy of this.Findings (and SurveyedStamps, BedrockPlotCoords, SweepColumns) from a shared read, then reassigns the whole field with no lock -- a classic read-modify-write race where the last writer wins and silently discards the other thread's reset. The result is a plot the mod believes it correctly reset to unsurveyed that still carries stale findings describing ground that no longer exists -- exactly the 'stale-findings fault' this subsystem's own comments describe as the bug it exists to prevent (see SurveyAreaEntry.cs's remarks on ResetPlotsToUnsurveyed: 'the only half that fails silently'). This is player-visible as wrong ore counts/coverage after any bulk ground event, and it undermines the resurvey-correctness guarantee (R16) this diff is built around.",
+      "autofix_class": "manual",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Serialize SurveyAreaEntry's ground-change mutation path (ResetPlotsToUnsurveyed, and by extension SetFindings/ClearFindings/SetPlots/SetBedrockPlots, which do the same whole-field reassignment) under a per-area lock, mirroring the AreaClaimLock precedent this same diff establishes for the claim path (DroneDock.Mining.cs, DroneDock.cs) -- a single lock object on SurveyAreaEntry covering read+reassign in ResetPlotsToUnsurveyed closes the race. Alternatively, route DroneDockObject.ReactToGroundChange through a thread-safe queue drained once per dock tick (already single-threaded) instead of mutating area state directly from the engine's parallel callback thread. Assumption: a per-area lock is cheaper than re-architecting the callback into a queue, since ground-change reactions are already documented as needing to be idempotent and cheap-gated.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/SurveyAreaEntry.cs:637-640 -- foreach (var row in this.Findings) if (!targets.Contains(row.Plot)) findings.Add(row); this.Findings = findings; (no lock; same pattern repeats for SurveyedStamps, BedrockPlotCoords, SweepColumns further down the same method)",
+        "EcoServerMod/AdvancedElectronics/DroneDock.GroundChange.cs:126-166 -- OnTopBlockChanged(Vector2i column, int _) catches exceptions but takes no lock before calling ReactToGroundChange, which calls entry.ResetPlotsToUnsurveyed(single) per matching area",
+        "Server/Eco.World/World.cs:367 -- Parallel.ForEach(worldPositions, ReCacheWithNotify); (engine source outside this repo, read to settle the threading question)",
+        "Server/Eco.World/World.cs:388 -- OnTopBlockChanged.Invoke(worldPosXZ, curMaxY); inside ReCacheWithNotify, the delegate given to Parallel.ForEach above",
+        "EcoServerMod/AdvancedElectronics/SurveyAreaEntry.cs:19 (declaration) -- World.OnTopBlockChanged is declared as ThreadSafeAction<Vector2i,int> (Eco/Server/Eco.World/World.cs:37), which only guarantees safe iteration of subscribers, not safe concurrent execution of one subscriber's body"
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "MiningAreaRef.Resolve's failure-tolerance counter is burned by several call sites",
+      "severity": "P1",
+      "file": "EcoServerMod/AdvancedElectronics/DroneLifecycle.cs",
+      "line": 901,
+      "why_it_matters": "MiningAreaRef.Resolve is stateful, not a pure query: on a miss it increments consecutiveFailures and only reports ConfirmedGone once that reaches FailuresBeforeConfirmedGone (20) -- a deliberately generous load-ordering grace period, per the type's own doc comment, whose whole purpose is to stop a drone abandoning a job against an area that has not finished registering after a restart. MiningComponent.cs's DescribeAssignment already states the rule this diff itself established: 'asking it twice per refresh would burn that tolerance at double rate and shorten the load-ordering grace period the counter exists to provide' (MiningComponent.cs:527-531), and that method takes care to resolve exactly once. But the same MiningAreaRef instance (dock.AssignedMiningArea) is also resolved from DroneLifecycle.CurrentTargetArea (DroneLifecycle.cs:901), which is itself called from at least two independent sites -- DispatchToArea (DroneLifecycle.cs:649) and IsPositionInAssignedRegion (DroneLifecycle.cs:839-841), documented as 'the single membership seam every arrival/roam check goes through' -- and from MiningStrategy.ResolveSourceArea (MiningStrategy.cs:188), which the R42 comment in DispatchToArea confirms runs on its own per-plot-arrival cadence (TryGetNextTarget). During exactly the startup window the counter exists to protect, several of these call sites can fire within the same tick or the same short span, each independently incrementing consecutiveFailures on the shared object -- consuming the 20-failure budget several times faster than the design intends and risking the exact regression the comment elsewhere in this diff calls out: a job ended against an area that was about to appear.",
+      "autofix_class": "manual",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Resolve the assigned area's MiningAreaRef once per dock/drone tick and thread the (signal, dock, area) result through DispatchToArea, IsPositionInAssignedRegion and MiningStrategy's per-tick work, the same way MiningComponent.DescribeAssignment already resolves once and reuses the result for both the assignment description and the out-of-range check. If a shared per-tick cache is too large a change to land now, the narrower fix is to have CurrentTargetArea accept a pre-resolved signal/area pair as an optional parameter so IsPositionInAssignedRegion (called many times per tick during roam/arrival checks) does not re-invoke Resolve on every call. Assumption: the dock already has a natural once-per-tick hook (the same one MiningComponent's roster refresh uses) that these paths can share; if pathing genuinely needs a fresher read than dispatch does, name that as the deliberate exception rather than leaving it as an unexamined side effect.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/MiningAreaRef.cs:60-73 -- Resolve(...) sets hasResolvedOnce/resets consecutiveFailures on success; NotFound() increments consecutiveFailures and only returns ConfirmedGone once consecutiveFailures >= FailuresBeforeConfirmedGone (=20)",
+        "EcoServerMod/AdvancedElectronics/MiningComponent.cs:524-531 -- comment: 'MiningAreaRef.Resolve is not a pure query -- it carries the consecutive-failure count... so asking it twice per refresh would burn that tolerance at double rate'",
+        "EcoServerMod/AdvancedElectronics/DroneLifecycle.cs:901 -- var signal = reference.Resolve(out _, out var miningEntry); inside CurrentTargetArea",
+        "EcoServerMod/AdvancedElectronics/DroneLifecycle.cs:649 -- DispatchToArea calls this.CurrentTargetArea(out var noAreaReason, out var terminalReason)",
+        "EcoServerMod/AdvancedElectronics/DroneLifecycle.cs:839-841 -- IsPositionInAssignedRegion, documented as 'the single membership seam every arrival/roam check goes through', also calls this.CurrentTargetArea(out _)",
+        "EcoServerMod/AdvancedElectronics/MiningStrategy.cs:188 -- ResolveSourceArea calls this.areaRef.Resolve(out var owningDock, out var area) against the same MiningAreaRef instance"
+      ],
+      "pre_existing": false
+    }
+  ],
+  "residual_risks": [
+    "FarmAreaEntry (DroneDock.Farming.cs) is a wholly separate persisted area type from SurveyAreaEntry, with its own serialized list (DroneDockObject.FarmAreas) and no RecordClaim/ReleaseClaim/AreaClaimLock participation. MiningComponent.AllAreaProjections() (MiningComponent.cs:2701-2733 range) walks only dock.SurveyAreas, so a farming dock's actual worked plots are invisible to the new overlap/claim system this diff introduces, even though the shared-area-status plan doc (docs/plans/2026-08-21-001-feat-shared-area-status-plan.md, farming-drone dependency section) states 'a farming area is the same kind of object as a mining one and the two are comparable across docks.' There is a pre-existing FarmStallReason.HeldByOverlap / LastHeldPlotCount concept that suggests some overlap awareness already exists on the farming side, but I could not confirm within budget whether it is wired to AreaClaims/AreaOverlap or is a separate, older mechanism. This is squarely the cross-feature seam the review context flagged as never having been reviewed together, and it deserves a focused follow-up pass rather than the shallow check this budget allowed.",
+    "callsite completeness: grep/text-search only for MiningAreaRef.Resolve and SetPlots/ResetPlotsToUnsurveyed call sites -- a dynamic-dispatch or reflection-based caller (none observed, but not exhaustively ruled out) would not surface in this search.",
+    "The concurrency finding on SurveyAreaEntry assumes Eco's DroneDockObject world-object callbacks are not otherwise serialized by an engine-side lock upstream of ThreadSafeAction.Invoke; ThreadSafeAction's own locking (Eco.Core.Utils) was not read in this pass -- if it serializes subscriber invocation as well as list iteration, the race narrows to cross-tick rather than genuinely-concurrent, though the compound non-atomic reassignment pattern would still be unsafe against ordinary same-thread re-entrancy during a large batched change."
+  ],
+  "testing_gaps": [
+    "No test in AreaClaimTests.cs / SurveyAreaTests.cs exercises concurrent/parallel calls into SurveyAreaEntry.ResetPlotsToUnsurveyed (or SetPlots) from multiple threads against the same area, so the race described above would not be caught by the existing suite even though the Navigation project is otherwise thoroughly unit-tested.",
+    "No test exercises MiningAreaRef.Resolve being invoked multiple times within a single simulated 'tick' against the same reference during the NotYetResolved window, so a regression that halves or quarters the effective FailuresBeforeConfirmedGone budget would not be caught."
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "reviewer": "api-contract",
+  "findings": [
+    {
+      "title": "Dock-level MinedStamps removed with no migration to the new area-level field",
+      "severity": "P1",
+      "file": "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs",
+      "line": 179,
+      "why_it_matters": "On an existing save, every mining dock's per-plot dig history lived in `DroneDockObject.MinedStamps` (a `[Serialized] ThreadSafeList<long>`). This diff deletes that member outright and replaces it with a differently named, differently typed field, `MiningExclusions` (`ThreadSafeList<MiningExclusionEntry>`) — there is no code path that reads the old member before it disappears from the class shape. Eco's serializer silently drops data for members a class no longer declares, so on first load after upgrade every dock's already-mined plots are forgotten. The new home for this data, `SurveyAreaEntry.MinedStamps` (SurveyAreaEntry.cs:236), starts empty for every pre-existing area. `PlotFreshness.IsMineable` (compared in DroneDock.Mining.cs and MiningStrategy.cs) then reads those plots as never-mined, so an area a player had already dug out and progressed past `[mined]`/`[cleared]`/`[empty]` reverts to showing `[digging]`/`[mined]` and gets redispatched to ground with nothing left in it. The task's own must-not-regress bar names exactly one sanctioned discard (the KTD1 findings-shape-version reset in SurveyAreaEntry) — this is a second, undocumented one the plan does not call out (docs/plans/2026-08-21-001-feat-shared-area-status-plan.md's U2 row describes the record 'moving' from dock to area with no migration step named). Reintroducing a legacy-field drain at dock Initialize (DroneDock.cs:706), mirroring the FindingsShapeVersion one-shot-upgrade pattern already used for the sanctioned discard, would preserve this history instead of silently losing it.",
+      "autofix_class": "manual",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Keep a legacy-named serialized field on DroneDockObject (e.g. `[Serialized] public ThreadSafeList<long> LegacyMinedStamps { get; set; } = new();`) instead of deleting it outright, and in `DroneDockObject.Initialize()` (DroneDock.cs:706) drain it once: if `LegacyMinedStamps` is non-empty and `AssignedMiningArea` resolves to an area, rehydrate it into a `PlotStampAccumulator` and merge it into that area via `area.SetMinedStamps(...)`, then clear `LegacyMinedStamps`. Name the assumption explicitly in a comment: the pre-U2 model held one assigned area per dock, so the dock's currently-assigned area is the only destination a legacy record can be attributed to; a dock that reassigned away before upgrading loses that dock's contribution to the old area, which is the same class of one-time, documented loss KTD1 already accepts for findings.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs:179 -- [Serialized] public ThreadSafeList<MiningExclusionEntry> MiningExclusions { get; set; } = new();",
+        "full.diff:9820 -- '-        [Serialized] public ThreadSafeList<long> MinedStamps { get; set; } = new();' (the only [Serialized] member deleted anywhere in this diff, with no read of it anywhere in the changeset)",
+        "EcoServerMod/AdvancedElectronics/SurveyAreaEntry.cs:236 -- [Serialized] public ThreadSafeList<long> MinedStamps { get; set; } = new(); (new area-level field, starts empty for every pre-existing area)",
+        "docs/plans/2026-08-21-001-feat-shared-area-status-plan.md (full.diff:15693) -- '| U2 | Mined stamps move from the dock to the area | SurveyAreaEntry.cs, DroneDock.Mining.cs, PlotFreshness.cs | U1 |' -- no migration step named for the move"
+      ],
+      "pre_existing": false
+    }
+  ],
+  "residual_risks": [
+    "MiningExclusionEntry.CategoryValue (DroneDock.Mining.cs) persists the pre-existing SkipCategory enum's ordinal as a plain int. That enum's members are unchanged by this diff and its ordinals are not pinned by a test the way AreaKind's are (AreaClaimTests.cs / SurveyAreaTests.cs asserts `(int)AreaKind.Mining == 0` explicitly) -- a future reorder of SkipCategory would silently repurpose already-persisted exclusion rows, and nothing in this diff or its tests would catch it.",
+    "SurveyAreaEntry.KindValue backing AreaKind is well-guarded (ordinals pinned by a dedicated test, 0 documented as the safe mining default for pre-existing saves) -- flagged here only as confirmation this pattern was done correctly, not as a risk."
+  ],
+  "testing_gaps": [
+    "No test exercises loading a pre-upgrade DroneDockObject that still carries the old per-dock MinedStamps data and asserts what happens to it (silently discarded today). The existing PlotFreshness tests (SurveyRecordTests.cs 'Covers_AE1_...', 'Covers_R1_...') only exercise the new area-centric shape in memory; none constructs the old dock-shaped save state and checks the outcome after 'load'.",
+    "No test asserts that MiningExclusionEntry.CategoryValue round-trips SkipCategory correctly if the enum ever gains members out of order (an ordinal-pinning test analogous to TheKindOrdinals_ArePinned_BecauseTheyAreWhatIsPersisted for AreaKind, but for SkipCategory, does not exist)."
+  ]
+}
