@@ -8,7 +8,7 @@ problem_type: architecture_decision
 component: icons
 severity: high
 applies_when:
-  - "Giving a new item, skill, book, scroll, research paper or component an icon"
+  - "Giving an icon to a new item, skill, book, scroll, research paper, component, or a tag the mod introduces"
   - "Reaching for a placeholder icon because real artwork is not ready"
   - "An icon does not appear in game and the PNG is obviously present and correctly named"
   - "Two different things in the mod draw the same picture"
@@ -254,6 +254,43 @@ The grammar and the brief for drawing the missing tier are in
 **The general rule this sharpens:** a name is only safe to reference when it is generic, or when
 it names *the same thing*. A name that differs from your class along any axis the art encodes —
 tier, rank, material, profession — is a placeholder, however close it looks in the file listing.
+
+### A tag the mod introduces has no name to borrow
+
+The section above is about not putting vanilla's tag icons on items. The converse case is
+easier to miss, because nothing in the mod's own code looks like an icon problem: **a tag the
+mod introduces is a new key in the flat registry with nothing behind it**, so the client asks
+for it by name and finds nothing. It surfaces as a plain report rather than as a visual defect:
+
+```
+Cannot find icon with name "Electric Fuel"
+```
+
+Joining a tag costs nothing; introducing one is what creates the obligation. The distinction is
+visible in the source. `HarvestArm.cs:49-51` carries `[Tag("Plow")]`, `[Tag("Planter")]` and
+`[Tag("Harvester")]`, and the comment above them (`:14-20`) records that these are the tags
+**Eco's own action definitions** filter their tool pickers by — `PlantSeeds.ToolUsed` is declared
+`RequiredTag("Planter")`, and so on. Those three already have vanilla art behind them, because
+vanilla owns the tag.
+
+The mod introduces two of its own, and both are deliberate rather than incidental:
+
+| Tag | Declared at | Why the mod owns it |
+|---|---|---|
+| `Electric Fuel` | `Battery.cs:234` | The fuel class a dock filters its fuel slot on; nothing in the base game carries it |
+| `AdvancedElectronicsUpgrade` | `AdvancedElectronicsUpgrade.cs:110` | The Robotic Assembly Line's UserCode override matches on a tag rather than a type, and a mod-specific one rather than vanilla's `SpecialtyModule`, so the override admits this module alone (`:104-109`) |
+
+A third, `Post Modern Research`, is **written but commented out** at
+`EngineeringResearchPaperPostModern.cs:88` behind `// TODO: add this tag so we can use it`; the
+item carries `[Tag("Research")]` instead. It is therefore not yet declared and not yet asking the
+registry for anything — worth knowing before a document lists it among the tags the mod declares.
+
+There is no generic to fall back on for either of the two. Vanilla's generic fuel names are
+`Liquid Fuel` and `Burnable Fuel`; neither is content-correct for a battery, and the whole point
+of `Electric Fuel` is that it is exclusive to this mod. So the honest interim is the client's own
+missing-icon sprite, exactly as under **Three kinds of answer** above — never a flat colour. When
+the art does arrive it is drawn as a **tag icon**, on the grey plate, which is the same plate
+distinction the previous section warns about, seen from the other side.
 
 ### What other skill mods do
 
