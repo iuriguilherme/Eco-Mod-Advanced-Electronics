@@ -1,10 +1,11 @@
 ---
 title: "Excluding a redistribution-restricted SDK from a Unity mod repo without breaking a fresh clone"
 date: 2026-07-27
-last_updated: 2026-08-10
+last_updated: 2026-09-05
 category: conventions
 module: AdvancedElectronics
 problem_type: convention
+component: tooling
 severity: high
 applies_when:
   - "Publishing a Unity project that depends on an SDK you are not allowed to redistribute"

@@ -1,6 +1,7 @@
 ---
 title: Reading district / civics data from an Eco 0.13 server mod
 date: 2026-07-12
+last_updated: 2026-09-05
 category: best-practices
 module: EcoServerMod
 problem_type: best_practice
@@ -15,9 +16,18 @@ tags: [eco-modding, districts, settlements, civics, deed, server-mod, worldposit
 
 # Reading district / civics data from an Eco 0.13 server mod
 
+> **Scope, as of 2026-09-05.** Everything below was verified against **Eco 0.13** and has not been
+> re-verified against **0.14**, which this mod now targets. The mod also no longer scopes drones to
+> districts at all — that scaffold was retired in favour of drawn survey areas (`e72108c`), and the
+> reference implementation this doc cites was deleted in the same commit. The read surface is kept
+> because the areas that replaced districts are still managed the same way: see the comment at
+> `EcoServerMod/AdvancedElectronics/SurveyAreaPicker.cs:18`, which points at `DistrictMap.EditAsync`
+> / `OnMapEdited` as the model it imitates. Re-verify against the 0.14 reference assemblies before
+> relying on a specific member name.
+
 ## Context
 
-The Advanced Electronics survey-drone spike needed a server mod to resolve "which district is this world position in?" so a drone could be scoped to a player-drawn map area. Planning research (against docs.play.eco) assumed the 0.11-era model where "districts" had folded into `Settlement`; the actual 0.13.0.4 assemblies keep districts as a first-class civics type. This doc records the real 0.13 read surface, verified by reflection dump against `Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024` and by `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs` compiling green against it.
+The Advanced Electronics survey-drone spike needed a server mod to resolve "which district is this world position in?" so a drone could be scoped to a player-drawn map area. Planning research (against docs.play.eco) assumed the 0.11-era model where "districts" had folded into `Settlement`; the actual 0.13.0.4 assemblies keep districts as a first-class civics type. This doc records the real 0.13 read surface, verified by reflection dump against `Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024` and by `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs` compiling green against it (that file has since been deleted — see the scope note above).
 
 ## Guidance
 
@@ -42,7 +52,7 @@ The planning research (docs.play.eco, ~12 months stale on civics) said districts
 
 ## Examples
 
-Point membership + full enumeration (from `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs`):
+Point membership + full enumeration (from `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs`, deleted in `e72108c`; the code is reproduced here because the file no longer exists):
 
 ```csharp
 using Eco.Core.Systems;                       // Registrars
@@ -66,5 +76,6 @@ What NOT to assume: there is no live-verified on-object *picker* (choosing a dis
 
 - `docs/solutions/best-practices/eco-013-server-driven-movement.md` — sibling Eco 0.13 API learning (movement, tick surface, version pin, `Vector3`).
 - `docs/spikes/2026-07-survey-drone-spike.md` — Q3 (district read) verdict and the manual protocol that confirmed point membership in-game.
-- `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs` — the compiling reference implementation.
+- `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs` — the compiling reference implementation,
+  deleted in `e72108c`. Recover it from history rather than from disk.
 - `docs/solutions/conventions/consistent-grid-column-quantization.md` — why the truncating cast above must match whatever quantization the rest of your mod uses for the same position.
