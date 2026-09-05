@@ -139,8 +139,22 @@ namespace Eco.Mods.TechTree
         {
             if (this.IsDestroyed || this.SurveyAreas.Count == 0) return;
 
-            var plot = GroundChange.PlotOf(worldX, worldZ, PlotUtil.PropertyPlotLength);
             var attribution = ModGroundWrite.Current;
+
+            // R1. A write this mod cannot attribute to one of its own drones is ignored entirely,
+            // and the check comes before anything else because it decides almost every call. A
+            // player digging, an administrator command, a map-editor paste and a rebuild of the
+            // engine's block caches all land here, and none of them causes this mod to read or
+            // write a single byte of an area's stored data.
+            //
+            // This mod does not monitor the world for changes it did not make. The engine raises a
+            // signal only when the topmost block of a column changes, so reacting to the fraction
+            // of outside changes that happen to surface would produce an arbitrary picture rather
+            // than a current one. Such a change is learned in situ instead: a mining drone reaching
+            // the work site finds that the world does not match what the survey reported.
+            if (!attribution.IsModsOwn) return;
+
+            var plot = GroundChange.PlotOf(worldX, worldZ, PlotUtil.PropertyPlotLength);
             var ownerId = this.ObjectID.ToString();
             List<PlotCoord> single = null;
 
@@ -151,7 +165,9 @@ namespace Eco.Mods.TechTree
                 // R16 / R17 / R43: what this write means for THIS area. Its own drone's work is
                 // recorded by the mined stamps and keeps its findings; a write serving an area of
                 // another kind is not this area's business at all; everything else invalidates.
-                if (!GroundChange.RequiresReset(
+                // Reaching this point means the write is one of this mod's own, because an
+                // unattributed write returned above.
+                if (!GroundChange.RequiresReaction(
                         GroundChange.VerdictFor(attribution, ownerId, entry.Id, entry.Kind)))
                     continue;
 

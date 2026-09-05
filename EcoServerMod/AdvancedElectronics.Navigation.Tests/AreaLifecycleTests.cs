@@ -665,15 +665,26 @@ namespace AdvancedElectronics.Navigation.Tests
         // ---- attributing the change before choosing the reset ----
 
         /// <summary>
-        /// Covers AE16, R16. A write the mod cannot account for -- a player digging, an admin
-        /// command, a map-editor paste -- resets the plots it touched.
+        /// Covers AE1, AE2, R1. A write the mod cannot attribute to one of its own drones -- a
+        /// player digging, an administrator command, a map-editor paste, a rebuild of the engine's
+        /// block caches -- is ignored entirely.
+        ///
+        /// <para>
+        /// This test previously asserted that such a write reset the plots it touched. That is the
+        /// behaviour the narrowed requirement removes, so the expectation is inverted here rather
+        /// than the test being deleted: the suite should show that the rule changed, not merely
+        /// stop mentioning the old one.
+        /// </para>
         /// </summary>
         [Fact]
-        public void AnUnattributedWrite_ResetsTheAreaItTouched()
+        public void AnUnattributedWrite_IsIgnoredEntirely()
         {
             Assert.Equal(
-                GroundChangeVerdict.ResetToUnsurveyed,
+                GroundChangeVerdict.IgnoredNotOurs,
                 GroundChange.VerdictFor(GroundWriteAttribution.Outside, DockA, AreaOne, AreaKind.Mining));
+
+            Assert.False(GroundChange.RequiresReaction(
+                GroundChange.VerdictFor(GroundWriteAttribution.Outside, DockA, AreaOne, AreaKind.Mining)));
         }
 
         /// <summary>
@@ -744,13 +755,20 @@ namespace AdvancedElectronics.Navigation.Tests
         /// <summary>
         /// The engine's block-write event does not name its writer, so the mod marks its own
         /// writes as it makes them. Outside the scope there is no attribution, which is what makes
-        /// every other writer in the world read as outside.
+        /// every other writer in the world read as not ours.
+        ///
+        /// <para>
+        /// R1. A write the mod cannot attribute to one of its own drones is ignored completely.
+        /// The mod does not monitor the world, so it does not know what such a write did and does
+        /// not pretend to. This assertion previously expected the verdict that resets plots; that
+        /// expectation encoded the behaviour this requirement removes.
+        /// </para>
         /// </summary>
         [Fact]
-        public void OutsideAnyScope_TheCurrentAttribution_IsOutside()
+        public void OutsideAnyScope_TheCurrentAttribution_IsNotOursAndIsIgnored()
         {
             Assert.False(ModGroundWrite.Current.IsModsOwn);
-            Assert.Equal(GroundChangeVerdict.ResetToUnsurveyed,
+            Assert.Equal(GroundChangeVerdict.IgnoredNotOurs,
                 GroundChange.VerdictFor(ModGroundWrite.Current, DockA, AreaOne, AreaKind.Mining));
         }
 
@@ -840,13 +858,20 @@ namespace AdvancedElectronics.Navigation.Tests
         // ---- the whole reaction, end to end over the pure half ----
 
         /// <summary>
-        /// Covers AE16. A player digs one block inside a large surveyed area. Only the plot holding
-        /// that block returns to unsurveyed; the rest of the area keeps its findings, its coverage
-        /// falls by one plot's worth rather than to zero, and the area reads `[unsurveyed]` because
-        /// one unsurveyed plot outranks everything else on the ladder (R3).
+        /// Covers AE1. A player digs one block inside a large surveyed area, and nothing at all
+        /// happens to that area. The mod does not monitor the world for changes it did not make,
+        /// so it never learns of the dig here; a mining drone discovers the discrepancy later, at
+        /// the work site.
+        ///
+        /// <para>
+        /// This test previously asserted the opposite — that the dug plot returned to unsurveyed,
+        /// that the area's coverage fell, and that the area then read as unsurveyed. That was the
+        /// behaviour of the requirement this work narrows, and the assertions are inverted here
+        /// deliberately rather than deleted, so the change of rule stays visible in the suite.
+        /// </para>
         /// </summary>
         [Fact]
-        public void AHandDugBlock_ResetsOnlyItsPlot_AndTheRestOfTheAreaKeepsItsFindings()
+        public void AHandDugBlock_IsIgnoredEntirely_AndTheAreaIsUntouched()
         {
             var plots = Strip(4);
             var area = new SurveyArea(AreaOne, "big area", plots);
@@ -864,26 +889,26 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal(AreaLifecycleStatus.Surveyed,
                 AreaLifecycle.DeriveStatus(plots, surveyed.StampFor, _ => 0L, Ledger()));
 
-            // One block, dug by hand, inside plot (1,0). Nothing marked it, so it is outside work.
+            // One block, dug by hand, inside plot (1,0). Nothing marked it, so the mod cannot
+            // attribute it to one of its own drones. The plot the block falls in is still
+            // computed correctly -- that arithmetic is unchanged -- but the verdict for it is to
+            // do nothing at all.
             var affected = GroundChange.AffectedPlots(plots, new[] { (X: 9, Z: 3) }, PlotSide);
             Assert.Single(affected);
-            Assert.True(GroundChange.RequiresReset(
-                GroundChange.VerdictFor(ModGroundWrite.Current, DockA, AreaOne, AreaKind.Mining)));
 
-            var reset = new HashSet<PlotCoord>(affected);
-            foreach (var plot in affected)
-                record.ForgetPlot(AreaOne, plot);
+            var verdict = GroundChange.VerdictFor(ModGroundWrite.Current, DockA, AreaOne, AreaKind.Mining);
+            Assert.Equal(GroundChangeVerdict.IgnoredNotOurs, verdict);
+            Assert.False(GroundChange.RequiresReaction(verdict));
 
-            Assert.Equal(0.75f, record.Coverage(area));
-            Assert.DoesNotContain(record.Findings(AreaOne), f => f.OreType == Gold);
+            // Because nothing reacts, every observable fact about the area is exactly what it was
+            // before the block was dug: full coverage, both ore types still recorded, and the
+            // status still surveyed.
+            Assert.Equal(1f, record.Coverage(area));
+            Assert.Contains(record.Findings(AreaOne), f => f.OreType == Gold);
             Assert.Equal(3, record.Findings(AreaOne).Count(f => f.OreType == Iron));
             Assert.Equal(
-                AreaLifecycleStatus.Unsurveyed,
-                AreaLifecycle.DeriveStatus(
-                    plots,
-                    plot => reset.Contains(plot) ? 0L : surveyed.StampFor(plot),
-                    _ => 0L,
-                    Ledger()));
+                AreaLifecycleStatus.Surveyed,
+                AreaLifecycle.DeriveStatus(plots, surveyed.StampFor, _ => 0L, Ledger()));
         }
 
         /// <summary>
