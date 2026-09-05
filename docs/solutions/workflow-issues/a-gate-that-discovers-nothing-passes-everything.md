@@ -1,7 +1,7 @@
 ---
 title: "A gate that discovers nothing passes everything"
 date: 2026-07-30
-last_updated: 2026-08-16
+last_updated: 2026-09-05
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -132,6 +132,17 @@ skips ignored and hidden paths by default. The identical command is then correct
 structurally blind in another, with nothing in the command to say which. Before reading an empty
 result as an answer, confirm the corpus you searched could have contained the thing — that is a
 different question from whether your pattern was right.
+
+**A complete corpus is not the same as an independent one.** Every narrowing above shrinks what the
+check looks at, and the tell is always a count that should not be zero. The last member of this
+family shrinks nothing. The check runs over its whole intended input, correctly, and still says
+nothing — because the input was authored by the same hand as the check. A unit test that constructs
+the data structure it then asserts on has a corpus that is complete by construction: it proves the
+consumer of that structure, while the producer that fills it in production is never exercised and
+cannot be, because no test ever asks it for one. The result is again correct and useless, and it is
+harder to see than an empty denominator, because the number of things checked is not zero and does
+not look wrong. So ask two questions of an empty result, not one: could the corpus have contained the
+thing, and who put the thing in it.
 
 ## When to Apply
 
@@ -286,3 +297,7 @@ existed when it was last edited.
   first runtime member of this family. Same kernel, different axis: there the unsatisfiable condition
   guards a recovery handler rather than a validation step, so its silence reads as a successful
   recovery instead of a passing gate, and the symptom is an infinite loop instead of a green check.
+- `docs/solutions/workflow-issues/a-test-that-builds-the-input-proves-nothing-about-the-producer.md` —
+  the member of this family whose corpus is complete rather than empty. A suite that constructs its
+  own input runs over everything it was given, correctly, and still says nothing about the producer;
+  the green count is real and measures only half the path.

@@ -1,6 +1,7 @@
 ---
 title: A feature whose output the player cannot read is not shipped
 date: 2026-07-20
+last_updated: 2026-09-05
 category: best-practices
 module: EcoServerMod
 problem_type: best_practice
@@ -10,6 +11,7 @@ applies_when:
   - "Building a feature whose value is information it produces (a survey, a report, a scan, a diagnostic)"
   - "The producing side works and is tested, but no user-facing channel renders its output yet"
   - "The only surface currently showing the data is a developer diagnostic or a log line"
+  - "The rendering side works and is tested, but nothing on the producing side supplies its input"
 tags: [eco-modding, product-thinking, readout, user-facing, survey, scope]
 related_components: [EcoServerMod/AdvancedElectronics]
 ---
@@ -117,3 +119,6 @@ exists and a feature that is usable.
 - `docs/solutions/workflow-issues/eco-mod-batched-live-testing.md` — batching rule; the
   delivery gap was found in a live session that could have surfaced it earlier had the
   readout been part of the same batch as the sampling.
+- `docs/solutions/workflow-issues/a-test-that-builds-the-input-proves-nothing-about-the-producer.md` —
+  the same absent feature arriving from the other end. There the readout was built and unit-tested
+  and no producer ever fed it, so the player saw nothing for the mirror-image reason.

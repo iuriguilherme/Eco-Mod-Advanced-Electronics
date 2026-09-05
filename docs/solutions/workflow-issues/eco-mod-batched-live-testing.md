@@ -37,7 +37,10 @@ one question per restart.
    working pattern, diff **all** of them in one pass — objects, items, recipes,
    `WorldObjectComponent` subclasses, chat commands — against vanilla source and complete
    working mods, not just the class the last error message named. One missed attribute
-   costs one full restart.
+   costs one full restart. The same pass covers every construction site of a type whose
+   members changed: a new optional constructor parameter leaves each existing call site
+   compiling and silently taking the default, so the compiler names none of them and only
+   a manual sweep finds them.
 
 2. **When genuinely uncertain between N approaches, ship all N in one deploy** so a single
    test discriminates. Variants can be parallel code paths on one object or several
@@ -99,3 +102,6 @@ acceptance list instead of one symptom.
   static conformance checklist this workflow rule says to run *in full* before deploying.
 - `docs/solutions/runtime-errors/worldobject-zero-size-blocks-placement.md` — one of the
   defects a restart paid for that a prefab-YAML audit would have caught.
+- `docs/solutions/workflow-issues/a-test-that-builds-the-input-proves-nothing-about-the-producer.md` —
+  a defect the static audit above would have caught for free, found instead four commits later:
+  the producers of a changed type were never visited, and no test could reach them.
