@@ -108,8 +108,8 @@ The guard stays correct at the edges:
   `ComponentSourceRestriction` added in `AttachTo` honours), so there is no partly-burned unit to carry
   across.
 
-Commit `5b30ea6` on branch `feat/mining-drone`. There is no PR and it is not merged; the causal chain is
-a diagnosis backed by the client log plus the code, not by an observed post-fix live session.
+Commit `5b30ea6`, since merged to `main` and pushed. The causal chain is a diagnosis backed by the
+client log plus the code, not by an observed post-fix live session.
 
 Two findings in the same client-log capture were deliberately left alone, being Unity asset gaps rather
 than server code: `Cannot find icon with name MiningComponent`, and the same for `SurveyComponent`.

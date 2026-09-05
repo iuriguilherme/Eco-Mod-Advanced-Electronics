@@ -18,7 +18,7 @@ applies_when:
   - "Renaming a WorldObject prefab asset to satisfy Eco's server-class name-match contract"
   - "A bundle builds cleanly but its objects render as missing-model placeholders in game"
 tags: [eco-modding, unity, prefab, editor-tooling, name-match, modkit, rename]
-related_components: [EcoServerMod/AdvancedElectronics]
+related_components: [Assets/Art/AdvancedElectronics/Editor, Assets/Art/AdvancedElectronics/Prefabs]
 ---
 
 # The prefab finisher writes to the scene GameObject's name, silently forking a duplicate prefab after a rename
@@ -50,27 +50,26 @@ second, wrong-named prefab and re-registers *that* in the scene's `ModkitPrefabC
 ## Root cause
 
 The world objects were renamed to the `XObject` form to match the server classes, and the rename
-reached the prefab assets and the server C# — but not the editor tool's hardcoded names:
+reached the prefab assets and the server C# — but not the editor tool's hardcoded names. Each finisher
+was a menu item carrying the expected scene-object name as a literal; `FinishPrefab` located the scene
+object by that name and then wrote the asset to whatever that object was called:
 
 ```csharp
-// Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs:32-36
-[MenuItem("Eco Tools/Advanced Electronics/Finish Dock Prefab")]
-public static void FinishDockPrefab() => FinishPrefab("DroneDock", isDock: true);
-
-[MenuItem("Eco Tools/Advanced Electronics/Finish Drone Prefab")]
-public static void FinishDronePrefab() => FinishPrefab("SurveyDrone", isDock: false);
-```
-
-`FinishPrefab` locates the scene object by that expected name (`AdvancedElectronicsBuildTools.cs:137`)
-and then writes the asset to whatever that object is called:
-
-```csharp
-// AdvancedElectronicsBuildTools.cs:215
+// the shape at the time -- no longer present in the tree
 var path = $"{ArtFolder}/{go.name}.prefab";
 ```
 
-So the output path tracks the *scene* name. A rename applied to assets and server code but not to the
-scene objects or these constants leaves the tool quietly authoritative for the old name.
+So the output path tracked the *scene* name. A rename applied to assets and server code but not to the
+scene objects or these constants left the tool quietly authoritative for the old name.
+
+**This root cause is fixed in the current tree**, by the very change this doc recommends below.
+`FinishPrefab` now takes the target type name and the scene object name as two separate parameters
+(`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs:647-648`), and the output path
+is built from the type name alone (`AdvancedElectronicsBuildTools.cs:765`). The source cites this doc by
+path as the reason (`AdvancedElectronicsBuildTools.cs:618-622`). The standalone per-object finishers are
+gone too, replaced by `FinishAllDronePrefabs` (`AdvancedElectronicsBuildTools.cs:179-189`). What follows
+is kept for the mechanism and the prevention rule, which still bind any future tool that infers an
+identity from something other than its authoritative source.
 
 ## Recovery
 
@@ -83,7 +82,7 @@ recovery is clean **if you do not save the scene**:
    editor UI risks a modal save prompt; calling `OpenScene` directly discards without prompting:
 
    ```csharp
-   var scene = EditorSceneManager.OpenScene("Assets/DroneScene.unity", OpenSceneMode.Single);
+   var scene = EditorSceneManager.OpenScene("Assets/Art/AdvancedElectronics/Scenes/AdvancedElectronicsScene.unity", OpenSceneMode.Single);
    result.Log("Reloaded {0}: isDirty={1}", scene.path, scene.isDirty);
    ```
 

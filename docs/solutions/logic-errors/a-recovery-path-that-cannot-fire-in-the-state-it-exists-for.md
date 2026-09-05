@@ -85,11 +85,11 @@ any further instrumentation.
 
 ## Solution
 
-Three commits, all on branch `feat/mining-drone`. **None of them is merged, and none of them is
-pushed** — `git branch -a --contains` reports each commit on the local `feat/mining-drone` only.
-`origin/feat/mining-drone` does exist but is 26 commits behind and contains none of the three, and
-there is no PR. Everything below describes the state of that branch's working tree, not shipped
-behaviour.
+Three commits, written on branch `feat/mining-drone`. **All three have since merged to `main` and
+been pushed** — `git branch -a --contains` reports each of `42af8dc`, `7b09d47` and `9adaba6` on
+`main` and `origin/main`. This paragraph originally recorded them as local and unmerged, which was
+true when the doc was written and is no longer. Instance 2's remedy has itself been superseded since
+— see the note at the end of that section.
 
 ### Instance 1 — the skip that was never recorded (`42af8dc`, `MiningStrategy.cs`)
 
@@ -171,6 +171,18 @@ stands on its own — a cap that retires genuinely unreachable plots is still re
 was surfaced by this fix routing traffic into it — but do not read "a drone cannot re-enter its own
 shaft" as a standing constraint of the system.
 
+**Superseded — the code below no longer exists.** Five days later, two further commits replaced this
+remedy. `29cbff8` ("stop the dispatch/unreachable loop itself, not just its causes") generalised the
+per-plot counter into a dispatch-level budget — `consecutiveDispatchFailures`, `FailDispatch()` and
+`DispatchBudgetAllowsRetry()` (`EcoServerMod/AdvancedElectronics/DroneLifecycle.cs:131`, `:801`,
+`:828`) — which gates the whole idle-at-dock resume rather than charging one plot. `4da5848` ("skip
+unreachable plots and finish the rest of the area") then removed the `plotArrivalAttempts` charge
+from `DispatchToArea` entirely, retiring each unreachable plot immediately inside the probing loop.
+`plotArrivalAttempts` now survives only on the plot-to-plot hop (`DroneLifecycle.cs:1411`). **The
+diagnosis in this instance still stands** — an outbound dispatch failure with no exit is exactly what
+happened, and it is the clearest of the three illustrations of this doc's rule. Only the remedy is
+historical.
+
 ### Instance 3 — arrival tested only in the branch that assumes travel (`9adaba6`, `DroneLifecycle.cs`)
 
 `TickUnreachableRetry` tested for arrival only inside the moving branch:
@@ -205,6 +217,11 @@ if (mover.IsMoving) return; // a return leg is in flight; let it fly.
 `IsAtHomeDock()` is a horizontal-proximity test against a fixed arrival radius, so it is
 answerable at any moment regardless of whether the drone is moving — which is what makes it a
 legitimate first-line guard.
+
+**Since refactored.** The three calls above now live in a shared `SettleAtDockIfHome` helper
+(`EcoServerMod/AdvancedElectronics/DroneLifecycle.cs:1284`), which `TickUnreachableRetry` calls
+instead of inlining them (`:1247`) and which three other paths reach as well. The substance — check
+home before movement — is unchanged.
 
 ## Why This Works
 
@@ -290,6 +307,12 @@ state, before the next test run, not after it.
   `git checkout` rather than a reconstruction.
 
 ## Related Issues
+
+- `docs/solutions/logic-errors/a-cached-nothing-to-do-removes-the-reason-to-look-again.md` — the
+  sibling instance of this family, found later on the farming path. There a memoized *cache* answers
+  "nothing to do" with no trigger left to re-ask; here a recovery *guard* tests state the failure
+  never got to set. Different mechanism, different files, same silent permanent latch, and neither
+  one crashes. Read together for the shape.
 
 - `docs/solutions/logic-errors/comparing-a-slotted-item-by-reference-destroys-the-open-ui.md` —
   the mirror image of one rule, from the same session and the adjacent file. That doc's guard was

@@ -173,7 +173,7 @@ Worth knowing before you run it, because one branch deletes things:
 
    Anything resolving to an `Old*` file, or to nothing, ships the wrong asset or no asset.
    Re-drag the correct prefabs into the container in the Inspector. Full background:
-   `docs/solutions/logic-errors/moving-a-prefab-can-hand-its-guid-to-a-backup-copy.md`.
+   `docs/solutions/conventions/moving-a-prefab-can-hand-its-guid-to-a-backup-copy.md`.
 
 5. **Report Duplicate Bundle Object Names** — a duplicate crashes the client at
    "Preparing your citizen..." with no error, because the bundle loader adds names to a

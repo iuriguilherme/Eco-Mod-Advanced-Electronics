@@ -1,9 +1,9 @@
 ---
 title: "Moving a prefab can hand its GUID to a backup copy, and the scene keeps pointing at the backup"
 date: 2026-08-07
-category: logic-errors
+category: conventions
 module: Assets
-problem_type: bug
+problem_type: convention
 component: asset-pipeline
 severity: critical
 applies_when:
@@ -12,7 +12,7 @@ applies_when:
   - "A fix is committed and verified but does not appear in game after a bundle rebuild"
   - "Auditing what a ModkitPrefabContainer will actually ship"
 tags: [unity, guid, prefab, asset-bundle, modkit, silent-failure, name-match]
-related_components: [Assets/DroneScene.unity, Assets/Art/AdvancedElectronics/Prefabs]
+related_components: [Assets/Art/AdvancedElectronics/Scenes/AdvancedElectronicsScene.unity, Assets/Art/AdvancedElectronics/Prefabs]
 ---
 
 # Moving a prefab can hand its GUID to a backup copy, and the scene keeps pointing at the backup
@@ -20,8 +20,9 @@ related_components: [Assets/DroneScene.unity, Assets/Art/AdvancedElectronics/Pre
 ## Context
 
 The art folder was reorganised into per-kind subfolders (`Prefabs/`, `Icons/`, `Materials/`,
-`Models/`, `Animators/`), and backup copies of several prefabs were kept alongside the live
-ones under `Old*` names. Everything looked right afterwards: every asset had its `.meta`,
+`Models/`, `Animators/` — the layout has shifted again since, and `Icons/` now sits under
+`Sprites/`), and backup copies of several prefabs were kept alongside the live ones under
+`Old*` names. Everything looked right afterwards: every asset had its `.meta`,
 every prefab filename still matched its server class, and `scripts/validate-name-match.sh`
 reported `PASS`.
 

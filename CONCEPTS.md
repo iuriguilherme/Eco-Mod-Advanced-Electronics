@@ -270,6 +270,19 @@ ground pollution is the usual reason, but temperature and moisture refuse plots 
 is skipped and named, never remediated and never worked around: it becomes farmable again only when the
 condition itself lifts. Unfit ground does not stall the area around it.
 
+### Settled
+An assigned farm area with nothing to do at this moment — as distinct from one that is blocked and
+waiting on a citizen, and from one that is finished. A farm is never finished, so settled is the
+resting state rather than an end state, and an area whose crop has hit its [[Crop Ceiling]] or whose
+plants are still growing is settled rather than stopped.
+
+A settled area is not polled. The drone returns to it when something that could have given it work
+happens — the dock's linked storage changing, or the earliest crop it is waiting on coming due — and
+leaves it alone otherwise. A fixed re-check interval is a poll under another name and does not
+count as a reason to return. This is why "nothing to do right now" and "nothing to do ever" have to
+stay distinguishable: the first is a state the farm leaves on its own, and treating it as the second
+strands the area with no way back.
+
 ## Client–server binding
 
 ### World Object

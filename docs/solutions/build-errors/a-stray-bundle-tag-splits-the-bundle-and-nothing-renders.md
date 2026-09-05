@@ -114,7 +114,7 @@ failure that degraded gracefully — one untextured drone — would have been fa
 
 ## Related
 
-- `docs/solutions/logic-errors/moving-a-prefab-can-hand-its-guid-to-a-backup-copy.md` — the
+- `docs/solutions/conventions/moving-a-prefab-can-hand-its-guid-to-a-backup-copy.md` — the
   other way this project has shipped a bundle that looked right and was not. That one breaks
   *which* asset ships; this one breaks *whether* it ships at all. Both pass the name-match
   validator.
