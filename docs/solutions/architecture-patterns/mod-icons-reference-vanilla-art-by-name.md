@@ -1,7 +1,7 @@
 ---
 title: "A mod gets a real icon by naming vanilla's, not by shipping one"
 date: 2026-08-22
-last_updated: 2026-08-30
+last_updated: 2026-09-05
 category: architecture-patterns
 module: EcoServerMod
 problem_type: architecture_decision
@@ -266,11 +266,20 @@ Checked against the mods in `.references/Mods/` — `IntelligenceSkillMod`, `Arc
 - `IntelligenceSkillMod` adds `IntelligenceSkill : Skill` (no book, no scroll) and ships a
   189 KB `.unity3d` whose payload contains `IntelligenceSkill` — the legacy bundle route, with
   its own drawn art.
-- None ships source art; only built bundles, so what they drew cannot be inspected.
+- None ships source art, only built bundles — but a built bundle **can** be inspected, and was.
+  `scripts/read-mod-bundle.py` decompresses a UnityFS container without Unity, and the four bundles
+  it read tell a consistent story: each mod ships objects named after **its own** classes
+  (`ArcaneKnowledgeSkillBook`, `AnimalHusbandryUpgradeItem`, `MixologySkillScroll`,
+  `IntelligenceSkill`), **none** ships an object named after a vanilla asset, and none uses
+  vanilla's `_FG` foreground-sprite convention. The check is by name only — a mod could still have
+  traced vanilla art and shipped it under its own filename, which would need a Texture2D decoder to
+  detect.
 
 So the field convention is the bundle route, and `[HasIcon]` naming appears to be unused by
 mods despite being how vanilla itself shares icons between classes. That is an argument for
-documenting it, not against using it.
+documenting it, not against using it. It also means there is **no precedent among these mods for
+redistributing vanilla's art**, which matters if the licensing question is ever put to Strange Loop
+Games — see `docs/protocols/2026-08-31-slg-icon-licensing-ask.md`.
 
 ### Render it from the model
 
@@ -466,6 +475,10 @@ the object graph has to be rebuilt from `m_GameObject` / `m_Father`.
 
 ## Related
 
+- `scripts/read-mod-bundle.py` — reads a built bundle's contents without Unity, which is how
+  the mod survey above was done and how you check that a name reached your own bundle
+- `docs/solutions/workflow-issues/a-timestamp-says-when-a-file-was-written-not-what-is-in-it.md`
+  — the rule that instrument exists to serve, and the format traps it had to survive
 - `scripts/validate-icon-binding.sh` — the GUID-resolving gate for the bundle route
 - `scripts/validate-name-match.sh` — the name gate, which cannot see a wrong binding
 - `docs/guides/2026-08-research-paper-icon-spec.md` — the research-paper family/tier

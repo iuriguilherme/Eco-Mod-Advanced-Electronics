@@ -1,6 +1,7 @@
 ---
 title: "A release script should refuse to package a stale artifact, not warn about it"
 date: 2026-07-27
+last_updated: 2026-09-05
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -52,6 +53,15 @@ two errors are not symmetric:
 When one direction is loud and cheap and the other is silent and expensive, the default belongs on
 the loud side. Put the reasoning in a comment next to the check so nobody "fixes" the annoyance later.
 
+**A better signal does not always exist, and where it does it answers a narrower question.** The
+bundle's contents are now readable without Unity — `scripts/read-mod-bundle.py` reports the names
+inside a built `.unity3d`, which is how a separate class of claim gets settled exactly rather than
+guessed (`docs/solutions/workflow-issues/a-timestamp-says-when-a-file-was-written-not-what-is-in-it.md`).
+That is worth adding **alongside** this gate for name-presence questions: did a retired object leave
+the bundle, did a new one reach it. It is not a replacement for the mtime comparison, because most
+of what makes a bundle stale changes no name at all — an edited material, a moved mesh, a changed
+script inside a prefab. The imperfect signal still covers the wider question, so `--force` stays.
+
 **Gate on negative conditions too.** A release check is not only "is everything present" but "is
 anything present that must not ship". This script fails if the feasibility-spike DLL appears in the
 build output — an artifact that is useful in development, is deployed on the dev server, and would
@@ -101,17 +111,23 @@ The staleness gate, with the asymmetry recorded next to it
 # change. Fails closed: a git checkout rewrites mtimes and can trigger a false
 # positive, which is why --force exists -- but the default must be to refuse.
 NEWER="$(find Assets/Art -type f \
-            \( -name '*.cs' -o -name '*.prefab' -o -name '*.mat' -o -name '*.png' \) \
+            \( -name '*.cs' -o -name '*.prefab' -o -name '*.mat' -o -name '*.png' -o -name '*.unity' \) \
             -newer "$BUNDLE" 2>/dev/null | head -5)"
 
 if [ -n "$NEWER" ]; then
     echo "Client sources are newer than the asset bundle:" >&2
     echo "$NEWER" | sed 's/^/    /' >&2
+    echo "    (bundle built: $(date -r "$BUNDLE" '+%Y-%m-%d %H:%M'))" >&2
     if [ "$FORCE" -eq 0 ]; then
         fail "bundle is stale. Rebuild it in Unity, or pass --force if you just did."
     fi
+    echo "WARNING: packaging a possibly stale bundle because --force was given" >&2
 fi
 ```
+
+`*.unity` joined that list later, and the comment in the script now records why: an item's icon
+binding lives in the scene, so a scene edited after the last bundle build changes what the client
+renders while every other file type here stays untouched.
 
 The negative gate, which is easy to forget to write:
 
