@@ -299,6 +299,11 @@ it is a short, persuasive, fully specified ask for two or three pieces.
 
 ## Related
 
+- `docs/solutions/workflow-issues/a-review-scoped-to-the-document-cannot-see-what-the-code-settled.md`
+  — the review-side half of the same rule. There a reviewer given only the document reports gaps the
+  code had already closed; here an author working from a summary omits items the code declares.
+  Neither doc covers the other's half: that one has no audience model, this one has no guidance on
+  dispatching reviewers.
 - `docs/solutions/workflow-issues/a-user-report-carries-evidence-and-a-request.md` — the same
   collaboration read from the other side. That one is about not discarding what the owner's sentence
   contains; this one is about what happens when a sentence the owner never said (the audience) is

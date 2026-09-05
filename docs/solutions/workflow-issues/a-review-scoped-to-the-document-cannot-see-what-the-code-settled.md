@@ -1,6 +1,7 @@
 ---
 title: "A review scoped to the document cannot see what the code already settled"
 date: 2026-08-30
+last_updated: 2026-09-05
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -12,7 +13,8 @@ applies_when:
   - "About to ask the maintainer to choose a placement, a wording, or a reporting surface"
   - "Writing a requirement that describes UI behaviour for a component that already renders something"
   - "A reviewer proposes adding a field, a slot, or a message to an interface that exists"
-tags: [ce-doc-review, review-scoping, requirements, grounding, false-gap, methodology, eco-modding]
+  - "Authoring a document whose list of items is assembled from another document rather than from the code that declares them"
+tags: [ce-doc-review, review-scoping, requirements, grounding, false-gap, methodology, authoring, eco-modding]
 related_components: [EcoServerMod/AdvancedElectronics, docs/plans]
 ---
 
@@ -102,6 +104,19 @@ had read the code would have proposed that directly.
 Applies whenever a reviewed document describes behaviour for code that exists. It does not apply to
 greenfield work, where the document genuinely is the only authority on placement.
 
+**It applies at authoring time too, and there it is worse.** Everything above is written from the
+review side, because that is where it was found: a reviewer given only the document treats the
+document as the corpus. But the same substitution happens one step earlier, when a document's
+content is assembled from another document instead of from the code, and at that point no reviewer
+exists to catch it. The review-time version of this failure produces a false gap that a maintainer
+can see and correct. The authoring-time version produces a **missing item**, and nobody reviewing a
+document can see what is not in it. When the document being written is a list of things — assets,
+requirements, surfaces, endpoints — enumerate it from the construct that declares them and treat
+any summary as a cross-check rather than as the source. The companion learning
+`docs/solutions/workflow-issues/an-audience-model-sets-the-sources-not-just-the-tone.md` is a worked
+instance, including why the wrong reader model is what makes a summary look like an adequate
+source.
+
 The signal to check for is a finding that faults the document for *silence* rather than for being
 wrong. Silence about behaviour is usually a real gap. Silence about surface, slot, wording, or
 reporting is usually the document declining to restate something the code has already settled.
@@ -130,6 +145,9 @@ The same grep pattern found the diagnostic-surface answer in a doc comment two m
 
 ## Related
 
+- `docs/solutions/workflow-issues/an-audience-model-sets-the-sources-not-just-the-tone.md` — the
+  author-side half of this rule. Same mechanism, one step earlier: a document treated as its own
+  corpus, but at authoring time, where the failure is a silently short list rather than a false gap.
 - `docs/solutions/workflow-issues/a-remembered-capability-and-a-cited-file-are-claims.md` — the
   adjacent failure: asserting a capability exists without checking. This one is the inverse, asserting
   a gap exists without checking.
