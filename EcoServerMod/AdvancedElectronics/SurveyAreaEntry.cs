@@ -257,6 +257,41 @@ namespace Eco.Mods.TechTree
         [Serialized] public ThreadSafeList<int> BedrockPlotCoords { get; set; } = new();
 
         /// <summary>
+        /// The lock that makes every read-modify-write on an area's stored lists atomic (R10).
+        ///
+        /// <para>
+        /// Writing one of these lists is not one instantaneous operation. It is three steps: read
+        /// the whole list, build a replacement from it, store the replacement back. Two of those
+        /// sequences running at overlapping moments both read the same starting list, both build a
+        /// replacement, and both store — and whichever stores second silently discards the other's
+        /// work. <see cref="ThreadSafeList{T}"/> does not prevent that: it makes each individual
+        /// operation safe, not the sequence.
+        /// </para>
+        /// <para>
+        /// There is genuinely more than one writer. An area's stored data is written from the
+        /// owning dock's tick, from its drone's tick, and from a mining dock that does not own the
+        /// area and reached it by resolving the area by identifier. An earlier version of this work
+        /// assumed a single writer and was wrong.
+        /// </para>
+        /// <para>
+        /// <b>Why a second lock rather than the claim lock.</b> Reusing
+        /// <c>DroneDockObject.AreaClaimLock</c> would serialise every per-plot survey write on the
+        /// server behind every assignment, and a sweep records a plot at a time. This one is a
+        /// leaf: nothing inside it calls back into the dock, so it can never be held while the
+        /// claim lock is being acquired. The only possible order is claim lock then this one,
+        /// which is an order and not a cycle, so the pair cannot deadlock. Keep it that way — do
+        /// not call dock code from inside a method that holds this lock.
+        /// </para>
+        /// <para>
+        /// Static rather than one lock per area. A per-area lock would be the finer instrument,
+        /// but it would have to be a non-serialized instance field surviving deserialization, and
+        /// a mistake there fails server initialisation with no log output at all. These operations
+        /// are a few list copies each; the contention is not worth that risk.
+        /// </para>
+        /// </summary>
+        internal static readonly object AreaDataLock = new object();
+
+        /// <summary>
         /// The plots of this area whose ground changed after the survey read them, flattened as
         /// consecutive PAIRS of ints: x, z. A plot listed here is one whose recorded findings can
         /// no longer be trusted, so a survey drone should read it again (R3, R4).
@@ -455,6 +490,24 @@ namespace Eco.Mods.TechTree
         /// </para>
         /// </summary>
         public IReadOnlyList<PlotCoord> SetPlots(IEnumerable<PlotCoord> plots)
+        {
+            // Under the lock as one operation (R10). An edit is several read-modify-writes in a
+            // row -- the removed plots' survey state, their mined stamps, their re-reading marks,
+            // the geometry itself, the coverage figure and the sweep cursor -- and a concurrent
+            // writer landing between any two of them leaves the area describing a geometry it no
+            // longer has. The nested lock inside ResetPlotsToUnsurveyed below is the same lock on
+            // the same thread, which C# allows.
+            lock (AreaDataLock)
+            {
+                return this.SetPlotsUnderLock(plots);
+            }
+        }
+
+        /// <summary>
+        /// The body of <see cref="SetPlots"/>. Separated only so the lock is taken in one obvious
+        /// place; every caller goes through the public method. Do not call this directly.
+        /// </summary>
+        private IReadOnlyList<PlotCoord> SetPlotsUnderLock(IEnumerable<PlotCoord> plots)
         {
             // Rows written in a pre-U1 shape carry no plot, so they cannot be sorted into
             // retained and removed — the whole of this method is per plot. The KTD1 upgrade runs
@@ -663,6 +716,24 @@ namespace Eco.Mods.TechTree
         {
             if (plots == null)
                 return Array.Empty<PlotCoord>();
+
+            // Under the lock, and this is the sequence that made the lock necessary (R10). It
+            // reads four stored lists, builds a replacement for each, and stores all four back.
+            // Two of these interleaving lose one of the two resets outright, with no error and no
+            // log entry -- exactly the silent fault this subsystem exists to remove.
+            lock (AreaDataLock)
+            {
+                return this.ResetPlotsToUnsurveyedUnderLock(plots);
+            }
+        }
+
+        /// <summary>
+        /// The body of <see cref="ResetPlotsToUnsurveyed"/>. Separated only so the lock is taken in
+        /// one obvious place; every caller goes through the public method and therefore through the
+        /// lock. Do not call this directly.
+        /// </summary>
+        private IReadOnlyList<PlotCoord> ResetPlotsToUnsurveyedUnderLock(IEnumerable<PlotCoord> plots)
+        {
 
             // Rows written before findings became per-plot carry no plot, so filtering by plot
             // keeps every one of them and the stamp below would then freeze that attribution as
@@ -891,10 +962,17 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public void RecordSurveyedPlot(PlotCoord plot, long stampValue)
         {
-            var accumulator = this.ReadSurveyedStamps();
-            accumulator.Record(plot, stampValue);
-            this.SetSurveyedStamps(accumulator);
-            this.ClearReReadingMark(plot);
+            // Under the lock because reading the stamps into an accumulator, recording into it and
+            // storing it back is a read-modify-write (R10), and because the mark must be cleared
+            // in the same atomic step as the reading that supersedes it -- not in a second one a
+            // concurrent writer could interleave with.
+            lock (AreaDataLock)
+            {
+                var accumulator = this.ReadSurveyedStamps();
+                accumulator.Record(plot, stampValue);
+                this.SetSurveyedStamps(accumulator);
+                this.ClearReReadingMark(plot);
+            }
         }
 
         /// <summary>
@@ -968,12 +1046,18 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public bool MarkPlotForReReading(PlotCoord plot)
         {
-            if (!this.CoversPlot(plot)) return false;
-            if (this.PlotNeedsReReading(plot)) return false;
+            // Under the lock because this is a check followed by an act (R10): without it, two
+            // callers can both find the plot unmarked and both append it, leaving a duplicate pair
+            // that every later scan has to step over.
+            lock (AreaDataLock)
+            {
+                if (!this.CoversPlot(plot)) return false;
+                if (this.PlotNeedsReReading(plot)) return false;
 
-            this.PlotsNeedingReReading.Add(plot.X);
-            this.PlotsNeedingReReading.Add(plot.Z);
-            return true;
+                this.PlotsNeedingReReading.Add(plot.X);
+                this.PlotsNeedingReReading.Add(plot.Z);
+                return true;
+            }
         }
 
         /// <summary>
@@ -983,23 +1067,28 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public bool ClearReReadingMark(PlotCoord plot)
         {
-            var kept = new ThreadSafeList<int>();
-            var removed = false;
-
-            for (var i = 0; i + 1 < this.PlotsNeedingReReading.Count; i += 2)
+            // Under the lock because this reads the whole list, builds a replacement, and stores
+            // it back (R10). Without it, a mark recorded between the read and the store is lost.
+            lock (AreaDataLock)
             {
-                if (this.PlotsNeedingReReading[i] == plot.X && this.PlotsNeedingReReading[i + 1] == plot.Z)
+                var kept = new ThreadSafeList<int>();
+                var removed = false;
+
+                for (var i = 0; i + 1 < this.PlotsNeedingReReading.Count; i += 2)
                 {
-                    removed = true;
-                    continue;
+                    if (this.PlotsNeedingReReading[i] == plot.X && this.PlotsNeedingReReading[i + 1] == plot.Z)
+                    {
+                        removed = true;
+                        continue;
+                    }
+
+                    kept.Add(this.PlotsNeedingReReading[i]);
+                    kept.Add(this.PlotsNeedingReReading[i + 1]);
                 }
 
-                kept.Add(this.PlotsNeedingReReading[i]);
-                kept.Add(this.PlotsNeedingReReading[i + 1]);
+                if (removed) this.PlotsNeedingReReading = kept;
+                return removed;
             }
-
-            if (removed) this.PlotsNeedingReReading = kept;
-            return removed;
         }
 
         /// <summary>True when <paramref name="plot"/> is recorded as needing re-reading.</summary>
@@ -1054,9 +1143,15 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public void RecordMinedPlot(PlotCoord plot, long stampValue)
         {
-            var accumulator = this.ReadMinedStamps();
-            accumulator.Record(plot, stampValue);
-            this.SetMinedStamps(accumulator);
+            // Under the lock for the same reason as the surveyed stamps (R10), and with more
+            // reason: this one is reached from a mining dock that does not own the area, so two
+            // different docks can be recording into the same area at the same moment.
+            lock (AreaDataLock)
+            {
+                var accumulator = this.ReadMinedStamps();
+                accumulator.Record(plot, stampValue);
+                this.SetMinedStamps(accumulator);
+            }
         }
 
         /// <summary>
