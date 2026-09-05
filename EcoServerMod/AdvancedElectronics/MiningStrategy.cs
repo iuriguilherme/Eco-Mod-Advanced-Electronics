@@ -4,6 +4,8 @@ using AdvancedElectronics.Navigation;
 using Eco.Gameplay.Components;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Players;
+using Eco.Shared.Localization;
+using Eco.Shared.Logging;
 
 namespace Eco.Mods.TechTree
 {
@@ -111,6 +113,43 @@ namespace Eco.Mods.TechTree
 
             this.currentShaftPlot = plot;
             this.passFloorY = floorY;
+        }
+
+        /// <summary>
+        /// Records that the world at <paramref name="plot"/> does not match what the survey
+        /// recorded for it, by marking the plot for re-reading (R12, R13).
+        ///
+        /// <para>
+        /// The consequences are the ones every other reaction has: every survey result on the plot
+        /// is kept, the drones treat the plot as not yet read so no mining drone works it again
+        /// until a survey has, and the readout labels the area's figures as out of date. Nothing
+        /// is deleted, because the mod knows the reading is stale and not that it was wrong.
+        /// </para>
+        /// <para>
+        /// <b>What this detects and what it does not.</b> It detects the survey having promised
+        /// ore in a plot whose ground is not there when the drone arrives -- a player dug it out,
+        /// an administrator removed it, another mod took it. It does NOT detect the opposite case,
+        /// ground appearing where the survey recorded none: the survey stores one aggregated row
+        /// per ore type per plot rather than a position for every block, so there is nothing
+        /// precise to compare a newly present block against. That direction is a gap, and it is
+        /// stated here rather than papered over with a heuristic.
+        /// </para>
+        /// <para>
+        /// Silent when the survey recorded nothing for this plot. An empty plot with nothing
+        /// removable at the surface is a plot with nothing in it, not a plot that changed.
+        /// </para>
+        /// </summary>
+        private void RecordSiteDiscrepancy(PlotCoord plot)
+        {
+            var area = this.ResolveSourceArea();
+            if (area == null) return;
+
+            // Only a plot the survey made a claim about can contradict the survey.
+            if (!area.ReadFindings(plot).Any()) return;
+
+            if (area.MarkPlotForReReading(plot))
+                Log.WriteLineLoc(
+                    $"Drone Dock: the ground at plot ({plot.X}, {plot.Z}) does not match what the survey recorded, so the plot is marked for re-reading.");
         }
 
         /// <summary>
@@ -378,6 +417,19 @@ namespace Eco.Mods.TechTree
 
             if (removable.Count == 0)
             {
+                // R12, R13. This is the moment of in situ discovery, and it is the ONLY way this
+                // mod ever learns that ground it did not change has changed. It does not monitor
+                // the world; a drone finds out by standing on the ground and looking at it.
+                //
+                // Scoped to the FIRST layer of the pass on purpose. Deeper down, a layer with
+                // nothing removable is ordinary -- a layer of wall, or ground already taken -- and
+                // treating that as a discrepancy would mark half the plots on the server. On the
+                // first layer the drone has just arrived at the plot's surface, so nothing
+                // removable there while the survey recorded ore in this plot means the ground the
+                // survey described is not the ground that is here.
+                if (this.shaftResumeIndex == 0)
+                    this.RecordSiteDiscrepancy(target);
+
                 // Nothing to submit, so this layer IS finished -- advance past it or the shaft
                 // stalls on a layer of wall (AE5) or already-empty ground.
                 this.shaftResumeIndex += layer.Positions.Count;
