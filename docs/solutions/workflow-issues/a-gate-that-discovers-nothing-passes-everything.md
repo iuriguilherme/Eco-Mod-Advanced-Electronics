@@ -51,6 +51,18 @@ symmetric, and the quiet one is the dangerous one:
   immediately investigates and fixes.
 - Too narrow: the gate reports nothing. Cost: a green check for years, and no signal at all.
 
+That first cost assumes the false failure is **rare**. Where over-broad output is instead the
+standing majority, it does not self-correct — it erodes, and the erosion arrives from the loud
+direction rather than the quiet one. The documented case in this repo is the citation validator over
+`docs/solutions/`, where eighteen flags on a single doc were all correct-on-purpose and the same
+SHA-shaped flag was re-adjudicated across four separate runs without anything ever being fixed. Once
+an output is routinely waved through as "the checker not understanding the doc", the real finding
+gets waved through with it — the same "output that is always present becomes chrome" failure below,
+reached by producing too much signal instead of none. See
+`docs/solutions/workflow-issues/a-crashed-check-and-a-flagged-check-are-opposite-problems.md`. The
+asymmetry above holds where a false failure is exceptional; where it is the norm, the response is
+per-item adjudication rather than a wider pattern.
+
 This is the same asymmetry argument as
 `docs/solutions/workflow-issues/release-scripts-should-refuse-not-warn.md`, applied one step earlier.
 That doc is about what a gate does once it has detected a bad condition. This one is about a gate that
@@ -286,9 +298,10 @@ existed when it was last edited.
 
 ## Related
 
-- `docs/solutions/workflow-issues/release-scripts-should-refuse-not-warn.md` — the adjacent failure at
-  the next step: that doc is about a gate that detects a bad condition and declines to fail on it;
-  this one is about a gate whose detection stage was empty, so its failure logic never ran.
+- `docs/solutions/workflow-issues/release-scripts-should-refuse-not-warn.md` — the adjacent question at
+  the next step: that doc argues a gate which detects a bad condition should refuse rather than warn,
+  and states the premise that makes refusing right — a false failure that is rare and cheap to clear.
+  This one is about a gate whose detection stage was empty, so its failure logic never ran at all.
 - `docs/solutions/workflow-issues/verify-the-deploy-landed-before-asking-for-a-restart.md` — the same
   shape in the deploy path: a step that reports success without having confirmed the thing it claims.
 - `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` — why name match is
