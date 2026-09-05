@@ -257,6 +257,36 @@ namespace Eco.Mods.TechTree
         [Serialized] public ThreadSafeList<int> BedrockPlotCoords { get; set; } = new();
 
         /// <summary>
+        /// The plots of this area whose ground changed after the survey read them, flattened as
+        /// consecutive PAIRS of ints: x, z. A plot listed here is one whose recorded findings can
+        /// no longer be trusted, so a survey drone should read it again (R3, R4).
+        ///
+        /// <para>
+        /// Being listed here destroys nothing. The plot keeps its ore findings, its surveyed
+        /// timestamp, its bedrock observation, its mined timestamp and its pass record. That is
+        /// the whole point: a later survey can then confirm or replace what is recorded rather
+        /// than rebuilding it from nothing, and a wrong judgement costs redundant work instead of
+        /// lost data.
+        /// </para>
+        /// <para>
+        /// This list changes what the DRONES do and never what the PLAYER sees. The area goes on
+        /// displaying the status tag it last earned; being listed here never makes an area read
+        /// `[unsurveyed]` (R6, R7).
+        /// </para>
+        /// <para>
+        /// An area loading from a world that predates this list reads it as empty, which is the
+        /// correct state rather than merely a tolerable one: nothing has yet been found to need
+        /// re-reading. No migration is required for that reason, and none should be added.
+        /// </para>
+        /// <para>
+        /// A <see cref="ThreadSafeList{T}"/> of plain ints, like every other serialized collection
+        /// here: Eco's serializer rejects a non-immutable <c>[Serialized]</c> member and fails
+        /// server init silently, printing not even the mod's own load line.
+        /// </para>
+        /// </summary>
+        [Serialized] public ThreadSafeList<int> PlotsNeedingReReading { get; set; } = new();
+
+        /// <summary>
         /// The live sample record of the pass currently running on this area (U7, R25), flattened
         /// as consecutive FIVE-int rows: x, z, surfaceY, sampledBlocks, bedrockState.
         ///
@@ -456,6 +486,14 @@ namespace Eco.Mods.TechTree
             //    about and no survey will ever refresh.
             this.DropMinedStamps(plan.Removed);
 
+            // 2b. ...and their re-reading marks. A mark says "what is recorded for this plot can
+            //     no longer be trusted", so on ground the area no longer holds it names a plot no
+            //     reader will ever ask about and no survey will ever visit. Dropped for the same
+            //     reason as the mined stamps above, and dropped here rather than in step 1 because
+            //     marking and resetting are different things and step 1 is the reset.
+            foreach (var removed in plan.Removed)
+                this.ClearReReadingMark(removed);
+
             this.PlotCoords = new ThreadSafeList<int>();
             foreach (var p in after)
             {
@@ -565,6 +603,10 @@ namespace Eco.Mods.TechTree
             this.MedianSurface = 0;
             this.SurveyedStamps = new ThreadSafeList<long>();
             this.BedrockPlotCoords = new ThreadSafeList<int>();
+            // The re-reading marks go with the findings they qualify. A mark says "what is
+            // recorded for this plot can no longer be trusted", and once nothing is recorded for
+            // it there is no longer anything for the mark to qualify.
+            this.PlotsNeedingReReading = new ThreadSafeList<int>();
             this.ClearSweep();
         }
 
@@ -906,6 +948,66 @@ namespace Eco.Mods.TechTree
             for (var i = 0; i + 1 < this.BedrockPlotCoords.Count; i += 2)
                 yield return new PlotCoord(this.BedrockPlotCoords[i], this.BedrockPlotCoords[i + 1]);
         }
+
+        /// <summary>
+        /// Records that <paramref name="plot"/> needs re-reading, if this area covers it and it is
+        /// not already recorded. Returns true when the list actually changed, so a caller can tell
+        /// whether this was new information.
+        /// </summary>
+        public bool MarkPlotForReReading(PlotCoord plot)
+        {
+            if (!this.CoversPlot(plot)) return false;
+            if (this.PlotNeedsReReading(plot)) return false;
+
+            this.PlotsNeedingReReading.Add(plot.X);
+            this.PlotsNeedingReReading.Add(plot.Z);
+            return true;
+        }
+
+        /// <summary>
+        /// Clears the re-reading mark on <paramref name="plot"/>, if it carries one. Called when a
+        /// survey pass reads the plot again, in the same step that records the new reading, so the
+        /// mark goes away exactly when the reading that superseded it is stored (R9).
+        /// </summary>
+        public bool ClearReReadingMark(PlotCoord plot)
+        {
+            var kept = new ThreadSafeList<int>();
+            var removed = false;
+
+            for (var i = 0; i + 1 < this.PlotsNeedingReReading.Count; i += 2)
+            {
+                if (this.PlotsNeedingReReading[i] == plot.X && this.PlotsNeedingReReading[i + 1] == plot.Z)
+                {
+                    removed = true;
+                    continue;
+                }
+
+                kept.Add(this.PlotsNeedingReReading[i]);
+                kept.Add(this.PlotsNeedingReReading[i + 1]);
+            }
+
+            if (removed) this.PlotsNeedingReReading = kept;
+            return removed;
+        }
+
+        /// <summary>True when <paramref name="plot"/> is recorded as needing re-reading.</summary>
+        public bool PlotNeedsReReading(PlotCoord plot)
+        {
+            for (var i = 0; i + 1 < this.PlotsNeedingReReading.Count; i += 2)
+                if (this.PlotsNeedingReReading[i] == plot.X && this.PlotsNeedingReReading[i + 1] == plot.Z)
+                    return true;
+            return false;
+        }
+
+        /// <summary>This area's plots recorded as needing re-reading (unflattening the pairs).</summary>
+        public IEnumerable<PlotCoord> ReadPlotsNeedingReReading()
+        {
+            for (var i = 0; i + 1 < this.PlotsNeedingReReading.Count; i += 2)
+                yield return new PlotCoord(this.PlotsNeedingReReading[i], this.PlotsNeedingReReading[i + 1]);
+        }
+
+        /// <summary>True when any plot of this area is recorded as needing re-reading.</summary>
+        public bool AnyPlotNeedsReReading => this.PlotsNeedingReReading.Count > 0;
 
         /// <summary>True when the last survey observed <paramref name="plot"/> down at bedrock.</summary>
         public bool PlotRestsOnBedrock(PlotCoord plot)

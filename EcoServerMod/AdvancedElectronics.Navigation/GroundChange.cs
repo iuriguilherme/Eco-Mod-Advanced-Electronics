@@ -8,28 +8,36 @@ namespace AdvancedElectronics.Navigation
     /// What a change to one column's ground means for ONE area covering it (U8, R16, R17, R43).
     ///
     /// <para>
-    /// Four answers, and three of them mean "do nothing" for three different reasons that are not
+    /// Three answers, and two of them mean "do nothing" for two different reasons that are not
     /// interchangeable. <see cref="IgnoredNotOurs"/> is the mod having no idea what happened,
-    /// because the write was not one of its own; that is the common case and the one this
-    /// requirement narrowed the reaction down to. <see cref="RecordedAsOwnWork"/> is the mod
-    /// knowing exactly what happened here and having a better record of it than "unsurveyed".
-    /// <see cref="NotThisKindsWork"/> is a write addressed to a different kind of area that
-    /// happens to overlap this one. Only <see cref="ResetToUnsurveyed"/> touches anything.
+    /// because the write was not one of its own; that is the common case, and it is what the
+    /// narrowed requirement reduced the reaction down to. <see cref="RecordedAsOwnWork"/> is the
+    /// opposite: the mod knowing exactly what happened here, and having a better record of it than
+    /// "unsurveyed". Only <see cref="MarkForReReading"/> touches anything, and what it does is
+    /// mark the area's affected plots for re-reading while keeping every survey result.
     /// </para>
     /// </summary>
     public enum GroundChangeVerdict
     {
         /// <summary>
-        /// R16, as narrowed. One of the mod's own drones changed ground belonging to a DIFFERENT
-        /// area of the same kind. The plots it touched go back to unsurveyed.
+        /// R3. One of the mod's own drones changed ground belonging to a DIFFERENT area from the
+        /// one its work serves. The plots it touched are marked for re-reading, and every survey
+        /// result on that area is kept: its ore findings, its surveyed timestamp, its bedrock
+        /// observation, its mined timestamp and its pass record all survive.
         ///
+        /// <para>
+        /// What kind of work the drone was doing does not matter. A farming drone flattening
+        /// ground a mining area also covers changed that mining area's ground just as surely as a
+        /// mining drone would have. An earlier version answered that case with a separate verdict
+        /// and skipped the reaction for it.
+        /// </para>
         /// <para>
         /// A player digging, an administrator command and a map-editor paste used to land here
         /// too. They no longer do: they are not attributable to any of the mod's drones and now
         /// take <see cref="IgnoredNotOurs"/> instead.
         /// </para>
         /// </summary>
-        ResetToUnsurveyed,
+        MarkForReReading,
 
         /// <summary>
         /// R17, R43. One of the mod's drones writing on the very area its work serves. The area
@@ -37,13 +45,6 @@ namespace AdvancedElectronics.Navigation
         /// alone -- so the player can still see what was there before it was taken.
         /// </summary>
         RecordedAsOwnWork,
-
-        /// <summary>
-        /// R43. The write serves an area of a different KIND. Ground two areas cover at once --
-        /// handed-over plots are exactly that -- records the state of the work actually being
-        /// done on it, so a farming write does not unsurvey the mining area underneath it.
-        /// </summary>
-        NotThisKindsWork,
 
         /// <summary>
         /// R1. The write cannot be attributed to any of this mod's drones. A player digging, an
@@ -109,7 +110,10 @@ namespace AdvancedElectronics.Navigation
         /// <summary>What kind of work this write is -- the kind of area it is attributed to (R43).</summary>
         public AreaKind ServedKind { get; }
 
-        /// <summary>The default: a write the mod did not make, or made without marking. Falls to R16 everywhere.</summary>
+        /// <summary>
+        /// The default: a write the mod did not make, or made without marking. It is ignored
+        /// everywhere (R1) rather than causing any reaction.
+        /// </summary>
         public static GroundWriteAttribution Outside => default;
 
         /// <summary>A write by one of the mod's drones, serving one area of one kind.</summary>
@@ -179,9 +183,18 @@ namespace AdvancedElectronics.Navigation
         /// the work site and finds the world does not match what the survey reported.
         /// </para>
         /// <para>
-        /// After that, the area's own work wins (R17/R43); then a write serving a different kind
-        /// is not this area's business (R43); and everything else -- one of the mod's own drones
-        /// digging ground that belongs to another dock's area of the same kind -- is R16.
+        /// After that, the area's own work wins (R17/R43): a drone writing on the very area its
+        /// work serves is recorded as that area's own work, because the area's own record already
+        /// describes what happened. Everything remaining is one of the mod's own drones changing
+        /// ground that belongs to some OTHER area, and that area's plots are marked for re-reading.
+        /// </para>
+        /// <para>
+        /// The kind of work the drone was doing decides nothing (R3). A farming drone that
+        /// flattens ground a mining area also covers changed that mining area's ground just as
+        /// surely as a mining drone would have. An earlier version returned a separate verdict for
+        /// a write serving a different kind of area and skipped the reaction for it; that
+        /// distinction is gone, because the question is whether the ground changed and not what
+        /// job the drone was on.
         /// </para>
         /// </summary>
         public static GroundChangeVerdict VerdictFor(
@@ -194,24 +207,16 @@ namespace AdvancedElectronics.Navigation
                 && string.Equals(attribution.ServedAreaOwnerId, areaOwnerId, StringComparison.Ordinal))
                 return GroundChangeVerdict.RecordedAsOwnWork;
 
-            if (attribution.ServedKind != areaKind)
-                return GroundChangeVerdict.NotThisKindsWork;
-
-            return GroundChangeVerdict.ResetToUnsurveyed;
+            return GroundChangeVerdict.MarkForReReading;
         }
-
-        /// <summary>The one verdict that touches anything. Every caller keys off this rather than re-listing the enum.</summary>
-        public static bool RequiresReset(GroundChangeVerdict verdict) =>
-            verdict == GroundChangeVerdict.ResetToUnsurveyed;
 
         /// <summary>
         /// Whether this verdict calls for the mod to do anything at all. This is the name callers
-        /// should use: what a reaction does is to mark the affected plots for re-reading, which is
-        /// not a reset, and calling the predicate "requires reset" would describe behaviour the
-        /// mod no longer has.
+        /// use: what a reaction does is to mark the affected plots for re-reading, which is not a
+        /// reset, so a predicate named for a reset would describe behaviour the mod no longer has.
         /// </summary>
         public static bool RequiresReaction(GroundChangeVerdict verdict) =>
-            verdict == GroundChangeVerdict.ResetToUnsurveyed;
+            verdict == GroundChangeVerdict.MarkForReReading;
     }
 
     /// <summary>

@@ -10,17 +10,29 @@ using EcoWorld = Eco.World.World;
 
 namespace Eco.Mods.TechTree
 {
-    // U8: reacting to ground the mod did not change (R16, R17, R43, KTD7).
+    // Reacting to ground one of THIS MOD'S OWN drones changed (R1, R3, R4).
     //
-    // The engine fires World.OnTopBlockChanged from its own block-write path, so every writer
-    // reaches it -- a player digging, an admin command, a map-editor paste, and the mod's own
-    // drones alike. It reports the changed COLUMN, which is the shape an area already records.
+    // The engine fires World.OnTopBlockChanged from its own block-write path, so every writer in
+    // the world reaches it -- a player digging, an administrator command, a map-editor paste, and
+    // the mod's own drones alike. It reports the changed COLUMN, which is the shape an area
+    // already records.
     //
     // What it does not report is who wrote. That is why the mod marks its own writes as it makes
-    // them (ModGroundWrite, opened in MiningStrategy around the removal pack) and everything
-    // unmarked reads as outside. The safe default is that direction: a writer the mod forgets to
-    // mark costs a resurvey, while a writer wrongly claimed as the mod's own leaves findings that
-    // silently describe ground that is no longer there.
+    // them (ModGroundWrite, opened in MiningStrategy and FarmingStrategy around their block
+    // writes) and everything unmarked reads as not ours.
+    //
+    // Only a write the mod can attribute to one of its own drones causes any reaction at all. This
+    // mod does not monitor the world for changes it did not make: the engine raises a signal only
+    // when the topmost block of a column changes, so a player tunnelling underground is invisible
+    // here, and reacting to the fraction of outside changes that happen to surface would produce
+    // an arbitrary picture rather than a current one. An outside change is learned in situ
+    // instead, by the mining drone that reaches the work site and finds the world does not match
+    // what the survey reported.
+    //
+    // The safe default therefore runs the opposite way from what it once did. A write the mod
+    // forgets to mark now reads as not ours and is ignored, which leaves the survey slightly out
+    // of date until a drone discovers the discrepancy; previously the same slip deleted the
+    // survey results for the plots it touched.
     public partial class DroneDockObject
     {
         /// <summary>
@@ -105,16 +117,16 @@ namespace Eco.Mods.TechTree
         ///
         /// <para>
         /// This runs on every top-block change in the world, so the gates are ordered cheapest
-        /// first: a destroyed dock, then a dock with no areas, then per area the flat
-        /// <see cref="SurveyAreaEntry.HasSurveyState"/> check (an area no pass has touched has
-        /// nothing a reset could take), then the plot scan. Only ground that is both covered and
-        /// surveyed reaches any work.
+        /// first: a destroyed dock, then a dock with no areas, then whether the write is even
+        /// one of this mod's own (which decides almost every call and costs one field read),
+        /// then per area the flat <see cref="SurveyAreaEntry.HasSurveyState"/> check (an area no
+        /// pass has touched has nothing a mark could qualify), then the plot scan.
         /// </para>
         /// <para>
         /// The engine may fire this several times for one column -- digging a shaft down changes
         /// the top block at every layer -- so the reaction has to be idempotent rather than
-        /// coalesced. It is: once a plot's rows, stamps, observations and sample columns are gone,
-        /// resetting it again finds nothing to remove.
+        /// coalesced. It is: marking a plot that is already marked changes nothing and reports
+        /// that it changed nothing, so the second and later firings do no work.
         /// </para>
         /// <para>
         /// Nothing may escape from here. An exception on the engine's block-write path would take
@@ -156,7 +168,6 @@ namespace Eco.Mods.TechTree
 
             var plot = GroundChange.PlotOf(worldX, worldZ, PlotUtil.PropertyPlotLength);
             var ownerId = this.ObjectID.ToString();
-            List<PlotCoord> single = null;
 
             foreach (var entry in this.SurveyAreas)
             {
@@ -171,12 +182,20 @@ namespace Eco.Mods.TechTree
                         GroundChange.VerdictFor(attribution, ownerId, entry.Id, entry.Kind)))
                     continue;
 
-                single ??= new List<PlotCoord> { plot };
+                // R4. Mark the plot for re-reading rather than destroying what the survey found.
+                // Every stored result on this area survives -- its ore findings, its surveyed
+                // timestamp, its bedrock observation, its mined timestamp and its pass record --
+                // so a later survey can confirm or replace them cheaply instead of rebuilding
+                // them from nothing, and a wrong judgement here costs redundant work rather than
+                // lost data.
+                if (!entry.MarkPlotForReReading(plot)) continue;
 
-                // Both halves of the reset, always together: the persisted claim about this plot,
-                // and the live record that would otherwise dedupe the next pass straight past it.
-                foreach (var reset in entry.ResetPlotsToUnsurveyed(single))
-                    this.surveyRecord?.ForgetPlot(entry.Id, reset);
+                // R5. The live sampled set has to lose this plot at the same moment. That record
+                // exists to stop the current pass re-reading ground it has already read, so a plot
+                // left in it is skipped by every later pass -- the drone would fly back and record
+                // nothing. Dropping it destroys no survey result: it is in-memory de-duplication
+                // state, not stored findings.
+                this.surveyRecord?.ForgetPlot(entry.Id, plot);
             }
         }
     }

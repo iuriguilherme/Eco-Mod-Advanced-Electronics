@@ -706,48 +706,57 @@ namespace AdvancedElectronics.Navigation.Tests
         /// about the ground, not about who changed it.
         /// </summary>
         [Fact]
-        public void AMiningDroneOnAnotherDocksMiningArea_StillResetsThatArea()
+        public void AMiningDroneOnAnotherDocksMiningArea_StillMarksThatArea()
         {
             Assert.Equal(
-                GroundChangeVerdict.ResetToUnsurveyed,
+                GroundChangeVerdict.MarkForReReading,
                 GroundChange.VerdictFor(MiningDroneOn(DockA, AreaOne), DockB, AreaOne, AreaKind.Mining));
         }
 
         /// <summary>R43. Same dock, different area of the same kind: still that area's ground changing under it.</summary>
         [Fact]
-        public void AMiningDroneOnADifferentAreaOfTheSameDock_StillResetsThatArea()
+        public void AMiningDroneOnADifferentAreaOfTheSameDock_StillMarksThatArea()
         {
             Assert.Equal(
-                GroundChangeVerdict.ResetToUnsurveyed,
+                GroundChangeVerdict.MarkForReReading,
                 GroundChange.VerdictFor(MiningDroneOn(DockA, AreaOne), DockA, AreaTwo, AreaKind.Mining));
         }
 
         /// <summary>
-        /// R43. A write is attributed to the area whose KIND it serves. Ground two areas cover at
-        /// once -- handed-over plots are exactly that -- records the state of the work actually
-        /// being done on it, so a farming write does not unsurvey the mining area underneath.
+        /// R3. What kind of work a drone was doing does not decide anything. A farming drone that
+        /// flattens ground a mining area also covers has changed that mining area's ground just as
+        /// surely as a mining drone would have, so the mining area's survey no longer describes
+        /// it and its plots are marked for re-reading.
+        ///
+        /// <para>
+        /// This test previously asserted the opposite, under a verdict named NotThisKindsWork: a
+        /// farming write was held not to be a mining area's business. That distinction is removed.
+        /// The question the verdict answers is whether the ground changed, not what job the drone
+        /// was on. The first assertion below is unchanged -- a drone writing on the very area its
+        /// work serves is still recorded as that area's own work.
+        /// </para>
         /// </summary>
         [Fact]
-        public void AFarmingWriteOnFarmland_DoesNotUnsurveyTheMiningAreaCoveringTheSameGround()
+        public void AFarmingWrite_MarksAMiningAreaCoveringTheSameGround()
         {
+            Assert.Equal(
+                GroundChangeVerdict.MarkForReReading,
+                GroundChange.VerdictFor(FarmingDroneOn(DockA, AreaOne), DockA, AreaTwo, AreaKind.Mining));
+
+            Assert.True(GroundChange.RequiresReaction(
+                GroundChange.VerdictFor(FarmingDroneOn(DockA, AreaOne), DockB, AreaTwo, AreaKind.Mining)));
+
             Assert.Equal(
                 GroundChangeVerdict.RecordedAsOwnWork,
                 GroundChange.VerdictFor(FarmingDroneOn(DockA, AreaOne), DockA, AreaOne, AreaKind.Farming));
-
-            Assert.Equal(
-                GroundChangeVerdict.NotThisKindsWork,
-                GroundChange.VerdictFor(FarmingDroneOn(DockA, AreaOne), DockA, AreaTwo, AreaKind.Mining));
-
-            Assert.False(GroundChange.RequiresReset(
-                GroundChange.VerdictFor(FarmingDroneOn(DockA, AreaOne), DockB, AreaTwo, AreaKind.Mining)));
         }
 
-        /// <summary>Only one verdict asks for a reset, and the reset path keys off exactly that.</summary>
+        /// <summary>Only one verdict asks the mod to do anything, and the reaction path keys off exactly that.</summary>
         [Fact]
-        public void OnlyTheResetVerdict_RequiresAReset()
+        public void OnlyTheMarkingVerdict_RequiresAReaction()
         {
             foreach (var verdict in Enum.GetValues(typeof(GroundChangeVerdict)).Cast<GroundChangeVerdict>())
-                Assert.Equal(verdict == GroundChangeVerdict.ResetToUnsurveyed, GroundChange.RequiresReset(verdict));
+                Assert.Equal(verdict == GroundChangeVerdict.MarkForReReading, GroundChange.RequiresReaction(verdict));
         }
 
         // ---- the scope that marks the mod's own writes ----
@@ -937,7 +946,7 @@ namespace AdvancedElectronics.Navigation.Tests
             {
                 var verdict = GroundChange.VerdictFor(ModGroundWrite.Current, DockA, AreaOne, AreaKind.Mining);
                 Assert.Equal(GroundChangeVerdict.RecordedAsOwnWork, verdict);
-                Assert.False(GroundChange.RequiresReset(verdict));
+                Assert.False(GroundChange.RequiresReaction(verdict));
             }
 
             // What the dig does record is the mined stamp -- R17's whole mechanism.
