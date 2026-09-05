@@ -504,7 +504,12 @@ namespace Eco.Mods.TechTree
                 // R35/R36: the panel says only THAT this area collides with another. Which plots,
                 // and whether the other area holds them, is the diagnostic command's to say --
                 // one summary row per fact here, a row per plot there.
-                hasOverlap: OverlapsAnything(owner, area, published));
+                hasOverlap: OverlapsAnything(owner, area, published),
+                // R8. Same label as the Survey tab, for the same reason and from the same fact:
+                // both tabs render one area through one line builder, so a player reading either
+                // is told when the figures in front of them describe ground that has since
+                // changed. The figures are neither recalculated nor hidden.
+                needsResurvey: area.AnyPlotNeedsReReading);
         }
 
         /// <summary>True when this dock's drone is currently reporting that it cannot reach its area.</summary>

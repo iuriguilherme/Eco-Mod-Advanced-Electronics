@@ -357,7 +357,14 @@ namespace Eco.Mods.TechTree
                     // the tag the player sees -- the readout labels the figures as out of date
                     // instead -- because both answers are true at once and they are for different
                     // readers.
-                    area.PlotNeedsReReading);
+                    area.PlotNeedsReReading,
+                    // R14, R15, R16. Whether a mining drone is working this area right now. The
+                    // fact rides on the claim the mining assignment already takes, so this is how
+                    // the mining dock tells the survey dock without a second channel between them:
+                    // both read the same area. An area holds `[surveyed]` only while untouched AND
+                    // unassigned, so this is what stops it claiming to be untouched between the
+                    // assignment and the first block coming out.
+                    area.IsClaimedForMining);
             });
         }
 
@@ -526,7 +533,7 @@ namespace Eco.Mods.TechTree
 
                     this.AssignedMiningArea = MiningAreaRef.For(sourceDock, area);
                     this.miningAssignmentEpoch++;
-                    area.RecordClaim(this.ObjectID, this.miningAssignmentEpoch);
+                    area.RecordClaim(this.ObjectID, this.miningAssignmentEpoch, forMining: true);
                 }
 
                 return true;

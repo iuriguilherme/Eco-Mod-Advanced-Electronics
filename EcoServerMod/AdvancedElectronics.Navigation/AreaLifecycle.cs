@@ -223,7 +223,8 @@ namespace AdvancedElectronics.Navigation
             Func<PlotCoord, long> surveyedStamp,
             Func<PlotCoord, long> minedStamp,
             MiningExclusionLedger assembledExclusions,
-            Func<PlotCoord, bool> needsReReading = null)
+            Func<PlotCoord, bool> needsReReading = null,
+            bool miningDroneAssigned = false)
         {
             if (plots == null) throw new ArgumentNullException(nameof(plots));
             if (surveyedStamp == null) throw new ArgumentNullException(nameof(surveyedStamp));
@@ -276,7 +277,20 @@ namespace AdvancedElectronics.Navigation
                     ? AreaLifecycleStatus.Cleared
                     : AreaLifecycleStatus.Empty;
 
-            if (!anyMinedSinceSurvey) return AreaLifecycleStatus.Surveyed;   // every plot untouched (R5)
+            // R14, R15. An area holds `[surveyed]` only while it is untouched AND no mining drone
+            // is assigned to it. The moment one is assigned it reads `[digging]`, before that
+            // drone has removed a single block.
+            //
+            // Until this input existed, `[digging]` was derived after the fact from evidence left
+            // in the ground, so it appeared only once plots had actually been dug. Between the
+            // assignment and the first block coming out, the area went on telling the player the
+            // ground was untouched at exactly the time it was about to stop being untouched -- and
+            // a player reading the survey panel had no way to know the results shown were about to
+            // become wrong.
+            if (!anyMinedSinceSurvey)
+                return miningDroneAssigned
+                    ? AreaLifecycleStatus.Digging
+                    : AreaLifecycleStatus.Surveyed;                          // every plot untouched (R5)
             if (anyMineable) return AreaLifecycleStatus.Digging;             // some dug, some left
             return AreaLifecycleStatus.Mined;                                // none mineable, some dug (R6)
         }

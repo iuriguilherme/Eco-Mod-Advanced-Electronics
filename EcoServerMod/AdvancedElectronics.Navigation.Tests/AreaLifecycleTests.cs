@@ -163,6 +163,89 @@ namespace AdvancedElectronics.Navigation.Tests
 
         // ------------------------------------------------- the unsurveyed guard comes first
 
+        // --------------------------------- the tag reflects mining work from assignment (R14-R17)
+
+        /// <summary>
+        /// R14, R15. An area holds `[surveyed]` only while it is untouched AND no mining drone is
+        /// assigned to it. The moment one is assigned the area reads `[digging]`, before that
+        /// drone has removed a single block.
+        ///
+        /// <para>
+        /// Until now `[digging]` was derived after the fact, from evidence left in the ground, so
+        /// it appeared only once plots had actually been dug. Between assignment and the first
+        /// block coming out, the area went on claiming to be untouched at exactly the time it was
+        /// about to stop being untouched.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void AnAssignedMiningDrone_MakesTheAreaDigging_BeforeAnyBlockIsRemoved()
+        {
+            var plots = Plots(3).ToList();
+
+            Assert.Equal(
+                AreaLifecycleStatus.Surveyed,
+                AreaLifecycle.DeriveStatus(plots, All(100), All(0), Ledger()));
+
+            Assert.Equal(
+                AreaLifecycleStatus.Digging,
+                AreaLifecycle.DeriveStatus(plots, All(100), All(0), Ledger(), miningDroneAssigned: true));
+        }
+
+        /// <summary>R14. With a drone assigned, the area cannot read `[surveyed]` at all.</summary>
+        [Fact]
+        public void WhileAMiningDroneIsAssigned_TheAreaNeverReadsSurveyed()
+        {
+            var plots = Plots(3).ToList();
+
+            Assert.NotEqual(
+                AreaLifecycleStatus.Surveyed,
+                AreaLifecycle.DeriveStatus(plots, All(100), All(0), Ledger(), miningDroneAssigned: true));
+        }
+
+        /// <summary>R15. An area part-way through being dug reads `[digging]` either way.</summary>
+        [Fact]
+        public void APartlyDugArea_ReadsDigging_WithOrWithoutAnAssignedDrone()
+        {
+            var plots = Plots(3).ToList();
+
+            Assert.Equal(
+                AreaLifecycleStatus.Digging,
+                AreaLifecycle.DeriveStatus(plots, All(100), Stamps(200, 0, 0), Ledger()));
+
+            Assert.Equal(
+                AreaLifecycleStatus.Digging,
+                AreaLifecycle.DeriveStatus(plots, All(100), Stamps(200, 0, 0), Ledger(), miningDroneAssigned: true));
+        }
+
+        /// <summary>
+        /// R17. When the drone finishes and its assignment ends, the area reads `[mined]` --
+        /// which is what it already did once every plot that could be dug had been dug.
+        /// </summary>
+        [Fact]
+        public void WhenTheDroneFinishesAndTheAssignmentEnds_TheAreaReadsMined()
+        {
+            var plots = Plots(3).ToList();
+
+            Assert.Equal(
+                AreaLifecycleStatus.Mined,
+                AreaLifecycle.DeriveStatus(plots, All(100), All(200), Ledger()));
+        }
+
+        /// <summary>
+        /// R14. Passing no assignment input reproduces every previous result, which is what lets
+        /// every caller written before this input existed behave exactly as it did.
+        /// </summary>
+        [Fact]
+        public void PassingNoAssignmentInput_ReproducesTheStatusWithoutIt()
+        {
+            var plots = Plots(3).ToList();
+
+            foreach (var mined in new[] { All(0), All(200), Stamps(200, 0, 0) })
+                Assert.Equal(
+                    AreaLifecycle.DeriveStatus(plots, All(100), mined, Ledger()),
+                    AreaLifecycle.DeriveStatus(plots, All(100), mined, Ledger(), miningDroneAssigned: false));
+        }
+
         // ------------------------------------------- plots recorded as needing re-reading (R6)
 
         /// <summary>

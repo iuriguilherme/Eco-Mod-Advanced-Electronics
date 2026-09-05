@@ -651,7 +651,13 @@ namespace Eco.Mods.TechTree
 
             return new AreaSnapshot(
                 position, area.Name, area.PlotCount, area.CoveragePercent, top, status,
-                isAssigned, isUnreachable, hasOverlap);
+                isAssigned, isUnreachable, hasOverlap,
+                // R8. While any plot of this area is recorded as needing re-reading, the readout
+                // presents these figures under a label saying they are no longer current. The
+                // figures themselves are not touched: they remain an accurate record of what the
+                // survey pass found, so saying they are old is the honest correction rather than
+                // altering them.
+                needsResurvey: area.AnyPlotNeedsReReading);
         }
 
         // --- Material filter ---

@@ -559,7 +559,7 @@ namespace Eco.Mods.TechTree
 
                 this.AssignedSurveyAreaId = id;
                 this.assignedAreaEpoch++;
-                area.RecordClaim(this.ObjectID, this.assignedAreaEpoch);
+                area.RecordClaim(this.ObjectID, this.assignedAreaEpoch, forMining: false);
                 return true;
             }
         }

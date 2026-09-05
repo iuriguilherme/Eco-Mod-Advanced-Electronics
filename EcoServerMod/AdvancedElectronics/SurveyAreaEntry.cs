@@ -409,11 +409,55 @@ namespace Eco.Mods.TechTree
         /// assignment paths refuse a contested claim BEFORE reaching here, under the one lock
         /// KTD6 defines, so an unrefused call is by construction the new holder.
         /// </summary>
-        public void RecordClaim(Guid holdingDockId, int assignmentEpoch)
+        public void RecordClaim(Guid holdingDockId, int assignmentEpoch, bool forMining)
         {
-            this.ClaimHolderDockId = holdingDockId.ToString();
-            this.ClaimEpoch = assignmentEpoch;
+            lock (AreaDataLock)
+            {
+                this.ClaimHolderDockId = holdingDockId.ToString();
+                this.ClaimEpoch = assignmentEpoch;
+                this.ClaimWorkValue = forMining ? ClaimWorkMining : ClaimWorkSurvey;
+            }
         }
+
+        /// <summary>Value of <see cref="ClaimWorkValue"/> meaning a survey drone holds this area.</summary>
+        public const int ClaimWorkSurvey = 1;
+
+        /// <summary>Value of <see cref="ClaimWorkValue"/> meaning a mining drone holds this area.</summary>
+        public const int ClaimWorkMining = 2;
+
+        /// <summary>
+        /// What kind of drone holds this area's claim: 0 for not recorded, 1 for a survey drone,
+        /// 2 for a mining drone. This is how a mining dock tells a survey dock that a mining drone
+        /// is working the area (R16), without a second channel between them — the fact rides on
+        /// the claim the assignment already takes, and the survey dock reads the same area.
+        ///
+        /// <para>
+        /// <b>Why the values start at 1 rather than mirroring an enum.</b> An existing save has no
+        /// field for this at all, so it loads as 0, and 0 has to mean "not recorded" rather than
+        /// naming a kind of work. Numbering from 1 is what makes that possible. Had this reused
+        /// <see cref="AreaKind"/>'s ordinals, where mining is 0, every claim held in an existing
+        /// save would have loaded as a MINING claim and every claimed area on an upgraded server
+        /// would have started reading `[digging]` for work no drone was doing.
+        /// </para>
+        /// <para>
+        /// The safe direction on an upgraded save is therefore the quiet one: a claim taken before
+        /// this field existed reads as no kind of work, so it produces no `[digging]`, and the
+        /// next assignment records the kind properly.
+        /// </para>
+        /// <para>
+        /// A plain int, like every other serialized member here, for the reason
+        /// <see cref="KindValue"/> gives at length: a mod-assembly enum is a question this class
+        /// deliberately does not ask.
+        /// </para>
+        /// </summary>
+        [Serialized] public int ClaimWorkValue { get; set; }
+
+        /// <summary>
+        /// Whether a mining drone is currently working this area (R14, R15). NOT
+        /// <c>[Serialized]</c> — it is computed from the two members above, and a computed
+        /// property carrying that attribute is the silent load failure this class warns about.
+        /// </summary>
+        public bool IsClaimedForMining => this.HasClaim && this.ClaimWorkValue == ClaimWorkMining;
 
         /// <summary>
         /// Drops the claim and returns the plots it covered — what R38's message names. An area
@@ -434,6 +478,10 @@ namespace Eco.Mods.TechTree
             var released = this.Plots().ToList();
             this.ClaimHolderDockId = null;
             this.ClaimEpoch = 0;
+            // The kind of work goes with the claim it described. Leaving it behind would make an
+            // unclaimed area still answer that a mining drone is working it, which is exactly the
+            // question R14 asks before it will show `[surveyed]` again.
+            this.ClaimWorkValue = 0;
             return released;
         }
 
