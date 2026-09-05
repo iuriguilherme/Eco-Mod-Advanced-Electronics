@@ -79,8 +79,12 @@ and needs resurveying. old data:". The figures are neither recalculated nor hidd
 accurate record of what the pass found, and the label is what says they may no longer describe the
 ground. The label is ordinary text rather than a tag, so it carries no brackets and no colour.
 
-Stale is raised only by a change the mod confirmed against the world, so a cache event that moved no
-ground raises none.
+Stale is raised in exactly two ways, and both are things the mod itself did or saw. One of the mod's
+own drones changes ground belonging to an area it was not serving, which the mod knows because it
+made the write. Or a drone reaches a work site and finds the world does not match what the survey
+recorded, which the mod knows because its drone is standing there. The mod does not monitor the
+world, so a player digging, an admin command, or a cache rebuild raises no staleness at all — such a
+change is learned later, in situ, or not at all.
 
 ### Coverage
 The fraction of a Survey Area the drone has actually swept. Distinguishes a survey that has not
