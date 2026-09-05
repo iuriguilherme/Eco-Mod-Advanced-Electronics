@@ -53,6 +53,16 @@ two errors are not symmetric:
 When one direction is loud and cheap and the other is silent and expensive, the default belongs on
 the loud side. Put the reasoning in a comment next to the check so nobody "fixes" the annoyance later.
 
+**Check the premise before reusing that asymmetry, because it is a condition and not a slogan.** It
+holds here because a false positive is rare and costs one rebuild. Where false positives are instead
+the *majority* of a check's output, the same reasoning inverts: a hard gate stops being a safety net
+and becomes pressure to remove whatever trips it. The documented case in this repo is the citation
+validator run over `docs/solutions/`, where the correct-on-purpose flags outnumber the real defects
+by an order of magnitude and the right response is per-flag adjudication rather than a gate — see
+`docs/solutions/workflow-issues/a-crashed-check-and-a-flagged-check-are-opposite-problems.md`. Refuse
+rather than warn where a failure is rare and each one is cheap to clear; adjudicate rather than gate
+where failures dominate and clearing one means editing the artifact the check is meant to protect.
+
 **A better signal does not always exist, and where it does it answers a narrower question.** The
 bundle's contents are now readable without Unity — `scripts/read-mod-bundle.py` reports the names
 inside a built `.unity3d`, which is how a separate class of claim gets settled exactly rather than
@@ -158,3 +168,7 @@ ERROR: bundle is stale. Rebuild it in Unity, or pass --force if you just did.
   duplicate out of the install.
 - `docs/solutions/workflow-issues/eco-mod-batched-live-testing.md` — the same instinct applied to
   test cadence rather than to packaging.
+- `docs/solutions/workflow-issues/a-crashed-check-and-a-flagged-check-are-opposite-problems.md` — the
+  case where this doc's asymmetry does not hold, and the reason the two are not in conflict. There
+  the false positives are structural and dominant, so the check hands back questions to adjudicate
+  instead of refusing; here they are rare and cheap, so it refuses.

@@ -277,6 +277,8 @@ never opened it successfully.
 - `docs/solutions/workflow-issues/a-gate-that-discovers-nothing-passes-everything.md` — the same
   doctrine reached by a different mechanism: a check that reports success while having examined
   nothing. There the discovery step matched no files; here it never opened one.
-- `docs/solutions/workflow-issues/release-scripts-should-refuse-not-warn.md` — the other end of the
-  same pipeline. That one is about a check that detects a bad state and chooses to warn instead of
-  refusing; this one is about a check that never gets far enough to detect anything.
+- `docs/solutions/workflow-issues/release-scripts-should-refuse-not-warn.md` — the case where the
+  opposite response is right, and the reason the two are not in conflict. That doc argues a release
+  check should refuse rather than warn, on the ground that its false positives are rare and each
+  costs one rebuild. Here they are structural and dominant, so the check hands back questions to
+  adjudicate instead of gating. The premise is what differs, not the doctrine.
