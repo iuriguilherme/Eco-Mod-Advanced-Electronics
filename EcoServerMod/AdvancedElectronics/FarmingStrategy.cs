@@ -315,11 +315,23 @@ namespace Eco.Mods.TechTree
         /// <summary>Performs one action, returning null on success or the refusal to classify.</summary>
         /// <remarks>
         /// Every branch below writes ground, so the whole switch runs inside one attribution
-        /// scope (R43): without it the farm drone's own work reads as an outside change to the
-        /// world-change handler, and a mining area covering the same plots would unsurvey itself
-        /// as the farm worked -- losing findings to a writer the mod knew about all along. The
-        /// scope wraps the switch rather than each case so an action added later is covered
-        /// without anyone remembering to wrap it.
+        /// scope. The scope wraps the switch rather than each case so an action added later is
+        /// covered without anyone remembering to wrap it.
+        ///
+        /// <para>
+        /// What the scope is FOR changed when the ground-change listener was narrowed, and the
+        /// reason recorded here before was the opposite of the current one. It used to stop a
+        /// mining area covering the same plots from unsurveying itself as the farm worked, because
+        /// an unmarked write was treated as an outside change and deleted survey results. An
+        /// unmarked write is now ignored entirely, so forgetting the scope would delete nothing.
+        /// </para>
+        /// <para>
+        /// The scope now exists so that a mining area covering the same ground IS told. Flattening
+        /// ground a mining area covers changes that area's ground just as surely as a mining drone
+        /// would have, so its plots are marked for re-reading and its findings are kept. Without
+        /// the scope the farm's work is invisible to every area on the server, and a mining area
+        /// underneath it goes on describing ground the farm has already levelled.
+        /// </para>
         ///
         /// The farm's areas live on its own dock, so the dock that owns the served area and the
         /// dock running this strategy are the same object.

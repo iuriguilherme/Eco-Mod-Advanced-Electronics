@@ -16,10 +16,14 @@ namespace Eco.Mods.TechTree
     /// restart alongside the area, unlike the in-memory <see cref="SurveyRecord"/> it is
     /// derived from.
     ///
-    /// Rows are per plot rather than per area so R16 can return the plots whose ground
-    /// changed to unsurveyed and R20 can preserve the plots an edit retains, each without
-    /// touching the rest. The area totals the readouts show are re-derived from these rows
-    /// at read time by <see cref="SurveyRecord.AreaTotals"/>.
+    /// Rows are per plot rather than per area so a change reaching one plot can be recorded
+    /// against that plot alone, and so an edit can preserve the plots it retains, each
+    /// without touching the rest. The area totals the readouts show are re-derived from
+    /// these rows at read time by <see cref="SurveyRecord.AreaTotals"/>.
+    ///
+    /// Per-plot rows earn their place twice over now: a plot whose ground changed is marked
+    /// for re-reading rather than having its rows deleted, so the rows have to be
+    /// addressable per plot in order to be KEPT per plot as well as dropped per plot.
     ///
     /// The plot is two plain ints, matching how <see cref="SurveyAreaEntry.PlotCoords"/>
     /// already flattens: the class stays flat primitives, which is what makes its
@@ -575,10 +579,17 @@ namespace Eco.Mods.TechTree
             var sweepColumnCursor = this.SweepColumnCursor;
             var plotsBefore = this.PlotCount;
 
-            // 1. Everything the removed plots claimed, dropped by the method U8 already wrote for
-            //    a plot whose ground moved under it — the two want exactly the same thing, down
-            //    to coverage falling by the removed plots' share rather than to zero. It reaches
+            // 1. Everything the removed plots claimed, dropped wholesale -- their findings rows,
+            //    their surveyed stamps, their at-bedrock observations and their pass-record rows,
+            //    with coverage falling by the removed plots' share rather than to zero. It reaches
             //    only plots the area still covers, so it runs BEFORE the geometry is replaced.
+            //
+            //    This is the reset's only caller now. It once shared the method with the
+            //    ground-change listener, which ran it whenever ground changed under a surveyed
+            //    plot and the mod had not made the change. Destroying a survey result is right
+            //    HERE, on ground the area is giving up, and it is not right there: a change to
+            //    ground the area still holds now marks the plot for re-reading and keeps what the
+            //    survey found.
             this.ResetPlotsToUnsurveyed(plan.Removed);
 
             // 2. ...and their mined stamps, which that method deliberately keeps (R13). R13's
@@ -732,9 +743,24 @@ namespace Eco.Mods.TechTree
             || this.SweepColumns.Count > 0;
 
         /// <summary>
-        /// Returns the named plots to unsurveyed because their ground changed under them and the
-        /// mod did not do it (U8, R16). Returns the plots it actually reset -- those this area
-        /// covers -- so the caller can drop the same plots from the live record.
+        /// Returns the named plots to unsurveyed, destroying everything the survey claimed about
+        /// them. Returns the plots it actually reset -- those this area covers -- so the caller
+        /// can drop the same plots from the live record.
+        ///
+        /// <para>
+        /// <b>Its one caller is now the area edit</b> (<see cref="SetPlots"/>), for plots an edit
+        /// REMOVED from the area. It used to have a second caller: the ground-change listener,
+        /// which ran this whenever ground changed under a surveyed plot and the mod had not made
+        /// the change. That is no longer what happens. The mod does not monitor the world for
+        /// changes it did not make, and a change it did make marks the plots for re-reading and
+        /// keeps every survey result rather than destroying them.
+        /// </para>
+        /// <para>
+        /// So the destructiveness described below is correct and is deliberately kept, but it now
+        /// applies only to ground the area no longer holds. Do not reintroduce a caller that runs
+        /// this on ground the area still covers without deciding, explicitly, that deleting a
+        /// survey result is the right answer there.
+        /// </para>
         ///
         /// <para>
         /// Everything a survey CLAIMED about those plots goes: their findings rows, their surveyed

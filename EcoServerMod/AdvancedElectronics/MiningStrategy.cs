@@ -436,15 +436,23 @@ namespace Eco.Mods.TechTree
                 return ParkedWorkOutcome.StillWorking;
             }
 
-            // U8, R17/R43: mark this write as the mod's own before the pack runs. The engine's
+            // R2, R3: mark this write as the mod's own before the pack runs. The engine's
             // top-block-changed event does not name its writer, and the blocks are actually
             // deleted by the pack's post-effects -- which run synchronously on THIS thread inside
             // TryPerform -- so an ambient thread-scoped attribution is what carries "the drone did
             // this, serving area N of dock D" across the frames in between.
             //
-            // Without it the mod's own digging looks exactly like a player's to the handler, and
-            // the area it is being dug for would unsurvey itself plot by plot as the drone worked
-            // -- losing the findings that are the whole reason the player can see what was taken.
+            // What the marker is FOR changed when the listener was narrowed, and the old reason no
+            // longer holds. It used to prevent the area being dug from unsurveying itself, because
+            // an unmarked write was treated as an outside change and deleted the survey results
+            // for the plots it touched. An unmarked write is now ignored entirely, so forgetting
+            // the marker would cost nothing here.
+            //
+            // Its purpose now is the opposite one, and it is about OTHER areas. Marking the write
+            // is what lets the listener recognise that this dig also fell inside some other dock's
+            // area, and mark that area's plots for re-reading. Drop the marker and the dig becomes
+            // invisible to every area on the server, including the ones whose surveys it just
+            // invalidated.
             RemovalResult result;
             using (ModGroundWrite.Attribute(GroundWriteAttribution.ByDrone(
                        this.areaRef.OwningDockId.ToString(), this.areaRef.AreaId, AreaKind.Mining)))
