@@ -877,12 +877,24 @@ namespace Eco.Mods.TechTree
             return PlotStampAccumulator.FromSnapshot(entries);
         }
 
-        /// <summary>Records <paramref name="plot"/> surveyed at <paramref name="stampValue"/> and persists it immediately, mirroring <see cref="RecordMinedPlot"/>.</summary>
+        /// <summary>
+        /// Records <paramref name="plot"/> surveyed at <paramref name="stampValue"/> and persists
+        /// it immediately, mirroring <see cref="RecordMinedPlot"/>.
+        ///
+        /// <para>
+        /// Clearing any re-reading mark on the plot happens here, in the same step (R9), and not
+        /// as a separate call the caller has to remember. A mark says "what is recorded for this
+        /// plot can no longer be trusted", and this method is the moment a new reading supersedes
+        /// what was recorded — so the mark and the reading it qualified go together or the plot
+        /// stays marked forever despite having just been read.
+        /// </para>
+        /// </summary>
         public void RecordSurveyedPlot(PlotCoord plot, long stampValue)
         {
             var accumulator = this.ReadSurveyedStamps();
             accumulator.Record(plot, stampValue);
             this.SetSurveyedStamps(accumulator);
+            this.ClearReReadingMark(plot);
         }
 
         /// <summary>

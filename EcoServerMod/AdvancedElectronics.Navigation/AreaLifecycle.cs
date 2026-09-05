@@ -205,11 +205,25 @@ namespace AdvancedElectronics.Navigation
         /// asks for.
         /// </para>
         /// </param>
+        /// <param name="needsReReading">
+        /// Whether a plot's ground changed after the survey read it, so what is recorded for it can
+        /// no longer be trusted (R6). Optional: null means nothing is marked, which is what lets
+        /// every caller written before this input existed behave exactly as it did.
+        ///
+        /// <para>
+        /// This is the DRONES' answer and only theirs. A marked plot counts as not yet read, so a
+        /// survey drone reads it again and a mining drone does not work it. What the PLAYER sees
+        /// does not change: the area goes on displaying the status tag it last earned, and the
+        /// readout says its figures are out of date rather than the tag saying so. Both answers
+        /// hold at once, and neither one is the whole rule.
+        /// </para>
+        /// </param>
         public static AreaLifecycleStatus DeriveStatus(
             IEnumerable<PlotCoord> plots,
             Func<PlotCoord, long> surveyedStamp,
             Func<PlotCoord, long> minedStamp,
-            MiningExclusionLedger assembledExclusions)
+            MiningExclusionLedger assembledExclusions,
+            Func<PlotCoord, bool> needsReReading = null)
         {
             if (plots == null) throw new ArgumentNullException(nameof(plots));
             if (surveyedStamp == null) throw new ArgumentNullException(nameof(surveyedStamp));
@@ -230,8 +244,15 @@ namespace AdvancedElectronics.Navigation
             {
                 anyPlot = true;
 
-                // 1. The unsurveyed guard (R3). Whatever the rest of the area says, this wins.
-                if (surveyedStamp(plot) <= 0)
+                // 1. The unsurveyed guard (R3, R6). Whatever the rest of the area says, this wins.
+                //
+                //    Two ways a plot fails it, and they mean the same thing to a drone. Either no
+                //    survey ever read it, or its ground changed after a survey read it so what is
+                //    recorded can no longer be trusted. In both cases the drones must treat the
+                //    plot as not yet read, so both belong in this one guard rather than as a new
+                //    rung further down the ladder -- a rung would be a status the player could see,
+                //    and being marked for re-reading is deliberately not one.
+                if (surveyedStamp(plot) <= 0 || needsReReading?.Invoke(plot) == true)
                     return AreaLifecycleStatus.Unsurveyed;
 
                 // 2. Is the drone finished with this plot -- at bedrock, or excluded (R7)?

@@ -251,8 +251,15 @@ namespace Eco.Mods.TechTree
 
         // Both stamps come off the source area (U2, R1): the mined record moved there from the
         // dock, so a plot another dock has already dug is refused to this one as well.
+        //
+        // A plot recorded as needing re-reading is refused too (R6). This test is the SECOND place
+        // that decides whether a plot counts as read -- the first is the area's status derivation,
+        // which this deliberately does not go through -- and both have to agree. Without the check
+        // here, the area would read as needing a survey while a mining drone went on flying to the
+        // plot and digging for ore recorded from ground that is no longer there.
         private bool IsSurveyed(SurveyAreaEntry sourceArea, PlotCoord plot) =>
-            PlotFreshness.IsMineable(sourceArea.ReadSurveyedStamps().StampFor(plot), sourceArea.ReadMinedStamps().StampFor(plot));
+            !sourceArea.PlotNeedsReReading(plot)
+            && PlotFreshness.IsMineable(sourceArea.ReadSurveyedStamps().StampFor(plot), sourceArea.ReadMinedStamps().StampFor(plot));
 
         /// <summary>
         /// What this dock is OFFERED (R19): a plot that is mineable by the stamps AND not

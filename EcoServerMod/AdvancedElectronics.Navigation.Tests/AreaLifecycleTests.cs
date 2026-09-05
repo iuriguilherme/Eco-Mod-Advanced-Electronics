@@ -163,6 +163,99 @@ namespace AdvancedElectronics.Navigation.Tests
 
         // ------------------------------------------------- the unsurveyed guard comes first
 
+        // ------------------------------------------- plots recorded as needing re-reading (R6)
+
+        /// <summary>
+        /// R6, from the drones' point of view. A plot whose ground changed after the survey read
+        /// it counts as not yet read, so the area derives unsurveyed exactly as it would if that
+        /// plot had never been visited.
+        ///
+        /// <para>
+        /// This is the drone-facing answer only. What the PLAYER sees does not change: the area
+        /// goes on displaying the status tag it last earned, and the readout says the figures are
+        /// out of date instead. Those two answers hold at the same time and neither one is the
+        /// whole rule.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ASurveyedAreaWithOnePlotNeedingReReading_DerivesUnsurveyedForTheDrones()
+        {
+            var plots = Plots(3).ToList();
+
+            Assert.Equal(
+                AreaLifecycleStatus.Surveyed,
+                AreaLifecycle.DeriveStatus(plots, All(100), All(0), Ledger()));
+
+            Assert.Equal(
+                AreaLifecycleStatus.Unsurveyed,
+                AreaLifecycle.DeriveStatus(plots, All(100), All(0), Ledger(), plot => plot.X == 1));
+        }
+
+        /// <summary>R6. Clearing the mark returns the area to whatever it derived before.</summary>
+        [Fact]
+        public void WhenTheMarkIsCleared_TheAreaDerivesWhatItDerivedBefore()
+        {
+            var plots = Plots(3).ToList();
+
+            Assert.Equal(
+                AreaLifecycleStatus.Surveyed,
+                AreaLifecycle.DeriveStatus(plots, All(100), All(0), Ledger(), _ => false));
+        }
+
+        /// <summary>
+        /// R6. A marked plot outranks everything else on the ladder, exactly as a never-surveyed
+        /// plot does: an area whose other plots are all mined out still derives unsurveyed.
+        /// </summary>
+        [Fact]
+        public void AMarkedPlot_OutranksMinedPlotsInTheSameArea()
+        {
+            var plots = Plots(3).ToList();
+
+            Assert.Equal(
+                AreaLifecycleStatus.Mined,
+                AreaLifecycle.DeriveStatus(plots, All(100), All(200), Ledger()));
+
+            Assert.Equal(
+                AreaLifecycleStatus.Unsurveyed,
+                AreaLifecycle.DeriveStatus(plots, All(100), All(200), Ledger(), plot => plot.X == 2));
+        }
+
+        /// <summary>
+        /// R6. A marked plot in an area that also carries a refusal exclusion still derives the
+        /// answer for a plot needing re-reading, not the finished answer for spent ground.
+        /// </summary>
+        [Fact]
+        public void AMarkedPlot_OutranksAClearedArea()
+        {
+            var plots = Plots(3).ToList();
+            var ledger = Ledger(bedrock: plots, attempts: new[] { Refused(DockA, Plot(2)) });
+
+            Assert.Equal(
+                AreaLifecycleStatus.Cleared,
+                AreaLifecycle.DeriveStatus(plots, All(100), All(200), ledger));
+
+            Assert.Equal(
+                AreaLifecycleStatus.Unsurveyed,
+                AreaLifecycle.DeriveStatus(plots, All(100), All(200), ledger, plot => plot.X == 0));
+        }
+
+        /// <summary>
+        /// R6. Passing no marks input at all reproduces the previous behaviour exactly, which is
+        /// what lets every existing caller and every existing test stay unchanged.
+        /// </summary>
+        [Fact]
+        public void PassingNoMarksInput_ReproducesTheStatusWithoutIt()
+        {
+            var plots = Plots(3).ToList();
+
+            foreach (var mined in new[] { All(0), All(200), Stamps(200, 0, 0) })
+                Assert.Equal(
+                    AreaLifecycle.DeriveStatus(plots, All(100), mined, Ledger()),
+                    AreaLifecycle.DeriveStatus(plots, All(100), mined, Ledger(), null));
+        }
+
+        // ------------------------------------------------- the unsurveyed guard comes first
+
         /// <summary>R3: an area with no surveyed plot at all reads unsurveyed, whatever its mined stamps say.</summary>
         [Fact]
         public void NoSurveyedPlots_IsUnsurveyed_WhateverTheMinedStampsSay()

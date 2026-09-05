@@ -351,7 +351,13 @@ namespace Eco.Mods.TechTree
                     area.ToSurveyArea().EnumeratePlots(),
                     surveyed.StampFor,
                     mined.StampFor,
-                    AssembleAreaExclusions(owningDockId, area, exclusionHolders));
+                    AssembleAreaExclusions(owningDockId, area, exclusionHolders),
+                    // R6. A plot whose ground changed after the survey read it counts as not yet
+                    // read, so the drones treat the area as needing a survey. This does not change
+                    // the tag the player sees -- the readout labels the figures as out of date
+                    // instead -- because both answers are true at once and they are for different
+                    // readers.
+                    area.PlotNeedsReReading);
             });
         }
 
