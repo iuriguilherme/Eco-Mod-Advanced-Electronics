@@ -57,6 +57,31 @@ Findings persist with their area rather than with the drone or the dock's curren
 they stay readable while the drone is elsewhere or absent. An area with no Findings is ambiguous
 until read together with Coverage — unsurveyed and surveyed-but-barren are different answers.
 
+### Stale
+A [[Plot]] whose ground changed after the survey read it, so what the survey recorded about it can
+no longer be trusted and a survey drone should read it again. The plan that introduces the mechanism
+calls such a plot *marked for re-reading*, which is the clearer name; both refer to the same fact.
+
+The plot's [[Finding]]s are kept rather than destroyed. Stale says the reading is no longer current,
+not that it was wrong, so a later survey can confirm or replace it cheaply instead of rebuilding it
+from nothing.
+
+Who is asking decides what the answer means, and both answers hold at once. From a drone's point of
+view, for the sole purpose of deciding whether to fly back and read the plot again, a stale plot
+counts as not yet read. From the player's point of view, in every readout, the area keeps the status
+tag it last earned — staleness adds no tag, removes none, and in particular never makes an area
+display `[unsurveyed]`. It is a fact about one plot and never an [[Area Lifecycle]] state, so it
+does not compete for the single status slot that the lifecycle states and [[Kind]] share.
+
+What the player does gain is a label. While any plot of an area is stale, the readout presents that
+area's figures — its [[Coverage]] and its Findings — under wording to the effect of "area changed
+and needs resurveying. old data:". The figures are neither recalculated nor hidden: they remain an
+accurate record of what the pass found, and the label is what says they may no longer describe the
+ground. The label is ordinary text rather than a tag, so it carries no brackets and no colour.
+
+Stale is raised only by a change the mod confirmed against the world, so a cache event that moved no
+ground raises none.
+
 ### Coverage
 The fraction of a Survey Area the drone has actually swept. Distinguishes a survey that has not
 started from one in progress from one that finished and found nothing.

@@ -1,5 +1,30 @@
 # Ideation — Survey system improvements
 
+> ## CORRECTION NOTICE — READ BEFORE USING THIS DOCUMENT
+>
+> **This document was written with a factually wrong plot size, and some of its reasoning
+> depends on that wrong number.**
+>
+> As originally written, this document stated that a plot is 8 by 8 world columns, that is,
+> 64 world columns per plot. **That is wrong.** A plot is 5 by 5 world columns, that is,
+> **25 world columns per plot**.
+>
+> The correct value comes from the game engine, not from this mod. The engine defines
+> `PropertyPlotLength` as `Chunk.Size / 2`, and it defines `Chunk.Size` as `10`. Therefore
+> `PropertyPlotLength` is `5`, and a plot covers 5 columns along the X axis by 5 columns
+> along the Z axis, which is 25 world columns in total.
+>
+> The wrong numbers have been corrected in place below, and each correction is marked
+> inline. The numbers are now right, but **the conclusions this document reached while the
+> numbers were wrong have not been re-derived.** Anywhere this document weighs a cost per
+> plot, judge that reasoning again against 25 columns rather than 64 — a factor of roughly
+> 2.5 less work per plot than the document assumed when it rejected or accepted an option.
+>
+> Do not quote this document as a source for how large a plot is. The authority is the
+> engine constant named above.
+
+---
+
 **Date:** 2026-07-26
 **Focus:** Improve the survey system. Four stated pains (verbatim intent):
 1. The drone samples only the few columns its roam path crosses, not every column in each assigned plot — regardless of one plot, many plots, or non-contiguous plots.
@@ -15,8 +40,8 @@
 
 What exists today (post-KTD11):
 
-- **Areas** are dock-owned, serialized, drawn on Eco's native map editor (`SurveyAreaEntry`, `SurveyAreaPicker`). Plots are 8×8 world columns.
-- **Sampling** is roam-driven: `OreSensorComponent.Tick` samples **one column per tick** from a 5-column footprint (`SampleOffsets`) wherever the drone currently roams (`DroneLifecycle.TickSurveyRoam`). Coverage is incidental to the roam path — most of a plot's 64 columns are never sampled.
+- **Areas** are dock-owned, serialized, drawn on Eco's native map editor (`SurveyAreaEntry`, `SurveyAreaPicker`). Plots are 5 by 5 world columns, that is 25 world columns per plot. [CORRECTED — this document originally said 8 by 8, which was wrong. See the correction notice at the top.]
+- **Sampling** is roam-driven: `OreSensorComponent.Tick` samples **one column per tick** from a 5-column footprint (`SampleOffsets`) wherever the drone currently roams (`DroneLifecycle.TickSurveyRoam`). Coverage is incidental to the roam path — most of a plot's 25 columns are never sampled [CORRECTED — this document originally said 64 columns, which was wrong. See the correction notice at the top.].
 - **Findings** now persist **per area** as a serialized `OreFindingSnapshot` list on `SurveyAreaEntry`, folded from the dock-owned in-memory `SurveyRecord` (KTD11). **This is the key unlocked asset:** the data already lives on the area, independent of the drone.
 - **Readout** (tab / tooltip / world text / chat) reads the **assigned** area's snapshot only — the decoupling in pain #3 is a *presentation* choice, not a data-model limitation, because the data is already per-area.
 - **UI ceiling:** rich client panels (lists, Selector dropdowns) are **not** exposed by the ModKit; a mod tab is limited to text + buttons + editable scalars, or a custom bundle-prefab MonoBehaviour driven by `SetAnimatedState`. The map editor is native and reachable. (See `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md`.)
@@ -98,7 +123,7 @@ The "real" fix for #4: a bundle-shipped Unity MonoBehaviour on the dock prefab, 
 
 ## Rejected (with reasons)
 
-- **Whole-plot footprint every tick** (sample all 64 columns per tick) — sensor cost spikes; #2 (park-and-sweep) reaches full coverage under the existing per-tick throttle instead.
+- **Whole-plot footprint every tick** (sample all 25 columns per tick) [CORRECTED — this document originally said 64 columns, which was wrong. The cost objection recorded here was reasoned against 64 and has not been re-derived against 25. See the correction notice at the top.] — sensor cost spikes; #2 (park-and-sweep) reaches full coverage under the existing per-tick throttle instead.
 - **Coverage-gradient roam** (bias roam toward unsampled columns) — keeps the fragile roam/pathfinding as the coverage mechanism and does nothing for the non-contiguous risk; park-and-sweep is simpler and de-risks both.
 - **Multiple concurrent drones / areas** — large lifecycle+spawn scope jump, not asked for; defer.
 - **Standalone survey-report export** — subsumed by survivor #1 (the area list already shows every area's data).
