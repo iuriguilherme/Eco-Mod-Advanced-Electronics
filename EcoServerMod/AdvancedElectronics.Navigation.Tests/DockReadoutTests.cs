@@ -24,10 +24,11 @@ namespace AdvancedElectronics.Navigation.Tests
             AreaLifecycleStatus status = AreaLifecycleStatus.Surveyed,
             bool assigned = false,
             bool unreachable = false,
-            bool overlap = false) =>
+            bool overlap = false,
+            bool needsResurvey = false) =>
             new AreaSnapshot(
                 position, name, plotCount, coverage, top ?? SurveyFinding.NotFound, status,
-                assigned, unreachable, overlap);
+                assigned, unreachable, overlap, needsResurvey);
 
         // --- Per-material line: shipped behaviour, characterized here for the first time ---
 
@@ -180,6 +181,82 @@ namespace AdvancedElectronics.Navigation.Tests
             var summary = DockReadout.FormatAreaSummary(Area(coverage: 43.6f, top: SurveyFinding.NotFound));
 
             Assert.StartsWith("44% surveyed", summary);
+        }
+
+        // --- The out-of-date label (R8) ---
+
+        /// <summary>
+        /// R8. While any plot of the area is recorded as needing re-reading, the figures are
+        /// presented under a label saying they are no longer current. The figures themselves are
+        /// unchanged: the coverage number and the finding are exactly what they would be without
+        /// the label, because they are still an accurate record of what the survey pass found.
+        /// </summary>
+        [Fact]
+        public void AreaSummary_WhenAPlotNeedsReReading_LabelsTheFiguresAsOldData()
+        {
+            var current = DockReadout.FormatAreaSummary(
+                Area(coverage: 43f, top: Finding("IronOre", 180)));
+
+            var outOfDate = DockReadout.FormatAreaSummary(
+                Area(coverage: 43f, top: Finding("IronOre", 180), needsResurvey: true));
+
+            Assert.Equal(DockReadout.OutOfDateLabel + " " + current, outOfDate);
+            Assert.StartsWith(DockReadout.OutOfDateLabel, outOfDate);
+            Assert.EndsWith("43% surveyed, most IronOre (~180 blocks)", outOfDate);
+        }
+
+        /// <summary>R8. The label appears on the surveyed-but-nothing-visible figures too.</summary>
+        [Fact]
+        public void AreaSummary_WhenAPlotNeedsReReadingAndNothingIsVisible_StillLabelsTheFigures()
+        {
+            var summary = DockReadout.FormatAreaSummary(
+                Area(coverage: 67f, top: SurveyFinding.NotFound, needsResurvey: true));
+
+            Assert.Equal(DockReadout.OutOfDateLabel + " 67% surveyed, nothing matching", summary);
+        }
+
+        /// <summary>
+        /// R8. An area that has never been surveyed has no figures for the label to qualify, so it
+        /// gets none. Prefixing it there would claim something had been recorded and had since
+        /// gone out of date, which is a different and wrong statement.
+        /// </summary>
+        [Fact]
+        public void AreaSummary_NeverSurveyed_HasNoFiguresToLabel()
+        {
+            var summary = DockReadout.FormatAreaSummary(
+                Area(coverage: 0f, top: SurveyFinding.NotFound, needsResurvey: true));
+
+            Assert.Equal("not surveyed yet", summary);
+            Assert.DoesNotContain(DockReadout.OutOfDateLabel, summary);
+        }
+
+        /// <summary>R8. With no plot needing re-reading, nothing about the figures changes.</summary>
+        [Fact]
+        public void AreaSummary_WhenNoPlotNeedsReReading_HasNoLabel()
+        {
+            var summary = DockReadout.FormatAreaSummary(
+                Area(coverage: 43f, top: Finding("IronOre", 180)));
+
+            Assert.DoesNotContain(DockReadout.OutOfDateLabel, summary);
+            Assert.Equal("43% surveyed, most IronOre (~180 blocks)", summary);
+        }
+
+        /// <summary>
+        /// R7. The label is a label and not a status tag. It carries no brackets, so it cannot be
+        /// read as one of the bracketed status words, and the area's status word and colour are
+        /// exactly what they would be without it.
+        /// </summary>
+        [Fact]
+        public void TheOutOfDateLabel_IsNotAStatusTag()
+        {
+            Assert.DoesNotContain("[", DockReadout.OutOfDateLabel);
+            Assert.DoesNotContain("]", DockReadout.OutOfDateLabel);
+
+            var plain = Area(coverage: 43f, top: Finding("IronOre", 180));
+            var marked = Area(coverage: 43f, top: Finding("IronOre", 180), needsResurvey: true);
+
+            Assert.Equal(DockReadout.StatusWord(plain.Status), DockReadout.StatusWord(marked.Status));
+            Assert.Equal(DockReadout.StatusColor(plain.Status), DockReadout.StatusColor(marked.Status));
         }
 
         // --- Roster line ---

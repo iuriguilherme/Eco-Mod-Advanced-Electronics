@@ -89,6 +89,24 @@ namespace AdvancedElectronics.Navigation
         /// <summary>Whether this area shares plots with another dock's area (R35).</summary>
         public bool HasOverlap { get; }
 
+        /// <summary>
+        /// Whether at least one plot of this area is recorded as needing re-reading, meaning its
+        /// ground changed after the survey read it (R8).
+        ///
+        /// <para>
+        /// This never changes the area's status tag or its colour. What it changes is that the
+        /// figures below the tag are presented as no longer current, because they describe what
+        /// the survey found rather than what is there now. The figures themselves are neither
+        /// recalculated nor hidden: they remain an accurate record of what the pass found, and
+        /// saying so is the honest correction rather than altering them.
+        /// </para>
+        /// <para>
+        /// Optional, and false by default, so every existing caller and every existing test reads
+        /// exactly as it did before.
+        /// </para>
+        /// </summary>
+        public bool NeedsResurvey { get; }
+
         public AreaSnapshot(
             int position,
             string name,
@@ -98,8 +116,10 @@ namespace AdvancedElectronics.Navigation
             AreaLifecycleStatus status,
             bool isAssigned,
             bool isUnreachable = false,
-            bool hasOverlap = false)
+            bool hasOverlap = false,
+            bool needsResurvey = false)
         {
+            NeedsResurvey = needsResurvey;
             Position = position;
             Name = name;
             PlotCount = plotCount;
@@ -128,6 +148,18 @@ namespace AdvancedElectronics.Navigation
         /// trailing gap left behind.
         /// </summary>
         public const string TagSeparator = "   ";
+
+        /// <summary>
+        /// The wording that tells a player the figures they are looking at describe what the
+        /// survey found rather than what is there now (R8).
+        ///
+        /// <para>
+        /// Lower case and ending in a colon because it reads directly into the figures that follow
+        /// it, as one sentence rather than as a heading. It is not bracketed and takes no colour,
+        /// which is what keeps it a label rather than a status tag.
+        /// </para>
+        /// </summary>
+        public const string OutOfDateLabel = "area changed and needs resurveying. old data:";
 
         /// <summary>
         /// How many annotations one line may carry (R29). Two, so the line cannot grow without
@@ -341,14 +373,34 @@ namespace AdvancedElectronics.Navigation
             var top = area.TopVisibleFinding;
 
             if (top.Found)
-                return $"{area.CoveragePercent:F0}% surveyed, most {top.OreType} (~{top.Count} blocks)";
+                return OutOfDatePrefix(area)
+                       + $"{area.CoveragePercent:F0}% surveyed, most {top.OreType} (~{top.Count} blocks)";
 
             // Order matters. A zero-coverage area with nothing visible has not been looked at;
             // saying "nothing matching" there would report a result the drone never produced.
             return area.CoveragePercent > 0f
-                ? $"{area.CoveragePercent:F0}% surveyed, nothing matching"
+                ? OutOfDatePrefix(area) + $"{area.CoveragePercent:F0}% surveyed, nothing matching"
                 : "not surveyed yet";
         }
+
+        /// <summary>
+        /// The label that precedes an area's figures while any of its plots is recorded as needing
+        /// re-reading, or the empty string when none is (R8).
+        ///
+        /// <para>
+        /// It is ordinary text, not a status tag: no brackets and no colour of its own, so it can
+        /// never be mistaken for one and never competes for the single status slot an area
+        /// displays. It says the figures behind it are old; it does not say what they are, and it
+        /// does not change them.
+        /// </para>
+        /// <para>
+        /// It is deliberately absent from the "not surveyed yet" case. There the area has no
+        /// figures at all, so there is nothing for the label to qualify, and prefixing it would
+        /// claim that something was recorded and has since gone out of date.
+        /// </para>
+        /// </summary>
+        private static string OutOfDatePrefix(AreaSnapshot area) =>
+            area.NeedsResurvey ? OutOfDateLabel + " " : string.Empty;
 
         /// <summary>
         /// The annotations one area currently warrants, in no particular order --
