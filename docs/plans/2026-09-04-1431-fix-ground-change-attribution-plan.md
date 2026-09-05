@@ -2,7 +2,7 @@
 title: Ground Change Attribution and Area State - Plan
 type: fix
 date: 2026-09-04
-topic: ground-change-on-dock-tick
+topic: ground-change-attribution
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
 product_contract_source: ce-brainstorm
@@ -10,8 +10,6 @@ execution: code
 ---
 
 # Ground Change Attribution and Area State - Plan
-
-> **Note on this document's filename.** The file is named `...-ground-change-on-dock-tick-plan.md`, and the `topic` field in its header says `ground-change-on-dock-tick`. Both refer to a design this plan no longer contains: an earlier version moved the reaction to a ground change onto the drone dock's own tick. That design was removed and is preserved in commit `33bd5cd`. The filename and the topic field were kept unchanged so that the commit history of this plan stays continuous and the earlier commit's reference to it stays valid. Read the title and the Goal Capsule for what this plan is actually about; do not infer anything from the filename.
 
 ## How this document is written
 
