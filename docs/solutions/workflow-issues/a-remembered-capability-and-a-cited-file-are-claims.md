@@ -1,6 +1,7 @@
 ---
 title: "A remembered capability and a cited file are claims, and nothing checks either"
 date: 2026-08-10
+last_updated: 2026-09-05
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -64,6 +65,17 @@ discipline in `docs/solutions/workflow-issues/the-compile-target-decides-what-ex
 this exist in the artifact I build against" — and here it would have *passed*. The templating exists.
 It is in the tree, it runs, it produces the very classes in question. What was false was not its
 existence but its output.
+
+**And it is not enough when the claim is about what a *document* says.** Everything in this doc is
+about whether a cited thing exists, or whether an existing thing does what it was remembered to do.
+The same gap opens one step further out: a citation whose file resolves, whose line number is right,
+and whose surrounding sentence describes the target as the opposite of what it argues. Nothing in
+this repo's tooling reaches that — the bundled claims validator resolves the path and never opens the
+file — so a cited document's *content* is as unchecked as a remembered capability, and it reads as
+more trustworthy because the pointer visibly works. That failure and the sweep that bounds it are in
+`docs/solutions/workflow-issues/a-cross-reference-makes-two-claims-and-only-the-path-is-checked.md`.
+The title of this doc claims more ground than its body covers; read the two together for the whole
+of it.
 
 **Grep the surface that would own the capability, not the first file with a plausible name.** The
 check this session actually ran was one grep for `icon|sprite|atlas` against
@@ -267,6 +279,11 @@ capability, the cited file, or the asserted vanilla path.
   a thing exists in the artifact you compile against; this one covers the case where it exists and
   still does not do what it was remembered to do, and extends the question to documentation and
   tooling capabilities, including the ModKit's own `README.md:8` still describing Eco 0.9.6.
+- `docs/solutions/workflow-issues/a-cross-reference-makes-two-claims-and-only-the-path-is-checked.md`
+  — the case this doc's title implies but its body does not cover. Here a cited file is a claim about
+  *existence*; there it is a claim about *content*, and the two fail differently: an absent file stops
+  a reader, while a resolving citation with a false gloss sends them away carrying the inverse of what
+  the target says.
 - `docs/solutions/workflow-issues/validate-the-instrument-before-the-hypothesis.md` — instruments do
   not look like claims, they look like results. A remembered capability and a task's citation are the
   same category: statements that arrive pre-trusted.
