@@ -9,10 +9,9 @@ component: development_workflow
 severity: medium
 applies_when:
   - "Dispatching reviewers over a requirements or plan document for a feature that extends existing code"
-  - "A review finding says a document fails to specify where something goes, what surface it uses, or what a player is told"
+  - "A finding faults the document for not specifying a placement, surface, or message -- or proposes adding one to an interface that already exists"
   - "About to ask the maintainer to choose a placement, a wording, or a reporting surface"
   - "Writing a requirement that describes UI behaviour for a component that already renders something"
-  - "A reviewer proposes adding a field, a slot, or a message to an interface that exists"
   - "Authoring a document whose list of items is assembled from another document rather than from the code that declares them"
 tags: [ce-doc-review, review-scoping, requirements, grounding, false-gap, methodology, authoring, eco-modding]
 related_components: [EcoServerMod/AdvancedElectronics, docs/plans]

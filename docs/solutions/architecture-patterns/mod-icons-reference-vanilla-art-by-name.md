@@ -4,7 +4,7 @@ date: 2026-08-22
 last_updated: 2026-09-05
 category: architecture-patterns
 module: EcoServerMod
-problem_type: architecture_decision
+problem_type: architecture_pattern
 component: icons
 severity: high
 applies_when:
@@ -13,7 +13,7 @@ applies_when:
   - "An icon does not appear in game and the PNG is obviously present and correctly named"
   - "Two different things in the mod draw the same picture"
   - "Deciding whether an icon needs a scene GameObject, a PNG, and a bundle rebuild"
-tags: [eco-modding, icons, has-icon, asset-bundle, modkit, addressables, name-matching, silent-failure, placeholder-art, deprecated-api]
+tags: [eco-modding, icons, has-icon, asset-bundle, addressables, name-matching, silent-failure, placeholder-art]
 related_components: [EcoServerMod/AdvancedElectronics, Assets/Art/AdvancedElectronics, scripts]
 ---
 

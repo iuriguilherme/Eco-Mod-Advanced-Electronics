@@ -9,12 +9,11 @@ component: tooling
 severity: high
 applies_when:
   - "A check discovers its own inputs before validating them (grep, glob, reflection, directory scan)"
-  - "A validation script has passed for a long time without anyone reading its output"
-  - "A plan cites an existing gate as evidence that new work is correct"
+  - "A gate's pass is being read as evidence -- by a plan, or by nobody having read its output in a long time"
   - "Narrowing a pattern to exclude false positives, where over-narrowing is silent"
   - "Refactoring a type onto a new base class, interface, directory, or naming convention"
   - "A runtime conditional guards recovery, cleanup, or retry logic and may not be satisfiable in the state that triggers it"
-tags: [validation, verification, false-confidence, grep, regex, tooling, eco-modding, name-match, coverage-regression]
+tags: [validation, verification, false-confidence, grep, tooling, eco-modding, name-match, coverage-regression]
 related_components: [scripts, EcoServerMod/AdvancedElectronics]
 ---
 

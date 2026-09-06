@@ -18,7 +18,7 @@ symptoms:
   - "Workaround chat command `/drone link` and a knowingly-wrong wide auto-link default were shipped in place of the missing control"
 root_cause: incomplete_setup
 resolution_type: code_fix
-tags: [eco-modding, worldobject, requirecomponent, marker-component, client-ui, storage, linkcomponent, engine-source, falsification]
+tags: [eco-modding, worldobject, requirecomponent, marker-component, client-ui, linkcomponent, engine-source, falsification]
 related_components: [EcoServerMod/AdvancedElectronics]
 ---
 

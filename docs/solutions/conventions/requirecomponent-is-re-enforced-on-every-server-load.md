@@ -8,13 +8,12 @@ problem_type: convention
 component: worldobject_lifecycle
 severity: high
 applies_when:
-  - "Removing or commenting out a [RequireComponent] before a release"
+  - "Removing, commenting out, or swapping a [RequireComponent] for a base type, subclass, or sibling"
   - "Adding a component to a WorldObject class that servers already have instances of"
   - "A component owns an inventory and its declaration is about to change"
   - "A component renders nothing at all AND logs nothing"
-  - "Swapping a required component for its base type, its subclass, or a sibling"
   - "Installing components dynamically rather than by attribute"
-tags: [eco-modding, worldobject, requirecomponent, validatecomponents, save-data, release-hygiene, serialization, migration, silent-failure, server-startup]
+tags: [eco-modding, worldobject, requirecomponent, validatecomponents, save-data, migration, silent-failure, server-startup]
 related_components: [EcoServerMod/AdvancedElectronics]
 ---
 

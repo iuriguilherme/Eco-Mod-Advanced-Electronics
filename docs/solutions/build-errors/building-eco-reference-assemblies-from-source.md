@@ -12,7 +12,7 @@ symptoms:
   - "Hundreds of CS0246 on generated type names such as WallFormType and WindowFormType"
   - "A collected assembly is silently the wrong target framework"
 root_cause: "Building the Eco server outside its solution skips prebuild steps that generate sources and resolve paths, and a source checkout ships LFS-backed binaries as pointer files."
-resolution_type: workaround
+resolution_type: environment_setup
 applies_when:
   - "No Eco.ReferenceAssemblies package exists for the version the mod targets"
   - "Retargeting a mod to a new Eco release"

@@ -11,7 +11,7 @@ applies_when:
   - "Designing any player-facing UI for an Eco mod that ships server C# plus a ModKit asset bundle but no custom client code"
   - "Deciding whether a readout belongs in a component tab, a map overlay, a tooltip, or world-space text"
   - "A mod-defined tab, overlay, or synced member renders blank, or crashes the client on view reception"
-tags: [eco-modding, client-rendering, worldobjectcomponent, tab, overlay, synctoview, editmap, server-only, modkit, gamepickerlist, tags, visibilityparam, createcomponenttabloc, invisible-object, storagecomponent, devtool]
+tags: [eco-modding, client-rendering, worldobjectcomponent, synctoview, server-only, invisible-object, modkit, tab]
 related_components: [EcoServerMod/AdvancedElectronics, EcoServerMod/AdvancedElectronics.Spike]
 ---
 

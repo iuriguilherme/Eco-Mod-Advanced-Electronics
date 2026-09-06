@@ -11,7 +11,7 @@ symptoms:
   - "Prefab's renderer references a material GUID that resolves to no asset in the project (dangling reference), or a material using an HDRP shader"
 root_cause: config_error
 resolution_type: code_fix
-tags: [eco-modding, unity, shader, material, magenta, hdrp, curved-standard, modkit, asset-bundle]
+tags: [eco-modding, unity, shader, magenta, hdrp, curved-standard, modkit, asset-bundle]
 related_components: [Assets/Art/AdvancedElectronics, Assets/EcoModKit/Shaders]
 ---
 
