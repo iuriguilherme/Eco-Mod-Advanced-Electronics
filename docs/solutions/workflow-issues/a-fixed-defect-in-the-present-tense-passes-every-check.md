@@ -604,6 +604,16 @@ could not produce a result.
 
 ## Related
 
+- `docs/solutions/conventions/moving-a-prefab-can-hand-its-guid-to-a-backup-copy.md` — instance four,
+  and the one with dates attached. Written 2026-08-07, closed by `aac18e3` the next day, and still
+  describing the misbinding as current thirty days later. Its status note now names the closing commit
+  and records that the commit's subject was an unrelated art re-export, so nothing about it announced
+  the closure.
+- `docs/solutions/conventions/a-document-stored-in-its-own-generator-has-no-past-tense.md` — the same
+  tense failure where a past tense is structurally unavailable. There a document lives only as its
+  generator's template, so it cannot say "this used to be true"; here the past tense was available and
+  simply went unwritten.
+
 - `docs/solutions/workflow-issues/a-cross-reference-makes-two-claims-and-only-the-path-is-checked.md`
   — the neighbouring unowned claim, and the source of this doc's reading of the claims validator. That
   doc is about a sentence describing another *document* being wrong while the path resolves; this one

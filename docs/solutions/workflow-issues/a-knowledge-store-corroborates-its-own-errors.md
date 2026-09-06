@@ -1,7 +1,7 @@
 ---
 title: "A knowledge store corroborates its own errors, and the copies outlive the correction"
 date: 2026-08-14
-last_updated: 2026-09-05
+last_updated: 2026-09-06
 category: workflow-issues
 module: docs
 problem_type: workflow_issue
@@ -354,6 +354,11 @@ how you stop it drifting against itself.
 
 ## Related
 
+- `docs/solutions/workflow-issues/a-fixed-defect-in-the-present-tense-passes-every-check.md` — the
+  general case of the tense slip recorded in this doc's own Guidance. The plan lines quoted here were
+  fixed in the same commit that wrote this learning; that doc collects three more instances, dates the
+  intervals, and gives the repair format. This doc's "retract in place, do not quietly delete" is the
+  rule it applies.
 - `docs/solutions/conventions/a-fix-does-not-reach-the-copies-already-taken.md` — the same mechanism
   in source rather than prose: `HarvestDrone.cs` was copied from `SurveyDrone.cs` and kept the
   pre-fix fuel tag along with the once-true comment justifying it. That one is about copies of code;

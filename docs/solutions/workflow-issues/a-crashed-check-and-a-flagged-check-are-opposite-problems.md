@@ -292,6 +292,11 @@ still holds as described: Python 3.11.9, `locale.getpreferredencoding(False)` re
 
 ## Related
 
+- `docs/solutions/workflow-issues/a-fixed-defect-in-the-present-tense-passes-every-check.md` — the
+  third position in this doc's taxonomy. A crash means nothing was checked; a flag means something was
+  checked and questioned; that doc covers the case where the check runs clean, reports nothing, and the
+  prose it passed over is false. Its first instance is this doc's own crash reproduction, which stopped
+  reproducing.
 - `docs/solutions/developer-experience/two-shells-one-repo-windows-toolchain-traps.md` — the same
   genus as the encoding half: a Windows default silently breaking a tool written and tested
   elsewhere. That doc sorts its traps by whether they fail loud or silent, and this one straddles

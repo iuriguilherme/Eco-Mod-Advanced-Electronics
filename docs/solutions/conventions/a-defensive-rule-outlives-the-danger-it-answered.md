@@ -1,7 +1,7 @@
 ---
 title: "A defensive rule outlives the danger it answered, and its comment argues for keeping it"
 date: 2026-08-01
-last_updated: 2026-08-16
+last_updated: 2026-09-06
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -172,6 +172,11 @@ behaviour — is currently outstanding against the very comment it was written a
 
 ## Related
 
+- `docs/solutions/workflow-issues/a-fixed-defect-in-the-present-tense-passes-every-check.md` — the
+  same expiry, one artifact over. There a *rule* outlives the danger it answered; here a *learning*
+  outlives the defect it documents, and the tell is the same — confident prose defending a state that
+  ended, with nothing in the tree contradicting it. That doc adds the detector: re-run the
+  demonstration and see whether it still demonstrates.
 - `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — another case
   where what the source says and what reality holds drift apart without any error; there across
   object lifetimes, here across time.

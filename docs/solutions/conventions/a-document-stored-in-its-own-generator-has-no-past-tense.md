@@ -1,6 +1,7 @@
 ---
 title: "A document stored in its own generator has no past tense"
 date: 2026-08-08
+last_updated: 2026-09-06
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -274,6 +275,10 @@ than instead of them.
 
 ## Related
 
+- `docs/solutions/workflow-issues/a-fixed-defect-in-the-present-tense-passes-every-check.md` — the
+  same tense failure where the past tense *was* available and simply went unused. There a generator-stored
+  document structurally cannot say "this used to be true"; here a learning could have said it, and the
+  repair is exactly the scoping move this doc prescribes — mark the claim as expired rather than delete it.
 - `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — why a
   component-set change breaks placed objects, and therefore why "did the component set change?" is
   the right question to ask before writing a compatibility claim.

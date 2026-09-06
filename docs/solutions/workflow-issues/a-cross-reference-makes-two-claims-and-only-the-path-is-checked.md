@@ -1,6 +1,7 @@
 ---
 title: "A cross-reference makes two claims, and only the path is checked"
 date: 2026-09-05
+last_updated: 2026-09-06
 category: workflow-issues
 module: docs
 problem_type: workflow_issue
@@ -452,3 +453,18 @@ word after the em dash is outside every check the script performs. The same is t
 form: the target is resolved from the doc's directory with `os.path.exists` (line 458), and the link
 text is never examined. A `:38` line suffix would be stripped by `normalize_path` (line 214) before
 the existence check, so not even the line number is verified — only the file.
+
+## Related
+
+- `docs/solutions/workflow-issues/a-fixed-defect-in-the-present-tense-passes-every-check.md` — the
+  same split aimed at a different target. Here the unchecked half describes another *document*; there
+  it describes *code that has since been repaired*, so the doc goes stale without anyone touching it
+  and the citation keeps resolving because a fix leaves the file, the symbol and the line exactly
+  where they were.
+- `docs/solutions/workflow-issues/a-crashed-check-and-a-flagged-check-are-opposite-problems.md` — what
+  to do with the flags this doc's validator *does* raise, including the standing categories that are
+  correct on purpose. Read together: that one covers the flags you get, this one covers the ones you
+  never will.
+- `docs/solutions/workflow-issues/a-knowledge-store-corroborates-its-own-errors.md` — what happens
+  after a wrong description is written, rather than while it is being written. Its "repointing a link
+  is not correcting a sentence" section is this doc's failure caught one artifact later.
