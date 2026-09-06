@@ -1,6 +1,7 @@
 ---
 title: "A timestamp says when a file was written, never what is in it — read the artifact"
 date: 2026-09-05
+last_updated: 2026-09-06
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -8,7 +9,7 @@ component: development_workflow
 severity: high
 applies_when:
   - "A claim of the form \"X did or did not reach the built artifact\" is about to drive an Editor session, a redeploy, a restart, or a request for someone else's time"
-  - "The evidence offered for that claim is a modification time, a directory listing, a file size, or a commit date"
+  - "The evidence offered for that claim is a modification time, a directory listing, a file size, a commit date, or a process's reported exit status"
   - "The artifact is a container format - an asset bundle, a zip, a jar, a compiled assembly, a packed sprite atlas"
   - "The question is whether a name, symbol, string, or asset is present inside the built output"
   - "A question has been parked on \"we would need library X, which is not installed\""
@@ -304,6 +305,13 @@ Apply this practice when:
   action — an Editor session, a redeploy, a restart, a request for someone else's time.
 - The evidence offered for that claim is a modification time, a directory listing, a file size, or
   a commit date. All four are metadata about writes, none of them is content.
+- The evidence offered is **a process's reported exit status** — a non-zero exit, a failure
+  notification, a task marked `failed`, a worker's last narrated line. That is metadata about a
+  *run*, and it stands to the run exactly as a timestamp stands to a write: it records that
+  something happened, never what the something produced. A worker that writes its output and then
+  dies composing its return reports failure over a complete artifact, which is the same substitution
+  in a different currency. See
+  `docs/solutions/workflow-issues/a-failed-agent-may-have-already-written-its-artifact.md`.
 - The artifact is a container format — an asset bundle, a zip, a jar, a compiled assembly, a
   packed sprite atlas. A container's contents are readable by definition; that is what makes it a
   container. Reading it is a programming task, not an impossibility.
@@ -435,6 +443,11 @@ published specification (`scripts/read-mod-bundle.py:23` cites
 
 ## Related
 
+- `docs/solutions/workflow-issues/a-failed-agent-may-have-already-written-its-artifact.md` — the same
+  substitution one layer up. There the cheap proxy is a worker's reported status rather than a file's
+  timestamp, and the expensive question it stands in for is whether the artifact exists rather than
+  what the artifact contains. Both are answered by opening the thing; neither is answered by the
+  metadata about it.
 - `docs/solutions/workflow-issues/verify-the-deploy-landed-before-asking-for-a-restart.md` — the
   mirror image. There a *fresh* timestamp wrongly implied the new build had landed; here a *stale*
   one wrongly implied a change had not. Same root cause, opposite sign, and that doc already carries
