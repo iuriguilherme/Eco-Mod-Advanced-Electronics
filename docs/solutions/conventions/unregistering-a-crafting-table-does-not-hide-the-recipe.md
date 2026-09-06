@@ -1,6 +1,7 @@
 ---
 title: "In a framework that auto-discovers types, declaring the type is the registration"
 date: 2026-08-08
+last_updated: 2026-09-06
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -55,14 +56,27 @@ bench and nothing else. The result was worse than shipping the drone: a recipe l
 browser and drawn into the Advanced Electronics tech tree, with no table anywhere that could craft
 it. Visible, promised, and impossible.
 
-The fix was to comment out the entire `RecipeFamily`-derived class. Both files now carry the whole
-recipe inside a `/* … */` block: `EcoServerMod/AdvancedElectronics/MiningDrone.cs:263-320` and
-`EcoServerMod/AdvancedElectronics/HarvesterDrone.cs:263-320`, each introduced by an explanatory
-comment at line 252 of its file. A live recipe for comparison is
-`EcoServerMod/AdvancedElectronics/SurveyDrone.cs:276-323` (`SurveyDroneRecipe`, with its
-`AddRecipe` call at line 315) and `EcoServerMod/AdvancedElectronics/DroneDock.cs:898-936`
-(`DroneDockRecipe`, with its `AddRecipe` at line 931). The two shapes are otherwise identical, which is the
-point: the only difference between shipped and withheld is whether the type is compiled.
+The fix was to comment out the entire `RecipeFamily`-derived class, so that for `v0.2.0` both files
+carried the whole recipe inside a `/* … */` block rather than merely disabling `AddRecipe`.
+
+**Both recipes have since been restored, and the withholding described above is history.** The mining
+drone's was brought back by `a046d67` (*"feat(mining): drone cleanup and recipe (U11)"*) once the
+behaviour that had been missing existed, and the comment above the class says so in place:
+*"RESTORED (U11, R32): the mining drone now has mining behaviour, which is the only reason this
+recipe was withheld."* At the current tree all four drone-family recipes are live and compiled —
+`MiningDroneRecipe` at `EcoServerMod/AdvancedElectronics/MiningDrone.cs:266` with its `AddRecipe` at
+`:306`, `HarvestDroneRecipe` at `EcoServerMod/AdvancedElectronics/HarvesterDrone.cs:281` with its
+`AddRecipe` at `:323`, `SurveyDroneRecipe` at `EcoServerMod/AdvancedElectronics/SurveyDrone.cs:284`
+with its `AddRecipe` at `:323`, and `DroneDockRecipe` at
+`EcoServerMod/AdvancedElectronics/DroneDock.cs:1253` with its `AddRecipe` at `:1286`.
+
+The rule the incident produced is untouched by that restoration, and the code still carries it: the
+comment above `HarvestDroneRecipe` (`HarvesterDrone.cs:275-277`) keeps the reasoning for anyone who
+next needs to withhold something — *"because `RecipeFamily` carries `[ForceCreateViewAllDerived]`:
+the type existing is enough for Eco to instantiate it at startup and register the recipe, which would
+have left a withheld drone visible in the recipe browser and the skill's tech tree."* The shipped and
+withheld shapes were otherwise identical, which is the point: the only difference was whether the
+type was compiled.
 
 ## Guidance
 
