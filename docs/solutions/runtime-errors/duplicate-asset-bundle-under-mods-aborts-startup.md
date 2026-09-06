@@ -1,6 +1,7 @@
 ---
 title: "A second copy of a mod's .unity3d anywhere under Mods/ aborts Eco server startup"
 date: 2026-07-27
+last_updated: 2026-09-06
 category: runtime-errors
 module: AdvancedElectronics
 problem_type: runtime_error
@@ -32,6 +33,17 @@ Eco registers mod asset bundles in a dictionary keyed by **filename**, scanning 
 subdirectory beneath it. Two files named `AdvancedElectronics.unity3d` anywhere under that tree —
 regardless of which folders they sit in — collide on insert and take the whole server down at
 startup.
+
+**The key is the filename, so differently-named copies coexist.** That is worth stating because it
+decides what a safe backup looks like: `AdvancedElectronics.old.unity3d` beside
+`AdvancedElectronics.unity3d` does not collide, while the same bytes under a folder named `Ignore/`
+do. Renaming is the escape hatch that foldering is not.
+
+**And the client keeps its own `Mods/` cache, which is a different tree.** Checked 2026-09-06: the
+client cache under `Eco/Mods/` held six of this mod's bundles at once — `AdvancedElectronics.unity3d`
+plus `…2`, `…4`, `…5`, `…7` and `…8` — with the client running normally, because the accumulated
+copies carry distinct names. Nothing in this document applies to that directory; the abort described
+here is a server-startup failure reading the server's own `Mods/` tree.
 
 ## Symptoms
 
