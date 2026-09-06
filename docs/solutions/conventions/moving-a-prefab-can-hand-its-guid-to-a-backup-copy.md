@@ -20,15 +20,30 @@ related_components: [Assets/Art/AdvancedElectronics/Scenes/AdvancedElectronicsSc
 
 ## Context
 
-**Status: the misbinding this documents is resolved, and the rule stands.** Re-checked
-2026-09-06 — no `Old*` prefab remains under `Assets/Art/AdvancedElectronics`, the five live
-prefabs are all present (`AdvancedElectronicsAssemblyObject`, `DroneDockObject`,
+**Status: the misbinding this documents is resolved, and the rule stands.** It was closed by
+`aac18e3` (2026-08-08, on `main`) — **the day after this document was written**. That commit's
+subject is *"feat(art): re-export the HRVSTR chassis and mask the propeller layer"*, and the
+deletion is one clause in its body: *"Drop the superseded `Old*` prefab copies and the dock's
+placeholder pad edits."* Nine files went with it. Worth noticing, because a reader searching
+history for why the backups vanished would not find that commit by its subject — the fix rode
+along with an unrelated art re-export and announced nothing.
+
+Re-checked 2026-09-06 — no `Old*` prefab remains under `Assets/Art/AdvancedElectronics`, the five
+live prefabs are all present (`AdvancedElectronicsAssemblyObject`, `DroneDockObject`,
 `HarvestDroneObject`, `MiningDroneObject`, `SurveyDroneObject`), and
 `scripts/validate-name-match.sh` reports `PASS`. In particular `MiningDroneObject`, which the
 table below records as shipping nowhere at all, is present and bound. The incident is kept
 because it is what produced the rule and because the GUID-resolution loop under **Guidance** is
 how you would catch it again; a clean result from that loop today is the expected state, not a
 sign the check is broken.
+
+The gap between those two dates is the reason
+`docs/solutions/workflow-issues/a-fixed-defect-in-the-present-tense-passes-every-check.md` exists.
+This document described a resolved state as current for thirty days, through a refresh pass
+(`3bd0cf1`, branch-local on `feat/tech-tree-icons` and so not a durable reference) that edited
+the paragraph immediately above the table and left the table itself
+untouched, because every check that pass ran asks whether a citation resolves and none asks
+whether the prose is still true.
 
 The art folder was reorganised into per-kind subfolders (`Prefabs/`, `Icons/`, `Materials/`,
 `Models/`, `Animators/` — the layout has shifted again since, and `Icons/` now sits under
