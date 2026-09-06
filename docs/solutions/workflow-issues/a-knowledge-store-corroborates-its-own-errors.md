@@ -1,6 +1,7 @@
 ---
 title: "A knowledge store corroborates its own errors, and the copies outlive the correction"
 date: 2026-08-14
+last_updated: 2026-09-05
 category: workflow-issues
 module: docs
 problem_type: workflow_issue
@@ -117,6 +118,27 @@ still says they do not. Worse, the same plan states it as a governing assumption
 components they were created with, which is why R17 exists"* — where it is not a citation at all but
 the justification for a requirement. A rename-driven pass finds the first line and cannot see the
 second. Fix the *proposition*, then the pointer.
+
+**Both of those lines are fixed, and the tense above is the point.** `96af0af` — the commit that
+recorded *this* learning — repaired them in the same diff: `:517`'s gloss now reads *"why component
+changes reach objects already placed, in both directions"*, and `:418` now opens *"**Component
+changes DO retrofit — corrected 2026-08-14.**"* with the superseded belief kept and labelled. So the
+paragraph above describes a state that ended the moment it was written down. It is left standing
+because it is the evidence, and because the tense slip is itself an instance: prose written from the
+pre-fix state, in a commit that also carried the fix.
+
+**A gloss can also be wrong on the day it is written, with the target never touched.** Everything
+above traces a gloss going stale *because* something moved — a doc renamed, a claim overturned, a
+pointer repaired without its sentence. That is not the only route. A description can be false from
+the start, about a document that was never renamed and never corrected, simply because it was
+written from memory rather than from the target. Two docs in this store independently described
+`docs/solutions/workflow-issues/release-scripts-should-refuse-not-warn.md` as arguing for warning
+instead of refusing, which is the anti-pattern that doc exists to eliminate. Nothing had moved. The
+mechanism, the sweep that bounds it, and why no validator can see it are in
+`docs/solutions/workflow-issues/a-cross-reference-makes-two-claims-and-only-the-path-is-checked.md`.
+For this doc the consequence is narrow: when you sweep the citers of a corrected claim, read each
+gloss against the target rather than only checking whether it survived a rename, because a rename is
+not the only thing that makes one wrong.
 
 **Correct by artifact class, not by search hit, because no single search reaches them all.** The
 five classes this store actually uses each fail a different query:
@@ -341,6 +363,11 @@ how you stop it drifting against itself.
   upstream half. That doc is about a claim entering the store unverified; this one is about what the
   store does with it afterwards. Read together they are the full lifecycle: nothing validates a
   claim on the way in, and once in, it multiplies.
+- `docs/solutions/workflow-issues/a-cross-reference-makes-two-claims-and-only-the-path-is-checked.md`
+  — the same gloss-versus-pointer split, reached without anything having moved. That doc establishes
+  that the bundled claims validator tests only whether a cited path resolves and never opens the
+  target, so a description that inverts its target passes every check; it also carries the sweep
+  procedure for finding how far one wrong description travelled.
 - `docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md` — instance 2, and the
   model retraction: the original analysis is kept intact under a "Resolved" header because it is the
   state that produced a decision that is still live.
