@@ -1,7 +1,7 @@
 ---
 title: "A crashed check and a flagged check are opposite problems"
 date: 2026-08-09
-last_updated: 2026-09-05
+last_updated: 2026-09-06
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -93,12 +93,18 @@ UnicodeDecodeError: 'charmap' codec can't decode byte 0x90 in position 2658: cha
 
 With `PYTHONUTF8=1` the same file reports `checked 4 paths, 0 SHAs, 0 links; 0 flags` and `OK`.
 
-Two docs currently in `docs/solutions/` contain such bytes:
-`docs/solutions/architecture-patterns/client-animation-is-driven-by-name-not-by-mod-code.md` (a
-box-drawing diagram) and
-`docs/solutions/architecture-patterns/persist-derived-data-as-serialized-snapshot-on-its-owner.md`
-(an arrow in a code comment). Both crash a default-encoding read and both validate clean with the
-variable set. Any future doc with a drawn diagram joins them.
+**One doc in `docs/solutions/` currently contains such a byte** —
+`docs/solutions/architecture-patterns/persist-derived-data-as-serialized-snapshot-on-its-owner.md`,
+where a leftwards arrow U+2190 in a code comment puts `0x90` at byte offset 7675. It crashes a
+default-encoding read and validates clean with the variable set.
+
+This paragraph previously named a second doc,
+`docs/solutions/architecture-patterns/client-animation-is-driven-by-name-not-by-mod-code.md`, for a
+box-drawing diagram. Re-checked 2026-09-06: it now contains **zero** bytes from the undefined set and
+validates clean with no environment variable at all. The diagram left in ordinary editing, which is
+the point worth keeping — this hazard arrives and departs with a doc's punctuation rather than with
+anything about the tooling, so the set of affected files is not stable and is not worth maintaining
+as a list. Any future doc with a drawn diagram or an arrow joins it.
 
 This document deliberately names those codepoints instead of embedding the glyphs, so that it stays
 readable by a cp1252 default read. That is a courtesy, not the fix. The fix is the variable.
@@ -220,6 +226,15 @@ only durable lever on this side.
 Apply the crash-versus-flag distinction whenever a documentation check exits nonzero. The first
 question is always "did it run?", not "what did it find?".
 
+**That question presumes the status can answer it, and for a delegated worker it cannot.** Everything
+above concerns a script the orchestrator runs itself, where a traceback and a flag list are two
+distinguishable outputs of one process. A dispatched subagent adds a third case the pair does not
+cover: it writes its output to a file and *then* composes its return, so a death in between reports a
+truthful failure over work that is complete on disk. There the first question is not "did it run?" —
+nothing in the notification answers that usefully — but "is the artifact there?", which is a
+directory listing rather than an inference. See
+`docs/solutions/workflow-issues/a-failed-agent-may-have-already-written-its-artifact.md`.
+
 Apply the adjudication table with particular care when the flagged doc's own subject is a
 **correction, a retirement, or a superseded belief** — those must cite what is gone, and their
 evidence is the most expensive thing in the store to lose. The prior runs the other way elsewhere: a
@@ -261,12 +276,19 @@ flags`, both "not found in working tree or origin/main". They are not in the tre
 whole point of that doc is that a green `git status` is not evidence and the shipped bytes are. The
 prose already frames both as members of the archive, so both are confirmed intentional.
 
-**The crash, reproduced.** Running the claims validator against
-`docs/solutions/architecture-patterns/client-animation-is-driven-by-name-not-by-mod-code.md` with no
-environment variable produces the `UnicodeDecodeError` on byte `0x90` quoted above and checks
-nothing. The same command with `PYTHONUTF8=1` reports `checked 4 paths, 0 SHAs, 0 links; 0 flags` and
-`OK`. Same file, same script, same repo state; one invocation verified the document and the other
-never opened it successfully.
+**The crash, reproduced.** Re-run on 2026-09-06 against the doc that still carries the byte.
+`python <script> docs/solutions/architecture-patterns/persist-derived-data-as-serialized-snapshot-on-its-owner.md`
+with no environment variable produces
+
+```
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x90 in position 7675: character maps to <undefined>
+```
+
+and checks nothing. The same command with `PYTHONUTF8=1` reports
+`checked 5 paths, 0 SHAs, 0 links; 0 flags` and `OK`. Same file, same script, same repo state; one
+invocation verified the document and the other never opened it successfully. The machine's premise
+still holds as described: Python 3.11.9, `locale.getpreferredencoding(False)` returns `cp1252`, and
+`PYTHONUTF8` is unset unless the invocation sets it.
 
 ## Related
 
@@ -274,6 +296,10 @@ never opened it successfully.
   genus as the encoding half: a Windows default silently breaking a tool written and tested
   elsewhere. That doc sorts its traps by whether they fail loud or silent, and this one straddles
   the split — the traceback is loud, the loss of coverage is silent.
+- `docs/solutions/workflow-issues/a-failed-agent-may-have-already-written-its-artifact.md` — the
+  third case in this doc's taxonomy, on the inverted sign. A crash means no work was done and a flag
+  means work was done and questioned; a delegated worker can report failure over work that is
+  finished and durable, because it writes its artifact before it composes its return.
 - `docs/solutions/workflow-issues/a-gate-that-discovers-nothing-passes-everything.md` — the same
   doctrine reached by a different mechanism: a check that reports success while having examined
   nothing. There the discovery step matched no files; here it never opened one.
