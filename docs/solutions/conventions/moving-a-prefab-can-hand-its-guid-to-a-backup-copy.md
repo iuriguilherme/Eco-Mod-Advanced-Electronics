@@ -1,6 +1,7 @@
 ---
 title: "Moving a prefab can hand its GUID to a backup copy, and the scene keeps pointing at the backup"
 date: 2026-08-07
+last_updated: 2026-09-06
 category: conventions
 module: Assets
 problem_type: convention
@@ -18,6 +19,16 @@ related_components: [Assets/Art/AdvancedElectronics/Scenes/AdvancedElectronicsSc
 # Moving a prefab can hand its GUID to a backup copy, and the scene keeps pointing at the backup
 
 ## Context
+
+**Status: the misbinding this documents is resolved, and the rule stands.** Re-checked
+2026-09-06 — no `Old*` prefab remains under `Assets/Art/AdvancedElectronics`, the five live
+prefabs are all present (`AdvancedElectronicsAssemblyObject`, `DroneDockObject`,
+`HarvestDroneObject`, `MiningDroneObject`, `SurveyDroneObject`), and
+`scripts/validate-name-match.sh` reports `PASS`. In particular `MiningDroneObject`, which the
+table below records as shipping nowhere at all, is present and bound. The incident is kept
+because it is what produced the rule and because the GUID-resolution loop under **Guidance** is
+how you would catch it again; a clean result from that loop today is the expected state, not a
+sign the check is broken.
 
 The art folder was reorganised into per-kind subfolders (`Prefabs/`, `Icons/`, `Materials/`,
 `Models/`, `Animators/` — the layout has shifted again since, and `Icons/` now sits under
@@ -44,7 +55,10 @@ OldDroneDockObject.prefab.meta               ->  8da7e182…   (the live prefab'
 **Every reference is by GUID, so the references followed the identity, not the name.** The
 scene's container list still held the original GUIDs, which now belonged to the backups:
 
-| Container slot | Intended | Actually resolves to |
+The bindings as they stood during the incident — every `Old*` target below has since been
+deleted:
+
+| Container slot | Intended | Resolved to, at the time |
 |---|---|---|
 | `8da7e182…` | `DroneDockObject` | `OldDroneDockObject` |
 | `3adcb668…` | `SurveyDroneObject` | `OldSurveyDroneObject` |
