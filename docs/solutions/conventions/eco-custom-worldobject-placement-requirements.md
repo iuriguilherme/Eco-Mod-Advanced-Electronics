@@ -1,6 +1,7 @@
 ---
 title: Custom Eco WorldObject requirements the stripped reference assemblies hide
 date: 2026-07-18
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -127,7 +128,12 @@ Before (crafts, silently unplaceable): server class `DroneDock : WorldObject`, i
 `DroneDockItem : WorldObjectItem<DroneDock>`, prefab named `DroneDock`. The client looked up
 `DroneDockObject`, found nothing, and never offered placement.
 
-After (conformant), in `EcoServerMod/AdvancedElectronics/DroneDock.cs`:
+After (conformant), in `EcoServerMod/AdvancedElectronics/DroneDock.cs`, as it stood when the fix
+landed. The dock has since grown: `DroneDockObject` is now a `partial` class spread across the
+`DroneDock*.cs` files, it carries more required components, its static constructor registers a
+16-cell 4x4 pad from `FootprintOffsets` rather than a single block, and `DroneDockItem` also
+implements `IPersistentData`. The placement requirements shown here are unchanged in the current
+file:
 
 ```csharp
 namespace Eco.Mods.TechTree

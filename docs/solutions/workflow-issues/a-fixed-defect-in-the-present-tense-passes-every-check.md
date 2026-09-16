@@ -1,6 +1,7 @@
 ---
 title: "A fixed defect described in the present tense passes every check there is"
 date: 2026-09-06
+last_updated: 2026-09-15
 category: workflow-issues
 module: docs
 problem_type: workflow_issue
@@ -122,8 +123,9 @@ Scanning that file today for the five undefined bytes — `0x81`, `0x8D`, `0x8F`
 returns **zero**. It validates clean with no environment variable set at all. The hazard itself is
 entirely real and still reproducible one directory over:
 `docs/solutions/architecture-patterns/persist-derived-data-as-serialized-snapshot-on-its-owner.md`
-contains exactly one such byte, `0x90` at offset 7675, from a leftwards arrow U+2190 in a code
-comment.
+contains exactly one such byte, `0x90`, from a leftwards arrow U+2190 in a code comment. It sits at
+offset 10169 today; the runs captured below name 7675, the offset before a 2026-09-15 refresh of that
+doc moved it.
 
 The commit that staled it is `186e648`, 2026-08-14, *"docs(solutions): record how far the client-code
 constraint propagated"*, reachable from `origin/main`. Replaying the byte count over that file's

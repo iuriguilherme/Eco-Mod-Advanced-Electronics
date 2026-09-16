@@ -1,7 +1,7 @@
 ---
 title: "A crashed check and a flagged check are opposite problems"
 date: 2026-08-09
-last_updated: 2026-09-06
+last_updated: 2026-09-15
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -95,7 +95,9 @@ With `PYTHONUTF8=1` the same file reports `checked 4 paths, 0 SHAs, 0 links; 0 f
 
 **One doc in `docs/solutions/` currently contains such a byte** —
 `docs/solutions/architecture-patterns/persist-derived-data-as-serialized-snapshot-on-its-owner.md`,
-where a leftwards arrow U+2190 in a code comment puts `0x90` at byte offset 7675. It crashes a
+where a leftwards arrow U+2190 in a code comment puts `0x90` at byte offset 10169 (it was 7675
+when this was written; a 2026-09-15 refresh of that doc moved it, which is why the captured runs
+below still name the old position). It crashes a
 default-encoding read and validates clean with the variable set.
 
 This paragraph previously named a second doc,
