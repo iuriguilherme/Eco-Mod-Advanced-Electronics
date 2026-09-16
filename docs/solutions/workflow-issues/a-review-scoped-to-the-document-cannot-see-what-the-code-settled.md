@@ -1,7 +1,7 @@
 ---
 title: "A review scoped to the document cannot see what the code already settled"
 date: 2026-08-30
-last_updated: 2026-09-05
+last_updated: 2026-09-15
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -45,7 +45,13 @@ Four such findings reached the maintainer as questions. All four were already an
   `total: N plots, worked: X, skipped: Y`.
 - **Whether a tab discloses an area's purpose.** A finding wanted a kind field on every roster line.
   The answer needed both halves of the repo: a dock *can* list unrelated areas, so the tab does not
-  disclose kind — but kind is internal and not information the player acts on.
+  disclose kind, and at the time kind was internal and not something the player acted on. That
+  second half has since been overturned by the code rather than by the document.
+  `DockReadout.cs:213` emits `[farm]` for a farm area, `DockReadout.cs:25-29` records that it rides
+  the exclusive status slot because it is what an area *is*, and `CONCEPTS.md` now says the bracket
+  tag is how a player knows what an area is for before assigning a drone to it. The refusal still
+  stands — kind is not a field of its own — and the lesson is sharper for it: the code answered
+  this question twice, and neither answer was ever in the document.
 
 The maintainer caught all four. The reviewers could not have.
 

@@ -1,7 +1,7 @@
 ---
 title: "A timestamp says when a file was written, never what is in it — read the artifact"
 date: 2026-09-05
-last_updated: 2026-09-06
+last_updated: 2026-09-15
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -230,8 +230,10 @@ count-prefixed block list (`:143-144`), then a count-prefixed node table of
 
 `CLAUDE.md:49` lists the contents of `scripts/` as `gather-eco-refs.sh`, `package-release.sh`,
 `validate-name-match.sh` and `deploy-usercode-overrides.sh`. The directory on disk currently also
-holds `scripts/read-mod-bundle.py` and `scripts/validate-icon-binding.sh`, neither of which appears
-in that list. `scripts/read-mod-bundle.py` currently exists only on the branch
+holds `scripts/read-mod-bundle.py`, `scripts/validate-icon-binding.sh` and
+`scripts/validate-learnings.py`, none of which appears in that list. The last of those is the
+repo's own learnings frontmatter gate, so the inventory omits the tool a refresh pass is most
+likely to reach for. `scripts/read-mod-bundle.py` currently exists only on the branch
 `feat/tech-tree-icons` and is **not** present on `main` — `git cat-file -e main:scripts/read-mod-bundle.py`
 reports *"exists on disk, but not in 'main'"*. No pull request exists for it yet, so there is no PR
 number to cite; the state to record is simply "branch-only, not merged". Whoever merges that branch
@@ -249,7 +251,7 @@ inputs, a restore from a backup, a file touched by an unrelated tool, or — as 
 comparison made against the wrong reference point. In the other direction, a *newer* timestamp is
 equally uninformative: it proves a write happened, not that the write contained the change you
 wanted. This repository already learned that second half the hard way, and it is written up at
-`docs/solutions/workflow-issues/verify-the-deploy-landed-before-asking-for-a-restart.md:54-55`:
+`docs/solutions/workflow-issues/verify-the-deploy-landed-before-asking-for-a-restart.md:55-56`:
 *"A fresh timestamp only proves a copy happened, not that it copied what you think."* This doc is
 the same lesson approached from the opposite direction: there, a fresh timestamp wrongly implied
 presence; here, a stale timestamp wrongly implied absence. The common cause is that the timestamp

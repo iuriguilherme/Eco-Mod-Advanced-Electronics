@@ -1,7 +1,7 @@
 ---
 title: "A knowledge store corroborates its own errors, and the copies outlive the correction"
 date: 2026-08-14
-last_updated: 2026-09-06
+last_updated: 2026-09-15
 category: workflow-issues
 module: docs
 problem_type: workflow_issue
@@ -185,7 +185,7 @@ that could have caught this. The follow-up commit states the rule:
 Provenance is what lets a later reader rank two disagreeing copies instead of averaging them.
 
 **Retract in place; do not quietly delete.** Both corrections here kept the wrong version visible.
-`eco-server-only-mod-client-rendering-surfaces.md:213` begins **"RETRACTED — there is no
+`eco-server-only-mod-client-rendering-surfaces.md:218` begins **"RETRACTED — there is no
 custom-MonoBehaviour escape hatch"** and then says what was believed and why it was wrong.
 `an-attribute-that-only-feeds-a-tooltip.md` keeps its entire original analysis under a **"Resolved
 2026-08-10: the gate came back"** header, on the grounds that *"The account below is the state that
@@ -215,8 +215,8 @@ The compounding cost is that a store like this exists to be trusted without re-d
 its entire value proposition, and it is exactly what makes a wrong entry expensive: the doc is
 consulted *instead of* the source. Claim 1 was in the glossary a fresh session reads to orient. Claim
 3 was in the README a new contributor reads first — and that file managed to contradict itself, with
-`README.md:9-12` correctly stating there is no `Eco.ReferenceAssemblies` package for 0.14 while the
-setup section sixty-odd lines below promised the server half *"builds straight from a clone — its
+`README.md:24` correctly stating there is no `Eco.ReferenceAssemblies` package for 0.14 while the
+setup section far below promised the server half *"builds straight from a clone — its
 Eco dependency comes from the `Eco.ReferenceAssemblies` NuGet package."* Both sentences had readers.
 A contributor who followed the second one hit a hard csproj error and had no way to know which half
 of the file to believe.
@@ -305,7 +305,7 @@ have. Both are corrected now; `:418` carries a dated retraction rather than a si
 R17 was justified by the wrong version and whoever implements it needs to know that.
 
 **What a retraction that keeps the reader oriented looks like.** From
-`eco-server-only-mod-client-rendering-surfaces.md:213` — it names the wrong claim, says it was
+`eco-server-only-mod-client-rendering-surfaces.md:218` — it names the wrong claim, says it was
 recorded here, gives the mechanism, points at the doc that supersedes it, and states what became of
 the artifact built on it:
 
@@ -347,7 +347,8 @@ README.md:76     **The server half needs nothing extra.** `EcoServerMod/` builds
                  package.
 ```
 
-The fix at `README.md:77-86` replaced the second with three named build tiers, and — the useful
+The fix, now at `README.md:99` after the file was restructured, replaced the second with three named
+build tiers, and — the useful
 detail — made the dependency between the two statements explicit: *"As noted at the top of this
 file, there is no `Eco.ReferenceAssemblies` package for 0.14."* A cross-reference inside one file is
 how you stop it drifting against itself.

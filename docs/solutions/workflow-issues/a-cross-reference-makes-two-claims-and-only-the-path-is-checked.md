@@ -1,7 +1,7 @@
 ---
 title: "A cross-reference makes two claims, and only the path is checked"
 date: 2026-09-05
-last_updated: 2026-09-06
+last_updated: 2026-09-15
 category: workflow-issues
 module: docs
 problem_type: workflow_issue
@@ -88,7 +88,7 @@ believing the store contains a doc arguing for warnings, which is the inverse of
 
 Corrected in `bada981` — *"docs(solutions): mark refuse-not-warn as a condition, not a slogan"*. The
 replacement text now reads, at
-`docs/solutions/workflow-issues/a-crashed-check-and-a-flagged-check-are-opposite-problems.md:280-284`:
+`docs/solutions/workflow-issues/a-crashed-check-and-a-flagged-check-are-opposite-problems.md:313-317`:
 
 > - `docs/solutions/workflow-issues/release-scripts-should-refuse-not-warn.md` — the case where the
 >   opposite response is right, and the reason the two are not in conflict. That doc argues a release
@@ -409,7 +409,7 @@ grep -rn "release-scripts-should-refuse-not-warn" docs/
 
 | Citing doc | Verdict |
 | --- | --- |
-| `docs/solutions/workflow-issues/a-crashed-check-and-a-flagged-check-are-opposite-problems.md:280` | wrong — fixed in `bada981` |
+| `docs/solutions/workflow-issues/a-crashed-check-and-a-flagged-check-are-opposite-problems.md:313` | wrong — fixed in `bada981` |
 | `docs/solutions/workflow-issues/a-gate-that-discovers-nothing-passes-everything.md:301` | wrong — fixed in `87c4056` |
 | `docs/solutions/workflow-issues/a-gate-that-discovers-nothing-passes-everything.md:67` | correct (body citation) |
 | `docs/solutions/workflow-issues/verify-the-deploy-landed-before-asking-for-a-restart.md:137` | correct |

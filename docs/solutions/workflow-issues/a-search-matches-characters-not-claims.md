@@ -110,7 +110,7 @@ EcoServerMod/AdvancedElectronics/HarvesterDrone.cs:42
 The file is `HarvesterDrone.cs`; the class inside it is `HarvestDroneItem`. The filename and the type
 name differ by three characters, and the misspelling is the filename's spelling applied to the type.
 
-The single repository occurrence of `HarvesterDroneItem` is inside
+At the time, the single repository occurrence of `HarvesterDroneItem` was inside
 `docs/solutions/conventions/unregistering-a-crafting-table-does-not-hide-the-recipe.md`, in a passage
 that exists for no other reason than to warn about this exact mistake:
 
@@ -194,7 +194,7 @@ and none of them has the defect the search was hunting for. Zero of the six repo
 
 The pattern was not lazy. `\[HasIcon` was written that way deliberately, to avoid matching the many
 lines of prose in this repository that discuss `HasIcon` without applying it — `AdvancedElectronics.cs`
-alone contains seven such comment lines, including *"[HasIcon] on an Item subclass looks inert,
+alone contains twelve such comment lines, including *"[HasIcon] on an Item subclass looks inert,
 because the lookup is INHERITED"* at `AdvancedElectronics.cs:52`. The bracket anchor was an attempt
 to defend against false presence, and it bought false absence instead. That is the pairing worth
 noticing: the two failures are not independent, and the natural defence against one manufactures the
@@ -423,7 +423,7 @@ docs/solutions/conventions/unregistering-a-crafting-table-does-not-hide-the-reci
 ```
 
 One hit, in prose, no C#. Read as a match: a dead symbol still referenced by a document. Read as a
-sentence, with the line above it at `:114` — *"confirm the name you are searching for is the real one
+sentence, with the line above it at `:118` — *"confirm the name you are searching for is the real one
 — the class in `HarvesterDrone.cs` is `HarvestDroneItem`, not"* — it is a warning that the searched
 name is a misspelling. The real class is at `EcoServerMod/AdvancedElectronics/HarvesterDrone.cs:42`,
 and the correct spelling has fifteen occurrences across the server sources, the Unity scene, the

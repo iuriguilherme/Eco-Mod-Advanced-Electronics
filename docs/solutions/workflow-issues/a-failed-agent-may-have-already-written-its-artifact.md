@@ -1,6 +1,7 @@
 ---
 title: "A failed worker can still have finished its work — check the drop-box before re-running"
 date: 2026-09-06
+last_updated: 2026-09-15
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -42,7 +43,8 @@ three research subagents in parallel — a Context Analyzer, a Solution Extracto
 Finder — and each of them is told to write its full output to a file in a per-run scratch directory
 rather than to hand its prose back through the conversation. The skill's own research reference states
 the arrangement in its opening line
-(`compound-engineering/3.24.0/skills/ce-compound/references/research.md:28`):
+(`compound-engineering/skills/ce-compound/references/research.md:28`, line numbers read against
+the plugin release installed on 2026-09-15):
 
 > "Launch research subagents. Each writes its full output to a per-run scratch artifact and returns
 > only the artifact path to the orchestrator."
@@ -57,7 +59,7 @@ The contract each subagent receives is spelled out a few lines further down, at
 The filenames are fixed per role, listed at `references/research.md:51-54`: `context.json` for the
 Context Analyzer, `solution.md` for the Solution Extractor, `related.json` for the Related Docs
 Finder, and `session-history.md` for the session-history synthesis subagent when it runs. The
-subagents write nowhere else; `compound-engineering/3.24.0/skills/ce-compound/SKILL.md:50` is explicit
+subagents write nowhere else; `compound-engineering/skills/ce-compound/SKILL.md:58` is explicit
 that "**Only the orchestrator writes product files.** Phase 1 subagents write to per-run scratch only,
 and never touch `<root>/`, project instruction files, or any other tracked path."
 
@@ -66,7 +68,7 @@ Two consequences follow from that design, and the second one is the whole subjec
 The first consequence is intended: the real work of a subagent lands on disk, in a location the
 orchestrator already knows, at the moment the subagent finishes writing — which is *before* it
 composes and returns anything. The reference says why the pattern exists at all, at
-`references/research.md:84`, describing the Solution Extractor: "This is the subagent most prone to
+`references/research.md:94`, describing the Solution Extractor: "This is the subagent most prone to
 the issue #956 summary-collapse, so its prose must land on disk rather than only in the inline
 return."
 
@@ -117,7 +119,7 @@ and they came from opposite outcomes. The text tells you nothing about the artif
 tells you about the artifact.
 
 The resolution was already written down, in the very workflow that was running. The assembly reference
-says, at `compound-engineering/3.24.0/skills/ce-compound/references/assembly.md:11`:
+says, at `compound-engineering/skills/ce-compound/references/assembly.md:11`:
 
 > "**Collect Phase 1 results from the run artifacts.** For each Phase 1 subagent, `Read` its artifact
 > file under `{run_dir}/` (`context.json`, `solution.md`, `related.json`, and `session-history.md`
@@ -250,15 +252,16 @@ and it is the case the contract's fallback clause was written for. Two sub-cases
 - If there is no artifact and no usable inline output, the work has to be performed again. **Where
   dispatch itself is the thing that is failing, perform the pass in the orchestrator rather than
   re-dispatching into the same failure.** Both skills carry this rule explicitly.
-  `references/research.md:60` says:
+  `references/research.md:70` says:
 
   > "Classify a rejected dispatch by whether an agent launched: correct a pre-launch argument
   > rejection once, leave capacity-limited work queued, and if another launch failure survives
   > correction, run that role in the parent context with the same contract and artifact path rather
   > than dropping it."
 
-  and `compound-engineering/3.24.0/skills/ce-compound-refresh/SKILL.md:22` states the same rule for the
-  refresh workflow, adding a reporting obligation:
+  and `compound-engineering/skills/ce-compound-refresh/references/investigate.md:21` states the same
+  rule for the refresh workflow, adding a reporting obligation (it sat in that skill's `SKILL.md`
+  until a later release moved it into the reference file, with the wording unchanged):
 
   > "Classify a rejected subagent dispatch by whether an agent launched: correct a pre-launch argument
   > rejection once, leave capacity-limited work queued, and if another launch failure survives
@@ -320,7 +323,7 @@ Re-running a pass whose artifact was already complete costs considerably more th
   a capacity failure by immediately issuing more work of the same shape is the move most likely to
   produce another capacity failure, which — if the same reasoning is applied to it — produces another
   re-dispatch. The dispatching contract anticipates this and says to *"leave capacity-limited work
-  queued"* rather than to retry it into the wall (`references/research.md:60`). And these limits are
+  queued"* rather than to retry it into the wall (`references/research.md:70`). And these limits are
   wall-clock resets rather than transient errors a backoff clears (session history), so the re-run
   does not merely risk failing — it fails until the stated reset, and the work it was going to
   redo was sitting on disk the whole time.
@@ -449,9 +452,10 @@ The incidents above cannot be verified from the repository, but their product ca
 substantial.
 
 `docs/solutions/workflow-issues/a-cross-reference-makes-two-claims-and-only-the-path-is-checked.md` is
-the doc written from the 27 KB artifact. It is **454 lines** on disk, and it landed as a single commit
-adding 454 lines — `b6c6983`, dated 2026-09-05, subject *"docs(solutions): the link is checked, the
-sentence around it is not"*. That commit is on `feat/tech-tree-icons`, which is unmerged and has no
+the doc written from the 27 KB artifact. It landed as a single commit adding 454 lines — `b6c6983`,
+dated 2026-09-05, subject *"docs(solutions): the link is checked, the sentence around it is not"* —
+and has since grown to about 470 lines, so the line citations into it below run roughly one line
+behind the current file. That commit is on `feat/tech-tree-icons`, which is unmerged and has no
 pull request, so `b6c6983` is a branch-local short SHA: it is the only way to name the commit today, it
 is cited the way this store's other docs cite branch-local SHAs, and it is not a durable reference. If
 the branch is squashed or rebased, look the commit up by its subject line. The doc itself opens by

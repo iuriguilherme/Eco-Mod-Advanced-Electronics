@@ -60,7 +60,7 @@ bug-track doc also carries `symptoms`, `root_cause` and `resolution_type`, that 
 `last_updated` are `YYYY-MM-DD`, that `applies_when`, `symptoms` and `tags` are within their caps
 (line 48), and that the `category` field equals the name of the directory the file sits in (lines
 129-132). It reads the file's full text at line 87 solely to locate that header. **Nothing below the
-closing `---` is examined at all.** Run today it reports `PASS: 73 learnings conform to the
+closing `---` is examined at all.** Run today it reports `PASS: 75 learnings conform to the
 frontmatter contract`.
 
 **The plugin's claims validator, `validate-doc-claims.py`,** does look at the body, and performs four
@@ -206,10 +206,12 @@ reports `PASS: every server WorldObject/Item type has a matching-named client as
 The commit that closed it is `aac18e3`, 2026-08-08, *"feat(art): re-export the HRVSTR chassis and mask
 the propeller layer"*, reachable from `origin/main`, whose body says *"Drop the superseded Old* prefab
 copies and the dock's placeholder pad edits that came with the rebuild."* That is **one day** after
-the doc was written. This is the place the tree adds to the original account: the repair commit
-`195797a` recorded a dated re-check but did not name a closing commit, and one is nameable —
-`git log --diff-filter=D --name-only -- 'Assets/Art/AdvancedElectronics/**/Old*'` finds it in a single
-query.
+the doc was written. This is the place the tree added to the original account: the repair commit
+`195797a` recorded a dated re-check but did not name a closing commit. One was nameable in a single
+query — `git log --diff-filter=D --name-only -- 'Assets/Art/AdvancedElectronics/**/Old*'` — and
+`b9d79d3` has since put it into that doc's status note, which now opens by naming `aac18e3` and
+observing that a reader searching history for the deletion would never have found it by its
+subject.
 
 The doc was repaired in `195797a`, 2026-09-06 (branch-only), which added a status note and moved the
 table into the past tense. Its commit body names the cost precisely: a reader running the
@@ -373,8 +375,8 @@ structure in place and changing the behaviour. **The drift a repair produces is 
 mechanical check will ever report.**
 
 The flag output is not empty, either, which is its own trap. Running the claims validator on the
-prefab doc today reports `checked 11 paths, 0 SHAs, 0 links; 6 flags, 5 notes` — bare folder names
-like `Models/` and `Sprites/`, and Unity GUIDs read as commit SHAs. The AutoGen doc reports
+prefab doc today reports `checked 12 paths, 2 SHAs, 0 links; 7 flags, 5 notes` — bare folder names
+like `Models/` and `Sprites/` as flags, the Unity GUIDs as notes, and one branch-local SHA. The AutoGen doc reports
 `checked 8 paths, 1 SHAs, 0 links; 2 flags`, both of them engine-source paths outside this repository.
 Every one of those is a known, standing "confirm intentional" per the adjudication table in
 `a-crashed-check-and-a-flagged-check-are-opposite-problems.md`. So the checker is not silent; it is
@@ -570,7 +572,7 @@ loop under **Guidance** is how you would catch it again; a clean result from tha
 the expected state, not a sign the check is broken.
 ```
 
-The one thing that note is still missing is step 2 of the fix pattern, and the tree supplies it: the
+That note was missing step 2 of the fix pattern when this was written, and the tree supplied it: the
 closing commit is `aac18e3`, 2026-08-08, *"feat(art): re-export the HRVSTR chassis and mask the
 propeller layer"*, reachable from `origin/main`, whose body records *"Drop the superseded Old* prefab
 copies and the dock's placeholder pad edits that came with the rebuild."* One query finds it:
@@ -594,7 +596,7 @@ $ PYTHONUTF8=1 python <plugin>/validate-doc-claims.py \
 checked 8 paths, 1 SHAs, 0 links; 2 flags               # both engine-source paths outside this repo
 
 $ python scripts/validate-learnings.py
-PASS: 73 learnings conform to the frontmatter contract
+PASS: 75 learnings conform to the frontmatter contract
 ```
 
 Every flag in that output is a standing "confirm intentional" from the adjudication table in

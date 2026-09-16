@@ -119,7 +119,7 @@ context it has no way to obtain.
 
 | Flag shape | What is actually being cited | Standing resolution |
 |---|---|---|
-| `FLAG sha <32 hex chars> — does not resolve to a commit in this repository` | A Unity asset GUID copied out of a `.meta` file or a serialized asset reference | Confirm intentional. The GUID *is* the identifier for that asset; there is nothing to replace it with. |
+| `NOTE sha <32 hex chars> — an unresolved hex identifier with no commit reference around it` | A Unity asset GUID copied out of a `.meta` file or a serialized asset reference | Nothing to do. The validator now demotes an uncited hex token to a note rather than flagging it, so the GUID case costs no adjudication. It was a flag until the plugin's 3.24.0 release, and the older wording, `FLAG sha … does not resolve to a commit in this repository`, is what an older plugin build still prints. |
 | `FLAG path ... — not found in working tree or origin/main`, where the path is under Eco's server source tree | A file in Strange Loop Games' proprietary engine source, cited to ground the existence of an engine attribute | Confirm intentional, provided the surrounding prose already says the path is in Eco's tree and not in this repository. |
 | `FLAG path ... — not found in working tree or origin/main`, where the path is a member name inside the release zip | A file that exists only inside the built release archive | Confirm intentional, provided the prose makes the archive context explicit. |
 | `FLAG path ...`, where the target was deleted **and the deletion is the doc's subject** | A learning quoting the superseded doc it replaced, or code retired after the rule outlived its call site | Confirm intentional when the prose already marks it — *"The deleted `X`"*, *"(since deleted)"*, a status note. **Annotate** if it does not. |
@@ -160,9 +160,11 @@ familiar ones.
 
 The reason these flags keep coming is not three citation habits. It follows from how the store is
 maintained. A superseded learning is **deleted outright** — there is no archive directory, and
-version history is the archive (`ce-compound-refresh/SKILL.md:50`, restated in that skill's
-`references/classify.md:11` and `references/per-action-flows.md:52`). This repository follows it: a
-glob of `docs/solutions/**/*.md` returns seventy-one docs and not one under an `_archived/` path. The
+version history is the archive (`ce-compound-refresh/SKILL.md:62`, restated in that skill's
+`references/classify.md:11` and `references/per-action-flows.md:52`; line numbers read against the
+plugin release installed on 2026-09-15, and the `SKILL.md` one in particular moves between
+releases). This repository follows it: a
+glob of `docs/solutions/**/*.md` returns seventy-five docs and not one under an `_archived/` path. The
 convention only works because this project never rewrites git history (auto memory [claude]).
 
 Put those together. A learning whose subject is *a claim that turned out to be wrong* has to name the
@@ -184,7 +186,7 @@ the doc grounds its claims in the engine source, which is what makes it worth tr
 Adjudicating a legitimate flag costs a minute. "Fixing" a citation that was deliberately historical
 destroys evidence, and it destroys it silently.
 
-Work it through on a real case. `a-knowledge-store-corroborates-its-own-errors.md:57-58` cites
+Work it through on a real case. `a-knowledge-store-corroborates-its-own-errors.md:58-59` cites
 `docs/solutions/conventions/requirecomponent-binds-at-creation-not-retroactively.md`, which was
 deleted and replaced by `requirecomponent-is-re-enforced-on-every-server-load.md`. An agent trusting
 the flag repoints it at the replacement, because that is the obvious fix and the paths are nearly
@@ -253,11 +255,15 @@ recollection.
 `docs/solutions/runtime-errors/override-animator-layer-without-avatar-mask-overwrites-base-layer.md`
 quotes the animator controller diff that assigns the blades avatar mask, which necessarily includes
 the mask asset's 32-character GUID. Result: `checked 6 paths, 1 SHAs, 0 links; 1 flags`, the flag
-being that the hex string does not resolve to a commit. It does not, and it never will. The doc's own
-prose already says the string is a GUID matching `HRVSTR_BladesMask.mask.meta` and is not a commit
-hash, which is the annotation that makes the flag safe to confirm. Note that the claims validator
-scans for SHAs across the whole body including fenced code, so quoting any Unity YAML diff will
-trigger this.
+being that the hex string does not resolve to a commit. Re-run against the current plugin, the same
+file reports `checked 6 paths, 0 SHAs, 0 links; 0 flags, 1 notes` and `OK`, the note reading *"an
+unresolved hex identifier with no commit reference around it"*. The validator gained a check for
+whether the surrounding prose actually calls the token a commit, and a Unity GUID never does, so
+this class stopped being a flag and became a note that needs no answer. The doc's own prose still
+says the string is a GUID matching `HRVSTR_BladesMask.mask.meta` and is not a commit hash, which is
+now belt-and-braces rather than the thing that makes the flag safe. The validator still scans for
+hex words across the whole body including fenced code, so quoting any Unity YAML diff still
+produces the note.
 
 **Engine-source path outside this repository.**
 `docs/solutions/conventions/unregistering-a-crafting-table-does-not-hide-the-recipe.md` grounds the
@@ -274,9 +280,12 @@ behind the licence work that shipped around `v0.2.0`, commit subject "docs(solut
 notice has to travel with the asset") describes verifying the art licence by reading it back out of
 the built archive rather than out of the repo. It therefore names two archive members under the
 top-level AdvancedElectronics prefix that the zip creates. Result: `checked 10 paths, 0 SHAs, 0 links; 2
-flags`, both "not found in working tree or origin/main". They are not in the tree by design — the
-whole point of that doc is that a green `git status` is not evidence and the shipped bytes are. The
-prose already frames both as members of the archive, so both are confirmed intentional.
+flags`, both "not found in working tree or origin/main". They were not in the tree by design — the
+whole point of that doc is that a green `git status` is not evidence and the shipped bytes are —
+and the prose framed both as members of the archive, so both were confirmed intentional. Re-run
+today that doc reports `checked 7 paths, 0 SHAs, 0 links; 0 flags` and `OK`: a later refresh
+reworded the two archive-member citations out of backtick form, so the example no longer produces
+a flag. The class is still real, and any doc that names a zip member will produce it again.
 
 **The crash, reproduced.** Re-run on 2026-09-06 against the doc that still carries the byte.
 `python <script> docs/solutions/architecture-patterns/persist-derived-data-as-serialized-snapshot-on-its-owner.md`
