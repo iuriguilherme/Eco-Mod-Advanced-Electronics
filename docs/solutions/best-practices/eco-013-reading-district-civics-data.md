@@ -1,7 +1,7 @@
 ---
 title: Reading district / civics data from an Eco 0.13 server mod
 date: 2026-07-12
-last_updated: 2026-09-05
+last_updated: 2026-09-15
 category: best-practices
 module: EcoServerMod
 problem_type: best_practice
@@ -70,7 +70,9 @@ foreach (var map in Registrars.Get<DistrictMap>())
 
 Quantization caveat: the `(int)pos.X, (int)pos.Z` cast above truncates toward zero. If another part of your mod computes a grid column from the same kind of position using a *different* rule (e.g. `MathF.Round`, as a pathfinder's grid-column math typically does), the two can disagree at cell boundaries — see `docs/solutions/conventions/consistent-grid-column-quantization.md` for a real defect this caused.
 
-What NOT to assume: there is no live-verified on-object *picker* (choosing a district from a WorldObject's auto-generated UI) — the 0.11-era `ClientCanSelectAndAdd` attribute is gone in 0.13, and no replacement was confirmed. For district *assignment*, a chat command that resolves a `DistrictMap` entry by name is the working fallback; reading is solved, picking is not.
+What NOT to assume, as the question stood in 0.13: there was no live-verified on-object *picker* in the sense researched at the time — choosing a district from a WorldObject's auto-generated UI. The 0.11-era `ClientCanSelectAndAdd` attribute is gone in 0.13 and no drop-down replacement was confirmed, so a chat command resolving a `DistrictMap` entry by name was the working fallback.
+
+That verdict no longer holds, and the answer arrived from a direction the research had not considered. Instead of a control on the object, the dock opens the game's own map editor through a `MapEditRequest` and the player draws, names and redraws areas there — `EcoServerMod/AdvancedElectronics/SurveyAreaPicker.cs` and `EcoServerMod/AdvancedElectronics/FarmAreaPicker.cs` both work this way, and `EcoServerMod/README.md` carries the same correction against its own copy of these notes. Keep the negative finding above for anyone who goes looking specifically for a dropdown: it is accurate about what does not exist, and it was simply not the last word on what does.
 
 ## Related
 

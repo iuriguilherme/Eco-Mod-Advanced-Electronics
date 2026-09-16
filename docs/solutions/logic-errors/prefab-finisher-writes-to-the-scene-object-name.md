@@ -1,6 +1,7 @@
 ---
 title: "The prefab finisher writes to the scene GameObject's name, silently forking a duplicate prefab after a rename"
 date: 2026-07-27
+last_updated: 2026-09-15
 category: logic-errors
 module: AdvancedElectronics
 problem_type: logic_error
@@ -66,8 +67,12 @@ scene objects or these constants left the tool quietly authoritative for the old
 `FinishPrefab` now takes the target type name and the scene object name as two separate parameters
 (`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs:647-648`), and the output path
 is built from the type name alone (`AdvancedElectronicsBuildTools.cs:765`). The source cites this doc by
-path as the reason (`AdvancedElectronicsBuildTools.cs:618-622`). The standalone per-object finishers are
-gone too, replaced by `FinishAllDronePrefabs` (`AdvancedElectronicsBuildTools.cs:179-189`). What follows
+path as the reason (`AdvancedElectronicsBuildTools.cs:618-622`). One standalone finisher is gone — the survey
+drone's, because the drone moved onto the shared chassis and re-running it would have
+overwritten that chassis with the old hand-built capsule. `FinishAllDronePrefabs`
+(`AdvancedElectronicsBuildTools.cs:179-189`) covers all three drones instead. The dock's and the
+assembly's standalone finishers remain (`:154-155` and `:163-165`) and are safe, because each
+now passes its target type name and its scene object name as two separate arguments. What follows
 is kept for the mechanism and the prevention rule, which still bind any future tool that infers an
 identity from something other than its authoritative source.
 
@@ -96,8 +101,9 @@ recovery becomes a manual container edit.
 
 ## Prevention
 
-- **Do not run the prefab finishers against this scene** until the constants are updated. They are
-  currently only correct for the pre-rename names.
+- **Check what a finisher derives its output path from before running it.** In this tree that
+  question is already settled — each finisher is handed its target type name explicitly — so
+  running them is safe. The rule survives the fix because it binds the next tool, not this one.
 - **The real fix is to pass the target asset name explicitly** rather than inferring it from the
   scene object — the tool should know it is maintaining `DroneDockObject.prefab` regardless of what
   the scene object happens to be called. Renaming the scene objects to match would also work, but
@@ -108,9 +114,14 @@ recovery becomes a manual container edit.
 - **When renaming an asset that a script references by name, grep for the old name across editor
   tooling**, not just source and assets. The rename here was otherwise complete; only the tool was
   missed, and the tool is the thing that regenerates the artifact.
-- Note the size-derivation step in the same tool only writes `WorldObject.size` when it is currently
-  zero (`AdvancedElectronicsBuildTools.cs:185`), so on already-populated prefabs re-running buys
-  nothing — there is no reason to run these tools "just to be safe".
+- The size-derivation step in the same tool now re-derives `WorldObject.size` from the renderer
+  bounds on every run (`AdvancedElectronicsBuildTools.cs:733-752`), having previously written it
+  only when it was still zero. That earlier form was an initialization wearing a derivation's
+  clothes: the dock's footprint was taken from a Plane primitive and survived at 50 x 1 x 50
+  after the mesh became a platform-shaped cube, and re-running could not correct it because the
+  value was no longer zero. Re-running after a mesh edit is now the right move rather than a
+  no-op — see `docs/solutions/runtime-errors/worldobject-zero-size-blocks-placement.md`, which
+  prescribes the same thing.
 
 ## Related
 

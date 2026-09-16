@@ -1,6 +1,7 @@
 ---
 title: "Building Eco reference assemblies from source: four traps between a checkout and a usable DLL"
 date: 2026-08-01
+last_updated: 2026-09-15
 category: build-errors
 module: EcoServerMod
 problem_type: build_error
@@ -125,8 +126,13 @@ candidate subpaths per project, is upstream's own acknowledgement that the outpu
 ## Prevention
 
 **Encode the sequence in a script, not in a runbook.** All four steps are invisible from the error
-messages and none are guessable. `scripts/gather-eco-refs.sh` fetches, double-builds, passes
-`SolutionDir`, filters by TFM, and refuses to write a set of fewer than ten assemblies.
+messages and none are guessable. `scripts/gather-eco-refs.sh` double-builds, passes
+`SolutionDir`, filters by TFM, and refuses to write a set of fewer than ten assemblies. It does not fetch
+the LFS objects for you: it reads the first bytes of one known LFS-backed binary in the
+checkout, and if it finds a pointer file there it stops and tells you to run `git lfs pull`
+yourself. That is deliberate. Fetching another repository's LFS objects is a slow,
+network-bound side effect a gather script should not take on your behalf, and the detection
+is what turns MSB3246 into a sentence naming LFS.
 
 **Verify the output before trusting it.** Collecting the wrong TFM fails silently, so check the
 count and the names:

@@ -1,7 +1,7 @@
 ---
 title: "A second copy of a mod's .unity3d anywhere under Mods/ aborts Eco server startup"
 date: 2026-07-27
-last_updated: 2026-09-06
+last_updated: 2026-09-15
 category: runtime-errors
 module: AdvancedElectronics
 problem_type: runtime_error
@@ -93,8 +93,11 @@ not a fix.)
 `Mods/UserCode/<ModName>/` prefix so it could be extracted over the server root. That prefix invites
 extracting *inside* `Mods/UserCode/`, which silently produces
 `Mods/UserCode/Mods/UserCode/<ModName>/` — a second copy, and therefore a startup abort. The archive
-now contains a single `<ModName>/` folder that the admin drops into `Mods/UserCode/` (see
-`scripts/package-release.sh`):
+now contains a single `<ModName>/` folder that the admin drops straight into `Mods/`, giving
+`Mods/<ModName>/` (see `scripts/package-release.sh`). The destination moved since this was
+written: `Mods/UserCode/` is for source-code mods Eco compiles at runtime, and this is a
+compiled-DLL mod, so it belongs directly under `Mods/`. Nothing about the collision changes
+with the move — the key is still the filename and the sweep is still recursive:
 
 ```bash
 # staging: one folder, no server-path prefix

@@ -1,7 +1,7 @@
 ---
 title: "A gate that discovers nothing passes everything"
 date: 2026-07-30
-last_updated: 2026-09-05
+last_updated: 2026-09-15
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -256,8 +256,8 @@ base class is a new chance for the same silence.
 
 Two days later the same gate lost a type it had been checking correctly; the loss was not noticed for
 another two. `SurveyDroneItem` was `: Item` — visible in the post-fix output above — and the commit
-*"feat(drone): make the drone item a repairable module"* (2026-08-01, unmerged into `main` as of this
-writing) rebased it:
+*"feat(drone): make the drone item a repairable module"* (`842a44a`, 2026-08-01, since merged into
+`main`) rebased it:
 
 ```csharp
 -    public class SurveyDroneItem : Item

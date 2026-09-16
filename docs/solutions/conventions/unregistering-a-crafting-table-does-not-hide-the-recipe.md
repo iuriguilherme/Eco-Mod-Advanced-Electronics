@@ -1,7 +1,7 @@
 ---
 title: "In a framework that auto-discovers types, declaring the type is the registration"
 date: 2026-08-08
-last_updated: 2026-09-06
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -97,10 +97,14 @@ The `.csproj` shows the same trade-off taken the other way, and shows what it co
 `AdvancedElectronics.csproj:54-56` removes `AdvancedElectronicsAssembly.cs` from compilation
 entirely, which deletes its item, its world object and its recipe together — anything already placed
 will not load. That is the heavier removal, and it needs the release notes to say so. They do not:
-the exclusion's own comment points readers at "the release notes' known-issues block", that block
-never mentions it, and the shipped `README.txt` still tells players to build the Advanced Electronics
-Assembly and craft at it. Two files each defer to the other for an explanation neither contains.
-A worked example of why the removal and the notes have to be checked against the same artifact.
+For a while they did not: the exclusion's comment pointed readers at "the release notes'
+known-issues block", that block never mentioned it, and the shipped `README.txt` still told
+players to build the Advanced Electronics Assembly and craft at it. That account is in
+`docs/solutions/conventions/a-document-stored-in-its-own-generator-has-no-past-tense.md`. Both
+sides are covered now — `scripts/package-release.sh` names the exclusion in the
+not-in-this-release list and again under USAGE, and the `.csproj` comment points there — which
+is what the heavier removal costs you: a second document to keep honest, checked against the
+same artifact as the removal itself.
 
 **Verify against the compiled artifact, never against the source.** `grep` has no idea what a
 `/* … */` block means. Source-grepping a commented-out region reports exactly what a live region
@@ -152,8 +156,11 @@ the body and leave the shell is the instinct that fails.
 
 ## Examples
 
-The comment that records the correction, at `EcoServerMod/AdvancedElectronics/MiningDrone.cs:252`
-(`HarvesterDrone.cs:252` is the same text for the harvest drone):
+The comment that recorded the correction while the drones were withheld. It is no longer in the
+tree — the restoration deleted it along with the block comment it introduced — so it is
+reproduced here as the shape to write the next time something has to be withheld. What survives
+in place is its reasoning, above `HarvestDroneRecipe` at
+`EcoServerMod/AdvancedElectronics/HarvesterDrone.cs:274-277`:
 
 ```csharp
 // WITHHELD FOR THE NEXT RELEASE -- the mining drone's arm does not yet behave the way it is
@@ -169,12 +176,15 @@ The comment that records the correction, at `EcoServerMod/AdvancedElectronics/Mi
 // mining drone keeps loading. Restore by deleting the /* and */ below.
 ```
 
-The superseded theory is still readable at `MiningDrone.cs:305-311`, inside the commented-out block,
-claiming that "Registering no table is what hides it". It is inert text now, but it is the wrong
-explanation sitting a few lines below the right one, and anyone restoring the recipe should delete
-it rather than trust it.
+The superseded theory — "Registering no table is what hides it" — travelled inside the
+commented-out block, a few lines below the correct explanation, and was deleted with it when the
+recipe came back. That is the right outcome, and the general lesson: a wrong explanation parked
+inside disabled code is restored along with the code unless someone reads it, so a restore is a
+review of the comments too, not only a deletion of the `/*` and `*/`.
 
-The verification, run against this tree. First the build:
+The verification as it was run for `v0.2.0`, when both recipes were withheld. Re-run against the
+current tree every count below is 1, because the recipes are back; the transcript is kept for the
+shape of the check, not for its numbers. First the build:
 
 ```
 $ dotnet build EcoServerMod/AdvancedElectronics/AdvancedElectronics.csproj
@@ -200,9 +210,9 @@ HarvestDroneItem: 1
 HarvestDroneObject: 1
 ```
 
-Both withheld recipes are gone from the assembly. Both live recipes are present, which proves the
-search works and the zeros mean something. All four item and world-object types are present, which
-is the save-compatibility guarantee, checked rather than assumed.
+Both withheld recipes were gone from the assembly. Both live recipes were present, which is what
+proved the search worked and the zeros meant something. All four item and world-object types were
+present, which is the save-compatibility guarantee, checked rather than assumed.
 
 And the check that proves nothing, for contrast:
 
@@ -211,7 +221,7 @@ $ grep -c MiningDroneRecipe EcoServerMod/AdvancedElectronics/MiningDrone.cs
 4
 ```
 
-Four hits in a file where the recipe has been withheld. The source and the artifact disagree, and
+Four hits in a file where the recipe had been withheld. The source and the artifact disagreed, and
 the artifact is the release.
 
 ## Related

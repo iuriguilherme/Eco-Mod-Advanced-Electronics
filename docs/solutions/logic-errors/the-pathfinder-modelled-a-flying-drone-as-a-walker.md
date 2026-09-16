@@ -1,6 +1,7 @@
 ---
 title: "A flying entity pathfound as a walking one, and why raising the step height was not the fix"
 date: 2026-08-16
+last_updated: 2026-09-15
 category: logic-errors
 module: EcoServerMod
 problem_type: logic_error
@@ -108,6 +109,19 @@ depth") replaced the literal with `DroneTier.MiningShaftDepth + StepHeightMargin
 today), so the height tracks the tier rather than needing a second manual update whenever the tier
 moves. The lesson generalises: a constant picked because it happens to clear today's worst case is
 still a hardcoded walker limit.
+
+The same day, `28d5f10` ("fly over terrain between the ends instead of routing around it")
+narrowed where the constraint applies at all. `IsStepAllowed` now gates only the step that
+leaves the start column and the step that enters the goal column; every edge between them is
+exempt, because the cruise profile lifts the middle of the route to a single altitude and the
+drone never traverses that ground
+(`EcoServerMod/AdvancedElectronics.Navigation/GridPathfinder.cs:257`). Gating every edge had
+made a deep pit a wall rather than something to fly over, so routes detoured around one and a
+pit deeper than the limit could not be entered at all. That is the walker's model surviving in
+the search after it had been removed from the route shape: Fix 2 changed what a route is, and
+the search went on charging for ground the route no longer touches. The remaining constraint is
+the honest one — the drone has to get down into where it is going, and back out of where it
+started.
 
 This constant is the single source for the drone's ordinary climb height: it is the default
 of `DroneMoverComponent.maxStepHeight`, which builds the live pathfinder, and the lifecycle

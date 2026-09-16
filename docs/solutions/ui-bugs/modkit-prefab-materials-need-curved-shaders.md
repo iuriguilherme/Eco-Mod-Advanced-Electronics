@@ -1,6 +1,7 @@
 ---
 title: Mod prefabs render solid magenta in the Eco client unless their materials use the ModKit's Curved shaders
 date: 2026-07-19
+last_updated: 2026-09-15
 category: ui-bugs
 module: AdvancedElectronics
 problem_type: ui_bug
@@ -57,9 +58,9 @@ ModKit also ships Fade/Particle/4-channel variants alongside it).
    renderers resolve to `shader=Curved/Standard`, so the fix is proven without a live
    test. Then rebuild the bundle.
 
-In-editor verification passed; live client confirmation pending as of this writing
-(batched with other fixes per
-`docs/solutions/workflow-issues/eco-mod-batched-live-testing.md`).
+In-editor verification passed at the time, and live confirmation has since arrived: the drones
+render and animate correctly in game on the HRVSTR chassis, whose three authored materials all
+sit on `Curved/Standard`. Nothing in this mod has rendered magenta in the client since.
 
 ## Why This Works
 
@@ -80,9 +81,11 @@ Eco's curved horizon at distance).
 - Add to the prefab-finishing checklist: grep the prefab YAML's `m_Materials` GUIDs and
   confirm each resolves to an asset in the project (`grep -rl <guid> Assets --include=*.meta`);
   a GUID with no hit is a guaranteed magenta.
-- Verification is fully static: an editor script dumping
-  `renderer.sharedMaterial.shader.name` per prefab proves shader resolution without a
-  live test.
+- Verification is fully static, and the prefab finisher now does it for you. It substitutes the
+  placeholder material onto hand-built primitives, and for an imported model it keeps the
+  model's own materials but checks each one's shader against the placeholder's, warning by name
+  on any mismatch. The check runs on every finisher pass rather than only when someone
+  remembers it — but read the warnings, because it warns and does not refuse.
 
 ## Related
 

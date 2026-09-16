@@ -1,6 +1,7 @@
 ---
 title: Server-driven movement in Eco 0.13 mods — what works and what doesn't
 date: 2026-07-12
+last_updated: 2026-09-15
 category: best-practices
 module: EcoServerMod
 problem_type: best_practice
@@ -21,7 +22,7 @@ The Advanced Electronics survey-drone feasibility spike (branch `feat/drone-feas
 
 ## Guidance
 
-**Works — WorldObject position sync.** Setting `WorldObject.Position` / `.Rotation` and calling `SyncPositionAndRotation()` from server code renders continuous movement on connected clients. Vanilla precedent: `ElevatorComponent`. This is the proven rendering path for any mod-driven mover.
+**Works — WorldObject position sync.** Setting `WorldObject.Position` / `.Rotation` and calling `SyncPositionAndRotation()` from server code renders continuous movement on connected clients. Vanilla precedent: `ElevatorComponent`. This is the proven rendering path for any mod-driven mover, and it survived the move to the 0.14 target unchanged: it is what the shipped mover does today, from its own component tick, at `EcoServerMod/AdvancedElectronics/DroneMoverComponent.cs:251` and `:312-325`, with the single-step teleport form at `:157-158`.
 
 **Does not work — the mod-facing tick manager.** `IWorldObjectManager.AddToTick(ITickOnDemand)` fires the callback **exactly once** regardless of `NextTickTime` strategy (constant `0`, advancing via `TickStartTime`, and explicit re-registration guarded by `IsQueuedForTick` were all tested — one tick each). Do not build recurring behavior on this surface. For real mods, tick from your own `WorldObjectComponent.Tick()` (the vanilla pattern); a `System.Threading.Timer` works for throwaway probes (no thread-affinity exceptions observed driving `Position` + `SyncPositionAndRotation()` from a 50ms timer thread, but treat that as unconfirmed-safe for production).
 
@@ -56,7 +57,7 @@ Dead end (fires once, never re-queued — do not use for recurring work):
 ServiceHolder<IWorldObjectManager>.Obj.AddToTick(myTickOnDemand); // one tick only
 ```
 
-Version note: Eco 0.13 uses `System.Numerics.Vector3` (Eco ships only extension helpers; there is no `Eco.Shared.Math.Vector3`), reference assemblies target net10.0, and the game-version pin must match the server build (`Eco.ReferenceAssemblies` prerelease versions embed it, e.g. `0.13.0.4-beta-release-1024`).
+Version note. Two of these three facts carried forward to the 0.14 target and one did not. Eco still uses `System.Numerics.Vector3` — Eco ships only extension helpers, and there is no `Eco.Shared.Math.Vector3`, so a mover mixes `System.Numerics.Vector3` with `Eco.Shared.Math.Quaternion` and usually aliases the latter to say which one it means. Reference assemblies still target net10.0. What changed is how the game-version pin is expressed: the probe was run against the `Eco.ReferenceAssemblies` NuGet prerelease `0.13.0.4-beta-release-1024`, and no equivalent package exists for 0.14, so the reference assemblies are now built from an Eco source checkout and the pin is a commit of that checkout, recorded as `EcoRefSha` in `EcoServerMod/AdvancedElectronics/AdvancedElectronics.csproj` and resolved through a git-ignored `Local.props`. The requirement itself is unchanged — the references must match the dedicated server you deploy to — only the artifact that carries it.
 
 ## Related
 

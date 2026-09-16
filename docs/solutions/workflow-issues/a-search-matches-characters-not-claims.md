@@ -1,6 +1,7 @@
 ---
 title: "A search matches characters, not claims"
 date: 2026-09-06
+last_updated: 2026-09-15
 category: workflow-issues
 module: docs
 problem_type: workflow_issue
@@ -114,7 +115,7 @@ The single repository occurrence of `HarvesterDroneItem` is inside
 that exists for no other reason than to warn about this exact mistake:
 
 ```
-docs/solutions/conventions/unregistering-a-crafting-table-does-not-hide-the-recipe.md:113-116
+docs/solutions/conventions/unregistering-a-crafting-table-does-not-hide-the-recipe.md:117-120
     Search alongside a name you know must be present, and confirm the name you are
     searching for is the real one — the class in `HarvesterDrone.cs` is `HarvestDroneItem`, not
     `HarvesterDroneItem`, and searching the filename's spelling returns zero for a type that is very
@@ -134,7 +135,7 @@ merely commenting out the `CraftingComponent.AddRecipe` call inside them. It als
 source `grep` cannot verify that:
 
 ```
-docs/solutions/conventions/unregistering-a-crafting-table-does-not-hide-the-recipe.md:105-107
+docs/solutions/conventions/unregistering-a-crafting-table-does-not-hide-the-recipe.md:109-111
     **Verify against the compiled artifact, never against the source.** `grep` has no idea what a
     `/* … */` block means. Source-grepping a commented-out region reports exactly what a live region
     reports, so it cannot distinguish the two states you are trying to tell apart.
@@ -418,7 +419,7 @@ below, and explaining why. The word `NOT` is the first token of the comment.
 
 ```
 $ grep -rn 'HarvesterDroneItem' .
-docs/solutions/conventions/unregistering-a-crafting-table-does-not-hide-the-recipe.md:115:`HarvesterDroneItem`, and searching the filename's spelling returns zero for a type that is very
+docs/solutions/conventions/unregistering-a-crafting-table-does-not-hide-the-recipe.md:119:`HarvesterDroneItem`, and searching the filename's spelling returns zero for a type that is very
 ```
 
 One hit, in prose, no C#. Read as a match: a dead symbol still referenced by a document. Read as a

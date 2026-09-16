@@ -1,6 +1,7 @@
 ---
 title: Batch live tests for Eco mod development — variant objects and diagnostics, never restart-per-fix
 date: 2026-07-19
+last_updated: 2026-09-15
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -51,7 +52,8 @@ one question per restart.
 
 3. **Bake diagnostics into the mod so one session yields complete information.** A chat
    command that dumps each layer's internal state in text removes all dependence on UI
-   rendering for diagnosis. Example: `/drone status` reports district assignment, pairing,
+   rendering for diagnosis. Example: `/drone status` reports the dock's survey areas and its current
+   assignment, whether a drone item is paired,
    spawn state, lifecycle status, mover state, and per-ore survey data — so whether or not
    any client-side surface (world text, tooltip, window) renders, the server-side truth of
    the whole pipeline arrives labeled in chat.

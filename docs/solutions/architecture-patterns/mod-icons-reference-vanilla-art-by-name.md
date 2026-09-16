@@ -1,7 +1,7 @@
 ---
 title: "A mod gets a real icon by naming vanilla's, not by shipping one"
 date: 2026-08-22
-last_updated: 2026-09-05
+last_updated: 2026-09-15
 category: architecture-patterns
 module: EcoServerMod
 problem_type: architecture_pattern
@@ -348,7 +348,12 @@ That gave the three drones real icons with no artist. Four traps cost a render e
 **Render only what is worth photographing.** The dock and the assembly are hand-built primitives
 wearing the placeholder material, so their renders were a flat diamond and a flat hexagon —
 faithful to the model and worse than the client's own missing-icon sprite. The assembly took
-`[HasIcon("Crafting Table")]` instead; the dock draws the default until its model is real.
+`[HasIcon("Crafting Table")]` instead. Note what that attribute has not yet bought: the
+flat-colour rows for the assembly and the dock are still in the icon table, their PNGs are
+still on disk, and their scene objects are still under the "Items" root, so the bundle keeps
+registering art under both class names. By the rule two sections above, that registered art is
+what every class-name-keyed surface draws, whatever the attribute says. Removing the two rows
+is the remaining half of the assembly's fix and the whole of the dock's.
 
 ### When the art really is new
 
@@ -485,12 +490,15 @@ Giving a new entry an icon, in order:
 [Weight(1000)]
 [LocDisplayName("Advanced Electronics Skill Book")]
 [Ecopedia("Items", "Skill Books", createAsSubPage: true)]
-[HasIcon("Skill Book")]                // vanilla's generic book; nothing ships
+[HasIcon("ElectronicsSkillBook")]      // every skill book is one picture; nothing ships
 public partial class AdvancedElectronicsSkillBook : SkillBook<AdvancedElectronicsSkill, AdvancedElectronicsSkillScroll> {}
 ```
 
-Note the space in the name. `"ElectronicsSkillBook"` would also render, and would be wrong —
-that is the Electronics skill's book, not a neutral one.
+Note the absence of a space. `"Skill Book"` would also render and would be wrong: it is the
+grey-plate tag icon this document warns about above, and it sits visibly apart from the olive
+and navy plates around it in an inventory slot. `ElectronicsSkillBook` is the item-plated name,
+and because every skill book in the atlas is the same drawing it borrows no specialty's
+identity — which is the reasoning the table above records, and the name the mod ships.
 
 **Vanilla's own precedent, two classes sharing one icon:**
 

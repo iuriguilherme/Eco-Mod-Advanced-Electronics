@@ -1,6 +1,7 @@
 ---
 title: "[Serialized] needs somewhere to write the value back, so a computed property is never a candidate"
 date: 2026-08-07
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -42,10 +43,12 @@ computes its value on every read has nothing to write into. Every valid use in t
 The three that broke the load had none — they are expression-bodied and recomputed each time:
 
 ```csharp
-public bool IsWorking =>                                                    // DroneLifecycle.cs:99
-    this.stateMachine.Status == DroneStatus.Surveying || ...;
-public bool ShouldSample => this.stateMachine.ShouldSample;                 // DroneLifecycle.cs:109
-public bool Operating => this.Parent is DroneDockObject dock               // SurveyComponent.cs:78
+public bool IsWorking =>                                                   // DroneLifecycle.cs:213
+    this.stateMachine.Status == DroneStatus.OnStation
+    || (this.stateMachine.Status == DroneStatus.EnRoute
+        && this.stateMachine.TravelTarget == DroneTravelTarget.District);
+public bool ShouldSample => this.stateMachine.ShouldSample;                // DroneLifecycle.cs:223
+public bool Operating => this.Parent is DroneDockObject dock               // SurveyComponent.cs:85
                          && dock.DroneIsWorking;
 ```
 
@@ -61,6 +64,15 @@ engine knows about", which is why one attribute looks right for both:
 
 **The test:** if the value can be recomputed from something you already have, it is a signal. Persisting
 it creates a second source of truth that will eventually disagree with the first.
+
+The area, claim and sweep rework of early September applied this rule across several dozen new
+members without an exception, and the code now carries the reasoning itself:
+`EcoServerMod/AdvancedElectronics/SurveyAreaEntry.cs` explains beside the claim pair that both
+members carry a setter for exactly this reason, and marks the derived neighbours — whether the
+claim is held, the area's kind wrapper, the work total — as deliberately not serialized, because
+the members they are computed from already are. That is the shape to copy: persist the flat
+primitive the serializer can write into, and let everything a reader actually wants be a property
+over it.
 
 **Grep for the load line before hunting for an exception.** A mod that fails during type registration
 never reaches the point where errors are attributed to it, so its absence is the only evidence:
@@ -100,7 +112,7 @@ The same booleans, on both sides of the line:
 
 ```csharp
 // Signal — recomputed, pushed to the client on change, never stored.
-public bool IsWorking => this.stateMachine.Status == DroneStatus.Surveying;
+public bool IsWorking => this.stateMachine.Status == DroneStatus.OnStation || ...;
 // ... elsewhere, on transition:
 this.Parent.SetAnimatedState("IsWorking", isWorking);
 
@@ -123,6 +135,8 @@ broken:    (no such line anywhere in the log)
   rule whose omission fails silently: a `WorldObjectComponent` missing `[Serialized]` and `[NoIcon]`
   renders an empty window rather than reporting anything. Same attribute, opposite error — there the fix
   is adding it, here it is not adding it, and neither direction produces a usable message.
+- `docs/solutions/runtime-errors/worldobjectcomponent-missing-attributes-empty-window.md` — the
+  dedicated entry for that opposite case, reached from the symptom rather than from the checklist.
 - `docs/solutions/architecture-patterns/persist-derived-data-as-serialized-snapshot-on-its-owner.md` —
   when derived data *should* be persisted. The distinction is a settable snapshot field written
   deliberately, never the computed property itself.

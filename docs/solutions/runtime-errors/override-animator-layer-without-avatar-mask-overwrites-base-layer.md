@@ -1,6 +1,7 @@
 ---
 title: "A correct animation was computed and then painted over by an unmasked Override layer"
 date: 2026-08-08
+last_updated: 2026-09-15
 category: runtime-errors
 module: AdvancedElectronics
 problem_type: runtime_error
@@ -69,7 +70,7 @@ GUID — it matches `HRVSTR_BladesMask.mask.meta`, and is not a commit hash:
 
 (The rest of that diff is a state node moving 30 pixels in the Animator graph.) The current state of the layer block, at `HRVSTR_Animator_Controller.controller:649-660`, reads `m_Name: Blades Layer` with the mask assigned, `m_BlendingMode: 0` (Override), and `m_DefaultWeight: 1`. The base layer at `:637-648` still carries `m_Mask: {fileID: 0}` and `m_DefaultWeight: 0`, which is correct and expected — a base layer needs no mask because it has nothing above it to defer to, and Unity serializes the base layer's weight as 0 while treating it as implicitly 1.
 
-**As of this writing the fix is uncommitted working-tree state on the `feat/drone-animation-dock-footprint` branch**: the controller shows as modified and the mask asset (with its `.meta`) is still untracked. It is verified working in game but is not yet in any commit, so a fresh clone of the branch does not have it.
+The fix has since been committed. `aac18e3` carries both the controller's mask assignment and the mask asset with its `.meta`, and its message states the mechanism in the same terms as this document. It travelled with an unrelated re-export of the HRVSTR chassis, which is worth knowing if you go looking for it by subject line.
 
 A practical speed bump, reported during the session: an Avatar Mask has to exist as an asset before it can be assigned. The layer's mask slot offers nothing to pick from until you create one (Assets > Create > Avatar Mask, or by importing from the model's rig), which reads at first glance as "this Unity version has no mask option here."
 

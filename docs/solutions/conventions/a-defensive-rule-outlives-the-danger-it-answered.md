@@ -1,7 +1,7 @@
 ---
 title: "A defensive rule outlives the danger it answered, and its comment argues for keeping it"
 date: 2026-08-01
-last_updated: 2026-09-06
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -20,8 +20,11 @@ related_components: [EcoServerMod/AdvancedElectronics]
 
 ## Context
 
-The Drone Dock lets a player pull the drone item out at any moment, including while the drone is
-away working. That is deliberate, and the reason is recorded at `EcoServerMod/AdvancedElectronics/DroneDock.cs:507`:
+The Drone Dock once let a player pull the drone item out at any moment, including while the
+drone was away working. That was deliberate, and the reason was recorded in a comment on the
+dock's despawn path. The comment is no longer in the tree — it was replaced when the rule
+reversed, which is the repair this entry goes on to prescribe — so it is quoted here as the
+evidence that produced the learning:
 
 > Removing the item is always allowed (never blocked): a drone that is out roaming can glitch,
 > strand, or fail to path home, so removal is treated as "reset" rather than "recall".
@@ -166,9 +169,14 @@ structure can also expire by having been built on a **defect** rather than on a 
 kind ages worst of all, because fixing the defect silently turns the mitigation into dead weight
 that still looks principled.
 
-The live comment at `EcoServerMod/AdvancedElectronics/DroneDock.cs` still carries the unqualified
-claim, so this entry's own advice — delete the expired justification rather than only changing the
-behaviour — is currently outstanding against the very comment it was written about.
+The replacement comment still carries the unqualified claim, and it is now in two places rather
+than one: `EcoServerMod/AdvancedElectronics/DroneDock.cs:999-1009` on the despawn path, and
+`EcoServerMod/AdvancedElectronics/DroneModuleComponent.cs:340-351` on the inventory restriction
+that enforces the rule. Both say a return can no longer fail without naming the layer that
+guarantee covers. So this entry's own advice — delete the expired justification rather than only
+change the behaviour — is outstanding against both copies of the very comment it was written
+about, and the copying is itself the hazard: a justification that has been duplicated is one a
+later reader finds twice and trusts more.
 
 ## Related
 

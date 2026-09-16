@@ -1,7 +1,7 @@
 ---
 title: "What a server-only Eco mod can and cannot render on the stock client"
 date: 2026-07-24
-last_updated: 2026-08-16
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -89,7 +89,7 @@ generated view fails to decode, and the failure takes the whole object with it: 
   Names in the shipped set include `Table`, `IEnumerable`, `ButtonList`, `ExpandableList`,
   `ButtonGrid`, `HorzBox`, `NestedMeter`, `Range`, `Boolean`, `Color`, `ItemInput`,
   `SectionHeader`, `LinedHeader`, `StringDescription`, `LongString`, `StringPlaque`. **This
-  project used four.** Anything below that reads as "a mod tab can only do X" should be checked
+  project used four when that was written, and six in the shipped tabs today.** Anything below that reads as "a mod tab can only do X" should be checked
   against that list before it is believed — including the two bullets that follow.
 
   *Verified by reading the client and the SLG wiki on 2026-07-27. The live probe has since run —
@@ -172,7 +172,8 @@ generated view fails to decode, and the failure takes the whole object with it: 
 - **But a native item PICKER does render from a mod tab — the constraint is the DATA, not the
   tab.** `[Eco, AllowEmpty, RequiredTag(...)] GamePickerList<BlockItem>` renders the same
   multi-select popup a civic law uses, from an ordinary mod `WorldObjectComponent` tab, and its
-  selection reads back server-side (`SurveyResultsComponent.MaterialTargets`, confirmed live).
+  selection reads back server-side (`SurveyComponent.MaterialTargets`, declared at
+  `EcoServerMod/AdvancedElectronics/SurveyComponent.cs:194-196`, confirmed live).
   This overturns an earlier reading of this doc that treated pickers as tab-unreachable. The
   real rule is narrower: a picker's options come from a **client-shared registrar of a viewable
   type** (Item, Deed, Settlement), so it works for globally-registered game types and *not* for
@@ -200,9 +201,13 @@ generated view fails to decode, and the failure takes the whole object with it: 
     observed consumer; it is not what freezes the client's tag data. The `ViewClassInfo` build
     is. The symptom was reported accurately, the cause was not — and the wrong cause made the
     attribute/`.override` route look futile when it is in fact the route that works.
-- **Multiple mod components each get their own tab.** Two mod `WorldObjectComponent`s on one
-  object, each with `CreateComponentTabLoc`, both register and both render (Areas + Results on
-  the Drone Dock, confirmed live). Splitting a crowded tab is a real option.
+- **Multiple mod components each get their own tab.** Several mod `WorldObjectComponent`s on one
+  object, each with `CreateComponentTabLoc`, all register and all render. This was first
+  confirmed live with two tabs on the Drone Dock, and the dock now carries four of them —
+  Survey, Mining, Farming and Crop Ceilings, declared at
+  `EcoServerMod/AdvancedElectronics/SurveyComponent.cs:56`, `MiningComponent.cs:36`,
+  `FarmingComponent.cs:35` and `CropCeilingComponent.cs:40`, and lent to the dock by whichever
+  drone is slotted into it. Splitting a crowded tab is a real option.
 - **`VisibilityParam` works on a mod tab, so members can be conditionally hidden.** A
   `[SyncToView]` bool member plus `VisibilityParam(nameof(ThatBool))` on an `[RPC, Autogen]`
   button hides or shows it client-side; the visibility source must be re-pushed with an explicit
@@ -215,16 +220,16 @@ generated view fails to decode, and the failure takes the whole object with it: 
   `DockReadoutDisplay`) to render arbitrary Unity UI from server-synced states. That is impossible.
   The Eco client is an IL2CPP build and **cannot load mod code at all** — a custom `MonoBehaviour`
   arrives as *"the referenced script is missing"*, which is architectural, not a packaging mistake.
-  See `docs/solutions/architecture-patterns/client-animation-is-driven-by-name-not-by-mod-code.md:37`.
+  See `docs/solutions/architecture-patterns/client-animation-is-driven-by-name-not-by-mod-code.md:39`.
   `DockReadoutDisplay` never ran; it rendered placeholder text forever because nothing could update
   it, and it has been deleted.
 
   What genuinely works in its place is narrower and needs no mod code: the server pushes a named
   state with `SetAnimatedState`, and the client binds it **by name** to an `Animator` parameter of
   the same name. The mod ships a prefab and an animator controller and nothing else. Live at
-  `EcoServerMod/AdvancedElectronics/DroneLifecycle.cs:404`,
-  `EcoServerMod/AdvancedElectronics/DroneMoverComponent.cs:274`, and
-  `EcoServerMod/AdvancedElectronics/DroneDock.cs:839`.
+  `EcoServerMod/AdvancedElectronics/DroneMoverComponent.cs:274`,
+  `EcoServerMod/AdvancedElectronics/DroneLifecycle.cs:558`, and
+  `EcoServerMod/AdvancedElectronics/DroneDock.cs:1171`.
 
 **2. The map *editor* is reachable, and it is a full multi-entry MANAGER, not just a picker.**
 `player.EditMap(MapEditRequest)` opens the same plot editor district/deed editing uses (it runs
@@ -420,7 +425,8 @@ interaction design shaped around a constraint that was not real.
 - When tempted to sync a `List`/`IEnumerable` of a mod type or a primitive to a tab: stop and
   compose text instead, unless every element type has a generated client view.
 - When a design assumes a passive map overlay layer: it is not achievable server-only; move the
-  display to a dock tab or world-space text, or cut it.
+  display to a dock tab or a chat command, or cut it. World-space text is not the fallback it
+  once looked like — see the retraction under surface 1.
 - When a tag-scoped picker renders empty while the server registry looks correct: the tag was
   associated too late for the one-time `ViewClassInfo` build. Move it to a `[Tag]` **attribute**
   (on your own type, or on a vanilla type replaced via a `.override` file) instead of registering
@@ -556,9 +562,19 @@ public void AssignArea1(Player player) => this.ToggleAssign(1);
 this.Changed(nameof(this.AreaExists1));
 ```
 
-Both shapes now live in the single `EcoServerMod/AdvancedElectronics/SurveyComponent.cs`. The
-two-tab `DroneDockObject` this was written against was merged into one Survey tab; the earlier
-`SurveyResultsComponent.cs` and `SurveyAreasComponent.cs` no longer exist.
+The picker shape is still shipped, at
+`EcoServerMod/AdvancedElectronics/SurveyComponent.cs:194-196`. The gated-button shape is not,
+and the reason belongs with it. The two-tab `DroneDockObject` this was written against was
+merged into one Survey tab, and the earlier `SurveyResultsComponent.cs` and
+`SurveyAreasComponent.cs` no longer exist. The pool of per-area assign buttons then went too: a
+fixed pool of editable members over one shared field does not work, because the client writes
+every editable member back on any interaction, so the trailing writes undo the first one. What
+replaced it is a view-only cursor beside explicit Assign and Unassign buttons, at
+`EcoServerMod/AdvancedElectronics/SurveyComponent.cs:149` and `:219`, `:255`. `VisibilityParam`
+itself is still a real mod-tab capability and the reasoning above still describes it
+accurately; it simply has no live user in this mod any more. See
+`docs/solutions/runtime-errors/n-editable-members-cannot-share-one-field.md` for the failure
+that retired it.
 
 The startup ordering that decides whether a tag reaches the client, from the game source:
 

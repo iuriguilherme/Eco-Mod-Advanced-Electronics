@@ -1,7 +1,7 @@
 ---
 title: "[RequireComponent] is re-enforced on every server load — detaching one deletes it, and its contents, from objects already placed"
 date: 2026-08-10
-last_updated: 2026-08-21
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -210,7 +210,7 @@ What a restart does to an object, by direction of the change:
 | `T` installed dynamically, declared via `IDeclaresMayHaveComponents` / `[MayHaveComponent]` | works | preserved |
 
 The detach in this mod, correct as written because `UIShowcaseComponent` was a probe holding nothing
-worth keeping (`EcoServerMod/AdvancedElectronics/DroneDock.cs:89-94`):
+worth keeping (`EcoServerMod/AdvancedElectronics/DroneDock.cs:98-103`):
 
 ```csharp
 // DETACHED 2026-07-31 for the 0.0.3 release. The probe answered its questions -- which

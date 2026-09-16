@@ -1,7 +1,7 @@
 ---
 title: "Moving a prefab can hand its GUID to a backup copy, and the scene keeps pointing at the backup"
 date: 2026-08-07
-last_updated: 2026-09-06
+last_updated: 2026-09-15
 category: conventions
 module: Assets
 problem_type: convention
@@ -34,8 +34,15 @@ live prefabs are all present (`AdvancedElectronicsAssemblyObject`, `DroneDockObj
 `scripts/validate-name-match.sh` reports `PASS`. In particular `MiningDroneObject`, which the
 table below records as shipping nowhere at all, is present and bound. The incident is kept
 because it is what produced the rule and because the GUID-resolution loop under **Guidance** is
-how you would catch it again; a clean result from that loop today is the expected state, not a
-sign the check is broken.
+how you would catch it again.
+
+Run that loop today and it does not come back clean, which is worth knowing before you read a
+dirty result as a fresh misbinding. The container holds ten entries: the five live prefabs
+above, each bound correctly, and five that resolve to no asset whatsoever. Those five are the
+very GUIDs in the table below — the identities the `Old*` copies had inherited, plus the one no
+asset ever owned. Deleting the backups ended the misbinding, because a slot pointing at nothing
+ships nothing, but it left the dead slots in the list. They are residue rather than a defect,
+and clearing them out of the container is what would let a clean result mean something again.
 
 The gap between those two dates is the reason
 `docs/solutions/workflow-issues/a-fixed-defect-in-the-present-tense-passes-every-check.md` exists.

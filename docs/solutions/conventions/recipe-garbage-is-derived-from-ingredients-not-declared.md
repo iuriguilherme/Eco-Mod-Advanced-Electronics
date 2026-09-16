@@ -1,6 +1,7 @@
 ---
 title: "Recipe garbage is derived from ingredient salvage cost, not declared"
 date: 2026-08-01
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -121,13 +122,20 @@ recipe.Init(
     });
 ```
 
-The other side of the same rule — a `[SalvageCost]` added to an item this session, which now feeds
-every recipe consuming it:
+The other side of the same rule, recorded as a decision not to add one. `BatteryItem`
+deliberately carries no `[SalvageCost]`, and the reason is written above the class
+(`EcoServerMod/AdvancedElectronics/Battery.cs:225-226`):
 
 ```csharp
-[SalvageCost(typeof(CopperScrap), 10.0f, typeof(IronScrap), 10.0f)]
-public partial class AdvancedElectronicsAssemblyItem : WorldObjectItem<AdvancedElectronicsAssemblyObject>, IPersistentData
+/// No [SalvageCost]: adding one would change the derived garbage of every recipe that consumes a
+/// battery, which is not an effect this item is meant to have.
 ```
+
+The one the mod does declare sits on the upgrade module
+(`EcoServerMod/AdvancedElectronics/AdvancedElectronicsUpgrade.cs:100`), which is only ever a
+recipe output, so today it costs the mod nothing downstream. The attribute on
+`AdvancedElectronicsAssemblyItem` is not a counter-example either way: that file is removed from
+compilation by `AdvancedElectronics.csproj:54-56`, so the type is in no shipped assembly.
 
 ## Related
 

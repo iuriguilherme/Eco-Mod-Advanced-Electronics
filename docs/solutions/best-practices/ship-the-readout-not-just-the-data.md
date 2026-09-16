@@ -1,7 +1,7 @@
 ---
 title: A feature whose output the player cannot read is not shipped
 date: 2026-07-20
-last_updated: 2026-09-05
+last_updated: 2026-09-15
 category: best-practices
 module: EcoServerMod
 problem_type: best_practice
@@ -51,6 +51,17 @@ the running system over one that is merely implemented. In this project the orde
 The feature shipped its readout as a chat command first, because the goal was for the data
 to reach the user at all, not to reach them in the most elegant place. Richer surfaces stay
 on the roadmap; the certain one lands first.
+
+The table above is a snapshot of what was known when the choice was made, and the two uncertain
+rows have since been settled — both against. The world-space text was not merely unverified, it
+was impossible: the Eco client is an IL2CPP build and cannot load mod code at all, so the
+MonoBehaviour that was supposed to draw it never ran. The dock tooltip was implemented and then
+retired, and nothing in the mod carries survey content in a tooltip today. What the readout
+rests on now is the pair that were never in doubt: the chat commands in
+`EcoServerMod/AdvancedElectronics/DroneCommands.cs`, and the dock's own component tabs, which
+the drone slotted into the dock lends it. That is the ordering this entry argued for, arriving
+by the route it warned about — the certain channel carried the feature while the two
+speculative ones were spent.
 
 **Include the fields that make the information actionable, not just true.** The first
 readout reported which ore and how concentrated. The user pointed out that depth was
@@ -122,3 +133,6 @@ exists and a feature that is usable.
 - `docs/solutions/workflow-issues/a-test-that-builds-the-input-proves-nothing-about-the-producer.md` —
   the same absent feature arriving from the other end. There the readout was built and unit-tested
   and no producer ever fed it, so the player saw nothing for the mirror-image reason.
+- `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` — the constraint
+  list that decides which channels are available to choose between at all. This entry says ship
+  a readout; that one says which readouts a server-only mod can actually render.

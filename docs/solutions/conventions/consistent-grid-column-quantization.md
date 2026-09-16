@@ -1,7 +1,7 @@
 ---
 title: Use one consistent world-position-to-grid-column quantization function
 date: 2026-07-17
-last_updated: 2026-09-05
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -97,7 +97,7 @@ nothing compares a rounded column against a raw placed-object position across a 
 ## Related
 
 - `docs/solutions/best-practices/eco-013-server-driven-movement.md` — the proven server-driven movement pattern `GridPathfinder`/`DroneMoverComponent` build on; does not itself discuss quantization consistency.
-- `docs/solutions/best-practices/eco-013-reading-district-civics-data.md` — the proven district-read pattern `DistrictAssignment.cs` builds on; predates this quantization finding and does not mention it.
+- `docs/solutions/best-practices/eco-013-reading-district-civics-data.md` — the proven district-read pattern `DistrictAssignment.cs` built on. It predates this finding but no longer ignores it: its Examples section carries a quantization caveat on the truncating `(int)pos.X, (int)pos.Z` cast there and links back here, so the two now agree rather than merely coexist.
 - Flagged in the multi-reviewer code review on PR #1 (`feat/drone-feasibility-spike` -> `main`) as two P1 findings
   (adversarial persona). **Both are closed.** The truncating side was deleted with the district
   scaffold rather than converted, and the arrival comparison was collapsed onto one membership seam;

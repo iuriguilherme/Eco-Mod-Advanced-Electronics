@@ -349,10 +349,11 @@ nothing at all. Its floating name label and map marker still appear, which is th
 knows exactly where it is. The server log stays clean, because nothing failed on the server.
 
 The consequence that makes this worse than a visual bug: the tool that exists to remove
-unremovable objects also cannot see it, so there is no in-game recovery. It is caused by declaration
+unremovable objects also cannot see it, so there is no in-game recovery. Two things cause it. The commoner one is declaration
 shape rather than logic — a component tab the client has no view for, or a component deriving a
-client-drawn base the client cannot resolve — which is why it appears the moment an object is
-placed, on every instance, rather than intermittently.
+client-drawn base the client cannot resolve. The other is an exception part-way through the
+object's own initialization, which leaves it half-built with the same outward signature. Either way
+it appears the moment an object is placed, on every instance, rather than intermittently.
 
 ### Capability Flag
 An engine component with an empty body whose only job is to be present. It has no state, no logic
@@ -467,8 +468,9 @@ borrowed it.
 
 Not to be confused with the base game's **upgrade modules**, which slot into crafting tables to
 grant crafting bonuses. Those are a separate mechanism that happens to share the word: an upgrade
-module changes what a table *costs*, never what it *can do*, and a table admits one by matching the
-module's own slot tag rather than by naming it. When both senses are in play, say "upgrade module"
+module changes what a table *costs*, never what it *can do*. A table enumerates the module types it
+admits; matching on a tag instead is what a mod adds, because the override a mod writes for a
+vanilla table cannot name a type that lives in the mod's own assembly. When both senses are in play, say "upgrade module"
 for the base-game kind and leave "module" for this one.
 
 ### Electric Fuel
@@ -539,7 +541,8 @@ any area's Findings can be read without dispatching the drone there.
 
 Assignment is dock state, not drone state — it is transmitted to whichever drone is docked, so a
 drone can be removed and replaced without the dock forgetting what it was working on. Editing the
-assigned area's geometry restarts the survey as if it had been unassigned and reassigned.
+assigned area's geometry does not restart the survey: the plots the edit keeps retain their readings
+and their place in the pass, and the drone carries on over the new shape.
 
 ### Material Target
 A player-chosen filter over which materials the survey readout displays. It narrows what is shown,

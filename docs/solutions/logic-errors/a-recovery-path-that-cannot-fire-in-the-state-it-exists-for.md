@@ -1,6 +1,7 @@
 ---
 title: "A recovery path guarded on state that only exists when nothing went wrong"
 date: 2026-08-16
+last_updated: 2026-09-15
 category: logic-errors
 module: EcoServerMod
 problem_type: logic_error
@@ -41,9 +42,10 @@ Three distinct observed failures, one underlying shape.
 
 **A drone that loops on a plot it cannot reach.** The job never advanced. `/drone status`
 (`EcoServerMod/AdvancedElectronics/DroneCommands.cs`) reported
-`Mining job: Working, worked 0, skipped 0`, and the dock panel's `ProgressDisplay`
-(`EcoServerMod/AdvancedElectronics/MiningComponent.cs`) agreed with it, while the drone was
-plainly flying around doing something.
+`Mining job: Working, worked 0, skipped 0`, and the dock panel's progress row agreed with it, while the drone
+was plainly flying around doing something. That row was called `ProgressDisplay` at the time and
+is now simply `Progress` (`EcoServerMod/AdvancedElectronics/MiningComponent.cs:71`), the panel
+having since been cut back to four rows.
 
 **A drone that hovers over its own dock indefinitely,** flickering Idle/Unreachable, never
 travelling anywhere.
@@ -110,14 +112,15 @@ The fix gives the strategy a memory of what it *offered*, independent of what it
 `TryGetNextTarget` records every plot it hands out, and `OnArrivalFailed` falls back to it:
 
 ```csharp
-// after -- EcoServerMod/AdvancedElectronics/MiningStrategy.cs
+// after -- EcoServerMod/AdvancedElectronics/MiningStrategy.cs:553
 public void OnArrivalFailed()
 {
     var plot = this.currentShaftPlot ?? this.lastOfferedPlot;
     if (plot == null) return;
 
     this.job.MarkSkipped(plot.Value, SkipCategory.Unreachable);
-    this.currentShaftPlot = null;
+    this.homeDock.PersistMiningExclusions(this.job);
+    this.EndPass();
     this.lastOfferedPlot = null;
 }
 ```
