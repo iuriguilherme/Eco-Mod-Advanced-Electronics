@@ -347,14 +347,16 @@ namespace Eco.Mods.TechTree
             var dock = FindNearestAuthorizedDock(user);
             if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
 
+            // Only names that pick out one crop are accepted. Matching the produce name alone
+            // would let "Plant Fibers" land on whichever of the fiber plants sorts first.
             static string Squash(string s) => (s ?? string.Empty).Replace(" ", string.Empty);
             var wanted = Squash(crop);
             var match = CropCatalog.All.FirstOrDefault(c =>
-                Squash(c.DisplayName).Equals(wanted, StringComparison.OrdinalIgnoreCase)
+                Squash(c.UniqueName).Equals(wanted, StringComparison.OrdinalIgnoreCase)
                 || c.Key.Equals(wanted, StringComparison.OrdinalIgnoreCase));
             if (match == null)
             {
-                user.MsgLocStr($"No crop named '{crop}'. Crops: {string.Join(", ", CropCatalog.All.Select(c => c.DisplayName).Distinct())}");
+                user.MsgLocStr($"No crop named '{crop}'. Crops: {string.Join(", ", CropCatalog.All.Select(c => c.UniqueName))}");
                 return;
             }
 
@@ -366,8 +368,8 @@ namespace Eco.Mods.TechTree
 
             var ceiling = dock.CropCeilingFor(match.Key);
             user.MsgLocStr(ceiling == 0
-                ? $"{match.DisplayName} has no ceiling on {dock.Name} and is harvested without limit."
-                : $"{match.DisplayName} stops being harvested on {dock.Name} at {ceiling} in linked storage.");
+                ? $"{match.UniqueName} has no ceiling on {dock.Name} and is harvested without limit."
+                : $"{match.UniqueName} stops being harvested on {dock.Name} at {ceiling} in linked storage.");
         }
 
         /// <summary>

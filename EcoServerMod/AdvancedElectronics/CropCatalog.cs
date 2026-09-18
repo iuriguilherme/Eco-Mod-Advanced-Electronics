@@ -22,6 +22,16 @@ namespace Eco.Mods.TechTree
 
         public string DisplayName => this.Produce?.DisplayName ?? this.Species.DisplayName;
 
+        /// <summary>
+        /// A name that picks out this crop alone. The produce name when no other crop shares
+        /// it, otherwise the plant's own name -- roughly twenty vanilla plants all yield plant
+        /// fibers, so "Plant Fibers" names none of them in particular.
+        /// </summary>
+        public string UniqueName =>
+            CropCatalog.All.Count(c => c.DisplayName == this.DisplayName) > 1
+                ? (string)this.Species.DisplayName
+                : this.DisplayName;
+
         internal CropEntry(PlantSpecies species, Item produce, Type seedType)
         {
             this.Key = species.Name;
