@@ -335,6 +335,42 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
+        /// Reads or sets one crop's harvest ceiling on the nearest dock (R25). The Crop Ceilings
+        /// tab has a row for every vanilla crop, but its rows are fixed when the mod is built,
+        /// so a crop another mod adds has none; this is its way in, and the tab names it when
+        /// such a crop exists. Works for every crop, row or not. Matches the crop's display
+        /// name or its species name, ignoring case and spaces. Zero removes the ceiling.
+        /// </summary>
+        [ChatSubCommand("Drone", "Read or set a crop's harvest ceiling. 0 removes it. Usage: /drone ceiling <crop>, [amount]", "ceiling", ChatAuthorizationLevel.User)]
+        public static void Ceiling(User user, string crop, int amount = -1)
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
+
+            static string Squash(string s) => (s ?? string.Empty).Replace(" ", string.Empty);
+            var wanted = Squash(crop);
+            var match = CropCatalog.All.FirstOrDefault(c =>
+                Squash(c.DisplayName).Equals(wanted, StringComparison.OrdinalIgnoreCase)
+                || c.Key.Equals(wanted, StringComparison.OrdinalIgnoreCase));
+            if (match == null)
+            {
+                user.MsgLocStr($"No crop named '{crop}'. Crops: {string.Join(", ", CropCatalog.All.Select(c => c.DisplayName).Distinct())}");
+                return;
+            }
+
+            if (amount >= 0 && !dock.SetCropCeiling(match.Key, amount, user))
+            {
+                user.MsgLocStr("You need full access on this drone dock to set its ceilings.");
+                return;
+            }
+
+            var ceiling = dock.CropCeilingFor(match.Key);
+            user.MsgLocStr(ceiling == 0
+                ? $"{match.DisplayName} has no ceiling on {dock.Name} and is harvested without limit."
+                : $"{match.DisplayName} stops being harvested on {dock.Name} at {ceiling} in linked storage.");
+        }
+
+        /// <summary>
         /// Dumps the ITEM TAGS of every material the drone has actually found. Diagnostic: the
         /// material pickers scope their candidate list by a single item tag each, and which tag a
         /// given material carries is not reliably inferable from the game source (block tags and item

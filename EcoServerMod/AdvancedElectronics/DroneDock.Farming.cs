@@ -399,8 +399,22 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public bool SetCropCeiling(string crop, int ceiling, User actingCitizen = null)
         {
-            if (string.IsNullOrWhiteSpace(crop)) return false;
             if (!this.HasFullAccess(actingCitizen)) return false;
+            return this.WriteCropCeiling(crop, ceiling);
+        }
+
+        /// <summary>
+        /// Writes a crop's ceiling without an access check of its own, for the Crop Ceilings
+        /// tab's per-crop rows. Each row is an editable property, and Eco runs a property's
+        /// write as an RPC that has already enforced the row's declared full access before the
+        /// setter is reached -- but it passes the setter no citizen, so the check
+        /// <see cref="SetCropCeiling"/> makes cannot be made there. Nothing else may call this.
+        /// </summary>
+        internal bool WriteCropCeilingFromTab(string crop, int ceiling) => this.WriteCropCeiling(crop, ceiling);
+
+        private bool WriteCropCeiling(string crop, int ceiling)
+        {
+            if (string.IsNullOrWhiteSpace(crop)) return false;
             if (ceiling < 0) ceiling = 0;
 
             var existing = this.CropCeilings.FirstOrDefault(c => string.Equals(c.Crop, crop, StringComparison.Ordinal));
