@@ -120,6 +120,9 @@ namespace Eco.Mods.TechTree
 
         private bool ready;
 
+        /// <summary>Whether the overflow note has been worked out; see <see cref="RefreshAll"/>.</summary>
+        private bool overflowResolved;
+
         /// <summary>The species shown on the last refresh, so visibility is re-pushed only when it changes.</summary>
         private HashSet<string> lastShown = new(StringComparer.Ordinal);
 
@@ -387,10 +390,13 @@ namespace Eco.Mods.TechTree
             if (!this.ready) return;
             if (this.Parent is not DroneDockObject dock) return;
 
-            var shown = this.ShownKeys();
+            // Swapped in before any Changed() fires, so a visibility getter read during the
+            // push already sees the new set.
+            var previous = this.lastShown;
+            this.lastShown = this.ShownKeys();
             foreach (var key in RowKeys)
             {
-                if (shown.Contains(key) != this.lastShown.Contains(key))
+                if (this.lastShown.Contains(key) != previous.Contains(key))
                     this.Changed("Show" + key);
 
                 var value = dock.CropCeilingFor(key);
@@ -400,17 +406,19 @@ namespace Eco.Mods.TechTree
                     this.Changed(key + "Ceiling");
                 }
             }
-            this.lastShown = shown;
 
-            var overflow = CropCatalog.All.Where(c => !RowKeys.Contains(c.Key)).Select(c => c.DisplayName).ToList();
-            var note = overflow.Count == 0
-                ? string.Empty
-                : $"No row here for {string.Join(", ", overflow)}. Set those with /drone ceiling <crop>, <amount>.";
-            if (note != this.OverflowNote)
+            // The catalog and the row set are both fixed for the life of the server, so the
+            // note is worked out once.
+            if (!this.overflowResolved)
             {
-                this.OverflowNote = note;
-                this.Changed(nameof(this.OverflowNote));
-                this.Changed(nameof(this.HasOverflow));
+                this.overflowResolved = true;
+                var overflow = CropCatalog.All.Where(c => !RowKeys.Contains(c.Key)).Select(c => c.DisplayName).ToList();
+                if (overflow.Count > 0)
+                {
+                    this.OverflowNote = $"No row here for {string.Join(", ", overflow)}. Set those with /drone ceiling <crop>, <amount>.";
+                    this.Changed(nameof(this.OverflowNote));
+                    this.Changed(nameof(this.HasOverflow));
+                }
             }
         }
 
@@ -432,7 +440,7 @@ namespace Eco.Mods.TechTree
         /// A row shows when its species exists in this world and the picker is empty or names
         /// that species' harvested item.
         /// </summary>
-        private bool IsShown(string key) => this.ShownKeys().Contains(key);
+        private bool IsShown(string key) => this.lastShown.Contains(key);
 
         private HashSet<string> ShownKeys()
         {
