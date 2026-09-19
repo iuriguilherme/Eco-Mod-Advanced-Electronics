@@ -121,7 +121,7 @@ namespace Eco.Mods.TechTree
         /// dock re-checks the same gate, because an attribute guards the RPC and not the
         /// state operation behind it.
         /// </remarks>
-        [Serialized, Eco(AccessType.FullAccess), UITypeName("Checkbox")]
+        [Serialized, Eco(AccessType.FullAccess), UITypeName("Boolean")]
         public bool LevelFirst
         {
             get => this.SelectedArea()?.LevelFirst ?? false;

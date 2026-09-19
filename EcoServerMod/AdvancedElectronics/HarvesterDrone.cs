@@ -120,6 +120,13 @@ namespace Eco.Mods.TechTree
                 configure:         c => c.Initialize(FuelJoulesPerSecond),
                 proxyInteractions: false),
 
+            // The cargo hold the farm carries produce, seed and dirt in. The farming
+            // strategy is not built without it, so a farm drone with no hold never leaves
+            // the dock and reports "no job strategy for this drone's declared tool".
+            // A dock that already holds a farm drone gets it on the next load: the sync
+            // run at load creates any declared component that is missing.
+            DroneCargo.Installation(),
+
             // The two farming tabs (R2), installed by the drone rather than declared on the
             // dock, so a dock holding a survey or mining drone never shows them. Two tabs
             // because a crop ceiling belongs to the crop and an area's settings belong to
