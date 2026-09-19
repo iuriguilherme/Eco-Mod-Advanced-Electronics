@@ -189,11 +189,16 @@ namespace AdvancedElectronics.Navigation
         /// <c>[filled]</c> (dark blue). That leaves orange as the only saturated hue still free.
         /// Purple was the other candidate and was rejected: it is the same hue as magenta at half
         /// the brightness, so it reads as a variant of <c>[digging]</c> rather than as something
-        /// else entirely. <c>#FF8C00</c> rather than the named <c>orange</c> (<c>#FFA500</c>)
-        /// because the darker value separates further from yellow at a glance.
+        /// else entirely.
+        /// </para>
+        /// <para>
+        /// A dark burnt orange, <c>#7A3300</c>. The first choice, <c>#FF8C00</c>, measured
+        /// 1.02:1 against the tab's tan background (sampled at about <c>#CBA165</c>) and was
+        /// reported unreadable in play; this one measures 3.8:1 while staying in the orange
+        /// family, so it still cannot be taken for a mining rung.
         /// </para>
         /// </summary>
-        public const string FarmColor = "#FF8C00";
+        public const string FarmColor = "#7A3300";
 
         /// <summary>
         /// The word every status carries (R4). A word as WELL as a colour, so no state depends on

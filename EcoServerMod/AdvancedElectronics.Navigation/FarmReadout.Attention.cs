@@ -15,14 +15,18 @@ namespace AdvancedElectronics.Navigation
 
     public static partial class FarmReadout
     {
+        // Dark values on purpose. The tab's background is a light tan (sampled at about
+        // #CBA165), and bright colours vanish on it: the first choices measured 1.1-1.8:1.
+        // These measure 3.6-3.9:1 against that background.
+
         /// <summary>The colour of an area that needs a player. Red: it is the one line a player must not miss.</summary>
-        public const string NeedsYouColor = "#FF5050";
+        public const string NeedsYouColor = "#9E0000";
 
         /// <summary>The colour of an area with work in hand.</summary>
-        public const string WorkingColor = "#7CFC00";
+        public const string WorkingColor = "#14531A";
 
         /// <summary>The colour of an area waiting on something that resolves by itself -- quiet, not alarming.</summary>
-        public const string WaitingColor = "#A0A0A0";
+        public const string WaitingColor = "#4A4A4A";
 
         /// <summary>
         /// Sorts an area's state into working, waiting, or needing a player. Waiting is
