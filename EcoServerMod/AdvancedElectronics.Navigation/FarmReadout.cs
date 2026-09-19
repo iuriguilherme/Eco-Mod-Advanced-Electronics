@@ -8,7 +8,7 @@ namespace AdvancedElectronics.Navigation
     /// precedent: the component holds members and pushes strings, this decides what they
     /// say, and nothing here touches an Eco.* namespace.
     /// </summary>
-    public static class FarmReadout
+    public static partial class FarmReadout
     {
         /// <summary>
         /// One line of the assigned-areas list (R35): the area, its crop, and its markers.

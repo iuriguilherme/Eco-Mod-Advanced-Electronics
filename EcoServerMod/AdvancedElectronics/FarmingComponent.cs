@@ -320,6 +320,11 @@ namespace Eco.Mods.TechTree
 
             var travel = TravelPhrase(dock);
             var status = FarmReadout.FormatJobStatus(job.Status, job.WakeAtHours);
+
+            // Every area stopped on something only a player can clear: the one line on the
+            // tab that must not read like routine.
+            if (job.Status == FarmJobStatus.Blocked)
+                status = $"<color={FarmReadout.NeedsYouColor}>{status} -- see the areas below</color>";
             this.JobStatus = string.IsNullOrEmpty(travel) ? status : $"{status} -- {travel}";
 
             var citizen = dock.StampedCitizen;
@@ -341,8 +346,9 @@ namespace Eco.Mods.TechTree
         {
             var line = FarmReadout.FormatAreaLine(position, readout.State, readout.IsFlat);
 
-            var stall = FarmReadout.FormatStall(readout.State);
-            var detail = string.IsNullOrEmpty(stall) ? FarmReadout.FormatNextAction(readout.State) : stall;
+            // Working, waiting on something that clears by itself, or needing the player --
+            // each in its own colour, and the last one says what to do.
+            var detail = FarmReadout.FormatDetail(readout.State);
 
             return string.IsNullOrEmpty(detail) ? line : $"{line}\n    {detail}";
         }
