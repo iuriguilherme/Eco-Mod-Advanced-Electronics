@@ -107,6 +107,9 @@ namespace AdvancedElectronics.Navigation
                     // The pass's own words, not a supply clause wrapped round them.
                     return $"levelling stopped -- {area.UnfitCondition}";
 
+                case FarmStallReason.BlocksRefused:
+                    return $"stopped -- every block here was refused: {area.UnfitCondition}";
+
                 case FarmStallReason.PackRejected:
                     return "stopped -- the drone built an action its own safety checks refused; this is a bug, please report it";
 

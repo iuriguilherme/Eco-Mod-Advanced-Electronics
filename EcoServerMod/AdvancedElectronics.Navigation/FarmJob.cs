@@ -68,7 +68,17 @@ namespace AdvancedElectronics.Navigation
         ///
         /// Appended rather than inserted: persisted by ordinal.
         /// </summary>
-        PackRejected
+        PackRejected,
+
+        /// <summary>
+        /// Every block in a plot that wanted work was refused, each for a reason the drone
+        /// took as local to that block. Passing one block over is right (R15); passing a
+        /// whole plot over in silence is not -- it read as "nothing to do here" while the
+        /// drone hovered over ground it could not touch. Carries the engine's own words.
+        ///
+        /// Appended rather than inserted: persisted by ordinal.
+        /// </summary>
+        BlocksRefused
     }
 
     /// <summary>Whether the job has work, is waiting, or has hit something a citizen must clear.</summary>
@@ -213,6 +223,16 @@ namespace AdvancedElectronics.Navigation
 
             return new FarmAreaState(
                 areaName, RequireCrop(crop), FarmStallReason.LevelPassBlocked, unfitCondition: detail);
+        }
+
+        /// <summary>Every block in the plot was refused; the detail is the engine's message.</summary>
+        public static FarmAreaState BlocksRefused(string areaName, string crop, string detail)
+        {
+            if (string.IsNullOrEmpty(detail))
+                throw new ArgumentException("A plot refused block by block names the refusal.", nameof(detail));
+
+            return new FarmAreaState(
+                areaName, RequireCrop(crop), FarmStallReason.BlocksRefused, unfitCondition: detail);
         }
 
         public static FarmAreaState RefusedByLaw(string areaName, string crop) =>

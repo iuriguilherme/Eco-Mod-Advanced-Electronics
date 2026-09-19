@@ -217,6 +217,10 @@ namespace Eco.Mods.TechTree
             var ledger = this.homeDock.ReadCropCeilings();
             var stored = this.homeDock.CountInLinkedStorage(area.Crop);
 
+            // The first per-block refusal's own words, kept so a plot refused block by
+            // block can say why instead of falling through to "nothing to do here".
+            string firstRefusal = null;
+
             foreach (var column in ColumnsIn(plot))
             {
                 var outcome = this.Evaluate(area, column, ledger, stored);
@@ -238,7 +242,13 @@ namespace Eco.Mods.TechTree
                     // R15: a block the drone cannot work is SKIPPED, and does not fail the
                     // area around it. Only a refusal that would repeat everywhere is worth
                     // stopping for -- a law, a property boundary, an empty store.
-                    if (!this.IsAreaWide(performed.Value, citizen)) continue;
+                    if (!this.IsAreaWide(performed.Value, citizen))
+                    {
+                        firstRefusal ??= string.IsNullOrWhiteSpace(performed.Value.Detail)
+                            ? $"{outcome.Action.ToString().ToLowerInvariant()} was refused with no reason given"
+                            : performed.Value.Detail;
+                        continue;
+                    }
 
                     this.RecordStall(area, performed.Value.Stall, performed.Value.MaterialName);
                     return ParkedWorkOutcome.PlotFailed;
@@ -250,6 +260,15 @@ namespace Eco.Mods.TechTree
                 this.InvalidatePeek();
                 this.CheckHold();
                 return this.holdFull ? ParkedWorkOutcome.PlotDone : ParkedWorkOutcome.StillWorking;
+            }
+
+            // Work was wanted and every attempt was refused. Passing one block over is
+            // right; passing the whole plot over without a word is what left the tab
+            // reading "nothing to do here" while the drone hovered over the ground.
+            if (firstRefusal != null)
+            {
+                this.RecordStall(area, FarmStallReason.BlocksRefused, firstRefusal);
+                return ParkedWorkOutcome.PlotFailed;
             }
 
             // Nothing in this plot wants doing. Whatever is growing here is the reason, and
@@ -304,12 +323,19 @@ namespace Eco.Mods.TechTree
             public Type MaterialType { get; }
             public string MaterialName { get; }
 
-            public PerformRefusal(FarmStallReason stall, Type materialType = null, string materialName = null)
+            /// <summary>The engine's own message for the refusal, when it gave one.</summary>
+            public string Detail { get; }
+
+            public PerformRefusal(FarmStallReason stall, Type materialType = null, string materialName = null, string detail = null)
             {
                 this.Stall = stall;
                 this.MaterialType = materialType;
                 this.MaterialName = materialName;
+                this.Detail = detail;
             }
+
+            public PerformRefusal WithDetail(string detail) =>
+                new PerformRefusal(this.Stall, this.MaterialType, this.MaterialName, detail);
         }
 
         /// <summary>Performs one action, returning null on success or the refusal to classify.</summary>
@@ -351,7 +377,7 @@ namespace Eco.Mods.TechTree
                         citizen, this.harvestArm, this.SourceInventory(citizen));
                     return result.Outcome == PlacementOutcome.Succeeded
                         ? null
-                        : Refusal(result.RefusalStage, typeof(DirtItem), "dirt");
+                        : Refusal(result.RefusalStage, typeof(DirtItem), "dirt").WithDetail(result.Message);
                 }
 
                 case FarmAction.Plow:
@@ -359,7 +385,7 @@ namespace Eco.Mods.TechTree
                     var result = this.farming.Plow(ground, citizen, this.harvestArm);
                     return result.Outcome == FarmActionOutcome.Succeeded
                         ? null
-                        : Refusal(result.RefusalStage);
+                        : Refusal(result.RefusalStage).WithDetail(result.Message);
                 }
 
                 case FarmAction.Sow:
@@ -368,7 +394,7 @@ namespace Eco.Mods.TechTree
                     var result = this.farming.Sow(ground, area.Crop, citizen, this.harvestArm, this.SourceInventory(citizen));
                     return result.Outcome == FarmActionOutcome.Succeeded
                         ? null
-                        : Refusal(result.RefusalStage, seedType, $"{CropCatalog.DisplayNameFor(area.Crop)} seed");
+                        : Refusal(result.RefusalStage, seedType, $"{CropCatalog.DisplayNameFor(area.Crop)} seed").WithDetail(result.Message);
                 }
 
                 case FarmAction.Harvest:
@@ -376,7 +402,7 @@ namespace Eco.Mods.TechTree
                     var result = this.farming.Harvest(above, citizen, this.harvestArm, this.hold);
                     return result.Outcome == FarmActionOutcome.Succeeded
                         ? null
-                        : Refusal(result.RefusalStage);
+                        : Refusal(result.RefusalStage).WithDetail(result.Message);
                 }
 
                 default:
@@ -681,6 +707,7 @@ namespace Eco.Mods.TechTree
                     break;
                 case FarmStallReason.UnfitGround:
                 case FarmStallReason.LevelPassBlocked:
+                case FarmStallReason.BlocksRefused:
                     area.LastUnfitCondition = detail;
                     break;
             }

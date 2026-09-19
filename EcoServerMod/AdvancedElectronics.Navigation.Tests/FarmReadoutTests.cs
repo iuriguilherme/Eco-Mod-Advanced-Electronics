@@ -25,7 +25,8 @@ namespace AdvancedElectronics.Navigation.Tests
             FarmAreaState.RefusedByProperty(North, Corn),
             FarmAreaState.HeldByOverlap(North, Corn, heldPlotCount: 3),
             FarmAreaState.LevelPassBlocked(North, Corn, "plants are still standing here; clear them first"),
-            FarmAreaState.Skipped(North, Corn)
+            FarmAreaState.Skipped(North, Corn),
+            FarmAreaState.BlocksRefused(North, Corn, "You are not authorized to plow here.")
         };
 
         [Fact]
@@ -226,6 +227,18 @@ namespace AdvancedElectronics.Navigation.Tests
 
             Assert.Contains("plants are still standing here", text);
             Assert.DoesNotContain("linked storage", text);
+        }
+
+        [Fact]
+        public void APlotWhoseEveryBlockWasRefusedSaysSoInTheEnginesWords()
+        {
+            // Every column of a plot refused one at a time used to fall through to the
+            // growth wait, and with nothing growing the area read "nothing to do here".
+            var text = FarmReadout.FormatStall(
+                FarmAreaState.BlocksRefused(North, Corn, "You are not authorized to plow here."));
+
+            Assert.Contains("You are not authorized to plow here.", text);
+            Assert.DoesNotContain("nothing to do", text);
         }
 
         [Fact]

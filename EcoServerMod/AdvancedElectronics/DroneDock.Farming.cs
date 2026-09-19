@@ -666,6 +666,9 @@ namespace Eco.Mods.TechTree
                         area.Name, cropName, area.LastUnfitCondition ?? "the pass cannot run");
                 case FarmStallReason.PackRejected:
                     return FarmAreaState.PackRejected(area.Name, cropName);
+                case FarmStallReason.BlocksRefused:
+                    return FarmAreaState.BlocksRefused(
+                        area.Name, cropName, area.LastUnfitCondition ?? "no reason was given");
                 case FarmStallReason.LawRefusal:
                     return FarmAreaState.RefusedByLaw(area.Name, cropName);
                 case FarmStallReason.PropertyRefusal:
