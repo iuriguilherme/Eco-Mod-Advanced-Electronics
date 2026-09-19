@@ -146,6 +146,17 @@ namespace Eco.Mods.TechTree
         private readonly Dictionary<string, int> lastValues = new(StringComparer.Ordinal);
 
         /// <summary>
+        /// What the tab is for, first thing a player reads. StringDisplay rather than
+        /// StringDescription: the latter looks read-only but is editable, and crashes on the
+        /// first keystroke without a setter (docs/solutions/runtime-errors/autogen-template-binding-contract.md).
+        /// </summary>
+        [SyncToView, Autogen, UITypeName("StringDisplay")]
+        public string Intro { get; private set; } =
+            "Set how much of each crop to keep in storage. When linked storage holds that many, " +
+            "the drone stops harvesting that crop and leaves it growing. 0 means no limit. " +
+            "Pick crops below to show only their rows.";
+
+        /// <summary>
         /// Filters which crop rows appear; empty shows every crop. Scoped to the stock "Crop"
         /// tag for the reason recorded on the survey tab: the client filters against the tag
         /// set built while the controller manager is constructed, so a tag associated at
@@ -393,6 +404,7 @@ namespace Eco.Mods.TechTree
         {
             base.Initialize();
             this.ready = true;
+            this.Changed(nameof(this.Intro));
             this.RefreshAll();
         }
 
