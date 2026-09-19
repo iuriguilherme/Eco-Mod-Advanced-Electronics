@@ -16,7 +16,7 @@
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <EcoRefVersion>0.14.0.0</EcoRefVersion>
+    <EcoRefVersion>0.14.1.1</EcoRefVersion>
     <EcoRefSha>117e9f7401acfa0584af9e1c835b1962e44a8b48</EcoRefSha>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>

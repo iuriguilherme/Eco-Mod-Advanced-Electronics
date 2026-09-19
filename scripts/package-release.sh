@@ -44,11 +44,13 @@
 
 set -euo pipefail
 
-VERSION="0.3.0"
+VERSION="0.4.0"
 # The version this is BUILT AND TESTED AGAINST, which is what the filename and the README
 # claim. 0.3.0 shipped labelled 0.14.0.0 and was in fact live-tested on 0.14.0.3; corrected
-# here rather than by re-cutting a released zip.
-GAME_VERSION="0.14.0.3"
+# here rather than by re-cutting a released zip. 0.4.0 compiles against reference assemblies
+# gathered from the 0.14.1.1 tag and is live-tested on a 0.14.1.1 server, so for this release
+# the two finally agree.
+GAME_VERSION="0.14.1.1"
 FORCE=0
 
 while [ $# -gt 0 ]; do
@@ -132,7 +134,8 @@ cp LICENSE                                           "$MODDIR/LICENSE.txt"
 cp LICENSE-ART                                       "$MODDIR/LICENSE-ART.txt"
 
 cat > "$MODDIR/README.txt" <<TXT
-Advanced Electronics — an Eco mod adding an autonomous flying survey drone.
+Advanced Electronics — an Eco mod adding autonomous flying drones that survey,
+mine and farm.
 Version ${VERSION}, built for Eco ${GAME_VERSION}.
 
   Mod page: https://mod.io/g/eco/m/advanced-electronics
@@ -152,80 +155,95 @@ Version ${VERSION}, built for Eco ${GAME_VERSION}.
   the whole world's load with it. That risk is inherent to updating this mod and
   does not go away because a particular release happens to be gentle.
 
-  *** THIS VERSION SPECIFICALLY: the Drone Dock's component set CHANGED.   ***
+  *** THIS VERSION SPECIFICALLY: what a Drone Dock STORES changed shape.   ***
   *** Remove every Drone Dock with admin tools BEFORE updating, or start   ***
-  *** a fresh world.                                                      ***
+  *** a fresh world.                                                       ***
 
-  Unlike 0.2.0, this release is not a gentle one for placed objects. The dock
-  gained two components and had a third replaced: its link component is now the
-  game's own shared one, so the storage links you had configured are held by a
-  component the dock no longer declares. A component a class no longer declares
-  is stripped from placed objects at the next load, together with its contents.
+  Survey areas moved. In 0.3.0 the ground record was split between the docks
+  that worked it; in 0.4.0 it lives on the area itself, and it carries fields a
+  0.3.0 save never wrote.
 
-  This was observed during development, not inferred: a dock saved before the
-  change failed to initialise afterwards. That failure is now contained to the
-  dock rather than aborting server startup, but the dock itself comes up wrong --
-  no storage links, and no link radius.
+  ONE thing is carried across for you: which plots a mining dock had already
+  dug. That record moved from the dock to the area, and 0.4.0 folds an old
+  save's copy into its new home the first time it can — without it a drone would
+  re-dig every shaft it had already finished.
 
-  Survey areas and findings live on the dock too. Removing the dock discards
-  them either way; that is the cost of this update.
+  Everything else a 0.3.0 save does not contain simply starts empty, and that
+  has NOT been tested against a real 0.3.0 world. A dock carried across can come
+  up without its survey data, its claims or its storage links. Removing the
+  docks first is still the only path this release can promise.
+
+  Survey areas and findings are discarded when the dock is removed; that is the
+  cost of taking the safe path.
 
   BACK UP YOUR SAVE BEFORE UPDATING.
 
-WHAT IS NEW IN 0.3.0
+WHAT IS NEW IN 0.4.0
 
-  THE MINING DRONE
+  THE FARM DRONE
 
-  - NEW DRONE: the Mining Drone, crafted at the Robotic Assembly Line. Slot it
-    into a Drone Dock and the dock grows a Mining tab instead of the Survey one.
-  - It digs a shaft per plot: a 3x3 opening at the surface and the full 5x5
-    beneath it, fifteen layers down, and it keeps everything it breaks.
-  - IT MINES AS YOU. Every removal is performed as the citizen who assigned the
-    area, using a Mining Arm carrying the game's own excavation tag. Settlement
-    laws and private property refuse it exactly as they refuse that citizen
-    digging by hand, and a refused plot is recorded with the reason rather than
-    silently skipped. A law written against excavation tools can name the Mining
-    Arm directly.
-  - It works from a survey. A mining dock consumes areas published by a SURVEY
-    dock you own, and only mines plots that dock has actually surveyed.
-  - Survey again to go deeper. One pass takes fifteen layers; re-surveying the
-    pit floor opens the next fifteen, and repeating reaches bedrock.
-  - It unloads into linked storage and waits at the dock when there is no room,
-    rather than stopping mid-area.
+  - NEW DRONE: the Farm Drone, crafted at the Robotic Assembly Line. Slot it
+    into a Drone Dock and the dock grows a Farming tab.
+  - It plows, sows and harvests an assigned area unattended, one crop per area,
+    waking on growth and on storage rather than running on a fixed clock.
+  - IT FARMS AS YOU, the way the Mining Drone mines as you. Every block action
+    is performed as the citizen who assigned the area, through a Harvest Arm
+    carrying the game's own farming tags, so settlement laws and private
+    property refuse it exactly as they refuse that citizen working by hand. A
+    law written against farming tools can name the Harvest Arm directly.
+  - IT PUTS BLOCKS BACK -- the verb this mod never had. A level pass flattens an
+    area to its own median height, and desert sand is re-laid as dirt before it
+    is plowed.
+  - CROP CEILINGS: a per-crop cap on how much the drone keeps, so a farm stops
+    at the amount you asked for instead of filling every container you own.
+  - It refuses to sow ground the crop cannot live on, and says so, rather than
+    planting into ground that will never grow.
+  - NEW COMMAND: /drone farm reports why an idle farm area is idle.
 
-  LINKED STORAGE ON THE DOCK
+  THE AREA KNOWS ITS OWN STATE
 
-  - The dock's Storage tab now has the game's own per-target Take From / Put
-    Into controls, so you choose which containers the drone unloads into. This
-    is the standard link UI, not a mod-specific one.
+  - An area's ground record -- per-plot findings, what has been mined, what was
+    refused, its kind, and its claim -- now lives on the area rather than being
+    split between docks. One lifecycle status is derived from it and rendered
+    the same way on every tab: [surveyed], [digging], [mined], [cleared],
+    [empty], [farm].
+  - Ground is claimed at assignment, before a single block moves, and two areas
+    wanting the same ground are detected rather than quietly fighting over it.
+  - An area can change kind, so ground surveyed for mining can be turned over to
+    farming without redrawing it.
+  - The Farming tab says whether an area is working, waiting, or needs you, and
+    names what is missing: no seed, no room, ground it cannot use.
 
-  ADMIN CONTROL
+  KEEP FARMING AND MINING AREAS APART
 
-  - NEW COMMAND: /drone haltmining on|off stops every mining drone on the
-    server. Admin-only and server-wide by design -- it reaches docks you have no
-    access to, which is the point. It survives a restart, and a halted dock says
-    so. See the Server administration notes in the source README.
+  - Do not draw a farming area over ground a mining dock works, or the other way
+    round. The drones do not coordinate over shared ground yet: the rules meant
+    to keep one kind of area out of the other's way are not finished, and two
+    areas over the same plots can leave a dock refused ground it should have, or
+    put two drones on the same blocks. Keep the areas separate and neither
+    happens.
 
-  THE PANELS
+  GROUND CHANGED BY SOMEONE ELSE
 
-  - The Survey tab is select-then-assign: move the selector to read any area's
-    findings, then press Assign Selected Area to send the drone. Moving the
-    selector no longer redirects a working drone, which it used to.
-  - Findings list each material with its item icon, at a larger size.
-  - Areas are marked: yellow [assigned], green [mined], red [unreachable].
-  - Drone status is written in words -- "flying to the area", "surveying",
-    "returning to dock" -- instead of internal state names.
-  - Drone Docks now appear on the minimap.
-  - A survey drone unassigns itself when its sweep finishes, so a completed area
-    does not restart on the next server load.
+  - The mod reacts only to ground its own drones changed. A ground change it did
+    not make is ignored entirely, and a drone learns at the work site that the
+    survey no longer holds.
+  - When that happens the survey is MARKED as out of date. Its figures are kept
+    exactly as recorded and labelled old, not recalculated and not deleted.
+
+  ICONS
+
+  - The mod's items, drones, dock and tech-tree entries draw icons instead of
+    the client's missing-icon sprite. Where the mod's entry is the game's own
+    concept -- the skill, its book and scroll -- it names the game's existing
+    art rather than shipping a copy.
 
   NOT IN THIS RELEASE
 
-  - The Harvest Drone exists in the source but is not craftable.
-  - Drones do not put anything back: no backfilling spoil, and no building up a
-    safety rim around a finished pit. Both need the drone to place blocks, which
-    it cannot yet do.
   - The Advanced Electronics Assembly is still excluded from the build.
+  - Drones still do not backfill spoil or build a safety rim around a finished
+    pit, though the Farm Drone's level pass now proves the placement path works.
+  - There are still NO SAVE MIGRATIONS. See the warning above.
 
   This version is also known to leave orphaned objects in the world --
   drones that outlive their dock, or objects an update no longer
