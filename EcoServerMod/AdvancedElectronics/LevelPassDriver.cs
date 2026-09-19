@@ -108,40 +108,11 @@ namespace Eco.Mods.TechTree
         /// <summary>Runs one bounded chunk of the pass.</summary>
         public LevelPassResult Tick()
         {
-            if (!this.area.LevelFirst) return LevelPassResult.NotRequested();
-
-            // Full access, re-checked here: the pass is destructive and runs for many
-            // dispatches, so the citizen it acts as must still be allowed to act.
-            if (!this.dock.FarmStampIsValid())
-                return LevelPassResult.Blocked(
-                    FarmStallReason.PropertyRefusal, "the stamped citizen no longer has access to this dock");
+            var check = this.Check(out var columns);
+            if (check.Outcome == LevelPassOutcome.Complete) return this.CompleteAsFlat();
+            if (check.Outcome != LevelPassOutcome.Working) return check;
 
             var citizen = this.dock.StampedCitizen;
-
-            var columns = this.SampleColumns();
-            if (columns.Count == 0)
-                return LevelPassResult.Blocked(FarmStallReason.LevelPassBlocked, "the area covers no ground");
-
-            // Flat ground has nothing to level, so it completes before any other check:
-            // a plant on ground the pass would never touch is no reason to refuse (R21).
-            // An unstarted pass is judged against the target it would pin; a started one
-            // against the target it already pinned.
-            var targetNow = this.area.LevelPassStarted
-                ? this.area.LevelTargetHeight
-                : LevelPlan.Build(columns).TargetHeight;
-            if (LevelPlan.ForTarget(columns, targetNow).IsLevel)
-                return this.CompleteAsFlat();
-
-            // Only the columns the pass will change matter, and they are known before any
-            // plant is looked at: a column already at the target is never dug or filled.
-            // A plant on a changed column is cleared the way a machete clears it -- the
-            // dig and place services destroy it with the engine's own harvest action and
-            // no yield, so a law against it still applies. A tree is the exception: a
-            // machete cannot clear one, so the pass stops and names it instead of felling
-            // it. Re-checked every dispatch, since the columns are re-sampled anyway.
-            if (this.AnyTreeStanding(columns.Where(c => c.SurfaceY != targetNow)))
-                return LevelPassResult.Blocked(
-                    FarmStallReason.LevelPassBlocked, "a tree stands on ground that must be levelled; fell it first");
 
             if (!this.area.LevelPassStarted)
             {
@@ -174,6 +145,54 @@ namespace Eco.Mods.TechTree
             this.area.LevelFirst = false;
             this.area.ClearLevelPass();
             return LevelPassResult.Complete();
+        }
+
+        /// <summary>
+        /// What the pass would do right now, read from the world without changing it:
+        /// NotRequested, Blocked with its reason, Complete when the ground is already level,
+        /// or Working when there is levelling to do. The strategy asks this when choosing
+        /// where to go, so an area whose block has since cleared is offered again instead
+        /// of staying skipped on a stall recorded under different conditions.
+        /// </summary>
+        public LevelPassResult Check() => this.Check(out _);
+
+        private LevelPassResult Check(out List<SurfaceColumn> columns)
+        {
+            columns = null;
+            if (!this.area.LevelFirst) return LevelPassResult.NotRequested();
+
+            // Full access, re-checked here: the pass is destructive and runs for many
+            // dispatches, so the citizen it acts as must still be allowed to act.
+            if (!this.dock.FarmStampIsValid())
+                return LevelPassResult.Blocked(
+                    FarmStallReason.PropertyRefusal, "the stamped citizen no longer has access to this dock");
+
+            columns = this.SampleColumns();
+            if (columns.Count == 0)
+                return LevelPassResult.Blocked(FarmStallReason.LevelPassBlocked, "the area covers no ground");
+
+            // Flat ground has nothing to level, so it completes before any other check:
+            // a plant on ground the pass would never touch is no reason to refuse (R21).
+            // An unstarted pass is judged against the target it would pin; a started one
+            // against the target it already pinned.
+            var targetNow = this.area.LevelPassStarted
+                ? this.area.LevelTargetHeight
+                : LevelPlan.Build(columns).TargetHeight;
+            if (LevelPlan.ForTarget(columns, targetNow).IsLevel)
+                return LevelPassResult.Complete();
+
+            // Only the columns the pass will change matter, and they are known before any
+            // plant is looked at: a column already at the target is never dug or filled.
+            // A plant on a changed column is cleared the way a machete clears it -- the
+            // dig and place services destroy it with the engine's own harvest action and
+            // no yield, so a law against it still applies. A tree is the exception: a
+            // machete cannot clear one, so the pass stops and names it instead of felling
+            // it. Re-checked every dispatch, since the columns are re-sampled anyway.
+            if (this.AnyTreeStanding(columns.Where(c => c.SurfaceY != targetNow)))
+                return LevelPassResult.Blocked(
+                    FarmStallReason.LevelPassBlocked, "a tree stands on ground that must be levelled; fell it first");
+
+            return LevelPassResult.Working();
         }
 
         private LevelPassResult Remove(LevelPlan plan, User citizen)

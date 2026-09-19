@@ -626,10 +626,19 @@ namespace Eco.Mods.TechTree
                     }
 
                     // A level pass refused at its entry check is refused for the whole
-                    // area, so offering its next plot just flies the drone out to be told
-                    // the same thing 24 more times.
-                    if (area.LevelFirst && area.LastStallReason == (int)FarmStallReason.LevelPassBlocked)
-                        continue;
+                    // area, so offering its next plot would fly the drone out to be told the
+                    // same thing 24 more times. Asked of the world now rather than read from
+                    // the last stall: a stall recorded under other conditions -- or by an
+                    // older rule -- would otherwise skip the area forever.
+                    if (area.LevelFirst)
+                    {
+                        var level = this.LevelDriver(area).Check();
+                        if (level.Outcome == LevelPassOutcome.Blocked)
+                        {
+                            this.RecordStall(area, level.Stall ?? FarmStallReason.LevelPassBlocked, level.Detail);
+                            continue;
+                        }
+                    }
 
                     foreach (var plot in area.ToArea().EnumeratePlots())
                     {

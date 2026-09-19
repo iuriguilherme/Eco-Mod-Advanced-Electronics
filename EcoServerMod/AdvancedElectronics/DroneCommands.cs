@@ -394,6 +394,17 @@ namespace Eco.Mods.TechTree
             var stamped = dock.StampedCitizen;
             user.MsgLocStr($"  Stamp: {(stamped?.Name ?? "(none)")} (id {dock.StampedCitizenId}), full access: {(stamped != null && dock.HasFullAccess(stamped))}, stamp valid: {dock.FarmStampIsValid()}");
 
+            // "hold full -- returning to unload" means cargo is aboard that the last unload
+            // could not place; this names it and says where it could have gone.
+            var farmHold = (dock.GetComponent(typeof(PublicStorageComponent), DroneCargo.HoldName) as PublicStorageComponent)?.Storage;
+            var holdText = farmHold == null
+                ? "MISSING"
+                : farmHold.IsEmpty ? "empty" : string.Join(", ", farmHold.NonEmptyStacks.Select(s => $"{s.Quantity} {s.Item.DisplayName}"));
+            var destinations = dock.TryGetComponent<LinkComponent>(out var farmLink) && stamped != null
+                ? farmLink.GetSortedLinkedEnabledStorages(stamped).Count(s => s.Parent is not DroneDockObject)
+                : 0;
+            user.MsgLocStr($"  Hold: {holdText}; linked storages it can unload into: {destinations}");
+
             var areas = dock.FarmAreas.ToList();
             user.MsgLocStr($"  Farm areas: {areas.Count}, assigned: {areas.Count(a => a.Assigned)}");
 
