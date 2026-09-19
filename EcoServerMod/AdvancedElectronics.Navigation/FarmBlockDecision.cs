@@ -14,7 +14,14 @@ namespace AdvancedElectronics.Navigation
         Plow,
         Sow,
         Harvest,
-        LeaveAlone
+        LeaveAlone,
+
+        /// <summary>
+        /// Dig the surface up and lay it back as dirt, then plow it. Desert sand refuses the
+        /// plow outright, but a block dug up and put back is ordinary dirt until the biome
+        /// turns it to sand again. Appended: persisted by ordinal.
+        /// </summary>
+        Relay
     }
 
     /// <summary>
@@ -61,6 +68,13 @@ namespace AdvancedElectronics.Navigation
         /// </summary>
         public bool CropIsUnderCeiling { get; }
 
+        /// <summary>
+        /// Whether the surface refuses the plow until it has been dug up and laid back
+        /// (desert sand). The adapter decides which blocks these are; the core only orders
+        /// the clause.
+        /// </summary>
+        public bool SurfaceMustBeRelaid { get; }
+
         private FarmBlockFacts(
             bool surfaceAcceptsPlow,
             bool isTilled,
@@ -68,8 +82,10 @@ namespace AdvancedElectronics.Navigation
             string plantSpecies,
             bool plantIsDead,
             bool plantIsFullyGrown,
-            bool cropIsUnderCeiling)
+            bool cropIsUnderCeiling,
+            bool surfaceMustBeRelaid)
         {
+            SurfaceMustBeRelaid = surfaceMustBeRelaid;
             SurfaceAcceptsPlow = surfaceAcceptsPlow;
             IsTilled = isTilled;
             HasPlant = hasPlant;
@@ -80,7 +96,7 @@ namespace AdvancedElectronics.Navigation
         }
 
         /// <summary>A block with nothing growing on it.</summary>
-        public static FarmBlockFacts Empty(bool surfaceAcceptsPlow, bool isTilled) =>
+        public static FarmBlockFacts Empty(bool surfaceAcceptsPlow, bool isTilled, bool surfaceMustBeRelaid = false) =>
             new FarmBlockFacts(
                 surfaceAcceptsPlow,
                 isTilled,
@@ -88,7 +104,8 @@ namespace AdvancedElectronics.Navigation
                 plantSpecies: null,
                 plantIsDead: false,
                 plantIsFullyGrown: false,
-                cropIsUnderCeiling: false);
+                cropIsUnderCeiling: false,
+                surfaceMustBeRelaid);
 
         /// <summary>A block with a plant standing on it.</summary>
         public static FarmBlockFacts Planted(
@@ -97,7 +114,8 @@ namespace AdvancedElectronics.Navigation
             string plantSpecies,
             bool plantIsDead,
             bool plantIsFullyGrown,
-            bool cropIsUnderCeiling)
+            bool cropIsUnderCeiling,
+            bool surfaceMustBeRelaid = false)
         {
             if (string.IsNullOrEmpty(plantSpecies))
                 throw new ArgumentException("A standing plant always has a species key.", nameof(plantSpecies));
@@ -109,7 +127,8 @@ namespace AdvancedElectronics.Navigation
                 plantSpecies,
                 plantIsDead,
                 plantIsFullyGrown,
-                cropIsUnderCeiling);
+                cropIsUnderCeiling,
+                surfaceMustBeRelaid);
         }
     }
 
@@ -142,6 +161,11 @@ namespace AdvancedElectronics.Navigation
             // 1. A surface the plow action will not accept gets dirt placed on it.
             //    Outranks every plant rule: ground the drone cannot farm is fixed first.
             if (!facts.SurfaceAcceptsPlow) return FarmAction.PlaceDirt;
+
+            // 1b. A surface that refuses the plow until it is dug up and laid back is
+            //     re-laid first. Anything standing on it goes under, exactly as clause 2
+            //     plows under what stands on untilled ground.
+            if (facts.SurfaceMustBeRelaid) return FarmAction.Relay;
 
             // 2. A plowable, untilled surface is plowed. Anything standing on untilled
             //    ground goes under with it -- it grew somewhere the area does not farm.

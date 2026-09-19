@@ -62,6 +62,7 @@ namespace AdvancedElectronics.Navigation
                 case FarmAction.Sow: return $"sowing {area.Crop}";
                 case FarmAction.Harvest: return $"harvesting {area.Crop}";
                 case FarmAction.LeaveAlone: return "nothing to do here";
+                case FarmAction.Relay: return "re-laying desert sand as dirt";
                 default: return area.NextAction.Value.ToString();
             }
         }

@@ -31,6 +31,37 @@ namespace AdvancedElectronics.Navigation.Tests
                 plantIsFullyGrown: fullyGrown,
                 cropIsUnderCeiling: cropUnderCeiling);
 
+        // --- Desert sand: plowable only once dug up and laid back as dirt ---
+
+        [Fact]
+        public void DesertSandWithNothingOnIt_IsRelaidNotPlowed()
+        {
+            // Plowing desert sand fails without a message; dug up and put back, it is
+            // ordinary dirt until the biome turns it to sand again.
+            var facts = FarmBlockFacts.Empty(surfaceAcceptsPlow: true, isTilled: false, surfaceMustBeRelaid: true);
+
+            Assert.Equal(FarmAction.Relay, FarmBlockDecision.Decide(facts, Corn));
+        }
+
+        [Fact]
+        public void DesertSandUnderAWildPlant_IsRelaid()
+        {
+            var facts = FarmBlockFacts.Planted(
+                surfaceAcceptsPlow: true, isTilled: false, plantSpecies: Wheat,
+                plantIsDead: false, plantIsFullyGrown: false, cropIsUnderCeiling: true,
+                surfaceMustBeRelaid: true);
+
+            Assert.Equal(FarmAction.Relay, FarmBlockDecision.Decide(facts, Corn));
+        }
+
+        [Fact]
+        public void OrdinaryUntilledGround_IsStillPlowed()
+        {
+            var facts = FarmBlockFacts.Empty(surfaceAcceptsPlow: true, isTilled: false);
+
+            Assert.Equal(FarmAction.Plow, FarmBlockDecision.Decide(facts, Corn));
+        }
+
         // --- AE1: the area's own crop, still growing, is left alone ---
 
         [Fact]

@@ -397,6 +397,34 @@ namespace Eco.Mods.TechTree
                         : Refusal(result.RefusalStage, seedType, $"{CropCatalog.DisplayNameFor(area.Crop)} seed").WithDetail(result.Message);
                 }
 
+                case FarmAction.Relay:
+                {
+                    // Dig the sand up, lay dirt back in the same cell, and plow it at once,
+                    // before the biome turns it to sand again. One step failing reports
+                    // that step's refusal; placing needs a dirt item, which the dig itself
+                    // usually supplies, and otherwise comes from linked storage.
+                    var dug = this.removal.Remove(
+                        new[] { (ground, BlockClassification.Excavatable) },
+                        citizen,
+                        this.miningArm,
+                        this.hold,
+                        new YieldTable(minableYield: 1, excavatableYield: 1),
+                        new EcoBlockClassifier());
+                    if (dug.Outcome == RemovalOutcome.Refused)
+                        return Refusal(dug.RefusalStage).WithDetail(dug.Message);
+
+                    var laid = this.placement.Place(
+                        new[] { ground }, typeof(DirtBlock), typeof(DirtItem),
+                        citizen, this.harvestArm, this.SourceInventory(citizen));
+                    if (laid.Outcome != PlacementOutcome.Succeeded)
+                        return Refusal(laid.RefusalStage, typeof(DirtItem), "dirt").WithDetail(laid.Message);
+
+                    var plowed = this.farming.Plow(ground, citizen, this.harvestArm);
+                    return plowed.Outcome == FarmActionOutcome.Succeeded
+                        ? null
+                        : Refusal(plowed.RefusalStage).WithDetail(plowed.Message);
+                }
+
                 case FarmAction.Harvest:
                 {
                     var result = this.farming.Harvest(above, citizen, this.harvestArm, this.hold);
@@ -457,19 +485,24 @@ namespace Eco.Mods.TechTree
             var acceptsPlow = surface != null && surface.Is<Tillable>();
             var tilled = surface != null && surface.Is<Tilled>();
 
+            // Desert sand carries dirt's Tillable attribute but refuses the plow without a
+            // word; dug up and laid back it is ordinary dirt until the biome turns it back.
+            var mustBeRelaid = surface is DesertSandBlock;
+
             var plant = WrappedWorldPosition3i.TryCreate(new Vector3i(column.X, surfaceY + 1, column.Z), out var abovePos)
                 ? EcoSim.PlantSim.GetPlant(abovePos)
                 : null;
 
             var facts = plant == null
-                ? FarmBlockFacts.Empty(acceptsPlow, tilled)
+                ? FarmBlockFacts.Empty(acceptsPlow, tilled, mustBeRelaid)
                 : FarmBlockFacts.Planted(
                     acceptsPlow,
                     tilled,
                     plant.Species.Name,
                     plant.Dead,
                     plant.Ripe,
-                    ledger.MayHarvest(area.Crop, stored));
+                    ledger.MayHarvest(area.Crop, stored),
+                    mustBeRelaid);
 
             return FarmPlotDecision.Decide(
                 facts, area.Crop, fitness.Rate(area.Crop, column.X, surfaceY + 1, column.Z), surfaceY);
