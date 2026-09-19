@@ -13,6 +13,24 @@ namespace AdvancedElectronics.Navigation.Tests
     {
         private static SurfaceColumn Col(int x, int z, int surfaceY) => new SurfaceColumn(x, z, surfaceY);
 
+        [Fact]
+        public void GroundAlreadyAtOneHeight_IsLevel()
+        {
+            // A level pass requested on flat ground has nothing to do and must say so,
+            // rather than refusing for a plant it would never have touched.
+            var plan = LevelPlan.Build(new[] { Col(0, 0, 64), Col(1, 0, 64), Col(0, 1, 64), Col(1, 1, 64) });
+
+            Assert.True(plan.IsLevel);
+        }
+
+        [Fact]
+        public void OneRaisedColumn_IsNotLevel()
+        {
+            var plan = LevelPlan.Build(new[] { Col(0, 0, 64), Col(1, 0, 64), Col(0, 1, 64), Col(1, 1, 66) });
+
+            Assert.False(plan.IsLevel);
+        }
+
         // --- R19: the target is the area's own median surface height ---
 
         [Fact]

@@ -128,6 +128,12 @@ namespace AdvancedElectronics.Navigation
         /// <summary>Total blocks to place once removal is done.</summary>
         public int FillDemand { get; }
 
+        /// <summary>
+        /// True when the ground already stands at the target everywhere: nothing to remove
+        /// and nothing to fill. A pass requested on such ground completes at once.
+        /// </summary>
+        public bool IsLevel => RemovalVolume == 0 && FillDemand == 0;
+
         private LevelPlan(
             int targetHeight,
             IReadOnlyList<LevelRemoval> removals,

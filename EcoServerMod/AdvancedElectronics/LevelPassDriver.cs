@@ -122,6 +122,16 @@ namespace Eco.Mods.TechTree
             if (columns.Count == 0)
                 return LevelPassResult.Blocked(FarmStallReason.LevelPassBlocked, "the area covers no ground");
 
+            // Flat ground has nothing to level, so it completes before any other check:
+            // a plant on ground the pass would never touch is no reason to refuse (R21).
+            // An unstarted pass is judged against the target it would pin; a started one
+            // against the target it already pinned.
+            var targetNow = this.area.LevelPassStarted
+                ? this.area.LevelTargetHeight
+                : LevelPlan.Build(columns).TargetHeight;
+            if (LevelPlan.ForTarget(columns, targetNow).IsLevel)
+                return this.CompleteAsFlat();
+
             // R18, re-checked every dispatch rather than once at entry. A pass runs across
             // many dispatches, and a citizen who plants in the area meanwhile would
             // otherwise have the crop dug up and buried without the pass ever looking again.
@@ -148,8 +158,15 @@ namespace Eco.Mods.TechTree
             var fillPhase = plan.BeginFill(removalBlocksCompleted: 0, bankedSpoil: this.area.LevelBankedSpoil);
             if (fillPhase.Fills.Count > 0) return this.Fill(fillPhase, citizen);
 
-            // R21: the area is level. The toggle clears itself, so the next dispatch does
-            // ordinary farming rather than re-levelling flat ground forever.
+            return this.CompleteAsFlat();
+        }
+
+        /// <summary>
+        /// R21: the area is level. The toggle clears itself, so the next dispatch does
+        /// ordinary farming rather than re-levelling flat ground forever.
+        /// </summary>
+        private LevelPassResult CompleteAsFlat()
+        {
             this.area.LastFlat = true;
             this.area.LevelFirst = false;
             this.area.ClearLevelPass();
