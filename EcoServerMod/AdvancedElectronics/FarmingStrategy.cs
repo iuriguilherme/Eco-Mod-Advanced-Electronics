@@ -59,6 +59,18 @@ namespace Eco.Mods.TechTree
         private readonly HashSet<(int AreaId, PlotCoord Plot)> visitedThisSweep = new();
 
         /// <summary>
+        /// Plots that failed or could not be reached since the dock last woke the farm.
+        /// Not offered again until something changes: re-offering a plot that just failed
+        /// left the drone standing at it, arming and failing, playing its work animation
+        /// with no work being done. With nothing else to offer, the drone goes home and
+        /// waits there.
+        /// </summary>
+        private readonly HashSet<(int AreaId, PlotCoord Plot)> failedSinceWake = new();
+
+        /// <summary>The dock's wake token when the plots above failed.</summary>
+        private int failedAtToken;
+
+        /// <summary>
         /// True from the tick the hold reaches capacity until it is fully unloaded (R23).
         /// Copied from the mining strategy unchanged, deliberately: the full-hold rule is
         /// not farming-specific and two versions of it would drift.
@@ -144,6 +156,13 @@ namespace Eco.Mods.TechTree
             // while the drone is out.
             if (!this.homeDock.FarmStampIsValid()) return false;
 
+            // Storage, assignments or a redraw changed: a plot that failed may work now.
+            if (this.failedSinceWake.Count > 0 && this.homeDock.FarmWakeToken != this.failedAtToken)
+            {
+                this.failedSinceWake.Clear();
+                this.InvalidatePeek();
+            }
+
             var target = this.PeekTarget();
             if (target == null)
             {
@@ -170,6 +189,21 @@ namespace Eco.Mods.TechTree
         }
 
         public ParkedWorkOutcome TickParkedWork()
+        {
+            var outcome = this.TickParkedWorkOnPlot();
+            if (outcome == ParkedWorkOutcome.PlotFailed) this.MarkCurrentPlotFailed();
+            return outcome;
+        }
+
+        private void MarkCurrentPlotFailed()
+        {
+            if (this.currentPlot == null) return;
+            this.failedSinceWake.Add((this.currentAreaId, this.currentPlot.Value));
+            this.failedAtToken = this.homeDock.FarmWakeToken;
+            this.InvalidatePeek();
+        }
+
+        private ParkedWorkOutcome TickParkedWorkOnPlot()
         {
             var area = this.homeDock.FarmArea(this.currentAreaId);
             if (area == null || this.currentPlot == null) return ParkedWorkOutcome.PlotFailed;
@@ -226,6 +260,10 @@ namespace Eco.Mods.TechTree
             // block can say why instead of falling through to "nothing to do here".
             string firstRefusal = null;
 
+            // Re-read at the plot: storage can have changed since the plot was offered.
+            var materials = this.MaterialsFor(area);
+            var shortOf = FarmMaterial.None;
+
             foreach (var column in ColumnsIn(plot))
             {
                 var outcome = this.Evaluate(area, column, ledger, stored);
@@ -233,6 +271,13 @@ namespace Eco.Mods.TechTree
                 {
                     if (outcome.WasRefusedForFitness)
                         this.RecordStall(area, FarmStallReason.UnfitGround, outcome.UnfitCondition);
+                    continue;
+                }
+
+                var missing = FarmMaterialGate.Missing(outcome.Action, materials.Seed, materials.Dirt);
+                if (missing != FarmMaterial.None)
+                {
+                    if (shortOf == FarmMaterial.None) shortOf = missing;
                     continue;
                 }
 
@@ -270,6 +315,14 @@ namespace Eco.Mods.TechTree
             // Work was wanted and every attempt was refused. Passing one block over is
             // right; passing the whole plot over without a word is what left the tab
             // reading "nothing to do here" while the drone hovered over the ground.
+            // Work was wanted that the drone has nothing to do it with. The area stops as
+            // short of it, and Scan will not offer it again until storage changes.
+            if (shortOf != FarmMaterial.None)
+            {
+                this.RecordStall(area, FarmStallReason.MissingMaterial, MaterialName(area, shortOf));
+                return ParkedWorkOutcome.PlotFailed;
+            }
+
             if (firstRefusal != null)
             {
                 this.RecordStall(area, FarmStallReason.BlocksRefused, firstRefusal);
@@ -519,8 +572,35 @@ namespace Eco.Mods.TechTree
         /// visited every plot every sweep would be the poll R30 forbids wearing a
         /// different name.
         /// </summary>
-        private bool PlotNeedsWork(FarmAreaEntry area, PlotCoord plot, CropCeilingLedger ledger, int stored) =>
-            ColumnsIn(plot).Any(c => this.Evaluate(area, c, ledger, stored).Action != FarmAction.LeaveAlone);
+        private bool PlotNeedsWork(
+            FarmAreaEntry area, PlotCoord plot, CropCeilingLedger ledger, int stored,
+            (bool Seed, bool Dirt) materials, ref FarmMaterial shortOf)
+        {
+            foreach (var column in ColumnsIn(plot))
+            {
+                var action = this.Evaluate(area, column, ledger, stored).Action;
+                if (action == FarmAction.LeaveAlone) continue;
+
+                var missing = FarmMaterialGate.Missing(action, materials.Seed, materials.Dirt);
+                if (missing == FarmMaterial.None) return true;
+                if (shortOf == FarmMaterial.None) shortOf = missing;
+            }
+
+            return false;
+        }
+
+        /// <summary>Whether the hold and linked storage hold the area's seed, and dirt.</summary>
+        private (bool Seed, bool Dirt) MaterialsFor(FarmAreaEntry area)
+        {
+            var citizen = this.homeDock.StampedCitizen;
+            var seedType = CropCatalog.ByKey(area.Crop)?.SeedType;
+            return (
+                seedType != null && this.SourceHolds(seedType, citizen),
+                this.SourceHolds(typeof(DirtItem), citizen));
+        }
+
+        private static string MaterialName(FarmAreaEntry area, FarmMaterial material) =>
+            material == FarmMaterial.Dirt ? "dirt" : $"{CropCatalog.DisplayNameFor(area.Crop)} seed";
 
         /// <summary>
         /// The next (area, plot) to work, rotating past areas that cannot be worked (R28).
@@ -645,13 +725,23 @@ namespace Eco.Mods.TechTree
                         }
                     }
 
+                    // Work the drone has no material for is not offered: with no seed it
+                    // would prepare ground that weeds then take, and a plot offered but
+                    // unworkable left the drone standing at it animating forever.
+                    var materials = this.MaterialsFor(area);
+                    var shortOf = FarmMaterial.None;
+
                     foreach (var plot in area.ToArea().EnumeratePlots())
                     {
                         if (this.visitedThisSweep.Contains((area.Id, plot))) continue;
-                        if (!area.LevelFirst && !this.PlotNeedsWork(area, plot, ledgerCache, stored)) continue;
+                        if (this.failedSinceWake.Contains((area.Id, plot))) continue;
+                        if (!area.LevelFirst && !this.PlotNeedsWork(area, plot, ledgerCache, stored, materials, ref shortOf)) continue;
 
                         return (area.Id, plot);
                     }
+
+                    if (shortOf != FarmMaterial.None)
+                        this.RecordStall(area, FarmStallReason.MissingMaterial, MaterialName(area, shortOf));
                 }
 
                 // Every assigned plot has been offered once. A farm's work is continuous, so
@@ -762,6 +852,7 @@ namespace Eco.Mods.TechTree
 
         public void OnArrivalFailed()
         {
+            this.MarkCurrentPlotFailed();
             this.InvalidatePeek();
 
             // The plot could not be reached. Nothing to record against it -- farming keeps
