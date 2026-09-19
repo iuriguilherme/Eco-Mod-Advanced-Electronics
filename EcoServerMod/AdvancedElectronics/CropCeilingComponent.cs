@@ -40,6 +40,14 @@ namespace Eco.Mods.TechTree
     /// <c>/drone ceiling</c>, which the tab names when such a crop exists.
     /// </para>
     /// <para>
+    /// <b>Why the rows are <c>Single</c>, not <c>Int32</c>.</b> The client's <c>Int32</c>
+    /// template prefab ships with its stepper set read-only, and only a pooled instance is
+    /// reset to editable. On a tab with more <c>Int32</c> rows than the pool holds, every row
+    /// past the pool rendered with no <c>-</c>/<c>+</c> and no text entry -- the first 18 of
+    /// these rows worked and the rest did not, filtered or not. The <c>Single</c> prefab has
+    /// no such flag, so the rows are floats and the setter rounds to whole units.
+    /// </para>
+    /// <para>
     /// <b>Why rows carry no stored-count readout.</b> A label cannot change while the window
     /// is open, and the ceiling-reached state already shows per area on the Farming tab.
     /// </para>
@@ -154,196 +162,196 @@ namespace Eco.Mods.TechTree
         // they are from the crop catalog.
         // ---------------------------------------------------------------
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Agave Leaves"), VisibilityParam(nameof(ShowAgave))]
-        public int AgaveCeiling { get => this.CeilingOf("Agave"); set => this.SetFromRow("Agave", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Agave Leaves"), VisibilityParam(nameof(ShowAgave))]
+        public float AgaveCeiling { get => this.CeilingOf("Agave"); set => this.SetFromRow("Agave", value); }
         [SyncToView] public bool ShowAgave() => this.IsShown("Agave");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Amanita Mushrooms"), VisibilityParam(nameof(ShowAmanitaMushroom))]
-        public int AmanitaMushroomCeiling { get => this.CeilingOf("AmanitaMushroom"); set => this.SetFromRow("AmanitaMushroom", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Amanita Mushrooms"), VisibilityParam(nameof(ShowAmanitaMushroom))]
+        public float AmanitaMushroomCeiling { get => this.CeilingOf("AmanitaMushroom"); set => this.SetFromRow("AmanitaMushroom", value); }
         [SyncToView] public bool ShowAmanitaMushroom() => this.IsShown("AmanitaMushroom");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Arctic Willow"), VisibilityParam(nameof(ShowArcticWillow))]
-        public int ArcticWillowCeiling { get => this.CeilingOf("ArcticWillow"); set => this.SetFromRow("ArcticWillow", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Arctic Willow"), VisibilityParam(nameof(ShowArcticWillow))]
+        public float ArcticWillowCeiling { get => this.CeilingOf("ArcticWillow"); set => this.SetFromRow("ArcticWillow", value); }
         [SyncToView] public bool ShowArcticWillow() => this.IsShown("ArcticWillow");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Barrel Cactus"), VisibilityParam(nameof(ShowBarrelCactus))]
-        public int BarrelCactusCeiling { get => this.CeilingOf("BarrelCactus"); set => this.SetFromRow("BarrelCactus", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Barrel Cactus"), VisibilityParam(nameof(ShowBarrelCactus))]
+        public float BarrelCactusCeiling { get => this.CeilingOf("BarrelCactus"); set => this.SetFromRow("BarrelCactus", value); }
         [SyncToView] public bool ShowBarrelCactus() => this.IsShown("BarrelCactus");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Beans"), VisibilityParam(nameof(ShowBeans))]
-        public int BeansCeiling { get => this.CeilingOf("Beans"); set => this.SetFromRow("Beans", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Beans"), VisibilityParam(nameof(ShowBeans))]
+        public float BeansCeiling { get => this.CeilingOf("Beans"); set => this.SetFromRow("Beans", value); }
         [SyncToView] public bool ShowBeans() => this.IsShown("Beans");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Beet"), VisibilityParam(nameof(ShowBeets))]
-        public int BeetsCeiling { get => this.CeilingOf("Beets"); set => this.SetFromRow("Beets", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Beet"), VisibilityParam(nameof(ShowBeets))]
+        public float BeetsCeiling { get => this.CeilingOf("Beets"); set => this.SetFromRow("Beets", value); }
         [SyncToView] public bool ShowBeets() => this.IsShown("Beets");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Big Bluestem"), VisibilityParam(nameof(ShowBigBluestem))]
-        public int BigBluestemCeiling { get => this.CeilingOf("BigBluestem"); set => this.SetFromRow("BigBluestem", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Big Bluestem"), VisibilityParam(nameof(ShowBigBluestem))]
+        public float BigBluestemCeiling { get => this.CeilingOf("BigBluestem"); set => this.SetFromRow("BigBluestem", value); }
         [SyncToView] public bool ShowBigBluestem() => this.IsShown("BigBluestem");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Bolete Mushrooms"), VisibilityParam(nameof(ShowBoleteMushroom))]
-        public int BoleteMushroomCeiling { get => this.CeilingOf("BoleteMushroom"); set => this.SetFromRow("BoleteMushroom", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Bolete Mushrooms"), VisibilityParam(nameof(ShowBoleteMushroom))]
+        public float BoleteMushroomCeiling { get => this.CeilingOf("BoleteMushroom"); set => this.SetFromRow("BoleteMushroom", value); }
         [SyncToView] public bool ShowBoleteMushroom() => this.IsShown("BoleteMushroom");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Bullrush"), VisibilityParam(nameof(ShowBullrush))]
-        public int BullrushCeiling { get => this.CeilingOf("Bullrush"); set => this.SetFromRow("Bullrush", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Bullrush"), VisibilityParam(nameof(ShowBullrush))]
+        public float BullrushCeiling { get => this.CeilingOf("Bullrush"); set => this.SetFromRow("Bullrush", value); }
         [SyncToView] public bool ShowBullrush() => this.IsShown("Bullrush");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Bunchgrass"), VisibilityParam(nameof(ShowBunchgrass))]
-        public int BunchgrassCeiling { get => this.CeilingOf("Bunchgrass"); set => this.SetFromRow("Bunchgrass", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Bunchgrass"), VisibilityParam(nameof(ShowBunchgrass))]
+        public float BunchgrassCeiling { get => this.CeilingOf("Bunchgrass"); set => this.SetFromRow("Bunchgrass", value); }
         [SyncToView] public bool ShowBunchgrass() => this.IsShown("Bunchgrass");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Camas Bulb"), VisibilityParam(nameof(ShowCamas))]
-        public int CamasCeiling { get => this.CeilingOf("Camas"); set => this.SetFromRow("Camas", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Camas Bulb"), VisibilityParam(nameof(ShowCamas))]
+        public float CamasCeiling { get => this.CeilingOf("Camas"); set => this.SetFromRow("Camas", value); }
         [SyncToView] public bool ShowCamas() => this.IsShown("Camas");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Common Grass"), VisibilityParam(nameof(ShowCommonGrass))]
-        public int CommonGrassCeiling { get => this.CeilingOf("CommonGrass"); set => this.SetFromRow("CommonGrass", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Common Grass"), VisibilityParam(nameof(ShowCommonGrass))]
+        public float CommonGrassCeiling { get => this.CeilingOf("CommonGrass"); set => this.SetFromRow("CommonGrass", value); }
         [SyncToView] public bool ShowCommonGrass() => this.IsShown("CommonGrass");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Cookeina Mushrooms"), VisibilityParam(nameof(ShowCookeinaMushroom))]
-        public int CookeinaMushroomCeiling { get => this.CeilingOf("CookeinaMushroom"); set => this.SetFromRow("CookeinaMushroom", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Cookeina Mushrooms"), VisibilityParam(nameof(ShowCookeinaMushroom))]
+        public float CookeinaMushroomCeiling { get => this.CeilingOf("CookeinaMushroom"); set => this.SetFromRow("CookeinaMushroom", value); }
         [SyncToView] public bool ShowCookeinaMushroom() => this.IsShown("CookeinaMushroom");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Corn"), VisibilityParam(nameof(ShowCorn))]
-        public int CornCeiling { get => this.CeilingOf("Corn"); set => this.SetFromRow("Corn", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Corn"), VisibilityParam(nameof(ShowCorn))]
+        public float CornCeiling { get => this.CeilingOf("Corn"); set => this.SetFromRow("Corn", value); }
         [SyncToView] public bool ShowCorn() => this.IsShown("Corn");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Cotton Boll"), VisibilityParam(nameof(ShowCotton))]
-        public int CottonCeiling { get => this.CeilingOf("Cotton"); set => this.SetFromRow("Cotton", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Cotton Boll"), VisibilityParam(nameof(ShowCotton))]
+        public float CottonCeiling { get => this.CeilingOf("Cotton"); set => this.SetFromRow("Cotton", value); }
         [SyncToView] public bool ShowCotton() => this.IsShown("Cotton");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Creosote Flower"), VisibilityParam(nameof(ShowCreosoteBush))]
-        public int CreosoteBushCeiling { get => this.CeilingOf("CreosoteBush"); set => this.SetFromRow("CreosoteBush", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Creosote Flower"), VisibilityParam(nameof(ShowCreosoteBush))]
+        public float CreosoteBushCeiling { get => this.CeilingOf("CreosoteBush"); set => this.SetFromRow("CreosoteBush", value); }
         [SyncToView] public bool ShowCreosoteBush() => this.IsShown("CreosoteBush");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Crimini Mushrooms"), VisibilityParam(nameof(ShowCriminiMushroom))]
-        public int CriminiMushroomCeiling { get => this.CeilingOf("CriminiMushroom"); set => this.SetFromRow("CriminiMushroom", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Crimini Mushrooms"), VisibilityParam(nameof(ShowCriminiMushroom))]
+        public float CriminiMushroomCeiling { get => this.CeilingOf("CriminiMushroom"); set => this.SetFromRow("CriminiMushroom", value); }
         [SyncToView] public bool ShowCriminiMushroom() => this.IsShown("CriminiMushroom");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Daisy"), VisibilityParam(nameof(ShowDaisy))]
-        public int DaisyCeiling { get => this.CeilingOf("Daisy"); set => this.SetFromRow("Daisy", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Daisy"), VisibilityParam(nameof(ShowDaisy))]
+        public float DaisyCeiling { get => this.CeilingOf("Daisy"); set => this.SetFromRow("Daisy", value); }
         [SyncToView] public bool ShowDaisy() => this.IsShown("Daisy");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Dwarf Willow"), VisibilityParam(nameof(ShowDwarfWillow))]
-        public int DwarfWillowCeiling { get => this.CeilingOf("DwarfWillow"); set => this.SetFromRow("DwarfWillow", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Dwarf Willow"), VisibilityParam(nameof(ShowDwarfWillow))]
+        public float DwarfWillowCeiling { get => this.CeilingOf("DwarfWillow"); set => this.SetFromRow("DwarfWillow", value); }
         [SyncToView] public bool ShowDwarfWillow() => this.IsShown("DwarfWillow");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Fiddleheads"), VisibilityParam(nameof(ShowFern))]
-        public int FernCeiling { get => this.CeilingOf("Fern"); set => this.SetFromRow("Fern", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Fiddleheads"), VisibilityParam(nameof(ShowFern))]
+        public float FernCeiling { get => this.CeilingOf("Fern"); set => this.SetFromRow("Fern", value); }
         [SyncToView] public bool ShowFern() => this.IsShown("Fern");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Filmy Fern"), VisibilityParam(nameof(ShowFilmyFern))]
-        public int FilmyFernCeiling { get => this.CeilingOf("FilmyFern"); set => this.SetFromRow("FilmyFern", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Filmy Fern"), VisibilityParam(nameof(ShowFilmyFern))]
+        public float FilmyFernCeiling { get => this.CeilingOf("FilmyFern"); set => this.SetFromRow("FilmyFern", value); }
         [SyncToView] public bool ShowFilmyFern() => this.IsShown("FilmyFern");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Fireweed Shoots"), VisibilityParam(nameof(ShowFireweed))]
-        public int FireweedCeiling { get => this.CeilingOf("Fireweed"); set => this.SetFromRow("Fireweed", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Fireweed Shoots"), VisibilityParam(nameof(ShowFireweed))]
+        public float FireweedCeiling { get => this.CeilingOf("Fireweed"); set => this.SetFromRow("Fireweed", value); }
         [SyncToView] public bool ShowFireweed() => this.IsShown("Fireweed");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Flax Stem"), VisibilityParam(nameof(ShowFlax))]
-        public int FlaxCeiling { get => this.CeilingOf("Flax"); set => this.SetFromRow("Flax", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Flax Stem"), VisibilityParam(nameof(ShowFlax))]
+        public float FlaxCeiling { get => this.CeilingOf("Flax"); set => this.SetFromRow("Flax", value); }
         [SyncToView] public bool ShowFlax() => this.IsShown("Flax");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Heliconia"), VisibilityParam(nameof(ShowHeliconia))]
-        public int HeliconiaCeiling { get => this.CeilingOf("Heliconia"); set => this.SetFromRow("Heliconia", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Heliconia"), VisibilityParam(nameof(ShowHeliconia))]
+        public float HeliconiaCeiling { get => this.CeilingOf("Heliconia"); set => this.SetFromRow("Heliconia", value); }
         [SyncToView] public bool ShowHeliconia() => this.IsShown("Heliconia");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Huckleberries"), VisibilityParam(nameof(ShowHuckleberry))]
-        public int HuckleberryCeiling { get => this.CeilingOf("Huckleberry"); set => this.SetFromRow("Huckleberry", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Huckleberries"), VisibilityParam(nameof(ShowHuckleberry))]
+        public float HuckleberryCeiling { get => this.CeilingOf("Huckleberry"); set => this.SetFromRow("Huckleberry", value); }
         [SyncToView] public bool ShowHuckleberry() => this.IsShown("Huckleberry");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Jointfir"), VisibilityParam(nameof(ShowJointfir))]
-        public int JointfirCeiling { get => this.CeilingOf("Jointfir"); set => this.SetFromRow("Jointfir", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Jointfir"), VisibilityParam(nameof(ShowJointfir))]
+        public float JointfirCeiling { get => this.CeilingOf("Jointfir"); set => this.SetFromRow("Jointfir", value); }
         [SyncToView] public bool ShowJointfir() => this.IsShown("Jointfir");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Kelp"), VisibilityParam(nameof(ShowKelp))]
-        public int KelpCeiling { get => this.CeilingOf("Kelp"); set => this.SetFromRow("Kelp", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Kelp"), VisibilityParam(nameof(ShowKelp))]
+        public float KelpCeiling { get => this.CeilingOf("Kelp"); set => this.SetFromRow("Kelp", value); }
         [SyncToView] public bool ShowKelp() => this.IsShown("Kelp");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("King Fern"), VisibilityParam(nameof(ShowKingFern))]
-        public int KingFernCeiling { get => this.CeilingOf("KingFern"); set => this.SetFromRow("KingFern", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("King Fern"), VisibilityParam(nameof(ShowKingFern))]
+        public float KingFernCeiling { get => this.CeilingOf("KingFern"); set => this.SetFromRow("KingFern", value); }
         [SyncToView] public bool ShowKingFern() => this.IsShown("KingFern");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Lattice Mushroom"), VisibilityParam(nameof(ShowLatticeMushroom))]
-        public int LatticeMushroomCeiling { get => this.CeilingOf("LatticeMushroom"); set => this.SetFromRow("LatticeMushroom", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Lattice Mushroom"), VisibilityParam(nameof(ShowLatticeMushroom))]
+        public float LatticeMushroomCeiling { get => this.CeilingOf("LatticeMushroom"); set => this.SetFromRow("LatticeMushroom", value); }
         [SyncToView] public bool ShowLatticeMushroom() => this.IsShown("LatticeMushroom");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Lupine"), VisibilityParam(nameof(ShowLupine))]
-        public int LupineCeiling { get => this.CeilingOf("Lupine"); set => this.SetFromRow("Lupine", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Lupine"), VisibilityParam(nameof(ShowLupine))]
+        public float LupineCeiling { get => this.CeilingOf("Lupine"); set => this.SetFromRow("Lupine", value); }
         [SyncToView] public bool ShowLupine() => this.IsShown("Lupine");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Ocean Spray"), VisibilityParam(nameof(ShowOceanSpray))]
-        public int OceanSprayCeiling { get => this.CeilingOf("OceanSpray"); set => this.SetFromRow("OceanSpray", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Ocean Spray"), VisibilityParam(nameof(ShowOceanSpray))]
+        public float OceanSprayCeiling { get => this.CeilingOf("OceanSpray"); set => this.SetFromRow("OceanSpray", value); }
         [SyncToView] public bool ShowOceanSpray() => this.IsShown("OceanSpray");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Orchid"), VisibilityParam(nameof(ShowOrchid))]
-        public int OrchidCeiling { get => this.CeilingOf("Orchid"); set => this.SetFromRow("Orchid", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Orchid"), VisibilityParam(nameof(ShowOrchid))]
+        public float OrchidCeiling { get => this.CeilingOf("Orchid"); set => this.SetFromRow("Orchid", value); }
         [SyncToView] public bool ShowOrchid() => this.IsShown("Orchid");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Papaya"), VisibilityParam(nameof(ShowPapaya))]
-        public int PapayaCeiling { get => this.CeilingOf("Papaya"); set => this.SetFromRow("Papaya", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Papaya"), VisibilityParam(nameof(ShowPapaya))]
+        public float PapayaCeiling { get => this.CeilingOf("Papaya"); set => this.SetFromRow("Papaya", value); }
         [SyncToView] public bool ShowPapaya() => this.IsShown("Papaya");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Pineapple"), VisibilityParam(nameof(ShowPineapple))]
-        public int PineappleCeiling { get => this.CeilingOf("Pineapple"); set => this.SetFromRow("Pineapple", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Pineapple"), VisibilityParam(nameof(ShowPineapple))]
+        public float PineappleCeiling { get => this.CeilingOf("Pineapple"); set => this.SetFromRow("Pineapple", value); }
         [SyncToView] public bool ShowPineapple() => this.IsShown("Pineapple");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Prickly Pear Fruit"), VisibilityParam(nameof(ShowPricklyPear))]
-        public int PricklyPearCeiling { get => this.CeilingOf("PricklyPear"); set => this.SetFromRow("PricklyPear", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Prickly Pear Fruit"), VisibilityParam(nameof(ShowPricklyPear))]
+        public float PricklyPearCeiling { get => this.CeilingOf("PricklyPear"); set => this.SetFromRow("PricklyPear", value); }
         [SyncToView] public bool ShowPricklyPear() => this.IsShown("PricklyPear");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Pumpkin"), VisibilityParam(nameof(ShowPumpkin))]
-        public int PumpkinCeiling { get => this.CeilingOf("Pumpkin"); set => this.SetFromRow("Pumpkin", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Pumpkin"), VisibilityParam(nameof(ShowPumpkin))]
+        public float PumpkinCeiling { get => this.CeilingOf("Pumpkin"); set => this.SetFromRow("Pumpkin", value); }
         [SyncToView] public bool ShowPumpkin() => this.IsShown("Pumpkin");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Rice"), VisibilityParam(nameof(ShowRice))]
-        public int RiceCeiling { get => this.CeilingOf("Rice"); set => this.SetFromRow("Rice", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Rice"), VisibilityParam(nameof(ShowRice))]
+        public float RiceCeiling { get => this.CeilingOf("Rice"); set => this.SetFromRow("Rice", value); }
         [SyncToView] public bool ShowRice() => this.IsShown("Rice");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Rose Bush"), VisibilityParam(nameof(ShowRoseBush))]
-        public int RoseBushCeiling { get => this.CeilingOf("RoseBush"); set => this.SetFromRow("RoseBush", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Rose Bush"), VisibilityParam(nameof(ShowRoseBush))]
+        public float RoseBushCeiling { get => this.CeilingOf("RoseBush"); set => this.SetFromRow("RoseBush", value); }
         [SyncToView] public bool ShowRoseBush() => this.IsShown("RoseBush");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Saxifrage"), VisibilityParam(nameof(ShowSaxifrage))]
-        public int SaxifrageCeiling { get => this.CeilingOf("Saxifrage"); set => this.SetFromRow("Saxifrage", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Saxifrage"), VisibilityParam(nameof(ShowSaxifrage))]
+        public float SaxifrageCeiling { get => this.CeilingOf("Saxifrage"); set => this.SetFromRow("Saxifrage", value); }
         [SyncToView] public bool ShowSaxifrage() => this.IsShown("Saxifrage");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Seagrass"), VisibilityParam(nameof(ShowSeagrass))]
-        public int SeagrassCeiling { get => this.CeilingOf("Seagrass"); set => this.SetFromRow("Seagrass", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Seagrass"), VisibilityParam(nameof(ShowSeagrass))]
+        public float SeagrassCeiling { get => this.CeilingOf("Seagrass"); set => this.SetFromRow("Seagrass", value); }
         [SyncToView] public bool ShowSeagrass() => this.IsShown("Seagrass");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Sunflower"), VisibilityParam(nameof(ShowSunflower))]
-        public int SunflowerCeiling { get => this.CeilingOf("Sunflower"); set => this.SetFromRow("Sunflower", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Sunflower"), VisibilityParam(nameof(ShowSunflower))]
+        public float SunflowerCeiling { get => this.CeilingOf("Sunflower"); set => this.SetFromRow("Sunflower", value); }
         [SyncToView] public bool ShowSunflower() => this.IsShown("Sunflower");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Taro Root"), VisibilityParam(nameof(ShowTaro))]
-        public int TaroCeiling { get => this.CeilingOf("Taro"); set => this.SetFromRow("Taro", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Taro Root"), VisibilityParam(nameof(ShowTaro))]
+        public float TaroCeiling { get => this.CeilingOf("Taro"); set => this.SetFromRow("Taro", value); }
         [SyncToView] public bool ShowTaro() => this.IsShown("Taro");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Tomato"), VisibilityParam(nameof(ShowTomatoes))]
-        public int TomatoesCeiling { get => this.CeilingOf("Tomatoes"); set => this.SetFromRow("Tomatoes", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Tomato"), VisibilityParam(nameof(ShowTomatoes))]
+        public float TomatoesCeiling { get => this.CeilingOf("Tomatoes"); set => this.SetFromRow("Tomatoes", value); }
         [SyncToView] public bool ShowTomatoes() => this.IsShown("Tomatoes");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Trillium Flower"), VisibilityParam(nameof(ShowTrillium))]
-        public int TrilliumCeiling { get => this.CeilingOf("Trillium"); set => this.SetFromRow("Trillium", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Trillium Flower"), VisibilityParam(nameof(ShowTrillium))]
+        public float TrilliumCeiling { get => this.CeilingOf("Trillium"); set => this.SetFromRow("Trillium", value); }
         [SyncToView] public bool ShowTrillium() => this.IsShown("Trillium");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Tulip"), VisibilityParam(nameof(ShowTulip))]
-        public int TulipCeiling { get => this.CeilingOf("Tulip"); set => this.SetFromRow("Tulip", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Tulip"), VisibilityParam(nameof(ShowTulip))]
+        public float TulipCeiling { get => this.CeilingOf("Tulip"); set => this.SetFromRow("Tulip", value); }
         [SyncToView] public bool ShowTulip() => this.IsShown("Tulip");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Waterweed"), VisibilityParam(nameof(ShowWaterweed))]
-        public int WaterweedCeiling { get => this.CeilingOf("Waterweed"); set => this.SetFromRow("Waterweed", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Waterweed"), VisibilityParam(nameof(ShowWaterweed))]
+        public float WaterweedCeiling { get => this.CeilingOf("Waterweed"); set => this.SetFromRow("Waterweed", value); }
         [SyncToView] public bool ShowWaterweed() => this.IsShown("Waterweed");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("Wheat"), VisibilityParam(nameof(ShowWheat))]
-        public int WheatCeiling { get => this.CeilingOf("Wheat"); set => this.SetFromRow("Wheat", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("Wheat"), VisibilityParam(nameof(ShowWheat))]
+        public float WheatCeiling { get => this.CeilingOf("Wheat"); set => this.SetFromRow("Wheat", value); }
         [SyncToView] public bool ShowWheat() => this.IsShown("Wheat");
 
-        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Int32"), LocDisplayName("White Bursage"), VisibilityParam(nameof(ShowWhiteBursage))]
-        public int WhiteBursageCeiling { get => this.CeilingOf("WhiteBursage"); set => this.SetFromRow("WhiteBursage", value); }
+        [Eco(RequiredAccess = AccessType.FullAccess, Serialized = false), Range(0, MaxCeiling), UITypeName("Single"), LocDisplayName("White Bursage"), VisibilityParam(nameof(ShowWhiteBursage))]
+        public float WhiteBursageCeiling { get => this.CeilingOf("WhiteBursage"); set => this.SetFromRow("WhiteBursage", value); }
         [SyncToView] public bool ShowWhiteBursage() => this.IsShown("WhiteBursage");
 
         /// <summary>
@@ -441,10 +449,13 @@ namespace Eco.Mods.TechTree
             this.Parent is DroneDockObject dock ? dock.CropCeilingFor(key) : 0;
 
         /// <summary>A row's write. Full access was already enforced by Eco (see the class remarks).</summary>
-        private void SetFromRow(string key, int value)
+        private void SetFromRow(string key, float typed)
         {
             if (!this.ready) return;
             if (this.Parent is not DroneDockObject dock) return;
+
+            // The rows use the Single template, so a typed fraction is rounded to whole units.
+            var value = (int)Math.Round(typed);
 
             // The client writes back every editable row on each interaction, so all but the one
             // that changed arrive holding the value they already have.
