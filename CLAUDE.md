@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-An Eco (Strange Loop Games) game mod: "Advanced Electronics", currently at **v0.3.0**, targeting Eco **0.14.0.3**. The repo is rooted at the `Eco Mod Advanced Electronics/` subfolder, not at the workspace root. It is public and released — pushing is publishing.
+An Eco (Strange Loop Games) game mod: "Advanced Electronics", currently at **v0.4.0**, targeting Eco **0.14.1.1**. The repo is rooted at the `Eco Mod Advanced Electronics/` subfolder, not at the workspace root. It is public and released — pushing is publishing.
 
 The mod has **two halves that ship together**, and most work touches the server half:
 
