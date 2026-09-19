@@ -132,13 +132,16 @@ namespace Eco.Mods.TechTree
             if (LevelPlan.ForTarget(columns, targetNow).IsLevel)
                 return this.CompleteAsFlat();
 
-            // R18, re-checked every dispatch rather than once at entry. A pass runs across
-            // many dispatches, and a citizen who plants in the area meanwhile would
-            // otherwise have the crop dug up and buried without the pass ever looking again.
-            // The columns are re-sampled anyway, so this costs a plant lookup per column.
-            if (this.AnyPlantStanding(columns))
+            // Only the columns the pass will change matter, and they are known before any
+            // plant is looked at: a column already at the target is never dug or filled.
+            // A plant on a changed column is cleared the way a machete clears it -- the
+            // dig and place services destroy it with the engine's own harvest action and
+            // no yield, so a law against it still applies. A tree is the exception: a
+            // machete cannot clear one, so the pass stops and names it instead of felling
+            // it. Re-checked every dispatch, since the columns are re-sampled anyway.
+            if (this.AnyTreeStanding(columns.Where(c => c.SurfaceY != targetNow)))
                 return LevelPassResult.Blocked(
-                    FarmStallReason.LevelPassBlocked, "plants are still standing here; clear them first");
+                    FarmStallReason.LevelPassBlocked, "a tree stands on ground that must be levelled; fell it first");
 
             if (!this.area.LevelPassStarted)
             {
@@ -280,10 +283,10 @@ namespace Eco.Mods.TechTree
                 .Sum(stack => stack.Quantity);
 
         /// <summary>Whether anything is growing anywhere in the area (R18's entry check).</summary>
-        private bool AnyPlantStanding(IEnumerable<SurfaceColumn> columns) =>
+        private bool AnyTreeStanding(IEnumerable<SurfaceColumn> columns) =>
             columns.Any(c =>
                 WrappedWorldPosition3i.TryCreate(new Vector3i(c.X, c.SurfaceY + 1, c.Z), out var above)
-                && EcoSim.PlantSim.GetPlant(above) != null);
+                && EcoSim.PlantSim.GetPlant(above)?.Species is Eco.Simulation.Types.TreeSpecies);
 
         /// <summary>
         /// The refusal stage as the reason the tab reports. Law and property stay distinct
