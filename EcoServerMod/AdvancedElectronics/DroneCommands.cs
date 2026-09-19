@@ -373,6 +373,63 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
+        /// Farming diagnostic (read-only). Written after a live pass where every assigned farm
+        /// area read "nothing to do here" with seed in linked storage. That readout is the
+        /// default, and it is what the tab shows whether the strategy never scanned or it
+        /// scanned and judged every block unworkable. This names which, in one command: the
+        /// drone's job and last dispatch note, the stamp the scan is gated on, and the very
+        /// per-column decision the strategy makes, run over each assigned area.
+        /// </summary>
+        [ChatSubCommand("Drone", "Dump farming state for your nearest accessible dock (diagnostic).", "farm", ChatAuthorizationLevel.User)]
+        public static void Farm(User user)
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
+
+            var drone = dock.SpawnedDrone;
+            var job = drone is IDroneToolbearer bearer ? bearer.Job.ToString() : "(no drone or no job)";
+            var note = drone == null || drone.IsDestroyed ? "(no drone)" : drone.GetComponent<DroneLifecycle>()?.LastDispatchNote ?? "(no lifecycle)";
+            user.MsgLocStr($"Dock '{dock.Name}': drone job {job}, last dispatch: {note}");
+
+            var stamped = dock.StampedCitizen;
+            user.MsgLocStr($"  Stamp: {(stamped?.Name ?? "(none)")} (id {dock.StampedCitizenId}), full access: {(stamped != null && dock.HasFullAccess(stamped))}, stamp valid: {dock.FarmStampIsValid()}");
+
+            var areas = dock.FarmAreas.ToList();
+            user.MsgLocStr($"  Farm areas: {areas.Count}, assigned: {areas.Count(a => a.Assigned)}");
+
+            var sampler = new EcoWorldSampler();
+            var fitness = new EcoGroundFitness();
+            var ledger = dock.ReadCropCeilings();
+
+            foreach (var area in areas)
+            {
+                var crop = CropCatalog.ByKey(area.Crop);
+                var stored = string.IsNullOrEmpty(area.Crop) ? 0 : dock.CountInLinkedStorage(area.Crop);
+                user.MsgLocStr($"  Area {area.Id} '{area.Name}': assigned {area.Assigned}, crop key '{area.Crop ?? "(none)"}', catalog {(crop == null ? "NOT FOUND" : crop.UniqueName)}, seed {crop?.SeedType?.Name ?? "(none)"}, produce stored {stored}, may harvest {(string.IsNullOrEmpty(area.Crop) || ledger.MayHarvest(area.Crop, stored))}, stall {area.LastStallReason}, next {area.LastNextAction}");
+
+                var plots = area.ToArea().EnumeratePlots().ToList();
+                var tally = new Dictionary<string, int>();
+                var samples = 0;
+                foreach (var plot in plots.Take(16))
+                foreach (var column in FarmingStrategy.ColumnsIn(plot))
+                {
+                    var outcome = FarmingStrategy.EvaluateColumn(sampler, fitness, area, column, ledger, stored);
+                    var key = outcome.WasRefusedForFitness ? $"{outcome.Action} (unfit: {outcome.UnfitCondition})" : outcome.Action.ToString();
+                    tally[key] = tally.TryGetValue(key, out var n) ? n + 1 : 1;
+
+                    if (samples++ >= 3) continue;
+                    var y = outcome.SurfaceY;
+                    var surface = Eco.World.World.GetBlock(new Eco.Shared.Math.Vector3i(column.X, y, column.Z));
+                    var above = Eco.World.World.GetBlock(new Eco.Shared.Math.Vector3i(column.X, y + 1, column.Z));
+                    var rating = string.IsNullOrEmpty(area.Crop) ? "-" : fitness.Rate(area.Crop, column.X, y + 1, column.Z).Rating.ToString("F2");
+                    user.MsgLocStr($"    ({column.X},{y},{column.Z}) surface {surface?.GetType().Name ?? "null"}, above {above?.GetType().Name ?? "null"}, fitness {rating} -> {outcome.Action}");
+                }
+
+                user.MsgLocStr($"    {plots.Count} plots; decisions over the first {Math.Min(plots.Count, 16)}: {string.Join(", ", tally.Select(kv => $"{kv.Key} x{kv.Value}"))}");
+            }
+        }
+
+        /// <summary>
         /// Dumps the ITEM TAGS of every material the drone has actually found. Diagnostic: the
         /// material pickers scope their candidate list by a single item tag each, and which tag a
         /// given material carries is not reliably inferable from the game source (block tags and item

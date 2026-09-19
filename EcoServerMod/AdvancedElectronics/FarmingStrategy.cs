@@ -414,9 +414,18 @@ namespace Eco.Mods.TechTree
         /// The action for one column: R14's rules over what the block currently is, with
         /// R32's fitness gate over the sow clause.
         /// </summary>
-        private FarmPlotOutcome Evaluate(FarmAreaEntry area, (int X, int Z) column, CropCeilingLedger ledger, int stored)
+        private FarmPlotOutcome Evaluate(FarmAreaEntry area, (int X, int Z) column, CropCeilingLedger ledger, int stored) =>
+            EvaluateColumn(this.sampler, this.fitness, area, column, ledger, stored);
+
+        /// <summary>
+        /// <see cref="Evaluate"/> with its two world readers passed in, so the /drone farm
+        /// diagnostic runs the very decision the strategy runs rather than a copy of it.
+        /// </summary>
+        internal static FarmPlotOutcome EvaluateColumn(
+            IWorldSampler sampler, IGroundFitness fitness,
+            FarmAreaEntry area, (int X, int Z) column, CropCeilingLedger ledger, int stored)
         {
-            var surfaceY = (int)this.sampler.GroundHeightAt(column.X, column.Z);
+            var surfaceY = (int)sampler.GroundHeightAt(column.X, column.Z);
 
             var surface = EcoWorld.GetBlock(new Vector3i(column.X, surfaceY, column.Z));
             var acceptsPlow = surface != null && surface.Is<Tillable>();
@@ -437,7 +446,7 @@ namespace Eco.Mods.TechTree
                     ledger.MayHarvest(area.Crop, stored));
 
             return FarmPlotDecision.Decide(
-                facts, area.Crop, this.fitness.Rate(area.Crop, column.X, surfaceY + 1, column.Z), surfaceY);
+                facts, area.Crop, fitness.Rate(area.Crop, column.X, surfaceY + 1, column.Z), surfaceY);
         }
 
         /// <summary>
@@ -733,7 +742,7 @@ namespace Eco.Mods.TechTree
             return new InventoryCollection(new[] { this.hold }.Concat(linked));
         }
 
-        private static IEnumerable<(int X, int Z)> ColumnsIn(PlotCoord plot)
+        internal static IEnumerable<(int X, int Z)> ColumnsIn(PlotCoord plot)
         {
             var size = PlotUtil.PropertyPlotLength;
             var baseX = plot.X * size;
