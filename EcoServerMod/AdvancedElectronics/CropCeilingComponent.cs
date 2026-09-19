@@ -404,8 +404,15 @@ namespace Eco.Mods.TechTree
             this.lastShown = this.ShownKeys();
             foreach (var key in RowKeys)
             {
-                if (this.lastShown.Contains(key) != previous.Contains(key))
+                var shown = this.lastShown.Contains(key);
+                if (shown != previous.Contains(key))
                     this.Changed("Show" + key);
+
+                // A hidden row is not sent its value. Clear All pushed new values to rows the
+                // picker was hiding, and those rows came back later with their label but no
+                // stepper. The stale entry in lastValues makes the row's value go out on the
+                // refresh that shows it again.
+                if (!shown) continue;
 
                 var value = dock.CropCeilingFor(key);
                 if (!this.lastValues.TryGetValue(key, out var last) || last != value)
