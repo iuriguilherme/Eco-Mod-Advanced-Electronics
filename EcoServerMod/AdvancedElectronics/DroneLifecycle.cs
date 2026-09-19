@@ -695,8 +695,7 @@ namespace Eco.Mods.TechTree
             {
                 if (++plotsProbed > MaxPlotsProbedPerDispatch) break;
 
-                var centre = new PlotPos(plot.X, plot.Z).CenterWorldPos;
-                var candidate = new Vector3(centre.x, this.Parent.Position.Y, centre.y);
+                var candidate = this.PlotTarget(plot, this.Parent.Position.Y);
 
                 // The dock's columns are exempt on the way OUT as well as the way home: the
                 // drone starts parked on the pad, and every pad cell reports occupied, so
@@ -778,6 +777,31 @@ namespace Eco.Mods.TechTree
             mover.HoldFor(this.IsAtHomeDock() ? TakeOffLeadInSeconds : WorkExitLeadInSeconds);
 
             this.LastDispatchNote = $"dispatched to area point {target.X:F0},{target.Z:F0}";
+        }
+
+        /// <summary>
+        /// The point the drone flies to for <paramref name="plot"/>. The plot's centre for
+        /// every job but farming, unchanged. A farm drone aims at the open column nearest the
+        /// centre instead: the pathfinder refuses a blocked goal column, and a farm plot next
+        /// to trees was reported unreachable because one tree stood at its centre while the
+        /// rest of the plot was open. Farm work walks every column whatever column it hovers
+        /// over. Mining and survey keep the centre, since their behaviour was not re-checked.
+        /// </summary>
+        private Vector3 PlotTarget(PlotCoord plot, float y)
+        {
+            if (this.CurrentJobKind() == DroneJobKind.Farm)
+            {
+                var sampler = new EcoWorldSampler();
+                var open = PlotApproach.FirstOpenColumn(
+                    plot, PlotUtil.PropertyPlotLength,
+                    (x, z) => sampler.IsSolidAt(x, z) || sampler.IsObstacleAt(x, z));
+
+                if (open.HasValue)
+                    return new Vector3(open.Value.X, y, open.Value.Z);
+            }
+
+            var centre = new PlotPos(plot.X, plot.Z).CenterWorldPos;
+            return new Vector3(centre.x, y, centre.y);
         }
 
         /// <summary>Seconds since the last tick, or a plausible fallback when the manager has not measured one yet.</summary>
@@ -1406,8 +1430,7 @@ namespace Eco.Mods.TechTree
                 if (mover.IsMoving)
                     return;
 
-                var center = new PlotPos(plot.X, plot.Z).CenterWorldPos;
-                var reachable = mover.SetDestination(new Vector3(center.x, pos.Y, center.y), this.HomeDock.OccupiedColumns);
+                var reachable = mover.SetDestination(this.PlotTarget(plot, pos.Y), this.HomeDock.OccupiedColumns);
                 this.plotArrivalAttempts++;
 
                 // A hop to the next plot is travel like any other: stow the arm and reach the

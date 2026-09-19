@@ -408,6 +408,18 @@ namespace Eco.Mods.TechTree
                 user.MsgLocStr($"  Area {area.Id} '{area.Name}': assigned {area.Assigned}, crop key '{area.Crop ?? "(none)"}', catalog {(crop == null ? "NOT FOUND" : crop.UniqueName)}, seed {crop?.SeedType?.Name ?? "(none)"}, produce stored {stored}, may harvest {(string.IsNullOrEmpty(area.Crop) || ledger.MayHarvest(area.Crop, stored))}, stall {area.LastStallReason}, next {area.LastNextAction}");
 
                 var plots = area.ToArea().EnumeratePlots().ToList();
+
+                // Where the drone aims for each plot: the pathfinder refuses a solid or
+                // occupied goal column, which is how a farm plot reads "unreachable".
+                foreach (var plot in plots.Take(4))
+                {
+                    var cx = plot.X * PlotUtil.PropertyPlotLength + PlotUtil.PropertyPlotLength / 2;
+                    var cz = plot.Z * PlotUtil.PropertyPlotLength + PlotUtil.PropertyPlotLength / 2;
+                    var open = PlotApproach.FirstOpenColumn(plot, PlotUtil.PropertyPlotLength,
+                        (x, z) => sampler.IsSolidAt(x, z) || sampler.IsObstacleAt(x, z));
+                    user.MsgLocStr($"    plot {plot.X},{plot.Z}: centre ({cx},{cz}) solid {sampler.IsSolidAt(cx, cz)}, occupied {sampler.IsObstacleAt(cx, cz)}; aims at {(open.HasValue ? $"({open.Value.X},{open.Value.Z})" : "NOTHING OPEN")}");
+                }
+
                 var tally = new Dictionary<string, int>();
                 var samples = 0;
                 foreach (var plot in plots.Take(16))
