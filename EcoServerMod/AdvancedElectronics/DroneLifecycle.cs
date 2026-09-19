@@ -734,9 +734,10 @@ namespace Eco.Mods.TechTree
                 // dock, not routed through no-path. Only the wording differs.
                 if (this.strategy.IsComplete)
                 {
-                    this.LastDispatchNote = this.strategy.IsExhausted
-                        ? "nothing left to mine here -- re-survey the area to go deeper"
-                        : "hold full -- returning to unload";
+                    this.LastDispatchNote = this.strategy.CompletionNote
+                        ?? (this.strategy.IsExhausted
+                            ? "nothing left to mine here -- re-survey the area to go deeper"
+                            : "hold full -- returning to unload");
 
                     this.HomeDock.PersistMiningJob();
 

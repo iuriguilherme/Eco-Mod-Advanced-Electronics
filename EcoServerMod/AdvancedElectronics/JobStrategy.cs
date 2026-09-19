@@ -47,6 +47,14 @@ namespace Eco.Mods.TechTree
         /// </summary>
         bool IsExhausted { get; }
 
+        /// <summary>
+        /// What the dispatch note should say when this strategy reports complete, or null to
+        /// keep the lifecycle's own wording. That wording was written for mining -- "nothing
+        /// left to mine", else "hold full" -- and a farm with every area blocked read as a
+        /// full hold with nothing aboard.
+        /// </summary>
+        string CompletionNote => null;
+
         /// <summary>One tick of work while parked in the plot <see cref="TryGetNextTarget"/> last returned.</summary>
         ParkedWorkOutcome TickParkedWork();
 

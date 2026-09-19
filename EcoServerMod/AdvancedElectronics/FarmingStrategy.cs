@@ -127,6 +127,11 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public bool IsComplete => this.IsExhausted || this.holdFull || this.PeekTarget() == null;
 
+        public string CompletionNote =>
+            this.holdFull ? "hold full -- returning to unload"
+            : this.IsExhausted ? "no farm area is assigned"
+            : "nothing to do in any assigned area -- the Farming tab says why for each";
+
         public bool TryGetNextTarget(out PlotCoord plot)
         {
             plot = default;
