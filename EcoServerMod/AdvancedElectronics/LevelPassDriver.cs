@@ -81,7 +81,12 @@ namespace Eco.Mods.TechTree
         private readonly Item miningArm;
         private readonly Item harvestArm;
         private readonly Inventory hold;
-        private readonly LinkComponent link;
+        /// <summary>
+        /// Where the fill draws its dirt, supplied by the strategy: the hold plus "Take From"
+        /// storage while docked, the hold alone while away. Materials change hands only at the
+        /// dock; what a trip needs is loaded before it leaves.
+        /// </summary>
+        private readonly Func<User, Inventory> source;
 
         public LevelPassDriver(
             DroneDockObject dock,
@@ -92,7 +97,7 @@ namespace Eco.Mods.TechTree
             Item miningArm,
             Item harvestArm,
             Inventory hold,
-            LinkComponent link)
+            Func<User, Inventory> source)
         {
             this.dock = dock;
             this.area = area;
@@ -102,7 +107,7 @@ namespace Eco.Mods.TechTree
             this.miningArm = miningArm;
             this.harvestArm = harvestArm;
             this.hold = hold;
-            this.link = link;
+            this.source = source;
         }
 
         /// <summary>Runs one bounded chunk of the pass.</summary>
@@ -256,16 +261,23 @@ namespace Eco.Mods.TechTree
         /// the stamped citizen so the pass can only spend from containers that citizen could
         /// reach anyway. Falls back to the hold, which is where spoil sits before an unload.
         /// </summary>
-        private Inventory SourceInventory(User citizen)
+        private Inventory SourceInventory(User citizen) => this.source(citizen);
+
+        /// <summary>
+        /// Dirt the pass still has to place beyond the spoil it has banked, so the strategy
+        /// can load it at the dock before the trip. Zero when the pass has nothing to fill,
+        /// is blocked, or is not requested.
+        /// </summary>
+        public int DirtStillNeeded()
         {
-            var linked = this.link?.GetSortedLinkedEnabledStorages(citizen)
-                .Where(storage => storage.Parent is not DroneDockObject)
-                .Select(storage => storage.Inventory)
-                .ToList();
+            var check = this.Check(out var columns);
+            if (check.Outcome != LevelPassOutcome.Working || columns == null) return 0;
 
-            if (linked == null || linked.Count == 0) return this.hold;
-
-            return new InventoryCollection(new[] { this.hold }.Concat(linked));
+            var target = this.area.LevelPassStarted
+                ? this.area.LevelTargetHeight
+                : LevelPlan.Build(columns).TargetHeight;
+            var plan = LevelPlan.ForTarget(columns, target);
+            return Math.Max(0, plan.FillDemand - this.area.LevelBankedSpoil - plan.RemovalVolume);
         }
 
         /// <summary>

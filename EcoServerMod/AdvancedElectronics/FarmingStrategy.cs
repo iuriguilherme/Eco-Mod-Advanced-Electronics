@@ -59,6 +59,20 @@ namespace Eco.Mods.TechTree
         private readonly HashSet<(int AreaId, PlotCoord Plot)> visitedThisSweep = new();
 
         /// <summary>
+        /// Whether the drone is at its dock, asked of the lifecycle. Materials change hands
+        /// only there: docked, the drone may take from "Take From" storage; away, it works
+        /// from its hold alone.
+        /// </summary>
+        private readonly Func<bool> isDocked;
+
+        /// <summary>
+        /// Set when the hold ran out of a material that "Take From" storage still has. Not a
+        /// stall -- the drone goes home, loads, and comes back -- so it ends the trip rather
+        /// than marking the area short.
+        /// </summary>
+        private bool restockNeeded;
+
+        /// <summary>
         /// Plots that failed or could not be reached since the dock last woke the farm.
         /// Not offered again until something changes: re-offering a plot that just failed
         /// left the drone standing at it, arming and failing, playing its work animation
@@ -104,8 +118,10 @@ namespace Eco.Mods.TechTree
             Item miningArm,
             Inventory hold,
             LinkComponent link,
-            int holdCapacity)
+            int holdCapacity,
+            Func<bool> isDocked)
         {
+            this.isDocked = isDocked ?? (() => true);
             this.homeDock = homeDock;
             this.sampler = sampler;
             this.fitness = fitness;
@@ -137,10 +153,11 @@ namespace Eco.Mods.TechTree
         /// effect of being read would park a farm nobody had actually offered work to --
         /// and pay for the whole per-column area scan twice over while doing it.
         /// </summary>
-        public bool IsComplete => this.IsExhausted || this.holdFull || this.PeekTarget() == null;
+        public bool IsComplete => this.IsExhausted || this.holdFull || this.restockNeeded || this.PeekTarget() == null;
 
         public string CompletionNote =>
             this.holdFull ? "hold full -- returning to unload"
+            : this.restockNeeded ? "out of material aboard -- returning to the dock to load more"
             : this.IsExhausted ? "no farm area is assigned"
             : "nothing to do in any assigned area -- the Farming tab says why for each";
 
@@ -151,6 +168,7 @@ namespace Eco.Mods.TechTree
             // A full hold outranks offering more work: the drone goes home, unloads, and
             // resumes. Produce decays in the hold, so carrying it around is a real cost.
             if (this.holdFull) return false;
+            if (this.restockNeeded) return false;
 
             // Re-checked on every dispatch, not once at assignment: access can be revoked
             // while the drone is out.
@@ -319,6 +337,14 @@ namespace Eco.Mods.TechTree
             // short of it, and Scan will not offer it again until storage changes.
             if (shortOf != FarmMaterial.None)
             {
+                if (this.StorageStillHas(area, shortOf))
+                {
+                    // The hold ran out and storage has more: home to load, not a failure.
+                    this.restockNeeded = true;
+                    this.InvalidatePeek();
+                    return ParkedWorkOutcome.PlotDone;
+                }
+
                 this.RecordStall(area, FarmStallReason.MissingMaterial, MaterialName(area, shortOf));
                 return ParkedWorkOutcome.PlotFailed;
             }
@@ -599,6 +625,23 @@ namespace Eco.Mods.TechTree
                 this.SourceHolds(typeof(DirtItem), citizen));
         }
 
+        /// <summary>
+        /// Whether a material the drone lacks aboard is still in "Take From" storage -- only
+        /// meaningful away from the dock, where the hold is all the drone can use.
+        /// </summary>
+        private bool StorageStillHas(FarmAreaEntry area, FarmMaterial material)
+        {
+            if (this.isDocked()) return false;
+            var type = MaterialType(area, material);
+            return type != null
+                && DroneStorage.Count(DroneStorage.TakeFrom(this.link, this.homeDock.StampedCitizen), type) > 0;
+        }
+
+        private static Type MaterialType(FarmAreaEntry area, FarmMaterial material) =>
+            material == FarmMaterial.Dirt ? typeof(DirtItem)
+            : material == FarmMaterial.Seed ? CropCatalog.ByKey(area.Crop)?.SeedType
+            : null;
+
         private static string MaterialName(FarmAreaEntry area, FarmMaterial material) =>
             material == FarmMaterial.Dirt ? "dirt" : $"{CropCatalog.DisplayNameFor(area.Crop)} seed";
 
@@ -741,7 +784,14 @@ namespace Eco.Mods.TechTree
                     }
 
                     if (shortOf != FarmMaterial.None)
-                        this.RecordStall(area, FarmStallReason.MissingMaterial, MaterialName(area, shortOf));
+                    {
+                        // Away from the dock only the hold counts. If storage still has the
+                        // material, the drone goes home to load it; that is not a shortage.
+                        if (this.StorageStillHas(area, shortOf))
+                            this.restockNeeded = true;
+                        else
+                            this.RecordStall(area, FarmStallReason.MissingMaterial, MaterialName(area, shortOf));
+                    }
                 }
 
                 // Every assigned plot has been offered once. A farm's work is continuous, so
@@ -865,6 +915,7 @@ namespace Eco.Mods.TechTree
         {
             var plan = CargoUnloader.TryUnload(this.hold, this.link, this.homeDock.StampedCitizen);
             this.holdFull = plan.Outcome != UnloadOutcome.Full;
+            this.restockNeeded = false;
 
             // An unload frees the hold and moves produce into the very storage the ceiling
             // is measured against, so what wants doing may have changed.
@@ -887,7 +938,7 @@ namespace Eco.Mods.TechTree
 
         private LevelPassDriver LevelDriver(FarmAreaEntry area) => new LevelPassDriver(
             this.homeDock, area, this.sampler, this.removal, this.placement,
-            this.miningArm, this.harvestArm, this.hold, this.link);
+            this.miningArm, this.harvestArm, this.hold, this.SourceInventory);
 
         /// <summary>
         /// Where materials are drawn from: linked storage (R22), resolved through the
@@ -897,15 +948,66 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private Inventory SourceInventory(User citizen)
         {
-            var linked = this.link?.GetSortedLinkedEnabledStorages(citizen)
-                .Where(storage => storage.Parent is not DroneDockObject)
-                .Select(storage => storage.Inventory)
-                .ToList();
+            // Away from the dock the hold is all there is: materials are loaded at the dock
+            // before the trip (OnDepartingDock), never drawn from storage mid-flight.
+            if (!this.isDocked()) return this.hold;
 
-            if (linked == null || linked.Count == 0) return this.hold;
-
-            return new InventoryCollection(new[] { this.hold }.Concat(linked));
+            var takeFrom = DroneStorage.TakeFrom(this.link, citizen);
+            return takeFrom.Count == 0
+                ? this.hold
+                : new InventoryCollection(new[] { this.hold }.Concat(takeFrom));
         }
+
+        /// <summary>
+        /// Loads what this trip will use before the drone leaves. Every column the drone will
+        /// prepare ends in a sow, so each takes one seed; a column that needs dirt placed takes
+        /// one dirt; a level pass takes the dirt its fill still lacks. Loaded as far as the
+        /// hold has room, less what is already aboard. What the hold cannot carry is fetched
+        /// on a later trip -- the drone comes home to load when it runs out.
+        /// </summary>
+        public void OnDepartingDock()
+        {
+            var citizen = this.homeDock.StampedCitizen;
+            if (citizen == null) return;
+
+            var seeds = new Dictionary<Type, int>();
+            var dirt = 0;
+            var ledger = this.homeDock.ReadCropCeilings();
+
+            foreach (var area in this.homeDock.AssignedFarmAreas.ToList())
+            {
+                if (area.LevelFirst)
+                {
+                    dirt += this.LevelDriver(area).DirtStillNeeded();
+                    continue;
+                }
+
+                var seedType = CropCatalog.ByKey(area.Crop)?.SeedType;
+                if (seedType == null) continue;
+
+                var stored = this.homeDock.CountInLinkedStorage(area.Crop);
+                foreach (var plot in area.ToArea().EnumeratePlots())
+                foreach (var column in ColumnsIn(plot))
+                {
+                    var action = this.Evaluate(area, column, ledger, stored).Action;
+                    if (action == FarmAction.LeaveAlone || action == FarmAction.Harvest) continue;
+
+                    seeds[seedType] = seeds.TryGetValue(seedType, out var n) ? n + 1 : 1;
+                    if (action == FarmAction.PlaceDirt) dirt++;
+                }
+            }
+
+            foreach (var (type, needed) in seeds)
+                DroneStorage.Load(this.hold, this.link, citizen, type, needed - this.HoldCount(type));
+
+            if (dirt > 0)
+                DroneStorage.Load(this.hold, this.link, citizen, typeof(DirtItem), dirt - this.HoldCount(typeof(DirtItem)));
+
+            this.InvalidatePeek();
+        }
+
+        private int HoldCount(Type type) =>
+            this.hold.NonEmptyStacks.Where(stack => stack.Item?.Type == type).Sum(stack => stack.Quantity);
 
         internal static IEnumerable<(int X, int Z)> ColumnsIn(PlotCoord plot)
         {

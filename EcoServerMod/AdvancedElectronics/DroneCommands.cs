@@ -400,10 +400,10 @@ namespace Eco.Mods.TechTree
             var holdText = farmHold == null
                 ? "MISSING"
                 : farmHold.IsEmpty ? "empty" : string.Join(", ", farmHold.NonEmptyStacks.Select(s => $"{s.Quantity} {s.Item.DisplayName}"));
-            var destinations = dock.TryGetComponent<LinkComponent>(out var farmLink) && stamped != null
-                ? farmLink.GetSortedLinkedEnabledStorages(stamped).Count(s => s.Parent is not DroneDockObject)
-                : 0;
-            user.MsgLocStr($"  Hold: {holdText}; linked storages it can unload into: {destinations}");
+            dock.TryGetComponent<LinkComponent>(out var farmLink);
+            var takeFrom = DroneStorage.TakeFrom(farmLink, stamped).Count;
+            var putInto = DroneStorage.PutInto(farmLink, stamped).Count;
+            user.MsgLocStr($"  Hold: {holdText}; linked storages -- take from: {takeFrom}, put into: {putInto}");
 
             var areas = dock.FarmAreas.ToList();
             user.MsgLocStr($"  Farm areas: {areas.Count}, assigned: {areas.Count(a => a.Assigned)}");

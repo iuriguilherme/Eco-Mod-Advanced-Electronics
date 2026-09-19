@@ -55,6 +55,13 @@ namespace Eco.Mods.TechTree
         /// </summary>
         string CompletionNote => null;
 
+        /// <summary>
+        /// Called by the lifecycle just before the drone leaves its dock on a dispatch --
+        /// the one moment materials may change hands. A strategy that needs supplies at the
+        /// work site loads them into the hold here.
+        /// </summary>
+        void OnDepartingDock() { }
+
         /// <summary>One tick of work while parked in the plot <see cref="TryGetNextTarget"/> last returned.</summary>
         ParkedWorkOutcome TickParkedWork();
 

@@ -690,6 +690,7 @@ namespace Eco.Mods.TechTree
             // TickOnStation keeps its own retry count, where the drone HAS moved in between.
             Vector3? started = null;
             var plotsProbed = 0;
+            var loadedForTrip = false;
 
             while (this.strategy.TryGetNextTarget(out var plot))
             {
@@ -708,6 +709,15 @@ namespace Eco.Mods.TechTree
                 // height on the diagonal of its first horizontal step -- in a fraction of a second,
                 // which is what read as a jump. Only from the dock; a drone lifting off a work area
                 // is already at the height its route continues from.
+                // Materials change hands only at the dock: once there is somewhere to go, the
+                // strategy loads what the trip will use before the drone leaves. Once per
+                // dispatch, and never when there is nothing to go to.
+                if (!loadedForTrip && this.IsAtHomeDock())
+                {
+                    this.strategy.OnDepartingDock();
+                    loadedForTrip = true;
+                }
+
                 if (mover.SetDestination(candidate, this.HomeDock.OccupiedColumns,
                                          climbOnDeparture: this.IsAtHomeDock()))
                 {
@@ -1091,7 +1101,8 @@ namespace Eco.Mods.TechTree
                     Item.Get<MiningArmItem>(),
                     farmHold.Storage,
                     farmLink,
-                    MiningHoldCapacityEstimate);
+                    MiningHoldCapacityEstimate,
+                    this.IsAtHomeDock);
             }
 
             return this.Parent.TryGetComponent<OreSensorComponent>(out var sensor)
