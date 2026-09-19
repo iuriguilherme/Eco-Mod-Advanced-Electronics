@@ -348,6 +348,13 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
 
+            // The 0.3.0 save fold (DroneDock.Migration.cs). Here rather than in Initialize
+            // because it needs the dock's area to resolve, and at Initialize the survey dock
+            // that holds it may not have loaded yet. This runs on the first refresh and on
+            // every one after it, so a fold that could not resolve its area is retried instead
+            // of lost; it costs one count check once the fold has happened.
+            dock.MigrateLegacyMinedStamps();
+
             // The owner-filtered list is materialised ONCE and the radius applied to it here,
             // rather than calling OfferedAreas() and then walking the world a second time for the
             // out-of-range count. This runs off the dock's tick; a second world sweep per refresh
