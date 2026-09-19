@@ -205,8 +205,13 @@ namespace Eco.Mods.TechTree
                 // Tagged as a crop but nothing plantable yields it -- a mushroom picked
                 // wild, say. Refused with the reason rather than stored as a crop that
                 // would then stall the area with no seed forever.
+                // A chance drop (bean sprouts, beet greens) names the crop it comes from, so
+                // the citizen is told what to pick instead.
+                var source = CropCatalog.ByAnyYield(picked);
                 player?.MsgLocStr(
-                    $"{picked.DisplayName} is not something the drone can plant -- no seed grows it.",
+                    source != null
+                        ? $"{picked.DisplayName} only drops by chance from {source.UniqueName}, so the drone cannot plant it. Pick {source.UniqueName} instead."
+                        : $"{picked.DisplayName} is not something the drone can plant -- no seed grows it.",
                     NotificationStyle.Error);
                 return;
             }

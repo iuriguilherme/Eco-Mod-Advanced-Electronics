@@ -474,13 +474,19 @@ namespace Eco.Mods.TechTree
 
         private HashSet<string> ShownKeys()
         {
-            var rows = CropCatalog.All.Where(c => RowKeys.Contains(c.Key));
+            var rows = CropCatalog.All.Where(c => RowKeys.Contains(c.Key)).ToList();
 
             var picked = this.Crop?.GetTypes()?.ToList();
             if (picked != null && picked.Count > 0)
             {
                 var pickedTypes = new HashSet<Type>(picked);
-                rows = rows.Where(c => c.Produce != null && pickedTypes.Contains(c.Produce.Type));
+                var filtered = rows.Where(c => c.Produce != null && pickedTypes.Contains(c.Produce.Type)).ToList();
+
+                // The picker also offers chance drops such as bean sprouts and beet greens,
+                // which carry the same "Crop" tag but have no row. Picks like that are
+                // ignored; when nothing picked has a row, the filter does nothing rather than
+                // emptying the tab.
+                if (filtered.Count > 0) rows = filtered;
             }
 
             return new HashSet<string>(rows.Select(c => c.Key), StringComparer.Ordinal);

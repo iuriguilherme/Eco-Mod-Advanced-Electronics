@@ -79,6 +79,17 @@ namespace Eco.Mods.TechTree
         public static CropEntry ByProduce(Item produce) =>
             produce == null ? null : All.FirstOrDefault(c => c.Produce?.Type == produce.Type);
 
+        /// <summary>
+        /// The crop whose plant can yield <paramref name="item"/> at all, main harvest or
+        /// not. Bean sprouts and beet greens carry the same "Crop" tag as real harvests, so
+        /// the pickers offer them, but they only drop by chance from beans and beets; this
+        /// names the crop a citizen who picked one probably meant.
+        /// </summary>
+        public static CropEntry ByAnyYield(Item item) =>
+            item == null
+                ? null
+                : All.FirstOrDefault(c => c.Species.ResourceList.Any(r => r.ResourceType == item.Type));
+
         /// <summary>A crop's name for display, falling back to the raw key so an unresolvable area still reads.</summary>
         public static string DisplayNameFor(string speciesKey) =>
             ByKey(speciesKey)?.DisplayName ?? speciesKey;
