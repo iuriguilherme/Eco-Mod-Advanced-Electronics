@@ -1,6 +1,7 @@
 ---
 title: "A WorldObject prefab with size (0,0,0) throws in the client placement preview and blocks placement"
 date: 2026-07-18
+last_updated: 2026-09-15
 category: runtime-errors
 module: AdvancedElectronics
 problem_type: runtime_error
@@ -67,20 +68,23 @@ size: {x: 1, y: 1, z: 1}
 ```
 
 Tool change (`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs`), so the
-scripted keyboard workflow derives `size` from the encapsulating renderer bounds whenever it is
-zero (ceil to whole blocks, minimum 1):
+scripted keyboard workflow derives `size` from the encapsulating renderer bounds (ceil to whole
+blocks, minimum 1). The first version of this fix derived it only when it was still zero, which
+made it a one-time initialization: a footprint taken from an earlier mesh then survived a mesh
+replacement, because it was no longer zero. The finisher now re-derives it on every run
+(`d91a6a8`):
 
 ```csharp
-if (worldObject.size == Vector3.zero)
-{
-    var sizeBounds = new Bounds(go.transform.position, Vector3.zero);
-    foreach (var renderer in go.GetComponentsInChildren<Renderer>())
-        sizeBounds.Encapsulate(renderer.bounds);
-    worldObject.size = new Vector3(
-        Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.x)),
-        Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.y)),
-        Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.z)));
-}
+var sizeBounds = new Bounds(go.transform.position, Vector3.zero);
+foreach (var renderer in go.GetComponentsInChildren<Renderer>())
+    sizeBounds.Encapsulate(renderer.bounds);
+var derivedSize = new Vector3(
+    Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.x)),
+    Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.y)),
+    Mathf.Max(1, Mathf.CeilToInt(sizeBounds.size.z)));
+
+if (worldObject.size != derivedSize)
+    worldObject.size = derivedSize;
 ```
 
 Then reimport the prefabs, rebuild the asset bundle, and redeploy it (client bundle only — no
@@ -120,7 +124,8 @@ completes.
 - For any custom placeable WorldObject whose prefab is **not** produced by the ModKit's own
   `WorldObjectSetup` tool, verify `WorldObject.size` is non-zero and matches the block
   footprint before building the bundle. Zero is the silent-failure default.
-- Have scripted prefab tooling set `size` from renderer bounds (as above) so it can't regress.
+- Have scripted prefab tooling set `size` from renderer bounds on every run, not only when it is
+  zero (as above), so it can't regress and can't go stale when the mesh changes.
 - Add `size != (0,0,0)` to the review checklist for modded placeable objects, alongside the
   naming triad and `AddOccupancy` registration.
 - Distinguish the two placement failure signatures: **no ghost at all** points at the

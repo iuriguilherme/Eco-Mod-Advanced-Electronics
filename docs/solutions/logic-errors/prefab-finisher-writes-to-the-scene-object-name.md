@@ -1,6 +1,7 @@
 ---
 title: "The prefab finisher writes to the scene GameObject's name, silently forking a duplicate prefab after a rename"
 date: 2026-07-27
+last_updated: 2026-09-15
 category: logic-errors
 module: AdvancedElectronics
 problem_type: logic_error
@@ -18,7 +19,7 @@ applies_when:
   - "Renaming a WorldObject prefab asset to satisfy Eco's server-class name-match contract"
   - "A bundle builds cleanly but its objects render as missing-model placeholders in game"
 tags: [eco-modding, unity, prefab, editor-tooling, name-match, modkit, rename]
-related_components: [EcoServerMod/AdvancedElectronics]
+related_components: [Assets/Art/AdvancedElectronics/Editor, Assets/Art/AdvancedElectronics/Prefabs]
 ---
 
 # The prefab finisher writes to the scene GameObject's name, silently forking a duplicate prefab after a rename
@@ -50,27 +51,30 @@ second, wrong-named prefab and re-registers *that* in the scene's `ModkitPrefabC
 ## Root cause
 
 The world objects were renamed to the `XObject` form to match the server classes, and the rename
-reached the prefab assets and the server C# — but not the editor tool's hardcoded names:
+reached the prefab assets and the server C# — but not the editor tool's hardcoded names. Each finisher
+was a menu item carrying the expected scene-object name as a literal; `FinishPrefab` located the scene
+object by that name and then wrote the asset to whatever that object was called:
 
 ```csharp
-// Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs:32-36
-[MenuItem("Eco Tools/Advanced Electronics/Finish Dock Prefab")]
-public static void FinishDockPrefab() => FinishPrefab("DroneDock", isDock: true);
-
-[MenuItem("Eco Tools/Advanced Electronics/Finish Drone Prefab")]
-public static void FinishDronePrefab() => FinishPrefab("SurveyDrone", isDock: false);
-```
-
-`FinishPrefab` locates the scene object by that expected name (`AdvancedElectronicsBuildTools.cs:137`)
-and then writes the asset to whatever that object is called:
-
-```csharp
-// AdvancedElectronicsBuildTools.cs:215
+// the shape at the time -- no longer present in the tree
 var path = $"{ArtFolder}/{go.name}.prefab";
 ```
 
-So the output path tracks the *scene* name. A rename applied to assets and server code but not to the
-scene objects or these constants leaves the tool quietly authoritative for the old name.
+So the output path tracked the *scene* name. A rename applied to assets and server code but not to the
+scene objects or these constants left the tool quietly authoritative for the old name.
+
+**This root cause is fixed in the current tree**, by the very change this doc recommends below.
+`FinishPrefab` now takes the target type name and the scene object name as two separate parameters
+(`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs:647-648`), and the output path
+is built from the type name alone (`AdvancedElectronicsBuildTools.cs:765`). The source cites this doc by
+path as the reason (`AdvancedElectronicsBuildTools.cs:618-622`). One standalone finisher is gone — the survey
+drone's, because the drone moved onto the shared chassis and re-running it would have
+overwritten that chassis with the old hand-built capsule. `FinishAllDronePrefabs`
+(`AdvancedElectronicsBuildTools.cs:179-189`) covers all three drones instead. The dock's and the
+assembly's standalone finishers remain (`:154-155` and `:163-165`) and are safe, because each
+now passes its target type name and its scene object name as two separate arguments. What follows
+is kept for the mechanism and the prevention rule, which still bind any future tool that infers an
+identity from something other than its authoritative source.
 
 ## Recovery
 
@@ -83,7 +87,7 @@ recovery is clean **if you do not save the scene**:
    editor UI risks a modal save prompt; calling `OpenScene` directly discards without prompting:
 
    ```csharp
-   var scene = EditorSceneManager.OpenScene("Assets/DroneScene.unity", OpenSceneMode.Single);
+   var scene = EditorSceneManager.OpenScene("Assets/Art/AdvancedElectronics/Scenes/AdvancedElectronicsScene.unity", OpenSceneMode.Single);
    result.Log("Reloaded {0}: isDirty={1}", scene.path, scene.isDirty);
    ```
 
@@ -97,8 +101,9 @@ recovery becomes a manual container edit.
 
 ## Prevention
 
-- **Do not run the prefab finishers against this scene** until the constants are updated. They are
-  currently only correct for the pre-rename names.
+- **Check what a finisher derives its output path from before running it.** In this tree that
+  question is already settled — each finisher is handed its target type name explicitly — so
+  running them is safe. The rule survives the fix because it binds the next tool, not this one.
 - **The real fix is to pass the target asset name explicitly** rather than inferring it from the
   scene object — the tool should know it is maintaining `DroneDockObject.prefab` regardless of what
   the scene object happens to be called. Renaming the scene objects to match would also work, but
@@ -109,9 +114,14 @@ recovery becomes a manual container edit.
 - **When renaming an asset that a script references by name, grep for the old name across editor
   tooling**, not just source and assets. The rename here was otherwise complete; only the tool was
   missed, and the tool is the thing that regenerates the artifact.
-- Note the size-derivation step in the same tool only writes `WorldObject.size` when it is currently
-  zero (`AdvancedElectronicsBuildTools.cs:185`), so on already-populated prefabs re-running buys
-  nothing — there is no reason to run these tools "just to be safe".
+- The size-derivation step in the same tool now re-derives `WorldObject.size` from the renderer
+  bounds on every run (`AdvancedElectronicsBuildTools.cs:733-752`), having previously written it
+  only when it was still zero. That earlier form was an initialization wearing a derivation's
+  clothes: the dock's footprint was taken from a Plane primitive and survived at 50 x 1 x 50
+  after the mesh became a platform-shaped cube, and re-running could not correct it because the
+  value was no longer zero. Re-running after a mesh edit is now the right move rather than a
+  no-op — see `docs/solutions/runtime-errors/worldobject-zero-size-blocks-placement.md`, which
+  prescribes the same thing.
 
 ## Related
 

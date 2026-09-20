@@ -1,6 +1,7 @@
 ---
 title: Batch live tests for Eco mod development — variant objects and diagnostics, never restart-per-fix
 date: 2026-07-19
+last_updated: 2026-09-15
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -37,7 +38,10 @@ one question per restart.
    working pattern, diff **all** of them in one pass — objects, items, recipes,
    `WorldObjectComponent` subclasses, chat commands — against vanilla source and complete
    working mods, not just the class the last error message named. One missed attribute
-   costs one full restart.
+   costs one full restart. The same pass covers every construction site of a type whose
+   members changed: a new optional constructor parameter leaves each existing call site
+   compiling and silently taking the default, so the compiler names none of them and only
+   a manual sweep finds them.
 
 2. **When genuinely uncertain between N approaches, ship all N in one deploy** so a single
    test discriminates. Variants can be parallel code paths on one object or several
@@ -48,7 +52,8 @@ one question per restart.
 
 3. **Bake diagnostics into the mod so one session yields complete information.** A chat
    command that dumps each layer's internal state in text removes all dependence on UI
-   rendering for diagnosis. Example: `/drone status` reports district assignment, pairing,
+   rendering for diagnosis. Example: `/drone status` reports the dock's survey areas and its current
+   assignment, whether a drone item is paired,
    spawn state, lifecycle status, mover state, and per-ore survey data — so whether or not
    any client-side surface (world text, tooltip, window) renders, the server-side truth of
    the whole pipeline arrives labeled in chat.
@@ -99,3 +104,6 @@ acceptance list instead of one symptom.
   static conformance checklist this workflow rule says to run *in full* before deploying.
 - `docs/solutions/runtime-errors/worldobject-zero-size-blocks-placement.md` — one of the
   defects a restart paid for that a prefab-YAML audit would have caught.
+- `docs/solutions/workflow-issues/a-test-that-builds-the-input-proves-nothing-about-the-producer.md` —
+  a defect the static audit above would have caught for free, found instead four commits later:
+  the producers of a changed type were never visited, and no test could reach them.

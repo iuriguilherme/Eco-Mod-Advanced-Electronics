@@ -690,13 +690,13 @@ namespace Eco.Mods.TechTree
             // TickOnStation keeps its own retry count, where the drone HAS moved in between.
             Vector3? started = null;
             var plotsProbed = 0;
+            var loadedForTrip = false;
 
             while (this.strategy.TryGetNextTarget(out var plot))
             {
                 if (++plotsProbed > MaxPlotsProbedPerDispatch) break;
 
-                var centre = new PlotPos(plot.X, plot.Z).CenterWorldPos;
-                var candidate = new Vector3(centre.x, this.Parent.Position.Y, centre.y);
+                var candidate = this.PlotTarget(plot, this.Parent.Position.Y);
 
                 // The dock's columns are exempt on the way OUT as well as the way home: the
                 // drone starts parked on the pad, and every pad cell reports occupied, so
@@ -709,6 +709,15 @@ namespace Eco.Mods.TechTree
                 // height on the diagonal of its first horizontal step -- in a fraction of a second,
                 // which is what read as a jump. Only from the dock; a drone lifting off a work area
                 // is already at the height its route continues from.
+                // Materials change hands only at the dock: once there is somewhere to go, the
+                // strategy loads what the trip will use before the drone leaves. Once per
+                // dispatch, and never when there is nothing to go to.
+                if (!loadedForTrip && this.IsAtHomeDock())
+                {
+                    this.strategy.OnDepartingDock();
+                    loadedForTrip = true;
+                }
+
                 if (mover.SetDestination(candidate, this.HomeDock.OccupiedColumns,
                                          climbOnDeparture: this.IsAtHomeDock()))
                 {
@@ -735,9 +744,10 @@ namespace Eco.Mods.TechTree
                 // dock, not routed through no-path. Only the wording differs.
                 if (this.strategy.IsComplete)
                 {
-                    this.LastDispatchNote = this.strategy.IsExhausted
-                        ? "nothing left to mine here -- re-survey the area to go deeper"
-                        : "hold full -- returning to unload";
+                    this.LastDispatchNote = this.strategy.CompletionNote
+                        ?? (this.strategy.IsExhausted
+                            ? "nothing left to mine here -- re-survey the area to go deeper"
+                            : "hold full -- returning to unload");
 
                     this.HomeDock.PersistMiningJob();
 
@@ -778,6 +788,31 @@ namespace Eco.Mods.TechTree
             mover.HoldFor(this.IsAtHomeDock() ? TakeOffLeadInSeconds : WorkExitLeadInSeconds);
 
             this.LastDispatchNote = $"dispatched to area point {target.X:F0},{target.Z:F0}";
+        }
+
+        /// <summary>
+        /// The point the drone flies to for <paramref name="plot"/>. The plot's centre for
+        /// every job but farming, unchanged. A farm drone aims at the open column nearest the
+        /// centre instead: the pathfinder refuses a blocked goal column, and a farm plot next
+        /// to trees was reported unreachable because one tree stood at its centre while the
+        /// rest of the plot was open. Farm work walks every column whatever column it hovers
+        /// over. Mining and survey keep the centre, since their behaviour was not re-checked.
+        /// </summary>
+        private Vector3 PlotTarget(PlotCoord plot, float y)
+        {
+            if (this.CurrentJobKind() == DroneJobKind.Farm)
+            {
+                var sampler = new EcoWorldSampler();
+                var open = PlotApproach.FirstOpenColumn(
+                    plot, PlotUtil.PropertyPlotLength,
+                    (x, z) => sampler.IsSolidAt(x, z) || sampler.IsObstacleAt(x, z));
+
+                if (open.HasValue)
+                    return new Vector3(open.Value.X, y, open.Value.Z);
+            }
+
+            var centre = new PlotPos(plot.X, plot.Z).CenterWorldPos;
+            return new Vector3(centre.x, y, centre.y);
         }
 
         /// <summary>Seconds since the last tick, or a plausible fallback when the manager has not measured one yet.</summary>
@@ -848,10 +883,17 @@ namespace Eco.Mods.TechTree
             this.Parent is IDroneToolbearer bearer ? bearer.Job : null;
 
         /// <summary>The change-detection token for whichever assignment this drone's job kind reads (U10).</summary>
-        private string CurrentAssignedToken() =>
-            this.CurrentJobKind() == DroneJobKind.Mining
-                ? this.HomeDock.AssignedMiningAreaToken
-                : this.HomeDock.AssignedAreaToken;
+        private string CurrentAssignedToken() => this.CurrentJobKind() switch
+        {
+            DroneJobKind.Mining => this.HomeDock.AssignedMiningAreaToken,
+
+            // A farm holds several areas at once, so its token folds every assigned area
+            // and each one's own edit epoch together: assigning, unassigning or redrawing
+            // any of them re-dispatches, exactly as a single area's change does elsewhere.
+            DroneJobKind.Farm => this.HomeDock.AssignedFarmAreasToken,
+
+            _ => this.HomeDock.AssignedAreaToken
+        };
 
         /// <summary>
         /// Resolves the Eco-free area this drone is currently assigned to work, regardless
@@ -892,10 +934,27 @@ namespace Eco.Mods.TechTree
                 }
 
                 var signal = reference.Resolve(out _, out var miningEntry);
+
+                // R21's narrowing, run here with the same inputs the mining strategy runs it
+                // with -- the agreement this method's header describes has to hold for the
+                // narrowed test too, or an edit that leaves the job running would still ground
+                // the drone. The job is read off the dock rather than through the strategy,
+                // because this method is called before a strategy exists; a job belonging to
+                // another area is not this reference's job and pends nothing here.
                 var outcome = AreaResolutionPolicy.Resolve(
                     signal,
                     reference.StoredChangeToken,
-                    miningEntry == null ? null : MiningAreaRef.CurrentChangeToken(miningEntry));
+                    miningEntry == null ? null : MiningAreaRef.CurrentChangeToken(miningEntry),
+                    () => miningEntry != null
+                        && this.HomeDock.MiningJob != null
+                        && this.HomeDock.MiningJobAreaId == reference.AreaId
+                        && AreaEdit.RemovesPendingWork(this.HomeDock.MiningJob.PendingPlots(), miningEntry.Plots()));
+
+                if (outcome == AreaResolutionOutcome.Reacquired)
+                {
+                    reference.AdoptEpoch(miningEntry);
+                    outcome = AreaResolutionOutcome.StillValid;
+                }
 
                 switch (outcome)
                 {
@@ -920,6 +979,31 @@ namespace Eco.Mods.TechTree
                         noAreaReason = "assigned mining area did not resolve";
                         return null;
                 }
+            }
+
+            if (this.CurrentJobKind() == DroneJobKind.Farm)
+            {
+                // Every assigned farm area's plots as one working ground. The lifecycle asks
+                // this question to decide where the drone may fly and whether it has arrived,
+                // and for a farm the honest answer spans several areas -- which area a given
+                // plot belongs to is the strategy's business, not the router's.
+                // Built with a loop rather than LINQ on purpose: this file carries no
+                // System.Linq import, and adding one here would put a pile of extension
+                // methods in scope across the mod's most fragile type for one call site.
+                var plots = new List<PlotCoord>();
+                var seenPlots = new HashSet<PlotCoord>();
+                foreach (var farmArea in this.HomeDock.AssignedFarmAreas)
+                    foreach (var farmPlot in farmArea.Plots())
+                        if (seenPlots.Add(farmPlot))
+                            plots.Add(farmPlot);
+
+                if (plots.Count == 0)
+                {
+                    noAreaReason = "no farm area assigned";
+                    return null;
+                }
+
+                return new SurveyArea(0, "farm", plots);
             }
 
             var entry = this.HomeDock.AssignedSurveyArea;
@@ -995,6 +1079,30 @@ namespace Eco.Mods.TechTree
                     PlotUtil.PropertyPlotLength,
                     MiningTierDepth,
                     MiningHoldCapacityEstimate);
+            }
+
+            if (this.CurrentJobKind() == DroneJobKind.Farm)
+            {
+                if (this.HomeDock.GetComponent(typeof(PublicStorageComponent), DroneCargo.HoldName) is not PublicStorageComponent farmHold
+                    || !this.HomeDock.TryGetComponent<LinkComponent>(out var farmLink))
+                    return null;
+
+                // No job ledger to rehydrate, unlike mining. A farm records nothing per plot
+                // (R7) -- it reads the ground fresh every visit -- so a strategy built now is
+                // as informed as one that had been running for hours.
+                return new FarmingStrategy(
+                    this.HomeDock,
+                    new EcoWorldSampler(),
+                    new EcoGroundFitness(),
+                    new FarmingActionService(),
+                    new BlockPlacementService(),
+                    new MiningRemovalService(),
+                    Item.Get<HarvestArmItem>(),
+                    Item.Get<MiningArmItem>(),
+                    farmHold.Storage,
+                    farmLink,
+                    MiningHoldCapacityEstimate,
+                    this.IsAtHomeDock);
             }
 
             return this.Parent.TryGetComponent<OreSensorComponent>(out var sensor)
@@ -1334,8 +1442,7 @@ namespace Eco.Mods.TechTree
                 if (mover.IsMoving)
                     return;
 
-                var center = new PlotPos(plot.X, plot.Z).CenterWorldPos;
-                var reachable = mover.SetDestination(new Vector3(center.x, pos.Y, center.y), this.HomeDock.OccupiedColumns);
+                var reachable = mover.SetDestination(this.PlotTarget(plot, pos.Y), this.HomeDock.OccupiedColumns);
                 this.plotArrivalAttempts++;
 
                 // A hop to the next plot is travel like any other: stow the arm and reach the

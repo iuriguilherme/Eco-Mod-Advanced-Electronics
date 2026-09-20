@@ -249,6 +249,221 @@ namespace AdvancedElectronics.Navigation.Tests
 
         private static bool NoneSurveyed(PlotCoord plot) => false;
 
+        // ------------------------------------------------------------------
+        // U3: the exclusion ledger and its reach (R18, R19, R27).
+        //
+        // Two docks are named throughout: DockA hits the refusal, DockB has access.
+        // The ledger is the whole decidable half of this unit -- which categories are
+        // attempt facts, how a suppression set is unioned per dock, and when a survey
+        // lifts an exclusion (KTD5, KTD12).
+        // ------------------------------------------------------------------
+
+        private const string DockA = "dock-a";
+        private const string DockB = "dock-b";
+
+        [Fact]
+        public void EverySkipCategoryIsAnAttemptFact_NoneBindsAnotherDock()
+        {
+            // R18's reach split, stated over the whole enum rather than the values that
+            // happen to exist today: a mining pass records NO ground facts. Obstructed is
+            // the classifier's catch-all for a refusal that was neither law nor property --
+            // R7's single-column obstruction, which never stops a plot reaching bedrock --
+            // and bedrock never reaches this ledger at all, because MiningStrategy filters
+            // NotRemovable positions out before submission and advances the layer without
+            // recording a skip. The one ground fact is the area's at-bedrock observation (U4).
+            foreach (SkipCategory category in System.Enum.GetValues(typeof(SkipCategory)))
+                Assert.Equal(ExclusionReach.Attempt, MiningExclusion.ReachOf(category));
+        }
+
+        [Fact]
+        public void SettlementLawRefusalByOneDock_DoesNotSuppressThatPlotForAnotherDock()
+        {
+            var ledger = new MiningExclusionLedger();
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused under settlement law."));
+
+            Assert.True(ledger.SuppressesFor(DockA, P00));
+            Assert.False(ledger.SuppressesFor(DockB, P00));
+        }
+
+        [Fact]
+        public void AGroundFact_SuppressesThatPlotForEveryDock()
+        {
+            // The at-bedrock observation U4 writes per column onto the area (KTD4). It is
+            // holderless by construction -- no dock recorded it, the ground did.
+            var ledger = new MiningExclusionLedger();
+            ledger.RecordGroundFact(P01);
+
+            Assert.True(ledger.SuppressesFor(DockA, P01));
+            Assert.True(ledger.SuppressesFor(DockB, P01));
+        }
+
+        [Fact]
+        public void CoversAE10_OneSettlementLawPlot_IsAccountedForRegardlessOfHolder_AndNamesItsReason()
+        {
+            // The half of AE10 this unit owns: the exclusion is shared information, so the
+            // area's status reads it whoever recorded it, and it carries the wording R27
+            // reports on the mining tab. Turning "an exclusion accounts for this plot" into
+            // [cleared] rather than [empty] is U5's derivation, which reads exactly these
+            // two answers.
+            var ledger = new MiningExclusionLedger();
+            ledger.RecordGroundFact(P00);
+            ledger.RecordGroundFact(P10);
+            ledger.Record(new MiningExclusion(DockA, P01, SkipCategory.SettlementLaw, "Refused under settlement law."));
+
+            // Read with no filter on holder -- what the one shared status is derived from.
+            var accounted = ledger.AttemptFacts;
+            Assert.Equal(P01, Assert.Single(accounted).Plot);
+            Assert.Equal(SkipCategory.SettlementLaw, accounted[0].Category);
+            Assert.Equal("Refused under settlement law.", accounted[0].Detail);
+
+            // ... and the plot is genuinely still accounted for, rather than exhausted.
+            Assert.True(ledger.IsAccountedForByAttempt(P01));
+            Assert.False(ledger.IsAccountedForByAttempt(P00));
+        }
+
+        [Fact]
+        public void CoversAE15_ReassigningTheAreaToThatDock_ClearsItsExclusions_AndNothingElseDoes()
+        {
+            // R45: an attempt-fact exclusion is lifted by assigning the area to that mining
+            // dock again, and by nothing else. Only a mining drone can learn a refusal -- it
+            // attempts the action in place and captures the reason -- so only a mining attempt
+            // can learn the refusal has gone. A survey cannot test settlement law or property,
+            // and material proves nothing about a permit refusal: the refusal leaves the
+            // material exactly where it was. The player is the signal, and assigning is how
+            // they give it.
+            var ledger = new MiningExclusionLedger();
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused under settlement law."));
+            ledger.Record(new MiningExclusion(DockB, P10, SkipCategory.Property, "Refused under private property."));
+            ledger.RecordGroundFact(P01);
+
+            // Resurveying in between changes nothing: there is no survey-driven lift to call,
+            // and reading the ledger any number of times leaves every record standing.
+            Assert.True(ledger.SuppressesFor(DockA, P00));
+            Assert.True(ledger.SuppressesFor(DockA, P00));
+            Assert.Equal(2, ledger.AttemptFacts.Count);
+
+            // The player assigns the area to DockA again. That, and only that, is the retry.
+            var lifted = ledger.ClearAttemptFactsFor(DockA);
+
+            Assert.Equal(P00, Assert.Single(lifted).Plot);
+            Assert.False(ledger.SuppressesFor(DockA, P00));
+
+            // Scoped to the assigning dock: DockB's own refusal is its own knowledge, and
+            // someone else's assignment does not clear it.
+            Assert.True(ledger.SuppressesFor(DockB, P10));
+            Assert.Equal(P10, Assert.Single(ledger.AttemptFacts).Plot);
+
+            // And the ground fact needs no lift: the survey re-derives at-bedrock from the
+            // ground on every pass, so an assignment must not touch it.
+            Assert.True(ledger.SuppressesFor(DockA, P01));
+            Assert.True(ledger.SuppressesFor(DockB, P01));
+        }
+
+        [Fact]
+        public void ClearingOneDocksExclusions_WhenItHasNone_IsANoOp()
+        {
+            var ledger = new MiningExclusionLedger();
+            ledger.Record(new MiningExclusion(DockB, P10, SkipCategory.Property, "property"));
+
+            Assert.Empty(ledger.ClearAttemptFactsFor(DockA));
+            Assert.Single(ledger.AttemptFacts);
+        }
+
+        [Fact]
+        public void AnExclusionSetFromTwoDocks_ReadsAsOneRecord_ButYieldsTwoDifferentOfferLists()
+        {
+            // R19's whole point, and R26's: what varies per dock is which plots it is
+            // OFFERED, never what the area says it is.
+            var ledger = new MiningExclusionLedger();
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "law"));
+            ledger.Record(new MiningExclusion(DockB, P10, SkipCategory.Property, "property"));
+            ledger.RecordGroundFact(P01);
+
+            // One shared record, both entries, whoever asks.
+            Assert.Equal(2, ledger.AttemptFacts.Count);
+
+            var area = new[] { P00, P10, P01 };
+            Assert.Equal(new[] { P10 }, area.Where(p => !ledger.SuppressesFor(DockA, p)).ToArray());
+            Assert.Equal(new[] { P00 }, area.Where(p => !ledger.SuppressesFor(DockB, p)).ToArray());
+        }
+
+        [Fact]
+        public void AJobThatSkippedNothing_LeavesNoExclusionBehind()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkWorked(P00);
+            job.MarkWorked(P10);
+            job.TryComplete(AllSurveyed);
+
+            Assert.Empty(job.SkippedPlots());
+
+            var ledger = new MiningExclusionLedger();
+            foreach (var skip in job.SkippedPlots())
+                ledger.Record(new MiningExclusion(DockA, skip.Plot, skip.Category, skip.Detail));
+
+            Assert.Empty(ledger.AttemptFacts);
+            Assert.False(ledger.SuppressesFor(DockA, P00));
+        }
+
+        [Fact]
+        public void TheJobsSkippedLedgerCarriesThePlotTheCategoryAndTheRefusalDetail()
+        {
+            // KTD5: no second refusal vocabulary is introduced -- the exclusion the dock
+            // persists is exactly what the job already recorded, detail included.
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkSkipped(P00, SkipCategory.SettlementLaw, "Refused under settlement law.");
+            job.MarkWorked(P10);
+
+            var skip = Assert.Single(job.SkippedPlots());
+            Assert.Equal(P00, skip.Plot);
+            Assert.Equal(SkipCategory.SettlementLaw, skip.Category);
+            Assert.Equal("Refused under settlement law.", skip.Detail);
+        }
+
+        [Fact]
+        public void ASkippedPlotSurvivesTheJobSnapshotRoundTrip_DetailIncluded()
+        {
+            // The exclusion is written from the job's ledger, and a job is rehydrated from
+            // its snapshot after a restart, so the detail has to survive the projection.
+            var job = new MiningJob(new[] { P00 });
+            job.Dispatch();
+            job.MarkSkipped(P00, SkipCategory.Property, "You do not have permission here.");
+
+            var restored = MiningJob.FromSnapshot(job.ToSnapshot());
+
+            var skip = Assert.Single(restored.SkippedPlots());
+            Assert.Equal(SkipCategory.Property, skip.Category);
+            Assert.Equal("You do not have permission here.", skip.Detail);
+        }
+
+        [Fact]
+        public void CoversAE10_TheExclusionNamesItsRefusalWhereReasonsAreAlreadyReported()
+        {
+            // R27's half of AE10: the reason survives the job that hit it, worded with the same
+            // category vocabulary the skip line uses and carrying the engine's own words. An
+            // area whose [cleared] rests on this must be able to say what would unblock it.
+            var ledger = new MiningExclusionLedger();
+            ledger.Record(new MiningExclusion(DockA, P00, SkipCategory.SettlementLaw, "Refused by settlement law 'No Digging'."));
+
+            var line = MiningReadout.FormatExclusionLine(ledger.AttemptFacts);
+
+            Assert.Contains("not authorized (settlement law)", line);
+            Assert.Contains("No Digging", line);
+
+            // And it names the remedy that actually works (R45). Saying "resurvey" here would
+            // send the player to do the one thing that cannot lift this.
+            Assert.Contains("reassigned", line);
+            Assert.DoesNotContain("resurvey", line);
+        }
+
+        [Fact]
+        public void AnAreaExcludingNothing_RendersNoExclusionLineAtAll()
+        {
+            Assert.Equal(string.Empty, MiningReadout.FormatExclusionLine(new MiningExclusionLedger().AttemptFacts));
+        }
+
         [Fact]
         public void TryComplete_NoOp_WhenNotWorking()
         {
@@ -259,6 +474,137 @@ namespace AdvancedElectronics.Navigation.Tests
             job.MarkWorked(P00);
             job.TryComplete(AllSurveyed);
             Assert.False(job.TryComplete(AllSurveyed)); // already Complete
+        }
+
+        // --- U9/R21: an edit ends a job only when it removes plots the job still has to work ---
+
+        [Fact]
+        public void PendingPlots_AreTheOnesNeitherWorkedNorSkipped()
+        {
+            var job = new MiningJob(new[] { P00, P10, P01 });
+            job.Dispatch();
+            job.MarkWorked(P00);
+            job.MarkSkipped(P10, SkipCategory.SettlementLaw);
+
+            Assert.Equal(new[] { P01 }, job.PendingPlots());
+        }
+
+        /// <summary>
+        /// R21. An edit that only adds plots leaves a running job alive: every plot it was built
+        /// against is still there, so there is nothing it can no longer finish. This is what makes
+        /// R20's preservation something the player can actually see rather than a fact about
+        /// storage.
+        /// </summary>
+        [Fact]
+        public void AnEditThatOnlyAddsPlots_LeavesTheJobRunning()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkWorked(P00);
+
+            var after = new[] { P00, P10, P01, new PlotCoord(1, 1) };
+
+            Assert.False(AreaEdit.RemovesPendingWork(job.PendingPlots(), after));
+            Assert.Equal(
+                AreaResolutionOutcome.Reacquired,
+                AreaResolutionPolicy.Resolve(AreaLookupSignal.Found, "1:0", "1:1", editRemovedPendingWork: () => false));
+        }
+
+        /// <summary>
+        /// R21. An edit that removes a plot the job has NOT reached yet takes work the job can
+        /// never finish and never account for, so the job ends with the redraw reason.
+        /// </summary>
+        [Fact]
+        public void AnEditRemovingAPlotTheJobStillHasToWork_EndsTheJobAsRedrawn()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkWorked(P00);
+
+            Assert.True(AreaEdit.RemovesPendingWork(job.PendingPlots(), new[] { P00 }));
+            Assert.Equal(
+                AreaResolutionOutcome.Invalidated,
+                AreaResolutionPolicy.Resolve(AreaLookupSignal.Found, "1:0", "1:1", editRemovedPendingWork: () => true));
+
+            job.End(MiningEndReason.AreaRedrawn);
+            Assert.Equal(MiningJobStatus.Ended, job.Status);
+            Assert.Equal(MiningEndReason.AreaRedrawn, job.EndReason);
+        }
+
+        /// <summary>
+        /// R21. A plot the job has ALREADY worked leaving the area takes nothing with it: the
+        /// outcome is recorded and the job is done with it, so the job runs on.
+        /// </summary>
+        [Fact]
+        public void AnEditRemovingAPlotTheJobAlreadyWorked_DoesNotEndIt()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkWorked(P00);
+
+            Assert.False(AreaEdit.RemovesPendingWork(job.PendingPlots(), new[] { P10 }));
+        }
+
+        /// <summary>
+        /// R21. The same for a plot the job SKIPPED. A skip is an outcome, not an omission --
+        /// it is exactly what the exclusion ledger is built from (U3) -- so the job has no more
+        /// business with that plot either.
+        /// </summary>
+        [Fact]
+        public void AnEditRemovingAPlotTheJobSkipped_DoesNotEndIt()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.MarkSkipped(P00, SkipCategory.SettlementLaw);
+            job.MarkWorked(P10);
+
+            Assert.False(AreaEdit.RemovesPendingWork(job.PendingPlots(), new[] { P10 }));
+        }
+
+        /// <summary>
+        /// R21. The narrowing is on the change token only. An area CONFIRMED GONE still ends the
+        /// job whatever it has left to do -- there is no area to run on -- which is why a vanished
+        /// area and a reshaped one stay different answers.
+        /// </summary>
+        [Fact]
+        public void AVanishedArea_StillEndsTheJob_EvenWithNothingPendingToRemove()
+        {
+            Assert.Equal(
+                AreaResolutionOutcome.Invalidated,
+                AreaResolutionPolicy.Resolve(AreaLookupSignal.ConfirmedGone, "1:0", null, editRemovedPendingWork: () => false));
+        }
+
+        /// <summary>
+        /// R21. An unedited area is untouched by the narrowing: a matching token is still
+        /// straightforwardly valid, and a tick that did not resolve is still retried silently.
+        /// </summary>
+        [Fact]
+        public void TheNarrowedResolve_LeavesTheUneditedOutcomesAlone()
+        {
+            Assert.Equal(
+                AreaResolutionOutcome.StillValid,
+                AreaResolutionPolicy.Resolve(AreaLookupSignal.Found, "1:0", "1:0", editRemovedPendingWork: () => true));
+            Assert.Equal(
+                AreaResolutionOutcome.NotYetResolved,
+                AreaResolutionPolicy.Resolve(AreaLookupSignal.NotYetResolved, "1:0", "1:0", editRemovedPendingWork: () => true));
+        }
+
+        /// <summary>
+        /// U9 step 5. A job ending under R21 changes nothing about the ASSIGNMENT, and therefore
+        /// nothing about the claim the assignment carries (KTD6): assignment already outlives a
+        /// job, which is why an unassign has to end the job explicitly and a job's own end does
+        /// not unassign anything.
+        /// </summary>
+        [Fact]
+        public void EndingAJobUnderR21_IsNotAnUnassign()
+        {
+            var job = new MiningJob(new[] { P00, P10 });
+            job.Dispatch();
+            job.End(MiningEndReason.AreaRedrawn);
+
+            // The redraw reason is its own; nothing here reports the assignment as cleared.
+            Assert.Equal(MiningEndReason.AreaRedrawn, job.EndReason);
+            Assert.NotEqual(MiningEndReason.Unassigned, job.EndReason);
         }
     }
 }

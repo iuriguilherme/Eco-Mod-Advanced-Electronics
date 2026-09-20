@@ -1,7 +1,7 @@
 ---
 title: "Audit mod content derived from AutoGen templates for the references you forgot to rename"
 date: 2026-07-31
-last_updated: 2026-08-10
+last_updated: 2026-09-06
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -126,11 +126,14 @@ you keep, and the more places a stale reference can hide while still looking idi
 
 ## Examples
 
-The residue sweep, written so it cannot match nothing. `*` not `+`, and the exclusion is anchored so
-it only drops correctly-renamed hits:
+The residue sweep, written so the pattern cannot silently miss a hit. `*` not `+`, and the exclusion
+is anchored so it only drops correctly-renamed hits:
 
 ```bash
 # Derived Battery.cs from vanilla Biodiesel.cs -- every remaining "Biodiesel" is residue.
+# Re-run 2026-09-06: returns nothing. That residue was real and was cleaned in 7f3b526,
+# "fix(server): crafting a Battery produced Biodiesel" -- an empty result here is now a
+# passing sweep rather than a broken command. The loop below still returns live output.
 grep -noE '[A-Za-z]*Biodiesel[A-Za-z]*' EcoServerMod/AdvancedElectronics/Battery.cs
 
 # Sweeping a whole batch for a vanilla noun, keeping only the un-renamed hits.

@@ -1,6 +1,7 @@
 ---
 title: "A mod tab writes every editable member back at once, so N controls cannot share one field"
 date: 2026-07-31
+last_updated: 2026-09-15
 category: runtime-errors
 module: EcoServerMod
 problem_type: runtime_error
@@ -104,12 +105,23 @@ public int AssignedPosition
 }
 ```
 
-Shipped at `EcoServerMod/AdvancedElectronics/SurveyComponent.cs`. Reserving `0` for "unassigned"
-means the same control also clears the field, so no second control is needed for the inverse.
+This is the shape that fixed the bug, and it shipped at the time in
+`EcoServerMod/AdvancedElectronics/SurveyComponent.cs`. Reserving `0` for "unassigned" meant the
+same control also cleared the field, so no second control was needed for the inverse.
 
-The `AssignedPosition == value` early return stays. It is not what fixed the bug, but a batch still
-re-writes this member with its current value on every interaction, and without the guard each one
-would run a redundant assignment and refresh.
+It is no longer the shipped shape. A setter that assigns runs on every change of the stepper, so
+scrolling the one cursor to read a neighbouring area's findings reassigned the working drone
+(`e15c87d`). The Survey tab now has one view-only `Int32` cursor, `ViewPosition`, whose setter
+changes only what is displayed, and assignment is two explicit RPC buttons, Assign Selected Area
+and Unassign Area; the Mining tab has the same shape. The lesson of this doc is unchanged and
+extends one step further: one field needs one editable member, and an action with a side effect
+should not live in an editable member's setter at all, because that setter also runs on
+interactions the player did not mean as that action.
+
+The `AssignedPosition == value` early return stayed, and it survives on today's view cursor as
+`this.viewIndex == value - 1`. It is not what fixed the bug, but a batch still re-writes the
+member with its current value on every interaction, and without the guard each one would run a
+redundant refresh.
 
 ## Why This Works
 
@@ -139,7 +151,9 @@ prior probe rounds were doing this the whole time.
 
 - **One field, one editable member.** Before adding an editable control, ask what field its setter
   writes and whether anything else writes the same one. If yes, the design is already broken; make
-  it a cursor (`Int32`), a picker, or a single commit action instead.
+  it a cursor (`Int32`), a picker, or a single commit action instead. When changing the value
+  should also do something beyond the display, pair a view-only cursor with a commit action
+  rather than doing it in the cursor's setter.
 - **Prefer a value control to a control-per-object.** A stepper costs one row whatever the object
   count, so it removes both this failure and the layout pressure that motivates a per-object pool.
   Reserve one end of its range for the "none" state and the inverse action costs nothing.

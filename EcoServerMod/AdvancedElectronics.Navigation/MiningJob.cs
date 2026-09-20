@@ -50,7 +50,27 @@ namespace AdvancedElectronics.Navigation
         /// Appended rather than inserted: these values are persisted by ordinal in the job
         /// snapshot, so the existing members' positions are load-bearing.
         /// </summary>
-        AreaRedrawn
+        AreaRedrawn,
+
+        /// <summary>
+        /// The area still exists and is still assigned, but its survey dock sits outside this
+        /// dock's network radius, so this dock may no longer work it (R23, R24).
+        ///
+        /// <para>
+        /// This path used to report <see cref="AreaGone"/>, because ending on the vanished-area
+        /// route is how the drone comes home and no member said otherwise. The mining panel
+        /// corrected the wording above it -- an out-of-range assignment outranks the job's end
+        /// reason in <see cref="MiningReadout.FormatBlockedReason"/> -- but every other reader of
+        /// <c>EndReason</c>, <c>/drone state</c> included, still said the area was gone about an
+        /// area plainly still on the map. A borrowed member is only ever correct in the one place
+        /// that knows to override it.
+        /// </para>
+        /// <para>
+        /// Appended, like <see cref="AreaRedrawn"/> before it, for the same reason: the ordinals
+        /// are persisted in the job snapshot.
+        /// </para>
+        /// </summary>
+        AreaOutOfRange
     }
 
     /// <summary>What became of one plot: still to do, worked, or abandoned with a reason (R16, R22).</summary>
@@ -84,6 +104,29 @@ namespace AdvancedElectronics.Navigation
 
         /// <summary>A refusal that matches none of the above -- the defined fallback (R22).</summary>
         Other
+    }
+
+    /// <summary>
+    /// One plot a job abandoned: the plot, the category it was filed under, and the engine's
+    /// own refusal wording when there was one (R22, R27).
+    ///
+    /// This is what the dock persists past the job's end as an exclusion (U3, KTD5) — the
+    /// exclusion vocabulary IS this one, so nothing beside it is introduced.
+    /// </summary>
+    public readonly struct SkippedPlot
+    {
+        public PlotCoord Plot { get; }
+        public SkipCategory Category { get; }
+
+        /// <summary>The engine's own words for the refusal, or null when the refusal had none.</summary>
+        public string Detail { get; }
+
+        public SkippedPlot(PlotCoord plot, SkipCategory category, string detail)
+        {
+            this.Plot = plot;
+            this.Category = category;
+            this.Detail = detail;
+        }
     }
 
     /// <summary>
@@ -135,6 +178,11 @@ namespace AdvancedElectronics.Navigation
     {
         private readonly Dictionary<PlotCoord, PlotOutcome> _ledger;
         private readonly Dictionary<PlotCoord, SkipCategory> _skipCategories = new Dictionary<PlotCoord, SkipCategory>();
+
+        // Per plot, unlike LastRefusalDetail beside it. That one answers "why did that just
+        // fail" for the panel and is deliberately last-only; this one is what travels into the
+        // dock's exclusion (U3, R27), where the plot a reason belongs to is the whole point.
+        private readonly Dictionary<PlotCoord, string> _skipDetails = new Dictionary<PlotCoord, string>();
 
         public MiningJobStatus Status { get; private set; } = MiningJobStatus.Idle;
 
@@ -233,10 +281,43 @@ namespace AdvancedElectronics.Navigation
             RequirePlot(plot);
             _ledger[plot] = PlotOutcome.Skipped;
             _skipCategories[plot] = category;
+            _skipDetails[plot] = string.IsNullOrWhiteSpace(refusalDetail) ? null : refusalDetail;
 
             if (!string.IsNullOrWhiteSpace(refusalDetail))
                 LastRefusalDetail = refusalDetail;
         }
+
+        /// <summary>
+        /// Every plot this job abandoned, with its category and the refusal's own wording —
+        /// the ledger the dock persists as its exclusions (U3, KTD5). Empty for a job that
+        /// skipped nothing, which is what leaves no exclusion behind.
+        /// </summary>
+        public IReadOnlyList<SkippedPlot> SkippedPlots() =>
+            _ledger
+                .Where(kv => kv.Value == PlotOutcome.Skipped)
+                .Select(kv => new SkippedPlot(
+                    kv.Key,
+                    _skipCategories.TryGetValue(kv.Key, out var c) ? c : SkipCategory.Other,
+                    _skipDetails.TryGetValue(kv.Key, out var d) ? d : null))
+                .OrderBy(s => s.Plot.Z).ThenBy(s => s.Plot.X)
+                .ToList();
+
+        /// <summary>
+        /// Every plot this job STILL HAS TO WORK — recorded neither worked nor skipped (U9,
+        /// R21). This is the ledger an edit is tested against: a redraw ends the job when it
+        /// removes any of these, and leaves it running when it does not.
+        ///
+        /// Deliberately not filtered by whether the plot is surveyed. <see cref="NextPlot"/>
+        /// takes that filter because an unsurveyed plot cannot be worked YET; here it would be
+        /// wrong, because a plot the job is waiting on a resurvey for is still work it has to
+        /// do, and an edit that takes it away has still taken it away.
+        /// </summary>
+        public IReadOnlyList<PlotCoord> PendingPlots() =>
+            _ledger
+                .Where(kv => kv.Value == PlotOutcome.Unworked)
+                .Select(kv => kv.Key)
+                .OrderBy(p => p.Z).ThenBy(p => p.X)
+                .ToList();
 
         private void RequirePlot(PlotCoord plot)
         {
@@ -327,7 +408,9 @@ namespace AdvancedElectronics.Navigation
         public MiningJobSnapshot ToSnapshot()
         {
             var entries = _ledger.Select(kv => new MiningJobSnapshot.LedgerEntry(
-                kv.Key, kv.Value, _skipCategories.TryGetValue(kv.Key, out var c) ? c : (SkipCategory?)null)).ToList();
+                kv.Key, kv.Value,
+                _skipCategories.TryGetValue(kv.Key, out var c) ? c : (SkipCategory?)null,
+                _skipDetails.TryGetValue(kv.Key, out var d) ? d : null)).ToList();
             return new MiningJobSnapshot(Status, EndReason, entries);
         }
 
@@ -343,6 +426,7 @@ namespace AdvancedElectronics.Navigation
                 {
                     job._ledger[entry.Plot] = PlotOutcome.Skipped;
                     job._skipCategories[entry.Plot] = entry.Category.Value;
+                    job._skipDetails[entry.Plot] = entry.Detail;
                 }
             }
             job.Status = snapshot.Status;
@@ -360,11 +444,22 @@ namespace AdvancedElectronics.Navigation
             public PlotOutcome Outcome { get; }
             public SkipCategory? Category { get; }
 
-            public LedgerEntry(PlotCoord plot, PlotOutcome outcome, SkipCategory? category)
+            /// <summary>
+            /// The engine's own refusal wording for a skipped plot (R27), or null. Optional on
+            /// the constructor because the DOCK's persisted projection of this snapshot is a
+            /// flat int list and cannot carry a string: a job rehydrated after a restart keeps
+            /// its categories and loses its wording. The exclusion the dock writes is what
+            /// carries the wording across a restart (U3) — it is persisted with the detail on
+            /// it, at the moment of the refusal, rather than re-derived from the job later.
+            /// </summary>
+            public string Detail { get; }
+
+            public LedgerEntry(PlotCoord plot, PlotOutcome outcome, SkipCategory? category, string detail = null)
             {
                 Plot = plot;
                 Outcome = outcome;
                 Category = category;
+                Detail = detail;
             }
         }
 

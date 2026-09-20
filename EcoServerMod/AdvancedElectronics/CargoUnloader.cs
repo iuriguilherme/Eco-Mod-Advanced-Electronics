@@ -39,10 +39,8 @@ namespace Eco.Mods.TechTree
             // Excluded by owning object rather than by component name: the drone bay and any
             // future dock storage are equally wrong targets, and matching on the hold's name would
             // silently stop covering them.
-            var destinations = new InventoryCollection(
-                link.GetSortedLinkedEnabledStorages(stampedCitizen)
-                    .Where(storage => storage.Parent is not DroneDockObject)
-                    .Select(storage => storage.Inventory));
+            // "Put Into" links only -- see DroneStorage for why the direction matters.
+            var destinations = new InventoryCollection(DroneStorage.PutInto(link, stampedCitizen));
             var moved = 0;
 
             // Snapshot: a successful push below removes from the hold, which would

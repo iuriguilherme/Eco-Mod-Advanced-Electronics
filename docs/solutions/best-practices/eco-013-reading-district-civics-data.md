@@ -1,6 +1,7 @@
 ---
 title: Reading district / civics data from an Eco 0.13 server mod
 date: 2026-07-12
+last_updated: 2026-09-15
 category: best-practices
 module: EcoServerMod
 problem_type: best_practice
@@ -15,9 +16,18 @@ tags: [eco-modding, districts, settlements, civics, deed, server-mod, worldposit
 
 # Reading district / civics data from an Eco 0.13 server mod
 
+> **Scope, as of 2026-09-05.** Everything below was verified against **Eco 0.13** and has not been
+> re-verified against **0.14**, which this mod now targets. The mod also no longer scopes drones to
+> districts at all — that scaffold was retired in favour of drawn survey areas (`e72108c`), and the
+> reference implementation this doc cites was deleted in the same commit. The read surface is kept
+> because the areas that replaced districts are still managed the same way: see the comment at
+> `EcoServerMod/AdvancedElectronics/SurveyAreaPicker.cs:18`, which points at `DistrictMap.EditAsync`
+> / `OnMapEdited` as the model it imitates. Re-verify against the 0.14 reference assemblies before
+> relying on a specific member name.
+
 ## Context
 
-The Advanced Electronics survey-drone spike needed a server mod to resolve "which district is this world position in?" so a drone could be scoped to a player-drawn map area. Planning research (against docs.play.eco) assumed the 0.11-era model where "districts" had folded into `Settlement`; the actual 0.13.0.4 assemblies keep districts as a first-class civics type. This doc records the real 0.13 read surface, verified by reflection dump against `Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024` and by `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs` compiling green against it.
+The Advanced Electronics survey-drone spike needed a server mod to resolve "which district is this world position in?" so a drone could be scoped to a player-drawn map area. Planning research (against docs.play.eco) assumed the 0.11-era model where "districts" had folded into `Settlement`; the actual 0.13.0.4 assemblies keep districts as a first-class civics type. This doc records the real 0.13 read surface, verified by reflection dump against `Eco.ReferenceAssemblies 0.13.0.4-beta-release-1024` and by `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs` compiling green against it (that file has since been deleted — see the scope note above).
 
 ## Guidance
 
@@ -42,7 +52,7 @@ The planning research (docs.play.eco, ~12 months stale on civics) said districts
 
 ## Examples
 
-Point membership + full enumeration (from `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs`):
+Point membership + full enumeration (from `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs`, deleted in `e72108c`; the code is reproduced here because the file no longer exists):
 
 ```csharp
 using Eco.Core.Systems;                       // Registrars
@@ -60,11 +70,14 @@ foreach (var map in Registrars.Get<DistrictMap>())
 
 Quantization caveat: the `(int)pos.X, (int)pos.Z` cast above truncates toward zero. If another part of your mod computes a grid column from the same kind of position using a *different* rule (e.g. `MathF.Round`, as a pathfinder's grid-column math typically does), the two can disagree at cell boundaries — see `docs/solutions/conventions/consistent-grid-column-quantization.md` for a real defect this caused.
 
-What NOT to assume: there is no live-verified on-object *picker* (choosing a district from a WorldObject's auto-generated UI) — the 0.11-era `ClientCanSelectAndAdd` attribute is gone in 0.13, and no replacement was confirmed. For district *assignment*, a chat command that resolves a `DistrictMap` entry by name is the working fallback; reading is solved, picking is not.
+What NOT to assume, as the question stood in 0.13: there was no live-verified on-object *picker* in the sense researched at the time — choosing a district from a WorldObject's auto-generated UI. The 0.11-era `ClientCanSelectAndAdd` attribute is gone in 0.13 and no drop-down replacement was confirmed, so a chat command resolving a `DistrictMap` entry by name was the working fallback.
+
+That verdict no longer holds, and the answer arrived from a direction the research had not considered. Instead of a control on the object, the dock opens the game's own map editor through a `MapEditRequest` and the player draws, names and redraws areas there — `EcoServerMod/AdvancedElectronics/SurveyAreaPicker.cs` and `EcoServerMod/AdvancedElectronics/FarmAreaPicker.cs` both work this way, and `EcoServerMod/README.md` carries the same correction against its own copy of these notes. Keep the negative finding above for anyone who goes looking specifically for a dropdown: it is accurate about what does not exist, and it was simply not the last word on what does.
 
 ## Related
 
 - `docs/solutions/best-practices/eco-013-server-driven-movement.md` — sibling Eco 0.13 API learning (movement, tick surface, version pin, `Vector3`).
 - `docs/spikes/2026-07-survey-drone-spike.md` — Q3 (district read) verdict and the manual protocol that confirmed point membership in-game.
-- `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs` — the compiling reference implementation.
+- `EcoServerMod/AdvancedElectronics.Spike/SpikeDistrictsCommand.cs` — the compiling reference implementation,
+  deleted in `e72108c`. Recover it from history rather than from disk.
 - `docs/solutions/conventions/consistent-grid-column-quantization.md` — why the truncating cast above must match whatever quantization the rest of your mod uses for the same position.

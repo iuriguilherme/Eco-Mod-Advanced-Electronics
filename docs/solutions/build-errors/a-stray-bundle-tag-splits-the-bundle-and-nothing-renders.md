@@ -2,10 +2,18 @@
 title: "One asset tagged into its own bundle splits the build, and nothing renders"
 date: 2026-08-08
 category: build-errors
+last_updated: 2026-09-05
 module: Assets
-problem_type: bug
+problem_type: build_error
 component: asset-bundle
 severity: critical
+symptoms:
+  - "Objects are invisible in game -- no model, no placement ghost, no placeholder"
+  - "The server log is clean and the mod loads normally"
+  - "Prefab names, disabled roots and every prefab reference all validate"
+  - "The bundle manifest lists a Dependencies entry on a second bundle that is never deployed"
+root_cause: config_error
+resolution_type: config_change
 applies_when:
   - "Objects render as nothing in game -- no model, no placement ghost, no placeholder"
   - "The server log is clean and the mod loads normally"
@@ -114,7 +122,7 @@ failure that degraded gracefully — one untextured drone — would have been fa
 
 ## Related
 
-- `docs/solutions/logic-errors/moving-a-prefab-can-hand-its-guid-to-a-backup-copy.md` — the
+- `docs/solutions/conventions/moving-a-prefab-can-hand-its-guid-to-a-backup-copy.md` — the
   other way this project has shipped a bundle that looked right and was not. That one breaks
   *which* asset ships; this one breaks *whether* it ships at all. Both pass the name-match
   validator.

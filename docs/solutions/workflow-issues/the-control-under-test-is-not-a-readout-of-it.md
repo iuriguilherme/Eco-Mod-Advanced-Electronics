@@ -1,6 +1,7 @@
 ---
 title: "The control you are testing is not a readout of the thing you are testing"
 date: 2026-07-31
+last_updated: 2026-09-05
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -154,3 +155,8 @@ server state -- StoredNoTitle: False | calls A:1 B:0 C:0 | source:0
   measuring, and where its findings landed.
 - `docs/solutions/workflow-issues/eco-mod-batched-live-testing.md` — why probe design matters so much
   here: the unit of cost is a human restart, so a round that answers nothing is expensive.
+- `docs/solutions/workflow-issues/a-test-that-builds-the-input-proves-nothing-about-the-producer.md` —
+  the same kernel with a test assertion in place of a rendered control. A test that constructs its own
+  input is reading the test author's intent exactly as a ticked checkbox reads the client's, so
+  "which side of the system produced this reading" transfers unchanged from a UI probe to an
+  assembly seam.

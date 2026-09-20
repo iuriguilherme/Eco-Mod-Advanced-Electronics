@@ -1,6 +1,7 @@
 ---
 title: "A flying entity pathfound as a walking one, and why raising the step height was not the fix"
 date: 2026-08-16
+last_updated: 2026-09-15
 category: logic-errors
 module: EcoServerMod
 problem_type: logic_error
@@ -98,6 +99,30 @@ than invented: `16f` was already the Hover rung's height on the return escalatio
 the drone's everyday capability now matches what the ladder already considered reasonable for
 this machine, and it clears `MiningTierDepth` (`= 15`) with one block to spare.
 
+**Since revised — and revised by this doc's own bug.** `16f` turned out to be right by coincidence
+rather than by relationship. A later live pit reached 18 layers, and its rim-to-floor edge exceeded
+the fixed limit, so `IsStepAllowed` rejected the endpoint step before `CruiseProfile` ever ran: the
+walker's constraint again deciding a flight the profile would have allowed, one layer down, inside
+the fix that closed it. `aac8575` ("derive the pathfinder's step height from the tier's shaft
+depth") replaced the literal with `DroneTier.MiningShaftDepth + StepHeightMargin`
+(`EcoServerMod/AdvancedElectronics.Navigation/ReturnEscalation.cs:105`, a 3-block margin, `= 18f`
+today), so the height tracks the tier rather than needing a second manual update whenever the tier
+moves. The lesson generalises: a constant picked because it happens to clear today's worst case is
+still a hardcoded walker limit.
+
+The same day, `28d5f10` ("fly over terrain between the ends instead of routing around it")
+narrowed where the constraint applies at all. `IsStepAllowed` now gates only the step that
+leaves the start column and the step that enters the goal column; every edge between them is
+exempt, because the cruise profile lifts the middle of the route to a single altitude and the
+drone never traverses that ground
+(`EcoServerMod/AdvancedElectronics.Navigation/GridPathfinder.cs:257`). Gating every edge had
+made a deep pit a wall rather than something to fly over, so routes detoured around one and a
+pit deeper than the limit could not be entered at all. That is the walker's model surviving in
+the search after it had been removed from the route shape: Fix 2 changed what a route is, and
+the search went on charging for ground the route no longer touches. The remaining constraint is
+the honest one — the drone has to get down into where it is going, and back out of where it
+started.
+
 This constant is the single source for the drone's ordinary climb height: it is the default
 of `DroneMoverComponent.maxStepHeight`, which builds the live pathfinder, and the lifecycle
 resets the mover to it explicitly.
@@ -181,12 +206,10 @@ Two limits are deliberate and each has a test:
 
 ### Merge state
 
-As of writing, `fba66fa`, `6e30d1a` and `94813b4` are on the local `feat/mining-drone` branch
-only. They are not merged into `main`, and they are not yet on the remote:
-`origin/feat/mining-drone` points at an older commit and is many commits behind the local
-branch. The branch itself exists on the remote; these three commits have simply not been
-pushed to it. Treat the account above as verified against the working tree, not as shipped
-behaviour.
+`fba66fa`, `6e30d1a` and `94813b4` have since merged to `main` and been pushed —
+`git branch -a --contains` reports each of them on `main` and `origin/main`. This section
+originally recorded them as local and unpushed, which was true when the doc was written. Fix 1's
+constant has been revised since; see the note in that section.
 
 ## Why This Works
 

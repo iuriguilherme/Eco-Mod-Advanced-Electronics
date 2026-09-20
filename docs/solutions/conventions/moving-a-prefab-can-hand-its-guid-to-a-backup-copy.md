@@ -1,9 +1,10 @@
 ---
 title: "Moving a prefab can hand its GUID to a backup copy, and the scene keeps pointing at the backup"
 date: 2026-08-07
-category: logic-errors
+last_updated: 2026-09-15
+category: conventions
 module: Assets
-problem_type: bug
+problem_type: convention
 component: asset-pipeline
 severity: critical
 applies_when:
@@ -12,16 +13,49 @@ applies_when:
   - "A fix is committed and verified but does not appear in game after a bundle rebuild"
   - "Auditing what a ModkitPrefabContainer will actually ship"
 tags: [unity, guid, prefab, asset-bundle, modkit, silent-failure, name-match]
-related_components: [Assets/DroneScene.unity, Assets/Art/AdvancedElectronics/Prefabs]
+related_components: [Assets/Art/AdvancedElectronics/Scenes/AdvancedElectronicsScene.unity, Assets/Art/AdvancedElectronics/Prefabs]
 ---
 
 # Moving a prefab can hand its GUID to a backup copy, and the scene keeps pointing at the backup
 
 ## Context
 
+**Status: the misbinding this documents is resolved, and the rule stands.** It was closed by
+`aac18e3` (2026-08-08, on `main`) — **the day after this document was written**. That commit's
+subject is *"feat(art): re-export the HRVSTR chassis and mask the propeller layer"*, and the
+deletion is one clause in its body: *"Drop the superseded `Old*` prefab copies and the dock's
+placeholder pad edits."* Nine files went with it. Worth noticing, because a reader searching
+history for why the backups vanished would not find that commit by its subject — the fix rode
+along with an unrelated art re-export and announced nothing.
+
+Re-checked 2026-09-06 — no `Old*` prefab remains under `Assets/Art/AdvancedElectronics`, the five
+live prefabs are all present (`AdvancedElectronicsAssemblyObject`, `DroneDockObject`,
+`HarvestDroneObject`, `MiningDroneObject`, `SurveyDroneObject`), and
+`scripts/validate-name-match.sh` reports `PASS`. In particular `MiningDroneObject`, which the
+table below records as shipping nowhere at all, is present and bound. The incident is kept
+because it is what produced the rule and because the GUID-resolution loop under **Guidance** is
+how you would catch it again.
+
+Run that loop today and it does not come back clean, which is worth knowing before you read a
+dirty result as a fresh misbinding. The container holds ten entries: the five live prefabs
+above, each bound correctly, and five that resolve to no asset whatsoever. Those five are the
+very GUIDs in the table below — the identities the `Old*` copies had inherited, plus the one no
+asset ever owned. Deleting the backups ended the misbinding, because a slot pointing at nothing
+ships nothing, but it left the dead slots in the list. They are residue rather than a defect,
+and clearing them out of the container is what would let a clean result mean something again.
+
+The gap between those two dates is the reason
+`docs/solutions/workflow-issues/a-fixed-defect-in-the-present-tense-passes-every-check.md` exists.
+This document described a resolved state as current for thirty days, through a refresh pass
+(`3bd0cf1`, branch-local on `feat/tech-tree-icons` and so not a durable reference) that edited
+the paragraph immediately above the table and left the table itself
+untouched, because every check that pass ran asks whether a citation resolves and none asks
+whether the prose is still true.
+
 The art folder was reorganised into per-kind subfolders (`Prefabs/`, `Icons/`, `Materials/`,
-`Models/`, `Animators/`), and backup copies of several prefabs were kept alongside the live
-ones under `Old*` names. Everything looked right afterwards: every asset had its `.meta`,
+`Models/`, `Animators/` — the layout has shifted again since, and `Icons/` now sits under
+`Sprites/`), and backup copies of several prefabs were kept alongside the live ones under
+`Old*` names. Everything looked right afterwards: every asset had its `.meta`,
 every prefab filename still matched its server class, and `scripts/validate-name-match.sh`
 reported `PASS`.
 
@@ -43,7 +77,10 @@ OldDroneDockObject.prefab.meta               ->  8da7e182…   (the live prefab'
 **Every reference is by GUID, so the references followed the identity, not the name.** The
 scene's container list still held the original GUIDs, which now belonged to the backups:
 
-| Container slot | Intended | Actually resolves to |
+The bindings as they stood during the incident — every `Old*` target below has since been
+deleted:
+
+| Container slot | Intended | Resolved to, at the time |
 |---|---|---|
 | `8da7e182…` | `DroneDockObject` | `OldDroneDockObject` |
 | `3adcb668…` | `SurveyDroneObject` | `OldSurveyDroneObject` |

@@ -1,20 +1,19 @@
 ---
 title: "[RequireComponent] is re-enforced on every server load — detaching one deletes it, and its contents, from objects already placed"
 date: 2026-08-10
-last_updated: 2026-08-21
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
 component: worldobject_lifecycle
 severity: high
 applies_when:
-  - "Removing or commenting out a [RequireComponent] before a release"
+  - "Removing, commenting out, or swapping a [RequireComponent] for a base type, subclass, or sibling"
   - "Adding a component to a WorldObject class that servers already have instances of"
   - "A component owns an inventory and its declaration is about to change"
   - "A component renders nothing at all AND logs nothing"
-  - "Swapping a required component for its base type, its subclass, or a sibling"
   - "Installing components dynamically rather than by attribute"
-tags: [eco-modding, worldobject, requirecomponent, validatecomponents, save-data, release-hygiene, serialization, migration, silent-failure, server-startup]
+tags: [eco-modding, worldobject, requirecomponent, validatecomponents, save-data, migration, silent-failure, server-startup]
 related_components: [EcoServerMod/AdvancedElectronics]
 ---
 
@@ -211,7 +210,7 @@ What a restart does to an object, by direction of the change:
 | `T` installed dynamically, declared via `IDeclaresMayHaveComponents` / `[MayHaveComponent]` | works | preserved |
 
 The detach in this mod, correct as written because `UIShowcaseComponent` was a probe holding nothing
-worth keeping (`EcoServerMod/AdvancedElectronics/DroneDock.cs:89-94`):
+worth keeping (`EcoServerMod/AdvancedElectronics/DroneDock.cs:98-103`):
 
 ```csharp
 // DETACHED 2026-07-31 for the 0.0.3 release. The probe answered its questions -- which

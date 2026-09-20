@@ -6,7 +6,7 @@ A mod for [Eco](https://play.eco) (Strange Loop Games) adding **autonomous drone
 flying machines that a player slots into a **Drone Dock** and assigns to an area drawn on the map,
 which they then fly out to and work unattended.
 
-Two drones ship:
+Three drones ship:
 
 - **Survey Drone** — prospects an assigned area and reports what is under it, per material, with
   quantity, location and depth.
@@ -14,16 +14,19 @@ Two drones ship:
   and unloads what it breaks into storage you link to the dock. **It mines as you**: every removal
   is performed as the citizen who assigned the area, so settlement laws and private property refuse
   it exactly as they would refuse that citizen digging by hand.
+- **Farm Drone** — levels, plows, sows and harvests an area, one crop per area, capped by a
+  per-crop ceiling. **It farms as you**, through a Harvest Arm carrying the game's own farming
+  tags, and it is the first drone here that *places* blocks rather than only removing them.
 
-The dock's window grows a **Survey** or **Mining** tab depending on which drone is slotted, plus a
-standard **Storage** tab whose Take From / Put Into controls choose where a mining drone unloads.
+The dock's window grows a **Survey**, **Mining** or **Farming** tab depending on which drone is
+slotted, plus a standard **Storage** tab whose Take From / Put Into controls choose where a drone
+unloads.
 
-Live-tested against **Eco 0.14.0.3**; the reference assemblies it compiles against are older,
-pinned by `EcoRefSha`. Those are two different things and both are deliberate — the pin keeps
-builds reproducible, and the server the mod actually runs on is what proves it works. There is
-no `Eco.ReferenceAssemblies` package for 0.14 and the shipped server is a single-file bundle
-with its managed assemblies embedded, so the reference assemblies are built from a pinned
-source checkout instead — see `scripts/gather-eco-refs.sh` and `EcoRefSha` in the csproj.
+Live-tested against **Eco 0.14.1.1**, which is also the version its reference assemblies are built
+from — `EcoRefSha` pins that exact tag. There is no `Eco.ReferenceAssemblies` package for 0.14 and
+the shipped server is a single-file bundle with its managed assemblies embedded, so the reference
+assemblies are built from a pinned source checkout instead — see `scripts/gather-eco-refs.sh` and
+`EcoRefSha` in the csproj.
 
 **Mod page:** [mod.io/g/eco/m/advanced-electronics](https://mod.io/g/eco/m/advanced-electronics)
 — released builds are published there. This repository is the source; you only need to
@@ -251,7 +254,8 @@ fifteen layers — re-survey the pit floor to send it another fifteen deeper. Op
 fills up and waits at the dock.
 
 Diagnostics available in chat: `/drone areas`, `/drone assignarea <id>`, `/drone survey`,
-`/drone filter [material]`, `/drone status`, `/drone tags`, `/drone link [n]`, `/drone animwatch`.
+`/drone filter [material]`, `/drone status`, `/drone tags`, `/drone link [n]`, `/drone animwatch`,
+`/drone farm` (why an idle farm area is idle).
 Admin-only: `/drone haltmining <on|off>`, `/drone orphans [destroy]`.
 
 The full owner-run verification protocol (all flows and acceptance checks, with verdict

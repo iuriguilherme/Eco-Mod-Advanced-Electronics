@@ -14,6 +14,7 @@ using Eco.Shared.IoC;
 using Eco.Shared.Items;
 using Eco.Shared.Services;
 using Eco.Shared.SharedTypes;
+using Eco.Shared.Voxel;
 
 namespace Eco.Mods.TechTree
 {
@@ -114,7 +115,7 @@ namespace Eco.Mods.TechTree
 
             user.MsgLocStr($"Survey areas on {dock.Name} (assigned id: {dock.AssignedSurveyAreaId}):");
             foreach (var a in dock.SurveyAreas)
-                user.MsgLocStr($"  {a.Id}. {a.Name} -- {a.PlotCount} plots{(a.Id == dock.AssignedSurveyAreaId ? " [assigned]" : string.Empty)}");
+                user.MsgLocStr($"  {a.Id}. {a.Name} -- {a.PlotCount} plots, for {KindWord(a.Kind)}{(a.Id == dock.AssignedSurveyAreaId ? " [assigned]" : string.Empty)}");
         }
 
         /// <summary>
@@ -128,13 +129,111 @@ namespace Eco.Mods.TechTree
             var dock = FindNearestAuthorizedDock(user);
             if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
 
-            dock.AssignSurveyArea(id);
+            var assigned = dock.AssignSurveyArea(id, out var refusalReason, out var released);
+
+            // R38's release rides here too. This command reaches the same state operation the tab
+            // does, and a claim dropped through it is dropped just as silently otherwise.
+            var release = MiningReadout.FormatClaimRelease(released, PlotUtil.PropertyPlotLength);
+
             if (id == 0)
-                user.MsgLocStr($"Cleared the survey area assignment on {dock.Name}.");
-            else if (dock.AssignedSurveyAreaId == id)
+                user.MsgLocStr(release.Length == 0
+                    ? $"Cleared the survey area assignment on {dock.Name}."
+                    : $"Cleared the survey area assignment on {dock.Name} -- {release}.");
+            else if (assigned)
                 user.MsgLocStr($"Assigned survey area {id} to {dock.Name}. The drone will head there.");
+            else if (refusalReason != null)
+                user.MsgLocStr($"Could not assign survey area {id} on {dock.Name} -- {refusalReason}.");
             else
                 user.MsgLocStr($"No survey area with id {id} on {dock.Name}. Use /drone areas to list them.");
+        }
+
+        /// <summary>
+        /// Reads or changes what a survey area is FOR (U11, R30, R31, R32).
+        ///
+        /// <para>
+        /// <b>This command is the only way to invoke the change, and that is a decision rather
+        /// than a gap.</b> An RPC on the Survey tab would render a fourth <c>BigButton</c> — ~3.2
+        /// standard rows each, two-thirds of the width dead — on a tab already carrying three
+        /// against a stated budget of one (KTD10). Repurposing an area is rare under R31: ground
+        /// reaches <c>[empty]</c> once and is turned to farmland once. A command is the right home
+        /// for an action of that shape, not a placeholder for a control that should exist.
+        /// </para>
+        /// <para>
+        /// The refusal logic is <see cref="SurveyComponent.ChangeAreaKind"/>'s, not this method's:
+        /// the gate belongs beside the areas, so a second caller cannot forget it. Everything the
+        /// area recorded — findings, mined stamps, exclusions — survives a change (R32).
+        /// </para>
+        /// </summary>
+        [ChatSubCommand("Drone", "Read or set what a survey area is for. Usage: /drone areakind <id> [mining|farming]", "areakind", ChatAuthorizationLevel.User)]
+        public static void AreaPurpose(User user, int id, string kind = "")
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
+
+            var area = dock.SurveyAreas.FirstOrDefault(a => a.Id == id);
+            if (area == null)
+            {
+                user.MsgLocStr($"No survey area with id {id} on {dock.Name}. Use /drone areas to list them.");
+                return;
+            }
+
+            // No argument reads rather than writes, so a player can ask what an area is for
+            // without risking changing it.
+            if (string.IsNullOrWhiteSpace(kind))
+            {
+                user.MsgLocStr($"'{area.Name}' on {dock.Name} is for {KindWord(area.Kind)}. Change it with /drone areakind {id} mining|farming.");
+                return;
+            }
+
+            if (!TryParseKind(kind, out var wanted))
+            {
+                user.MsgLocStr($"'{kind}' is not a kind of area. Use mining or farming.", NotificationStyle.Error);
+                return;
+            }
+
+            if (area.Kind == wanted)
+            {
+                user.MsgLocStr($"'{area.Name}' is already for {KindWord(wanted)}. Nothing changed.");
+                return;
+            }
+
+            if (!SurveyComponent.ChangeAreaKind(dock, area, wanted, user, out var refusalReason))
+            {
+                user.MsgLocStr($"Cannot change '{area.Name}' yet: {refusalReason}.", NotificationStyle.Error);
+                return;
+            }
+
+            // Naming what survived is the point of saying anything at all: R31's whole promise is
+            // that repurposing exhausted ground costs nothing it recorded.
+            user.MsgLocStr(
+                $"'{area.Name}' on {dock.Name} is now for {KindWord(wanted)}. Its survey findings, mined record and exclusions are untouched.",
+                NotificationStyle.Info);
+        }
+
+        /// <summary>The player-facing word for a kind. Not the roster tag — that is the status slot's (R30).</summary>
+        private static string KindWord(AreaKind kind) => kind == AreaKind.Farming ? "farming" : "mining";
+
+        /// <summary>
+        /// Parses the kind argument. Deliberately not <c>Enum.TryParse</c>: that would silently
+        /// accept "0" and "1" as kinds, so a mistyped area id in the kind slot would repurpose an
+        /// area instead of being refused.
+        /// </summary>
+        private static bool TryParseKind(string value, out AreaKind kind)
+        {
+            switch (value.Trim().ToLowerInvariant())
+            {
+                case "mining":
+                case "mine":
+                    kind = AreaKind.Mining;
+                    return true;
+                case "farming":
+                case "farm":
+                    kind = AreaKind.Farming;
+                    return true;
+                default:
+                    kind = AreaKind.Mining;
+                    return false;
+            }
         }
 
         /// <summary>
@@ -233,6 +332,124 @@ namespace Eco.Mods.TechTree
                 : $"Showing {dock.MaterialFilter.Count} of {known.Count} materials:");
             foreach (var m in known)
                 user.MsgLocStr($"  {(dock.IsMaterialShown(m) ? "[x]" : "[ ]")} {m}");
+        }
+
+        /// <summary>
+        /// Reads or sets one crop's harvest ceiling on the nearest dock (R25). The Crop Ceilings
+        /// tab has a row for every vanilla crop, but its rows are fixed when the mod is built,
+        /// so a crop another mod adds has none; this is its way in, and the tab names it when
+        /// such a crop exists. Works for every crop, row or not. Matches the crop's display
+        /// name or its species name, ignoring case and spaces. Zero removes the ceiling.
+        /// </summary>
+        [ChatSubCommand("Drone", "Read or set a crop's harvest ceiling. 0 removes it. Usage: /drone ceiling <crop>, [amount]", "ceiling", ChatAuthorizationLevel.User)]
+        public static void Ceiling(User user, string crop, int amount = -1)
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
+
+            // Only names that pick out one crop are accepted. Matching the produce name alone
+            // would let "Plant Fibers" land on whichever of the fiber plants sorts first.
+            static string Squash(string s) => (s ?? string.Empty).Replace(" ", string.Empty);
+            var wanted = Squash(crop);
+            var match = CropCatalog.All.FirstOrDefault(c =>
+                Squash(c.UniqueName).Equals(wanted, StringComparison.OrdinalIgnoreCase)
+                || c.Key.Equals(wanted, StringComparison.OrdinalIgnoreCase));
+            if (match == null)
+            {
+                user.MsgLocStr($"No crop named '{crop}'. Crops: {string.Join(", ", CropCatalog.All.Select(c => c.UniqueName))}");
+                return;
+            }
+
+            if (amount >= 0 && !dock.SetCropCeiling(match.Key, amount, user))
+            {
+                user.MsgLocStr("You need full access on this drone dock to set its ceilings.");
+                return;
+            }
+
+            var ceiling = dock.CropCeilingFor(match.Key);
+            user.MsgLocStr(ceiling == 0
+                ? $"{match.UniqueName} has no ceiling on {dock.Name} and is harvested without limit."
+                : $"{match.UniqueName} stops being harvested on {dock.Name} at {ceiling} in linked storage.");
+        }
+
+        /// <summary>
+        /// Farming diagnostic (read-only). Written after a live pass where every assigned farm
+        /// area read "nothing to do here" with seed in linked storage. That readout is the
+        /// default, and it is what the tab shows whether the strategy never scanned or it
+        /// scanned and judged every block unworkable. This names which, in one command: the
+        /// drone's job and last dispatch note, the stamp the scan is gated on, and the very
+        /// per-column decision the strategy makes, run over each assigned area.
+        /// </summary>
+        [ChatSubCommand("Drone", "Dump farming state for your nearest accessible dock (diagnostic).", "farm", ChatAuthorizationLevel.User)]
+        public static void Farm(User user)
+        {
+            var dock = FindNearestAuthorizedDock(user);
+            if (dock == null) { user.MsgLocStr("No drone dock you have access to was found nearby."); return; }
+
+            var drone = dock.SpawnedDrone;
+            var job = drone is IDroneToolbearer bearer ? bearer.Job.ToString() : "(no drone or no job)";
+            var note = drone == null || drone.IsDestroyed ? "(no drone)" : drone.GetComponent<DroneLifecycle>()?.LastDispatchNote ?? "(no lifecycle)";
+            user.MsgLocStr($"Dock '{dock.Name}': drone job {job}, last dispatch: {note}");
+
+            var stamped = dock.StampedCitizen;
+            user.MsgLocStr($"  Stamp: {(stamped?.Name ?? "(none)")} (id {dock.StampedCitizenId}), full access: {(stamped != null && dock.HasFullAccess(stamped))}, stamp valid: {dock.FarmStampIsValid()}");
+
+            // "hold full -- returning to unload" means cargo is aboard that the last unload
+            // could not place; this names it and says where it could have gone.
+            var farmHold = (dock.GetComponent(typeof(PublicStorageComponent), DroneCargo.HoldName) as PublicStorageComponent)?.Storage;
+            var holdText = farmHold == null
+                ? "MISSING"
+                : farmHold.IsEmpty ? "empty" : string.Join(", ", farmHold.NonEmptyStacks.Select(s => $"{s.Quantity} {s.Item.DisplayName}"));
+            dock.TryGetComponent<LinkComponent>(out var farmLink);
+            var takeFrom = DroneStorage.TakeFrom(farmLink, stamped).Count;
+            var putInto = DroneStorage.PutInto(farmLink, stamped).Count;
+            user.MsgLocStr($"  Hold: {holdText}; linked storages -- take from: {takeFrom}, put into: {putInto}");
+
+            var areas = dock.FarmAreas.ToList();
+            user.MsgLocStr($"  Farm areas: {areas.Count}, assigned: {areas.Count(a => a.Assigned)}");
+
+            var sampler = new EcoWorldSampler();
+            var fitness = new EcoGroundFitness();
+            var ledger = dock.ReadCropCeilings();
+
+            foreach (var area in areas)
+            {
+                var crop = CropCatalog.ByKey(area.Crop);
+                var stored = string.IsNullOrEmpty(area.Crop) ? 0 : dock.CountInLinkedStorage(area.Crop);
+                user.MsgLocStr($"  Area {area.Id} '{area.Name}': assigned {area.Assigned}, crop key '{area.Crop ?? "(none)"}', catalog {(crop == null ? "NOT FOUND" : crop.UniqueName)}, seed {crop?.SeedType?.Name ?? "(none)"}, produce stored {stored}, may harvest {(string.IsNullOrEmpty(area.Crop) || ledger.MayHarvest(area.Crop, stored))}, stall {area.LastStallReason}, next {area.LastNextAction}");
+
+                var plots = area.ToArea().EnumeratePlots().ToList();
+
+                // Where the drone aims for each plot: the pathfinder refuses a solid or
+                // occupied goal column, which is how a farm plot reads "unreachable".
+                foreach (var plot in plots.Take(4))
+                {
+                    var cx = plot.X * PlotUtil.PropertyPlotLength + PlotUtil.PropertyPlotLength / 2;
+                    var cz = plot.Z * PlotUtil.PropertyPlotLength + PlotUtil.PropertyPlotLength / 2;
+                    var open = PlotApproach.FirstOpenColumn(plot, PlotUtil.PropertyPlotLength,
+                        (x, z) => sampler.IsSolidAt(x, z) || sampler.IsObstacleAt(x, z));
+                    user.MsgLocStr($"    plot {plot.X},{plot.Z}: centre ({cx},{cz}) solid {sampler.IsSolidAt(cx, cz)}, occupied {sampler.IsObstacleAt(cx, cz)}; aims at {(open.HasValue ? $"({open.Value.X},{open.Value.Z})" : "NOTHING OPEN")}");
+                }
+
+                var tally = new Dictionary<string, int>();
+                var samples = 0;
+                foreach (var plot in plots.Take(16))
+                foreach (var column in FarmingStrategy.ColumnsIn(plot))
+                {
+                    var outcome = FarmingStrategy.EvaluateColumn(sampler, fitness, area, column, ledger, stored);
+                    var key = outcome.WasRefusedForFitness ? $"{outcome.Action} (unfit: {outcome.UnfitCondition})" : outcome.Action.ToString();
+                    tally[key] = tally.TryGetValue(key, out var n) ? n + 1 : 1;
+
+                    if (samples++ >= 3) continue;
+                    var y = outcome.SurfaceY;
+                    var surface = Eco.World.World.GetBlock(new Eco.Shared.Math.Vector3i(column.X, y, column.Z));
+                    var above = Eco.World.World.GetBlock(new Eco.Shared.Math.Vector3i(column.X, y + 1, column.Z));
+                    var rating = string.IsNullOrEmpty(area.Crop) ? "-" : fitness.Rate(area.Crop, column.X, y + 1, column.Z).Rating.ToString("F2");
+                    user.MsgLocStr($"    ({column.X},{y},{column.Z}) surface {surface?.GetType().Name ?? "null"}, above {above?.GetType().Name ?? "null"}, fitness {rating} -> {outcome.Action}");
+                }
+
+                user.MsgLocStr($"    {plots.Count} plots; decisions over the first {Math.Min(plots.Count, 16)}: {string.Join(", ", tally.Select(kv => $"{kv.Key} x{kv.Value}"))}");
+            }
         }
 
         /// <summary>
@@ -387,6 +604,37 @@ namespace Eco.Mods.TechTree
             }
             else
                 user.MsgLocStr("  Mining job: (none)");
+
+            // R27: the refusal reason has to outlive the job that hit it, or an area that reads
+            // `[cleared]` because one plot was refused looks the same as one that is genuinely
+            // spent. Printed beside the skip rows above -- the place this mod already answers
+            // "why was that plot skipped" -- rather than on the roster line, which stays at its
+            // budgeted length, or on a new panel row, which KTD10 rules out.
+            if (dock.AssignedMiningArea is { } exclusionAreaRef
+                && exclusionAreaRef.Resolve(out _, out var exclusionArea) == AreaLookupSignal.Found)
+            {
+                var ledger = dock.ReadMiningExclusions(exclusionAreaRef.OwningDockId, exclusionArea);
+                var exclusionLine = MiningReadout.FormatExclusionLine(ledger.AttemptFacts);
+                if (!string.IsNullOrWhiteSpace(exclusionLine))
+                    user.MsgLocStr($"  {exclusionLine}");
+            }
+
+            // R36: the panel says an overlap EXISTS; this says exactly where. The centre block of
+            // every shared plot, so the player can fly there and look, and whether the other area
+            // holds those plots right now -- the one thing that answers "will this block ever
+            // lift", which is the same obligation R27 puts on a blocked area.
+            //
+            // It names nothing else about the other area, and cannot: the overlap path only ever
+            // received that area's geometry, its identity and its claim (R41, R42). Not its name,
+            // not its owner, and deliberately not what it is FOR -- R39's claim test is
+            // kind-blind, so the kind would disclose something about another player's ground
+            // while answering nothing about the player's own block.
+            //
+            // Here rather than on a roster line or a new panel row: this is where the mod already
+            // answers "why was that plot skipped", the roster stays at its budgeted length, and
+            // KTD10 adds no control to either tab.
+            ReportOverlaps(user, dock);
+
             user.MsgLocStr($"  Mining halted server-wide: {MiningHalt.IsHalted}");
             user.MsgLocStr($"  Anim state Working: {FormatAnimState(dock, DroneDockObject.WorkingStateName)}");
 
@@ -450,6 +698,58 @@ namespace Eco.Mods.TechTree
                 if (area.SurveyDepth > 0)
                     user.MsgLocStr($"    Scanned to {area.SurveyDepth} blocks below surface; median surface level {area.MedianSurface}.");
             }
+        }
+
+        /// <summary>
+        /// The per-plot overlap detail R36 sends here rather than to the panel: one line per
+        /// collision, per area this dock is working with.
+        ///
+        /// <para>
+        /// The areas reported are the dock's OWN published ones plus the mining area it is
+        /// assigned to -- the two the player operating this dock is already entitled to see, so
+        /// naming them discloses nothing new. The other side of every collision is named only as
+        /// ground and a claim, which is all the projection carries (R41).
+        /// </para>
+        /// <para>
+        /// The projections are collected ONCE and reused across every area, rather than per area:
+        /// this command can be run against a dock holding many areas, and a world walk apiece
+        /// would be an O(areas x world objects) sweep for one printout.
+        /// </para>
+        /// </summary>
+        private static void ReportOverlaps(User user, DroneDockObject dock)
+        {
+            var published = MiningComponent.AllAreaProjections();
+            var reported = new HashSet<(Guid Dock, int Area)>();
+            var headerShown = false;
+
+            void Report(DroneDockObject owner, SurveyAreaEntry area)
+            {
+                // An assigned area this dock also owns would otherwise print twice.
+                if (owner == null || area == null || !reported.Add((owner.ObjectID, area.Id))) return;
+
+                var lines = AreaOverlap.FormatOverlapDetail(
+                    MiningComponent.OverlapsOf(owner, area, published), PlotUtil.PropertyPlotLength);
+                if (lines.Count == 0) return;
+
+                if (!headerShown)
+                {
+                    user.MsgLocStr("  Overlaps:");
+                    headerShown = true;
+                }
+
+                foreach (var line in lines)
+                    user.MsgLocStr($"    '{area.Name}': {line}");
+            }
+
+            foreach (var own in dock.SurveyAreas)
+                Report(dock, own);
+
+            if (dock.AssignedMiningArea is { } assigned
+                && assigned.Resolve(out var owningDock, out var minedArea) == AreaLookupSignal.Found)
+                Report(owningDock, minedArea);
+
+            if (!headerShown)
+                user.MsgLocStr("  Overlaps: none");
         }
 
         /// <summary>

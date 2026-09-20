@@ -1,0 +1,68 @@
+{
+  "reviewer": "learnings-researcher",
+  "findings": [
+    {
+      "title": "RequireComponent removal strips OreSensorComponent from placed farm drones on next load",
+      "severity": "P3",
+      "file": "EcoServerMod/AdvancedElectronics/HarvesterDrone.cs",
+      "line": 198,
+      "why_it_matters": "docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md documents that Eco's ValidateComponents re-runs on every server load, not just construction: detaching a [RequireComponent] deletes that component (and any state it owns) from every already-placed instance of the class at the next restart, before any migration code can run. This diff removes [RequireComponent(typeof(OreSensorComponent))] from HarvestDroneObject (line 198-199, replacing it with a comment explaining the drone no longer needs ore sensing). On any server with a HarvestDroneObject already placed from before this change, OreSensorComponent will be silently stripped at the next restart. Verified this specific removal is safe: OreSensorComponent declares no [Serialized] members (nothing to lose), and every caller that dereferences it already uses TryGetComponent (DroneCommands.cs:562, DroneLifecycle.cs:1072, DroneDock.cs:680) rather than assuming presence -- the same guarded-dereference precedent the doc recommends, and MiningDrone.cs already applies the identical removal (line 185) without incident. No code change is needed; flagging so the change is called out in release notes rather than only discovered by a player at their next restart.",
+      "autofix_class": "advisory",
+      "owner": "release",
+      "requires_verification": false,
+      "suggested_fix": null,
+      "confidence": 50,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/HarvesterDrone.cs:198-199 -- // No OreSensorComponent. This drone inherited one from the survey chassis it was copied from ... (RequireComponent(typeof(OreSensorComponent)) removed)",
+        "EcoServerMod/AdvancedElectronics/OreSensorComponent.cs -- no [Serialized] members present",
+        "EcoServerMod/AdvancedElectronics/MiningDrone.cs:185 -- // No OreSensorComponent (KTD8, U11): the mining drone consumes another dock's survey -- identical prior removal, already shipped",
+        "docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md -- 'Detaching a [RequireComponent] deletes that component from every object already placed -- and its contents go with it.'"
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "New claim/reassignment guards sit in the exact subsystem with 3 prior silent-hang bugs",
+      "severity": "P2",
+      "file": "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs",
+      "line": 493,
+      "why_it_matters": "docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md documents three separate, previously-shipped bugs in this exact mining drone lifecycle glue (MiningStrategy.cs, DroneLifecycle.cs) where a recovery/guard condition tested state that the failure path itself prevented from ever being set, producing a silent infinite hang with a clean log -- diagnosed only by comparing two independent readouts of the same fact (the lifecycle's last-decision note vs. the job ledger). This diff adds new claim/conflict logic in the same neighborhood: AreaClaims.ConflictOnTheAreaItself and AreaClaims.Conflicts are now consulted from DroneDock.Mining.cs (line 493-499) and DroneDock.cs (line 536-546) to decide whether a reassignment may proceed, and MiningStrategy.cs/DroneLifecycle.cs gained new state (ClaimHolderDockId, ClaimEpoch on SurveyAreaEntry) that recovery and dispatch paths could now read. This is exactly the shape the prior bugs occupied: a guard added near dispatch/reassignment whose precondition might not hold on the failure path. Per the doc's own prevention rule ('grep the recovery surface as a set, not one handler at a time' and 'after a fix that redirects flow into an existing state, audit that state's handler before testing'), the new claim-aware branches in OnArrivalFailed, HandleNoPath, TickUnreachableRetry and the dispatch/reassignment path deserve a targeted walk against 'what is true when this fires, not when things go well,' and the two-readout check (DroneCommands.cs status output vs DroneLifecycle's LastDispatchNote) should be re-verified to still agree once a claim conflict is in play.",
+      "autofix_class": "advisory",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": null,
+      "confidence": 50,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs:460,493-499 -- AreaClaims.MayBeOfferedToMiningDock / AreaClaims.ConflictOnTheAreaItself / AreaClaims.Conflicts newly consulted on the reassignment path",
+        "EcoServerMod/AdvancedElectronics/SurveyAreaEntry.cs:320,328 -- new [Serialized] ClaimHolderDockId / ClaimEpoch fields feeding that logic",
+        "docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md -- 'Ask what is true when this fires, never what is true when things are going well ... Every cap must be charged by every caller that can reach the capped situation.'"
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "Farming and mining strategies share IJobStrategy but were built by different authors -- a fix to one may not reach the other",
+      "severity": "P3",
+      "file": "EcoServerMod/AdvancedElectronics/FarmingStrategy.cs",
+      "line": 668,
+      "why_it_matters": "docs/solutions/conventions/a-fix-does-not-reach-the-copies-already-taken.md documents that this codebase has already shipped a bug of this exact shape once (HarvestDrone.cs copied from SurveyDrone.cs, missed a later fuel-tag fix): a sibling file, correct when written, silently diverges from its origin's later fixes because no repository tool surfaces the copy relationship. FarmingStrategy (line 36) and MiningStrategy (line 20) both implement IJobStrategy against the same DroneLifecycle host, and the review intent states the farming drone was 'independently developed... and has never been reviewed together' with the mining/survey side. FarmingStrategy.OnArrivalFailed (line 668-676) deliberately keeps no per-plot ledger, by design (R7, documented in its own comment) -- that is not itself a bug, but it means the three recent mining-lifecycle fixes recorded in docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md (commits 8e4119d, 01a6339, 4326458 in this repo's history) were never checked against whether an analogous guard-vs-failure-state gap exists on the farming side's own recovery hooks (OnArrivalFailed, OnArrivedHome, OnEnded, and the level-pass driver they call into). Recommend a targeted diff of FarmingStrategy's lifecycle hooks against MiningStrategy's post-fix versions, specifically for guards that assume a precondition set only on the happy path.",
+      "autofix_class": "advisory",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": null,
+      "confidence": 50,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/FarmingStrategy.cs:36,668-676 -- FarmingStrategy : IJobStrategy, OnArrivalFailed with no per-plot ledger (R7, by design)",
+        "EcoServerMod/AdvancedElectronics/MiningStrategy.cs:20,486-499 -- MiningStrategy : IJobStrategy, OnArrivalFailed carrying the post-fix lastOfferedPlot fallback",
+        "docs/solutions/conventions/a-fix-does-not-reach-the-copies-already-taken.md -- 'Fixing a file does not fix what was copied out of it, and nothing announces that copies exist.'"
+      ],
+      "pre_existing": false
+    }
+  ],
+  "residual_risks": [
+    "The KTD1 'discard pre-U1 findings' upgrade (SurveyAreaEntry.UpgradeFindingsIfStale, called from SetPlots, ResetPlotsToUnsurveyed, ReadFindings, ReadFindingRows) appears to be the plan's one sanctioned discard and is well-documented in-code, but was not independently verified against every read path that touches MinedStamps, BedrockPlotCoords or MiningExclusions -- ClearFindings() (SurveyAreaEntry.cs:557-569) clears Findings/SurveyedStamps/BedrockPlotCoords together but deliberately leaves MinedStamps and exclusions untouched (matches R13's stated intent), so confirm no other code path assumes the stale-upgrade also resets those.",
+    "SurveyAreaEntry's ClaimHolderDockId/ClaimEpoch is genuinely-serialized primary state (not a derived signal), which is a different shape from AreaOverlap.HoldsClaim(bool assigned, AreaLifecycleStatus status) in the pure Navigation library -- both are legitimate but review should confirm the two never disagree about who holds an area, since one is the persisted record of record and the other is a pure predicate used only for conflict testing.",
+    "docs/solutions/logic-errors/comparing-a-slotted-item-by-reference-destroys-the-open-ui.md documents a second, related bug in this same session's mining/dock UI (component reinstall triggered by reference-equality comparison of a slotted item, tearing down open panels) -- not directly implicated by this diff's changes, but worth a quick check if this PR touches any dynamic component installation on DroneDock given the new farming components (FarmingComponent, CropCeilingComponent) are now installed conditionally per drone kind."
+  ],
+  "testing_gaps": [
+    "MiningStrategy, FarmingStrategy and DroneLifecycle are Eco-coupled WorldObjectComponents excluded from EcoServerMod/AdvancedElectronics.Navigation.Tests by design (per the class comments cited in docs/solutions/logic-errors/a-recovery-path-that-cannot-fire-in-the-state-it-exists-for.md) -- the new claim/reassignment guard code added to this glue layer in DroneDock.Mining.cs and DroneDock.cs is therefore only exercisable live, same as the three prior bugs the doc catalogs; the pure predicates in AreaOverlap.cs/AreaClaims are unit-tested (AreaClaimTests.cs) but the Eco-side wiring that calls them is not."
+  ]
+}

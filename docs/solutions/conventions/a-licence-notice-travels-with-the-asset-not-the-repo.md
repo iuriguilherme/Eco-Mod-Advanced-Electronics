@@ -1,7 +1,7 @@
 ---
 title: "Licensing a contributed asset: what decides the licence, and where the notice has to travel"
 date: 2026-08-08
-last_updated: 2026-08-09
+last_updated: 2026-09-15
 category: conventions
 module: AdvancedElectronics
 problem_type: convention
@@ -142,11 +142,11 @@ So the notice lives in three places, each aimed at a different reader:
 
 1. **`LICENSE-ART` at the repo root** — the verbatim CC BY-SA 4.0 legal code, nothing else,
    the way `LICENSE` holds the LGPL text. For someone reading the source.
-2. **The `Attribution` section of `README.md`** (`README.md:281-287`) — who made it, what it
+2. **The `Attribution` section of `README.md`** (`README.md:357-363`) — who made it, what it
    covers, scoped by folder, pointing at `LICENSE-ART` for terms. For someone evaluating the
    project.
 3. **`LICENSE-ART.txt` inside the shipped zip**, beside `LICENSE.txt`, staged by
-   `scripts/package-release.sh:122`, with the attribution repeated in the generated
+   `scripts/package-release.sh:132`, with the attribution repeated in the generated
    `README.txt`. For whoever ends up with the artifact and no context at all.
 
 **A blanket "everything here is our own work" claim has an expiry date.** `README.md` carried

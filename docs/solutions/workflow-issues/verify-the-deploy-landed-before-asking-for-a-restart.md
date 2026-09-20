@@ -1,6 +1,7 @@
 ---
 title: "A deploy to the wrong tree succeeds silently, so verify the artifact landed before asking for a restart"
 date: 2026-07-28
+last_updated: 2026-09-05
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -61,6 +62,19 @@ strings -el "<server>/Mods/<Mod>/<Mod>.dll" | grep -c "v11: rows now name"   # w
 
 Use `strings -el` for .NET string literals — they are UTF-16, and plain `strings` silently misses
 them. Type and member names live in metadata and are findable with plain `strings`.
+
+**A compressed artifact needs a reader, not `strings`.** The other half of this deploy is a Unity
+asset bundle, and neither `strings` variant can see into it — a `.unity3d` is a UnityFS container
+whose payload is LZ4-compressed, so the names you are looking for are not present as plain bytes.
+For that half the equivalent check is `scripts/read-mod-bundle.py`, which decompresses the container
+and reports the names inside it:
+
+```bash
+scripts/read-mod-bundle.py "<server>/Mods/<Mod>/<Mod>.unity3d" --strings /tmp/deployed
+grep -c 'MyNewObjectName' /tmp/deployed/<Mod>.strings.txt          # want 1
+```
+
+The rule is the same in both halves; only the instrument changes with the container format.
 
 **3. Remove the manual step entirely where the toolchain allows it.** This project's `.csproj`
 already had a post-build copy target keyed on a property that nobody had ever set:
@@ -124,3 +138,7 @@ LocalServer -  Loading AdvancedElectronics...
   stale-artifact hazard on the packaging side, and the same conclusion: refuse rather than warn.
 - `docs/solutions/runtime-errors/duplicate-asset-bundle-under-mods-aborts-startup.md` — a second case
   where the mod folder's contents, not the mod's code, were the fault.
+- `docs/solutions/workflow-issues/a-timestamp-says-when-a-file-was-written-not-what-is-in-it.md` — the
+  same rule approached from the opposite sign. Here a *fresh* timestamp wrongly implied the new build
+  had landed; there a *stale* one wrongly implied a change had not. That doc carries the bundle
+  reader, and the two alignment and compression traps it had to survive.

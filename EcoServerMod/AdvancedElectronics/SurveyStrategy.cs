@@ -13,9 +13,17 @@ namespace Eco.Mods.TechTree
     /// columns) at that plot -- the lifecycle still owns travel to the plot centre and the
     /// arrival-attempt cap.
     ///
-    /// Never unit-tested (every collaborator is an Eco type) -- the regression gate for this
-    /// unit is the existing suite staying green (nothing here changed) plus one live survey
-    /// run matching its pre-change behaviour.
+    /// Since U7 the sweep position is no longer purely local state. It is published to the
+    /// dock's live <see cref="SurveyRecord"/> as it moves and persisted from there onto the
+    /// area, and a strategy built for an area whose pass is already running starts from the
+    /// stored cursor instead of the origin (R25) -- so a pass stopped by fuel, a reassignment
+    /// or a restart resumes rather than re-flying the ground it already covered. The strategy
+    /// object itself is still rebuilt on every dispatch and still holds no durable state.
+    ///
+    /// Never unit-tested (every collaborator is an Eco type) -- the regression gate is the
+    /// existing suite staying green, the pure-library U7 coverage in <c>SurveyRecordTests</c>,
+    /// and one live survey run: a pass stopped and restarted must finish without re-flying
+    /// covered ground, and a resurvey must report only what the new pass observed.
     /// </summary>
     public sealed class SurveyStrategy : IJobStrategy
     {
@@ -72,7 +80,10 @@ namespace Eco.Mods.TechTree
             }
 
             if (this.columnCursor < total)
+            {
+                this.PublishCursor();
                 return ParkedWorkOutcome.StillWorking;
+            }
 
             // KTD12: the surveyed stamp is written when a plot is swept, from the same
             // monotonic counter the mining dock's mined stamp draws from, so the two are
@@ -105,7 +116,12 @@ namespace Eco.Mods.TechTree
             // The coverage figure will show it fell short, which is the player's cue to act;
             // staying assigned would only mean retrying the same unreachable plots.
             if (this.IsComplete && this.homeDock.AssignedSurveyAreaId != 0)
+            {
+                // The sweep is finished, so the pass is closed (U7): the next dispatch on this
+                // area is a NEW pass and must clear (R10), not resume into a completed one.
+                this.homeDock.EndSurveyPass(this.homeDock.AssignedSurveyArea);
                 this.homeDock.AssignSurveyArea(0);
+            }
         }
 
         public void OnEnded(string reason)
@@ -122,18 +138,56 @@ namespace Eco.Mods.TechTree
             if (entry == null)
                 return; // Retried next call -- plots stays null until the area resolves.
 
-            // Raster order (by Z then X) gives a stable, roughly lawn-mower visitation.
-            this.plots = entry.ToSurveyArea().EnumeratePlots()
-                .OrderBy(p => p.Z).ThenBy(p => p.X)
-                .ToList();
-            this.plotIndex = 0;
-            this.columnCursor = 0;
+            // U7: opening the pass is what decides between a newly started resurvey (clears the
+            // area's findings, live record and at-bedrock observations -- R10) and one resuming a
+            // pass that stopped (keeps them, and the coverage they represent -- R25). The dock
+            // owns that decision because it owns both the persisted area and the live record;
+            // what comes back is where in the sweep to carry on from.
+            var cursor = this.homeDock.StartOrResumeSurveyPass(entry);
+
+            // Raster order (by Z then X) gives a stable, roughly lawn-mower visitation. The
+            // resumed cursor indexes into THIS list, so anything that changes the list has to
+            // move the cursor with it -- the same index would otherwise name a different plot.
+            //
+            // A redraw is exactly that, and it no longer ends the pass (U9, R22). SetPlots remaps
+            // the persisted cursor onto the new plot list by NAME before the edit's epoch bump
+            // re-dispatches the drone, so what this reads back is already the right place in the
+            // new order: the plot the sweep was on if the edit kept it, the next surviving plot
+            // if it did not, and earlier still if the edit added a plot that sorts behind either.
+            //
+            // The order comes from SweepOrder rather than an OrderBy written here, because since
+            // U8 two other callers depend on it meaning the same thing: an outside change resets
+            // plots and has to rewind the cursor to the earliest of them, and an edit has to
+            // carry the cursor across two versions of the order. Neither can do it without
+            // knowing where in this exact order a plot sits.
+            this.plots = SweepOrder.RasterOrder(entry.ToSurveyArea().EnumeratePlots()).ToList();
+
+            // Clamped rather than trusted: a persisted cursor outliving a change to the plot list
+            // must land the sweep somewhere real, and "past the end" is the finished sweep, which
+            // sends the drone home rather than indexing off the list.
+            this.plotIndex = System.Math.Clamp(cursor.PlotIndex, 0, this.plots.Count);
+            this.columnCursor = this.plotIndex >= this.plots.Count
+                ? 0
+                : System.Math.Clamp(cursor.ColumnCursor, 0, PlotUtil.PropertyPlotArea);
         }
 
         private void Advance()
         {
             this.plotIndex++;
             this.columnCursor = 0;
+            this.PublishCursor();
+        }
+
+        /// <summary>
+        /// Hands the sweep's position to the live record, which is where the dock's next readout
+        /// tick picks it up and persists it beside the samples it belongs to (U7, R25). The
+        /// strategy is rebuilt on every dispatch, so the cursor cannot live here.
+        /// </summary>
+        private void PublishCursor()
+        {
+            var areaId = this.homeDock.AssignedSurveyAreaId;
+            if (areaId != 0)
+                this.homeDock.SurveyRecord.SetSweepCursor(areaId, this.plotIndex, this.columnCursor);
         }
     }
 }

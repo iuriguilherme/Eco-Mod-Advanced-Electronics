@@ -8,14 +8,12 @@ problem_type: developer_experience
 component: development_workflow
 severity: high
 applies_when:
-  - "Running shell commands against this repo from a harness that exposes both PowerShell and Git Bash"
-  - "Writing multi-line git commit messages from a script or an agent"
+  - "Choosing between the PowerShell and Git Bash tools for the same command against this repo"
+  - "Writing or verifying a multi-line commit message, tag, note, or PR body assembled by a tool rather than typed"
   - "Writing a repo script that shells out to common POSIX utilities on Windows"
   - "A tracked file shows as modified but git diff prints nothing"
-  - "An agent is choosing between the PowerShell tool and the Bash tool for the same command"
-  - "Verifying a commit, tag, note, or PR body that was assembled by a tool rather than typed"
   - "Writing a rule whose whole job is to catch a failure that produces no error"
-tags: [windows, git-bash, powershell, heredoc, crlf, tooling, developer-experience, silent-failure, verification, read-back]
+tags: [windows, git-bash, powershell, heredoc, crlf, developer-experience, silent-failure, read-back]
 related_components: [EcoServerMod/AdvancedElectronics]
 ---
 

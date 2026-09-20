@@ -81,6 +81,15 @@ mapfile -t WORLD_OBJECT_TYPES < <(
 # crafting table (EfficiencyModule and friends, matched by the Module suffix),
 # and RepairableItem.
 #
+# Skill is listed too, and it is the one base here that a player never holds.
+# It belongs because this gate is about ICONS, not about inventories: Eco's
+# Skill derives from Item, Item carries [HasIcon], and that attribute is read
+# with inheritance, so a skill resolves its icon by class name exactly the way
+# an item does and needs the same name-matching GameObject under "Items".
+# Requiring one of " ,{" after the name is what keeps SkillBook<T,U> and
+# SkillScroll<T,U> from being swallowed by this alternative -- they carry a
+# "<" and are matched by their own entries, which must stay.
+#
 # RepairableItem was added after both drone items silently vanished from this
 # list. They had been plain Items and were rebased onto RepairableItem when the
 # drones gained durability; nothing failed, because an undiscovered type is
@@ -105,13 +114,32 @@ mapfile -t WORLD_OBJECT_TYPES < <(
 # block was dropped outright when the Battery shipped as an inventory item.)
 mapfile -t ITEM_TYPES < <(
   printf '%s' "$DECLS" \
-    | grep -oE 'class [A-Za-z0-9_]+ : (Item[ ,{]|RepairableItem[ ,{]|WorldObjectItem<|BlockItem<|SkillBook<|SkillScroll<|[A-Za-z]*Module[ ,{])' \
+    | grep -oE 'class [A-Za-z0-9_]+ : (Item[ ,{]|RepairableItem[ ,{]|WorldObjectItem<|BlockItem<|Skill[ ,{]|SkillBook<|SkillScroll<|[A-Za-z]*Module[ ,{])' \
     | sed -E 's/class ([A-Za-z0-9_]+) : .*/\1/' \
+    | sort -u
+)
+
+# Item types that NAME a vanilla icon rather than shipping one. These need no client asset,
+# and requiring one would require the very thing that broke them: while the mod shipped its own
+# art under the class name, every surface that resolves an icon BY THAT NAME drew the mod's art
+# instead of vanilla's -- a recipe's icon is its first product's Name
+# (Server/Eco.Gameplay/Items/Recipes/RecipeFamily.cs:241, and it is not virtual), and
+# ModBundleManager aliases each item's display name onto whatever the bundle registered under
+# its class name.
+#
+# Discovered from the source rather than listed here, so the exemption cannot outlive the
+# binding that justifies it: delete the attribute and the type is required to have an asset
+# again on the next run.
+mapfile -t NAMED_ICON_TYPES < <(
+  printf '%s' "$DECLS" \
+    | grep -oE 'HasIcon\("[^"]+"\)\][^{]{0,160}class [A-Za-z0-9_]+' \
+    | sed -E 's/.*class //' \
     | sort -u
 )
 
 echo "Server WorldObject types (need a name-matching prefab): ${WORLD_OBJECT_TYPES[*]:-none}"
 echo "Server Item types (need a name-matching icon asset):    ${ITEM_TYPES[*]:-none}"
+echo "Item types naming a vanilla icon (ship no asset):       ${NAMED_ICON_TYPES[*]:-none}"
 echo
 
 if [ ! -d "$ASSET_DIR" ]; then
@@ -145,12 +173,20 @@ done
 
 for t in "${ITEM_TYPES[@]:-}"; do
   [ -z "$t" ] && continue
-  # U4/U11: MiningArmItem is never crafted, held, or placed in an inventory --
-  # the mining removal service (EcoServerMod/AdvancedElectronics/MiningRemovalService.cs)
-  # builds its own game actions naming it directly and it is never presented to
-  # a player, so it carries no client-side icon/prefab by design. Documented
-  # exception, not a gap.
-  if [ "$t" = "MiningArmItem" ]; then
+  # The drone arms are never crafted, held, or placed in an inventory. The services that
+  # use them (MiningRemovalService, BlockPlacementService, FarmingActionService) build
+  # their own game actions naming the arm directly, and no player is ever shown one --
+  # they exist so a settlement law can name them. So they carry no client-side
+  # icon/prefab by design. Documented exception, not a gap.
+  case "$t" in
+    MiningArmItem|HarvestArmItem) continue ;;
+  esac
+
+  # Named-icon types (see the discovery block above). Reported, never silent: a type vanishing
+  # from the icon set is exactly the failure this gate exists to catch, so it has to be visible
+  # that this one was intended.
+  if printf '%s\n' "${NAMED_ICON_TYPES[@]:-}" | grep -qx "$t"; then
+    echo "NOTE: Item '$t' names a vanilla icon and ships no client asset by design -- not a gap."
     continue
   fi
   # Item GameObjects live inside a scene, not as a standalone asset file (see

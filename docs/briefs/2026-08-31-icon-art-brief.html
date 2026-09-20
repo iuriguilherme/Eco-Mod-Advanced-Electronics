@@ -1,0 +1,617 @@
+<title>Advanced Electronics Art Brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>
+  :root {
+    --paper:      #EBEEF3;
+    --card:       #FFFFFF;
+    --card-sunk:  #F4F6F9;
+    --ink:        #151A21;
+    --ink-soft:   #55606F;
+    --ink-faint:  #7C8899;
+    --rule:       #C6CEDA;
+    --rule-soft:  #DFE4EC;
+    --navy:       #426390;
+    --band:       #7C553F;
+    --shadow:     0 1px 0 rgba(21, 26, 33, .05), 0 8px 24px -18px rgba(21, 26, 33, .5);
+
+    --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --f-body:    "Source Serif 4", Georgia, "Times New Roman", serif;
+    --f-mono:    "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+    --step-0: 1.0625rem;
+    --step-1: 1.1875rem;
+    --step-2: 1.4375rem;
+    --step-4: 2.5rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:     #0E1319;
+      --card:      #181F28;
+      --card-sunk: #131A22;
+      --ink:       #E3E9F1;
+      --ink-soft:  #97A4B6;
+      --ink-faint: #6D7B8D;
+      --rule:      #2F3A47;
+      --rule-soft: #222B35;
+      --navy:      #83A9DE;
+      --band:      #C08D6B;
+      --shadow:    0 1px 0 rgba(0,0,0,.4), 0 8px 24px -18px rgba(0,0,0,.9);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:     #0E1319;
+    --card:      #181F28;
+    --card-sunk: #131A22;
+    --ink:       #E3E9F1;
+    --ink-soft:  #97A4B6;
+    --ink-faint: #6D7B8D;
+    --rule:      #2F3A47;
+    --rule-soft: #222B35;
+    --navy:      #83A9DE;
+    --band:      #C08D6B;
+    --shadow:    0 1px 0 rgba(0,0,0,.4), 0 8px 24px -18px rgba(0,0,0,.9);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: var(--step-0);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 56rem;
+    margin: 0 auto;
+    padding: clamp(1.25rem, 4vw, 3.5rem) clamp(1rem, 4vw, 2.5rem) 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3rem;
+  }
+
+  .titleblock {
+    border: 1px solid var(--rule);
+    background: var(--card);
+    box-shadow: var(--shadow);
+  }
+
+  .titleblock__main {
+    padding: clamp(1.5rem, 4vw, 2.5rem);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: .75rem;
+    font-weight: 500;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--navy);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--f-display);
+    font-weight: 700;
+    font-size: var(--step-4);
+    line-height: 1.06;
+    letter-spacing: -.022em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .standfirst {
+    font-size: var(--step-1);
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: 52ch;
+    margin: 0;
+  }
+
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    border-top: 1px solid var(--rule);
+  }
+
+  .field {
+    padding: .8rem 1.1rem .9rem;
+    border-right: 1px solid var(--rule-soft);
+    display: flex;
+    flex-direction: column;
+    gap: .18rem;
+  }
+  .field:last-child { border-right: 0; }
+
+  .field__label {
+    font-family: var(--f-mono);
+    font-size: .6875rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .field__value {
+    font-family: var(--f-mono);
+    font-size: .8125rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: .85rem;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: .5rem;
+  }
+
+  .sec-head__idx {
+    font-family: var(--f-mono);
+    font-size: .75rem;
+    font-weight: 500;
+    letter-spacing: .1em;
+    color: var(--navy);
+    flex: none;
+  }
+
+  h2 {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: var(--step-2);
+    letter-spacing: -.012em;
+    line-height: 1.2;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h3 {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: var(--step-1);
+    letter-spacing: -.008em;
+    line-height: 1.3;
+    margin: 0;
+  }
+
+  p { margin: 0; max-width: 68ch; }
+
+  a {
+    color: var(--navy);
+    text-underline-offset: .18em;
+    text-decoration-thickness: 1px;
+  }
+  a:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
+
+  strong { font-weight: 600; }
+
+  .mono { font-family: var(--f-mono); font-size: .875em; }
+
+  .assets { display: flex; flex-direction: column; gap: 1.15rem; }
+
+  .asset {
+    border: 1px solid var(--rule);
+    background: var(--card);
+    box-shadow: var(--shadow);
+  }
+
+  .asset__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem .9rem;
+    padding: .8rem 1.3rem;
+    border-bottom: 1px solid var(--rule);
+    background: var(--card-sunk);
+  }
+
+  .asset__idx {
+    font-family: var(--f-mono);
+    font-size: .8125rem;
+    font-weight: 500;
+    color: var(--ink-faint);
+    flex: none;
+  }
+
+  .asset__title { flex: 1 1 14rem; }
+
+  .pill {
+    font-family: var(--f-mono);
+    font-size: .6875rem;
+    font-weight: 500;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: .22rem .55rem;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    white-space: nowrap;
+    flex: none;
+  }
+  .pill--model { color: var(--band); }
+  .pill--icon  { color: var(--navy); }
+  .pill--open  { color: var(--ink-faint); }
+
+  .asset__body {
+    padding: 1.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: .95rem;
+  }
+
+  .asset__body p { max-width: 66ch; }
+
+  .scope {
+    display: flex;
+    gap: .7rem;
+    align-items: baseline;
+    border-top: 1px solid var(--rule-soft);
+    padding-top: .85rem;
+    max-width: 66ch;
+  }
+
+  .scope__label {
+    font-family: var(--f-mono);
+    font-size: .6875rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    flex: none;
+    padding-top: .17rem;
+  }
+
+  .scope__text { font-size: .9375rem; line-height: 1.5; color: var(--ink-soft); }
+
+  .refstrip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 1px;
+    background: var(--rule-soft);
+    border: 1px solid var(--rule-soft);
+  }
+
+  .ref {
+    background: var(--card-sunk);
+    padding: 1rem .75rem .9rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .55rem;
+    text-align: center;
+    margin: 0;
+  }
+
+  .ref img { width: 96px; height: 96px; display: block; }
+
+  .ref figcaption {
+    font-family: var(--f-mono);
+    font-size: .6875rem;
+    letter-spacing: .04em;
+    color: var(--ink-soft);
+  }
+
+  .swatches { display: flex; flex-wrap: wrap; gap: .55rem; }
+
+  .swatch {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    font-family: var(--f-mono);
+    font-size: .75rem;
+    border: 1px solid var(--rule);
+    background: var(--card-sunk);
+    padding: .22rem .55rem .22rem .28rem;
+    border-radius: 2px;
+  }
+
+  .swatch i {
+    width: .9rem;
+    height: .9rem;
+    border-radius: 2px;
+    border: 1px solid rgba(0,0,0,.22);
+    flex: none;
+  }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.1rem;
+    font-family: var(--f-mono);
+    font-size: .75rem;
+    line-height: 1.7;
+    color: var(--ink-faint);
+  }
+
+  @media (max-width: 34rem) {
+    .field { border-right: 0; border-bottom: 1px solid var(--rule-soft); }
+    .scope { flex-direction: column; gap: .2rem; }
+  }
+</style>
+
+<div class="sheet">
+
+  <header class="titleblock">
+    <div class="titleblock__main">
+      <p class="eyebrow">Advanced Electronics &middot; outstanding art</p>
+      <h1>What still needs art, and what each piece is for</h1>
+      <p class="standfirst">Nine pieces of art outstanding, plus two I have not decided on. Every one is independent &mdash; nothing here is blocked by anything else on the list.</p>
+    </div>
+    <div class="fields">
+      <div class="field">
+        <span class="field__label">World models</span>
+        <span class="field__value">1 &middot; plus variants</span>
+      </div>
+      <div class="field">
+        <span class="field__label">Item icons</span>
+        <span class="field__value">3</span>
+      </div>
+      <div class="field">
+        <span class="field__label">Tag icons</span>
+        <span class="field__value">3</span>
+      </div>
+      <div class="field">
+        <span class="field__label">Skill emblem</span>
+        <span class="field__value">1</span>
+      </div>
+      <div class="field">
+        <span class="field__label">Undecided</span>
+        <span class="field__value">2</span>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-head__idx">A</span>
+      <h2>World models</h2>
+    </div>
+
+    <div class="assets">
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">01</span>
+          <h3 class="asset__title">Drone Dock</h3>
+          <span class="pill pill--model">3D model</span>
+        </div>
+        <div class="asset__body">
+          <p>The building the drones belong to. A player places one, assigns drones to it, and the drones leave from it, fly out over the terrain to work, and return to it to refuel and idle. It is the only permanent, visible piece of the whole system &mdash; the drones themselves are away most of the time, so the dock is what a visitor to the settlement actually sees.</p>
+          <p>It reads best as a landing pad or open hangar with obvious berths &mdash; somewhere a drone visibly <em>sits</em>. Roughly workshop-sized: walked up to, not entered. It sits in the electronics tier of the tech tree, so steel, concrete, copper and exposed conduit are all in register.</p>
+          <p>Right now it is a shape assembled from Unity primitives. It is the single worst-looking thing the mod puts in the world.</p>
+          <div class="scope">
+            <span class="scope__label">Scope</span>
+            <span class="scope__text">One world-object model. Its inventory icon is generated by rendering the model, so no separate 2D deliverable. Largest single item on the list.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">02</span>
+          <h3 class="asset__title">Drone role variants</h3>
+          <span class="pill pill--model">3D &middot; optional</span>
+        </div>
+        <div class="asset__body">
+          <p>Three drones do three different jobs. <strong>Survey</strong> flies a grid over unexplored terrain and reports what ore is under it. <strong>Mining</strong> goes back to a surveyed plot and extracts. <strong>Harvest</strong> works crops and plantations.</p>
+          <p>All three currently share one chassis and are told apart by body colour alone:</p>
+          <div class="refstrip">
+            <figure class="ref">
+              <img src="__ICON_SURVEY__" alt="Survey drone, teal-blue">
+              <figcaption>Survey</figcaption>
+            </figure>
+            <figure class="ref">
+              <img src="__ICON_MINING__" alt="Mining drone, lime green">
+              <figcaption>Mining</figcaption>
+            </figure>
+            <figure class="ref">
+              <img src="__ICON_HARVEST__" alt="Harvest drone, brown">
+              <figcaption>Harvest</figcaption>
+            </figure>
+          </div>
+          <p>Colour-only differentiation was a stopgap. A player watching three drones leave the same dock cannot tell which is which from any distance. A sensor mast, a cutting head, a collection basket &mdash; anything that changes the silhouette per role would do more than the tint does.</p>
+          <div class="scope">
+            <span class="scope__label">Scope</span>
+            <span class="scope__text">Optional. The smallest useful version is three attachments on the existing chassis rather than three new models. Listed because the gap is real, not because it blocks anything.</span>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-head__idx">B</span>
+      <h2>Item icons</h2>
+    </div>
+
+    <div class="assets">
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">03</span>
+          <h3 class="asset__title">Battery</h3>
+          <span class="pill pill--icon">Item icon</span>
+        </div>
+        <div class="asset__body">
+          <p>The fuel the drones burn. A player crafts batteries, loads them into the dock, and the dock hands them out to drones as they come back empty. They are consumed, so a player handles them constantly &mdash; this icon is seen more often than anything else on the list.</p>
+          <p>Sulfuric, in the mod's fiction: a heavy cell in a case, built at the electronics tier by hand. Nothing in the base game covers it, so there is no existing icon to sit beside and nothing to stay consistent with.</p>
+          <p>It currently ships as a flat green square.</p>
+          <div class="scope">
+            <span class="scope__label">Scope</span>
+            <span class="scope__text">One item icon. Fully open &mdash; no established design to match.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">04</span>
+          <h3 class="asset__title">Engineering Research Paper &mdash; Post Modern</h3>
+          <span class="pill pill--icon">Item icon</span>
+        </div>
+        <div class="asset__body">
+          <p>The research input for the mod's skill. It sits one rung above the Modern engineering paper, and the base game has no Post Modern paper in any family &mdash; so this is a new tier on the existing ladder rather than a variant of something that exists.</p>
+          <p>The constraint that matters is that the engineering emblem should stay untouched: a player needs to read <em>engineering paper</em> before they read the tier, exactly as the existing three do.</p>
+          <p>My proposal, entirely open to being overruled: keep the Modern star's silhouette but change the metal to platinum, and step the header band one shade darker. Rank by material, so the tier furniture never competes with the emblem.</p>
+          <div class="swatches">
+            <span class="swatch"><i style="background:#CAE4FF"></i>#CAE4FF platinum</span>
+            <span class="swatch"><i style="background:#7C553F"></i>#7C553F band</span>
+          </div>
+          <p>It currently ships as a flat white square.</p>
+          <div class="scope">
+            <span class="scope__label">Scope</span>
+            <span class="scope__text">One item icon. Tightest brief on the list &mdash; the design decision is already made, and it needs drawing rather than deciding.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">05</span>
+          <h3 class="asset__title">Advanced Electronics Upgrade module</h3>
+          <span class="pill pill--icon">Item icon</span>
+        </div>
+        <div class="asset__body">
+          <p>The specialty upgrade a player crafts to raise their efficiency in the profession &mdash; the same role the existing specialty upgrade modules play for their own skills.</p>
+          <p>It currently borrows the Electronics upgrade module's icon. That is a deliberate stopgap and it is wrong: the two are separate craftable items and a player holding both sees one picture twice.</p>
+          <div class="scope">
+            <span class="scope__label">Scope</span>
+            <span class="scope__text">One item icon. Should read as a sibling of the existing upgrade modules, not as a departure.</span>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-head__idx">C</span>
+      <h2>Category and skill icons</h2>
+    </div>
+
+    <div class="assets">
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">06</span>
+          <h3 class="asset__title">Advanced Electronics skill</h3>
+          <span class="pill pill--icon">Skill emblem</span>
+        </div>
+        <div class="asset__body">
+          <p>The profession itself. It appears wherever a specialty is shown: the skill tree, the profession list, the star awarded when a player takes it. The mod's whole subject is autonomous machines that work land on their own, so it wants to read as a step past Electronics rather than as more of the same.</p>
+          <p>It currently borrows the Electronics emblem, which puts two different specialties behind one picture.</p>
+          <div class="scope">
+            <span class="scope__label">Scope</span>
+            <span class="scope__text">One skill emblem, in the established emblem style. The skill book and scroll do not need art &mdash; those are shared across every profession in the game.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">07</span>
+          <h3 class="asset__title">Electric Fuel</h3>
+          <span class="pill pill--icon">Tag icon</span>
+        </div>
+        <div class="asset__body">
+          <p>The category that says &ldquo;this is what a drone runs on&rdquo;. Today the battery is the only member, but the tag is what the dock actually filters its fuel slot on, so anything else electrical that ever powers a drone joins it rather than being special-cased.</p>
+          <p>Concept: stored charge as a supply, not a device &mdash; the electrical counterpart to the existing fuel category.</p>
+          <div class="scope">
+            <span class="scope__label">Scope</span>
+            <span class="scope__text">One tag icon.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">08</span>
+          <h3 class="asset__title">Post Modern Research</h3>
+          <span class="pill pill--icon">Tag icon</span>
+        </div>
+        <div class="asset__body">
+          <p>The category the new research tier belongs to, alongside the existing research tiers. Same relationship to item 04 as the existing research categories have to their own papers.</p>
+          <p>Whatever tier language item 04 lands on should carry over here, so the two are best done together or one straight after the other.</p>
+          <div class="scope">
+            <span class="scope__label">Scope</span>
+            <span class="scope__text">One tag icon, dependent on 04's tier treatment.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">09</span>
+          <h3 class="asset__title">Advanced Electronics Upgrade</h3>
+          <span class="pill pill--icon">Tag icon</span>
+        </div>
+        <div class="asset__body">
+          <p>The category for the upgrade module in item 05 &mdash; what the crafting tables filter on when they look for a specialty upgrade of this profession.</p>
+          <div class="scope">
+            <span class="scope__label">Scope</span>
+            <span class="scope__text">One tag icon, dependent on 05.</span>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-head__idx">D</span>
+      <h2>Not decided yet</h2>
+    </div>
+    <p>Two more surfaces report a missing icon, and I have not settled whether they should have their own art or inherit something generic. That is a design question about the mod, not an art question, and I will resolve it before asking anyone to draw them.</p>
+
+    <div class="assets">
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">10</span>
+          <h3 class="asset__title">Survey Component</h3>
+          <span class="pill pill--open">Undecided</span>
+        </div>
+        <div class="asset__body">
+          <p>The sensor package that makes a drone able to survey. It is a part of the drone rather than a thing a player holds, and it surfaces in the drone's own detail panel.</p>
+        </div>
+      </article>
+
+      <article class="asset">
+        <div class="asset__head">
+          <span class="asset__idx">11</span>
+          <h3 class="asset__title">Mining Component</h3>
+          <span class="pill pill--open">Undecided</span>
+        </div>
+        <div class="asset__body">
+          <p>The extraction package, same relationship to the mining drone as 10 has to the survey drone.</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-head__idx">E</span>
+      <h2>Where to start</h2>
+    </div>
+    <p><strong>01, the dock</strong>, is the biggest visible change &mdash; it is the one thing on this list a player looks at every day. <strong>04, the research paper</strong>, is the tightest brief and the quickest to close out. <strong>03, the battery</strong>, is the most open if you would rather design than match.</p>
+    <p>Tell me which you want and I will send the reference material for that one and nothing else. Anything you send me I will conform to the game's format myself &mdash; flat art at whatever size suits you is fine.</p>
+  </section>
+
+  <footer>
+    Advanced Electronics &middot; a mod for Eco &middot; art ships under CC BY-SA 4.0 with a permanent named credit<br>
+    <a href="https://github.com/iuriguilherme/Eco-Mod-Advanced-Electronics">github.com/iuriguilherme/Eco-Mod-Advanced-Electronics</a>
+  </footer>
+
+</div>

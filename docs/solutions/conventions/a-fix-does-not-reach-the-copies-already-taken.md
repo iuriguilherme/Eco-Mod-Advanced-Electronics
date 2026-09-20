@@ -1,6 +1,7 @@
 ---
 title: "A fix does not reach the copies already taken from the file"
 date: 2026-08-03
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -19,7 +20,7 @@ related_components: [EcoServerMod/AdvancedElectronics]
 
 ## Context
 
-`HarvestDrone.cs` was written by copying `SurveyDrone.cs`, the mod's existing drone, and adapting it.
+`HarvestDrone.cs` (since renamed `HarvesterDrone.cs`; the classes inside kept their `HarvestDrone` names) was written by copying `SurveyDrone.cs`, the mod's existing drone, and adapting it.
 That is the right way to author a sibling — the two share a component contract, a recipe shape, and a
 set of non-obvious constraints that are expensive to rediscover.
 
@@ -140,7 +141,7 @@ The one command that catches the whole class, run before committing a copied fil
 
 ```bash
 diff <(git show HEAD:EcoServerMod/AdvancedElectronics/SurveyDrone.cs) \
-     EcoServerMod/AdvancedElectronics/HarvestDrone.cs
+     EcoServerMod/AdvancedElectronics/HarvesterDrone.cs
 ```
 
 The pickaxe blind spot, reproduced on this repository. `-S` omits the very commit whose subject line

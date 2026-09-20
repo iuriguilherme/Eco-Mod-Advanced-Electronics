@@ -60,6 +60,12 @@ fi
 # Building a project file directly leaves it unset, the generators silently write nowhere,
 # and the compile fails on thousands of missing generated types.
 SOLUTION_DIR="$ECO_ROOT/Server/"
+# On Windows the path must use backslashes: the tech-tree prebuild names each CSV by the
+# text after its last Path.DirectorySeparatorChar, and a forward-slash path has none, so it
+# crashes with "startIndex ('-1') must be a non-negative value".
+if command -v cygpath >/dev/null 2>&1; then
+    SOLUTION_DIR="$(cygpath -w "$ECO_ROOT")\\Server\\"
+fi
 
 # Two passes, deliberately. Both prebuilds emit sources during AfterBuild, after the compile
 # item globs have already been evaluated, so a cold checkout cannot succeed in one pass.

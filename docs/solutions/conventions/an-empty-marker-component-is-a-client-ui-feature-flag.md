@@ -1,6 +1,7 @@
 ---
 title: "An empty marker component is a client-UI feature flag — declare it, or the vanilla tab renders without its controls"
 date: 2026-08-21
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -18,7 +19,7 @@ symptoms:
   - "Workaround chat command `/drone link` and a knowingly-wrong wide auto-link default were shipped in place of the missing control"
 root_cause: incomplete_setup
 resolution_type: code_fix
-tags: [eco-modding, worldobject, requirecomponent, marker-component, client-ui, storage, linkcomponent, engine-source, falsification]
+tags: [eco-modding, worldobject, requirecomponent, marker-component, client-ui, linkcomponent, engine-source, falsification]
 related_components: [EcoServerMod/AdvancedElectronics]
 ---
 
@@ -41,7 +42,7 @@ A vanilla Desalinator standing a few blocks away rendered the same tab *with* th
 
 Because the affordance was missing, the mod shipped a chat command as a stopgap — `/drone link <n>`,
 which lists targets and toggles one by number
-(`EcoServerMod/AdvancedElectronics/DroneCommands.cs:44-97`). It sets exactly the two flags the
+(`EcoServerMod/AdvancedElectronics/DroneCommands.cs:45-98`). It sets exactly the two flags the
 missing checkboxes set:
 
 ```csharp
@@ -307,7 +308,7 @@ one" (`:485-486`), and additions run before removals "so a component replaced by
 derived type finds its successor" (`:489`). Whether the deployed 0.14.0.3 build contains those guards
 was not established.
 
-What shipped is the guard (`EcoServerMod/AdvancedElectronics/DroneDock.cs:550-555`):
+What shipped is the guard (`EcoServerMod/AdvancedElectronics/DroneDock.cs:750-752`):
 
 ```csharp
 // Guarded: an NRE here aborts server startup entirely rather than degrading one dock.
@@ -375,7 +376,7 @@ Three habits this cost enough to be worth stating separately:
   stock `SharedLinkComponent` in place of the subclass whose wide auto-link default was traded away —
   leaving `EcoServerMod/AdvancedElectronics/DroneDockLink.cs` attached to nothing while carrying a
   long rationale for a decision the code no longer makes. `/drone link`
-  (`DroneCommands.cs:44-97`) is likewise a stopgap whose stated exit condition has now been met.
+  (`DroneCommands.cs:45-98`) is likewise a stopgap whose stated exit condition has now been met.
   Closing an investigation includes grepping for its casualties.
 
 ## The discovery instrument
@@ -397,5 +398,8 @@ machine-local paths.
   startup crash happened inside.
 - `docs/solutions/runtime-errors/naming-a-component-hides-it-from-its-vanilla-consumer.md` — the other case where
   a component's *identity* rather than its behaviour decided whether the engine found it.
-- `docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md` — the neighbouring idea that some declarations carry no
-  behaviour at all and exist purely to be read by something else.
+- `docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md` — the neighbouring idea,
+  with the opposite ending. There an attribute that appeared to feed nothing but a tooltip turned
+  out to be gating admission again a few months later, so a declaration whose only observable
+  effect today is a label may still be load-bearing tomorrow. The marker component here is the
+  stable case: its presence is the whole of what it does, and always was.

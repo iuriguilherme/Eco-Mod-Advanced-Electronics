@@ -86,6 +86,24 @@ namespace Eco.Mods.TechTree
 
         public static string CurrentChangeToken(SurveyAreaEntry area) => $"{area.Id}:{area.Epoch}";
 
+        /// <summary>
+        /// Accepts <paramref name="area"/>'s current geometry as this reference's own (U9, R21):
+        /// the edit that moved the epoch took nothing the job still has to work, so the job runs
+        /// on and this reference stops reporting a mismatch about it.
+        ///
+        /// <para>
+        /// Without this the reference would re-decide the same edit on every tick — cheap while
+        /// the answer stays "carry on", but the answer changes as the job works through its
+        /// ledger, and a job that accepted an edit at plot three must not be ended by that same
+        /// edit at plot ten. What the job accepted, it accepted.
+        /// </para>
+        /// </summary>
+        public void AdoptEpoch(SurveyAreaEntry area)
+        {
+            if (area != null)
+                this.ObservedEpoch = area.Epoch;
+        }
+
         private AreaLookupSignal NotFound()
         {
             if (this.hasResolvedOnce) return AreaLookupSignal.ConfirmedGone;

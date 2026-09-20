@@ -1,0 +1,53 @@
+{
+  "reviewer": "performance",
+  "findings": [
+    {
+      "title": "Global block-write event fans out O(docks) per dig, unfiltered by distance",
+      "severity": "P2",
+      "file": "EcoServerMod/AdvancedElectronics/DroneDock.GroundChange.cs",
+      "line": 74,
+      "why_it_matters": "Every player's dig or block placement anywhere on the map now costs O(total docks in the world), not O(docks near the change). EcoWorld.OnTopBlockChanged is the engine's single static top-block-changed event, fired on every block write server-wide with no spatial scoping. SubscribeToGroundChanges (DroneDock.GroundChange.cs:69-78) has every DroneDockObject instance add its own handler to that same static event, so one block change invokes N separate handler calls, N = every non-destroyed dock that ever called Initialize. Each call runs ReactToGroundChange (line 138), which loops `foreach (var entry in this.SurveyAreas)` (line 147) and calls SurveyAreaEntry.CoversPlot for every area -- and CoversPlot (SurveyAreaEntry.cs:572-578) is an explicit linear scan over the area's flat plot-coordinate list (its own doc comment says so: \"Scans the flat pair list rather than building a set\"), with no bounding-box or distance pre-check before that scan. On a server with several active mining/survey docks placed around the map, ordinary digging anywhere becomes O(docks x areas x plotsPerArea) work per block write, none of it gated by proximity -- unlike every other new refresh path in this same diff, which is throttled to once per second per dock. Digging happens far more often than once a second under normal play, so this is the diff's actual hot path, not the per-second UI refreshes.",
+      "autofix_class": "manual",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Register a single shared handler on EcoWorld.OnTopBlockChanged (e.g. a static subscription owned by a manager/first-initialized dock, ref-counted across dock Initialize/destroy) instead of one per dock instance, and have that handler resolve the changed plot once, then dispatch only to docks whose HasSurveyState is true and whose areas' bounding region could contain the plot (a coarse spatial index -- e.g. a dictionary keyed by chunk or plot region -- populated when SetPlots/SetFindings change an area's geometry). This turns the per-write cost from O(all docks) into O(docks actually covering that ground), matching the assumption CoversPlot's own doc comment already makes about being on a hot path.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/DroneDock.GroundChange.cs:74 -- EcoWorld.OnTopBlockChanged.Add(this.groundChangeHandler);",
+        "EcoServerMod/AdvancedElectronics/DroneDock.GroundChange.cs:147 -- foreach (var entry in this.SurveyAreas)",
+        "EcoServerMod/AdvancedElectronics/SurveyAreaEntry.cs:572-578 -- public bool CoversPlot(PlotCoord plot) { for (var i = 0; i + 1 < this.PlotCoords.Count; i += 2) ... } // \"Scans the flat pair list rather than building a set: this is on the world's block-write path (U8).\"",
+        "Comment at DroneDock.GroundChange.cs:120-124 itself acknowledges this runs on every top-block change in the world and orders gates \"cheapest first\", but none of the gates are spatial -- they are existence/state checks only."
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "Per-dock mining exclusions grow without bound and are fully rescanned every second by every dock in the world",
+      "severity": "P2",
+      "file": "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs",
+      "line": 249,
+      "why_it_matters": "Two compounding problems in the new exclusion ledger. First, unbounded growth: MiningExclusions (DroneDock.Mining.cs:179) is append-only across a dock's lifetime except for the one (sourceDockId, areaId) pair being reassigned -- PersistMiningExclusions (lines ~214-249 in the earlier read) rebuilds the list by removing only entries matching the CURRENT area before re-adding, and ClearMiningExclusions likewise only drops entries for one (dock, area) pair on reassignment. A mining dock that gets reassigned across many different survey areas over a long-running server -- an entirely ordinary usage pattern this feature is built for -- accumulates one entry per (area, plot) it has ever been refused on, for every area it has EVER worked, with no expiry or cap for areas it will never be assigned to again. Second, that growing list is rescanned in full, from every angle, once a second: AddMiningExclusionsTo (line 249) does `this.MiningExclusions.Where(e => e.IsFor(sourceDockId, area.Id))`, an unindexed linear scan of the WHOLE list, and this is called once per area for every exclusion-holding dock inside AssembleAreaExclusions/StatusOfArea. MiningComponent.AllAreaProjections (MiningComponent.cs:259-283) calls StatusOfArea for every area of every dock in the world, and it is invoked by MiningComponent.RefreshAll (line 382) AND SurveyComponent.RefreshAll (SurveyComponent.cs:386) -- independently, once per second, by EVERY active dock's own tick-throttled refresh (DroneDock.cs's ReadoutRefreshIntervalSeconds=1f). The developers' own comments show they hoisted exclusionHolders/published ONCE per RefreshAll call specifically to avoid an O(areas x world) sweep -- but that hoisting is scoped to a single dock's own refresh; it does not stop every OTHER active dock from independently redoing the identical full-world computation on its own one-second timer. Net effect: per-second server cost scales as O(active docks x total areas in world x exclusion-holding docks x each holder's exclusion-list size), and that last factor grows without bound over the server's life.",
+      "autofix_class": "manual",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Two independent fixes, either alone reduces the compounding: (1) index MiningExclusions by (sourceDockId, areaId) -- e.g. a Dictionary<(string,int), List<MiningExclusionEntry>> rebuilt alongside the serialized ThreadSafeList -- so AddMiningExclusionsTo (line 249) is an O(matches) lookup instead of an O(list) scan; and/or prune entries for areas the dock no longer has any live reference to (e.g. on world load, drop exclusions whose (sourceDockId, areaId) no longer resolves via AreaLookupSignal.Found), bounding the list to areas still reachable. (2) Cache AllAreaProjections()/DocksHoldingExclusions() per game-second rather than per dock's RefreshAll call -- e.g. a static field stamped with the tick/second it was computed on, recomputed lazily by whichever dock's refresh runs first in that second and reused by every other dock's refresh in the same second -- so the full-world walk happens once per second server-wide instead of once per second per active dock.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs:179 -- [Serialized] public ThreadSafeList<MiningExclusionEntry> MiningExclusions { get; set; } = new();",
+        "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs:249 -- foreach (var entry in this.MiningExclusions.Where(e => e.IsFor(sourceDockId, area.Id)))",
+        "EcoServerMod/AdvancedElectronics/MiningComponent.cs:382 -- var published = AllAreaProjections(); // inside public void RefreshAll() at line 347",
+        "EcoServerMod/AdvancedElectronics/SurveyComponent.cs:386 -- var published = MiningComponent.AllAreaProjections(); // inside public void RefreshAll() at line 295",
+        "EcoServerMod/AdvancedElectronics/DroneDock.cs:1109-1114 -- secondsSinceLastReadoutRefresh throttle at ReadoutRefreshIntervalSeconds = 1f, then this.RefreshReadout() -- confirms RefreshAll on both tabs runs once per second per dock independently, not shared across docks."
+      ],
+      "pre_existing": false
+    }
+  ],
+  "residual_risks": [
+    "MiningExclusionLedger.IsAccountedForByAttempt and MiningExclusionLedger.SuppressesFor (MiningExclusions.cs) do an unindexed List.Any() scan per plot inside AreaLifecycle.DeriveStatus's per-plot loop, giving each single-area status derivation O(plots x assembled-exclusions) cost. Bounded today by MaxAreaPlots=40 (SurveyComponent.cs:59) and by exclusion counts of the same order, so it is not independently flagged, but if that cap is ever raised or exclusions stop being scoped per dock this stops being negligible.",
+    "AreaOverlap.Matches/SharedPlots (AreaOverlap.cs) rebuilds a HashSet<PlotCoord> from an already-built HashSet on every iteration of the published-areas loop (the `mine` set passed in is re-hashed inside SharedPlots instead of reused). Redundant but cheap at the areas-per-server scale this mod expects; worth a one-line fix (an `is HashSet<PlotCoord>` fast path) if AllAreaProjections() volume grows as a result of fixing the finding above.",
+    "AreaClaimLock (DroneDock.Mining.cs:102) is a single process-wide lock spanning a full world walk (AllAreaProjections via MiningComponent.OverlapsOf) on every area assignment. This is confined to the player-initiated assignment path and one job-completion transition (MiningStrategy.cs:531-533, gated behind Status==Complete && hold.IsEmpty), not a per-tick path, so it was not raised as a finding -- but if the fix for the second finding above introduces a per-second cached AllAreaProjections(), confirm the lock's world walk still reads a fresh-enough snapshot rather than a stale cached one for the atomicity R39 requires."
+  ],
+  "testing_gaps": [
+    "No test exercises DroneDock.GroundChange's OnTopBlockChanged/ReactToGroundChange with more than one dock subscribed, so the O(docks) fan-out per block write has no regression guard if a future change tries to add spatial filtering.",
+    "No test measures or bounds MiningExclusions list growth across repeated reassignment to many distinct areas over a simulated long-running session -- the unbounded-growth shape identified above has no failing test to turn green once fixed."
+  ]
+}

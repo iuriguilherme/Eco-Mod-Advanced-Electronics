@@ -1,7 +1,7 @@
 ---
 title: "UserCode cannot name a type from a mod DLL, so a table override matches on a tag"
 date: 2026-08-01
-last_updated: 2026-08-10
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -20,9 +20,9 @@ related_components: [EcoServerMod/AdvancedElectronics, EcoServerMod/UserCode]
 
 ## Context
 
-The Advanced Electronics Upgrade is a plugin module meant to slot into the Robotic Assembly Line,
-which is a vanilla table. The table's `[AllowPluginModules]` does not list the module, and a mod
-assembly cannot add to that attribute — attributes merge across partial declarations only within a
+The Advanced Electronics Upgrade is a plugin module meant to slot into vanilla tables — the
+Robotic Assembly Line first, and the Electronics Assembly since `5c87d5c`. Neither table's
+`[AllowPluginModules]` lists the module, and a mod assembly cannot add to that attribute — attributes merge across partial declarations only within a
 single assembly. Eco's escape hatch is a whole-file override: a file under `Mods/UserCode/` whose
 path matches a `__core__` file, with `.override` before the extension, replaces it.
 
@@ -131,7 +131,10 @@ The reference list that decides everything, from `Eco.ModKit/RoslynCompiler.cs`:
 
 No mod DLL appears, and nothing adds one.
 
-Why a whole-file override is generated rather than committed, and why it is verified:
+Why a whole-file override is generated rather than committed, and why it is verified. The
+script discovers every `*.override.cs` under `EcoServerMod/UserCode/` rather than naming one,
+so adding a table costs no edit to it — the mod now ships two,
+`RoboticAssemblyLine.override.cs` and `ElectronicsAssembly.override.cs`:
 
 ```bash
 # scripts/deploy-usercode-overrides.sh --refresh re-derives it from the server's own __core__,

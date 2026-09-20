@@ -1,6 +1,7 @@
 ---
 title: "An exception in WorldObject.Initialize() leaves a half-built object — invisible, non-interactable, and silent"
 date: 2026-07-31
+last_updated: 2026-09-15
 category: runtime-errors
 module: EcoServerMod
 problem_type: runtime_error
@@ -113,8 +114,9 @@ grep -rhoE "TypeName = nameof\([A-Za-z]+Item\)" EcoServerMod/AdvancedElectronics
   | sed -E 's/.*nameof\((.*)\)/\1/' | sort -u
 ```
 
-Every name in the second list must appear in the first. In this mod that is 45 valid part types
-against 8 in use.
+Every name in the second list must appear in the first. When this was audited that was 45 valid
+part types against 8 in use; the count on either side moves as the mod and the game do, which
+is why the check is the two greps rather than the numbers.
 
 ## Why This Works
 

@@ -31,8 +31,77 @@
     [RequiresSkill(typeof(EngineerSkill), 0), Tag("Engineer Specialty"), Tier(5)]
     [Tag("Specialty")]
     [Tag("Teachable")]
+    // Draws vanilla's own skills emblem. The client keeps ONE flat icon registry filled from
+    // vanilla's Addressables plus every mod bundle, so any name vanilla registered is a name a
+    // mod can ask for -- no asset, no scene object, no bundle rebuild.
+    //
+    // FOUR fields drive FOUR consumers and there is no shared default. That is why this looked
+    // unfixable across several restarts: each fix worked, each looked like it had failed, and the
+    // next guess was aimed at a different field.
+    //
+    //   [HasStaticIcon]           -> ViewClassInfo.IconName (ControllerMarshalerService.cs:414).
+    //                                Ecopedia pages.
+    //   [HasIcon("...")]          -> read at TypeTooltips.cs:46. Type tooltips.
+    //   public override IconName  -> Item.IconName, synced per instance. Inventory, hotbar,
+    //                                storage, recipe rows.
+    //   ItemIconUILink            -> ItemLinkable.cs:56. Inline icons in tooltip and chat text.
+    //
+    // An Item sets all four and they all name the same picture below; a Skill has only the two
+    // attributes. Changing one alone leaves the others asking for the class name.
+    //
+    // [HasIcon] on an Item subclass looks inert, because the lookup is INHERITED and every Item
+    // already carries a bare [HasIcon] whose IconName is null -- so the name falls back to the
+    // class name. That is why vanilla only ever passes a name to [HasIcon] on components. Setting
+    // all four sidesteps the question rather than answering it.
+    //
+    // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
+    //
+    // BORROWED SIBLING PLACEHOLDER, and unlike the book and scroll this one IS a placeholder.
+    // Every skill-book icon in the game is byte-identical, so naming one borrows nothing; skill
+    // emblems and upgrade modules are NOT -- each specialty has its own art. So this draws a
+    // picture that genuinely belongs to Electronics, and the two items are indistinguishable
+    // until this mod has art of its own.
+    //
+    // It is still the right call for now: correct in subject, correct plate, and strictly better
+    // than the client's default. It is a placeholder in the sense that it must be REPLACED, not
+    // in the sense that it should never have shipped -- that is the flat-colour kind.
+    // Tracked in docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
+    [HasIcon("ElectronicsSkill")]
+    [HasStaticIcon(nameof(StaticIconName))]
     public partial class AdvancedElectronicsSkill : Skill
     {
+
+        /// <summary>The vanilla icon this draws. Read by [HasStaticIcon] above.</summary>
+        public static string StaticIconName(Type type) => "ElectronicsSkill";
+
+        /// <summary>
+        /// The icon an INSTANCE of this draws. Item declares it as
+        /// <c>[SyncToView] public virtual string IconName =&gt; this.Name</c>
+        /// (Server/Eco.Gameplay/Items/Item.cs:34), so it defaults to the class name and is what
+        /// the client actually receives per item.
+        ///
+        /// The [HasStaticIcon] attribute above sets a DIFFERENT thing -- the class-level icon on
+        /// ViewClassInfo, which drives Ecopedia pages and type tooltips. Setting only the
+        /// attribute leaves every inventory slot, recipe row and hotbar entry still asking for
+        /// the class name; both are needed to point at one picture.
+        /// </summary>
+        public override string IconName => "ElectronicsSkill";
+
+        /// <summary>
+        /// The icon drawn INLINE IN TOOLTIP AND CHAT TEXT, e.g. the little square beside this
+        /// item's name in "Requires: ... ".
+        ///
+        /// ItemLinkable declares it as
+        /// <c>TextLoc.Item(TextLoc.Icon(this.Name, text))</c>
+        /// (Server/Eco.Gameplay/Items/ItemLinkable.cs:56) -- keyed on <c>Name</c>, the CLASS name,
+        /// which is a fourth field independent of IconName and of both icon attributes. Setting
+        /// those three left this one still asking for the class name, which resolves to whatever
+        /// the mod's own bundle registered under it.
+        ///
+        /// Pointing it at IconName rather than a literal keeps one source of truth: change the
+        /// icon in one place and every surface follows.
+        /// </summary>
+        protected override LocString ItemIconUILink(LocString text) => TextLoc.Item(TextLoc.Icon(this.IconName, text));
 
         public override void OnLevelUp(User user)
         {
@@ -74,12 +143,153 @@
     [Weight(1000)]
     [LocDisplayName("Advanced Electronics Skill Book")]
     [Ecopedia("Items", "Skill Books", createAsSubPage: true)]
-    public partial class AdvancedElectronicsSkillBook : SkillBook<AdvancedElectronicsSkill, AdvancedElectronicsSkillScroll> {}
+    // Draws vanilla's own generic skill book. The client keeps ONE flat icon registry filled from
+    // vanilla's Addressables plus every mod bundle, so any name vanilla registered is a name a
+    // mod can ask for -- no asset, no scene object, no bundle rebuild.
+    //
+    // FOUR fields drive FOUR consumers and there is no shared default. That is why this looked
+    // unfixable across several restarts: each fix worked, each looked like it had failed, and the
+    // next guess was aimed at a different field.
+    //
+    //   [HasStaticIcon]           -> ViewClassInfo.IconName (ControllerMarshalerService.cs:414).
+    //                                Ecopedia pages.
+    //   [HasIcon("...")]          -> read at TypeTooltips.cs:46. Type tooltips.
+    //   public override IconName  -> Item.IconName, synced per instance. Inventory, hotbar,
+    //                                storage, recipe rows.
+    //   ItemIconUILink            -> ItemLinkable.cs:56. Inline icons in tooltip and chat text.
+    //
+    // An Item sets all four and they all name the same picture below; a Skill has only the two
+    // attributes. Changing one alone leaves the others asking for the class name.
+    //
+    // [HasIcon] on an Item subclass looks inert, because the lookup is INHERITED and every Item
+    // already carries a bare [HasIcon] whose IconName is null -- so the name falls back to the
+    // class name. That is why vanilla only ever passes a name to [HasIcon] on components. Setting
+    // all four sidesteps the question rather than answering it.
+    //
+    // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
+    [HasIcon("ElectronicsSkillBook")]
+    [HasStaticIcon(nameof(StaticIconName))]
+    public partial class AdvancedElectronicsSkillBook : SkillBook<AdvancedElectronicsSkill, AdvancedElectronicsSkillScroll>
+    {
+        /// <summary>The vanilla icon this draws. Read by [HasStaticIcon] above.</summary>
+        public static string StaticIconName(Type type) => "ElectronicsSkillBook";
+
+        /// <summary>
+        /// The icon an INSTANCE of this draws. Item declares it as
+        /// <c>[SyncToView] public virtual string IconName =&gt; this.Name</c>
+        /// (Server/Eco.Gameplay/Items/Item.cs:34), so it defaults to the class name and is what
+        /// the client actually receives per item.
+        ///
+        /// The [HasStaticIcon] attribute above sets a DIFFERENT thing -- the class-level icon on
+        /// ViewClassInfo, which drives Ecopedia pages and type tooltips. Setting only the
+        /// attribute leaves every inventory slot, recipe row and hotbar entry still asking for
+        /// the class name; both are needed to point at one picture.
+        /// </summary>
+        /// Vanilla ships ONE skill-book picture: every book icon in the atlas -- baking,
+        /// cooking, masonry, smelting, composites, electronics, all of them -- is byte-identical.
+        /// So naming one is not borrowing another specialty's art; there is no such thing here,
+        /// and the specialty is carried by the item's name rather than its picture.
+        ///
+        /// NOT the space-named "Skill Book" generic, which is the TAG icon: the same drawing on a
+        /// grey plate rather than the olive one every skill book in an inventory slot uses. The
+        /// space-named set is for category headers, and it looks wrong beside real items.
+        public override string IconName => "ElectronicsSkillBook";
+
+        /// <summary>
+        /// The icon drawn INLINE IN TOOLTIP AND CHAT TEXT, e.g. the little square beside this
+        /// item's name in "Requires: ... ".
+        ///
+        /// ItemLinkable declares it as
+        /// <c>TextLoc.Item(TextLoc.Icon(this.Name, text))</c>
+        /// (Server/Eco.Gameplay/Items/ItemLinkable.cs:56) -- keyed on <c>Name</c>, the CLASS name,
+        /// which is a fourth field independent of IconName and of both icon attributes. Setting
+        /// those three left this one still asking for the class name, which resolves to whatever
+        /// the mod's own bundle registered under it.
+        ///
+        /// Pointing it at IconName rather than a literal keeps one source of truth: change the
+        /// icon in one place and every surface follows.
+        /// </summary>
+        protected override LocString ItemIconUILink(LocString text) => TextLoc.Item(TextLoc.Icon(this.IconName, text));
+    }
 
     [Serialized]
     [Weight(100)]
     [LocDisplayName("Advanced Electronics Skill Scroll")]
-    public partial class AdvancedElectronicsSkillScroll : SkillScroll<AdvancedElectronicsSkill, AdvancedElectronicsSkillBook> {}
+    // The Ecopedia page is not decoration, and vanilla's skill scrolls do not have one.
+    // It is what makes this class visible to the client's enumerated missing-icon report:
+    // that report walks Ecopedia categories, pages and subpages only, and takes each page's
+    // icon name from its declaring type, so a class with no page can never appear in it.
+    // Remove the page and the scroll's icon becomes uncheckable in one log read.
+    // See docs/plans/2026-08-10-001-feat-tech-tree-icons-plan.md (KTD3).
+    [Ecopedia("Items", "Skill Books", createAsSubPage: true)]
+    // Draws vanilla's own generic skill scroll. The client keeps ONE flat icon registry filled from
+    // vanilla's Addressables plus every mod bundle, so any name vanilla registered is a name a
+    // mod can ask for -- no asset, no scene object, no bundle rebuild.
+    //
+    // FOUR fields drive FOUR consumers and there is no shared default. That is why this looked
+    // unfixable across several restarts: each fix worked, each looked like it had failed, and the
+    // next guess was aimed at a different field.
+    //
+    //   [HasStaticIcon]           -> ViewClassInfo.IconName (ControllerMarshalerService.cs:414).
+    //                                Ecopedia pages.
+    //   [HasIcon("...")]          -> read at TypeTooltips.cs:46. Type tooltips.
+    //   public override IconName  -> Item.IconName, synced per instance. Inventory, hotbar,
+    //                                storage, recipe rows.
+    //   ItemIconUILink            -> ItemLinkable.cs:56. Inline icons in tooltip and chat text.
+    //
+    // An Item sets all four and they all name the same picture below; a Skill has only the two
+    // attributes. Changing one alone leaves the others asking for the class name.
+    //
+    // [HasIcon] on an Item subclass looks inert, because the lookup is INHERITED and every Item
+    // already carries a bare [HasIcon] whose IconName is null -- so the name falls back to the
+    // class name. That is why vanilla only ever passes a name to [HasIcon] on components. Setting
+    // all four sidesteps the question rather than answering it.
+    //
+    // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
+    [HasIcon("ElectronicsSkillScroll")]
+    [HasStaticIcon(nameof(StaticIconName))]
+    public partial class AdvancedElectronicsSkillScroll : SkillScroll<AdvancedElectronicsSkill, AdvancedElectronicsSkillBook>
+    {
+        /// <summary>The vanilla icon this draws. Read by [HasStaticIcon] above.</summary>
+        public static string StaticIconName(Type type) => "ElectronicsSkillScroll";
+
+        /// <summary>
+        /// The icon an INSTANCE of this draws. Item declares it as
+        /// <c>[SyncToView] public virtual string IconName =&gt; this.Name</c>
+        /// (Server/Eco.Gameplay/Items/Item.cs:34), so it defaults to the class name and is what
+        /// the client actually receives per item.
+        ///
+        /// The [HasStaticIcon] attribute above sets a DIFFERENT thing -- the class-level icon on
+        /// ViewClassInfo, which drives Ecopedia pages and type tooltips. Setting only the
+        /// attribute leaves every inventory slot, recipe row and hotbar entry still asking for
+        /// the class name; both are needed to point at one picture.
+        /// </summary>
+        /// Vanilla ships ONE skill-scroll picture: every scroll icon in the atlas -- baking,
+        /// cooking, masonry, smelting, composites, electronics, all of them -- is byte-identical.
+        /// So naming one is not borrowing another specialty's art; there is no such thing here,
+        /// and the specialty is carried by the item's name rather than its picture.
+        ///
+        /// NOT the space-named "Skill Scrolls" generic, which is the TAG icon: the same drawing on a
+        /// grey plate rather than the olive one every skill scroll in an inventory slot uses. The
+        /// space-named set is for category headers, and it looks wrong beside real items.
+        public override string IconName => "ElectronicsSkillScroll";
+
+        /// <summary>
+        /// The icon drawn INLINE IN TOOLTIP AND CHAT TEXT, e.g. the little square beside this
+        /// item's name in "Requires: ... ".
+        ///
+        /// ItemLinkable declares it as
+        /// <c>TextLoc.Item(TextLoc.Icon(this.Name, text))</c>
+        /// (Server/Eco.Gameplay/Items/ItemLinkable.cs:56) -- keyed on <c>Name</c>, the CLASS name,
+        /// which is a fourth field independent of IconName and of both icon attributes. Setting
+        /// those three left this one still asking for the class name, which resolves to whatever
+        /// the mod's own bundle registered under it.
+        ///
+        /// Pointing it at IconName rather than a literal keeps one source of truth: change the
+        /// icon in one place and every surface follows.
+        /// </summary>
+        protected override LocString ItemIconUILink(LocString text) => TextLoc.Item(TextLoc.Icon(this.IconName, text));
+    }
 
 
     [RequiresSkill(typeof(ElectronicsSkill), 1)]

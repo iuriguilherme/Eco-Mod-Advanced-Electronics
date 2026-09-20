@@ -1,7 +1,7 @@
 ---
 title: "A gate that discovers nothing passes everything"
 date: 2026-07-30
-last_updated: 2026-08-16
+last_updated: 2026-09-15
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -9,12 +9,11 @@ component: tooling
 severity: high
 applies_when:
   - "A check discovers its own inputs before validating them (grep, glob, reflection, directory scan)"
-  - "A validation script has passed for a long time without anyone reading its output"
-  - "A plan cites an existing gate as evidence that new work is correct"
+  - "A gate's pass is being read as evidence -- by a plan, or by nobody having read its output in a long time"
   - "Narrowing a pattern to exclude false positives, where over-narrowing is silent"
   - "Refactoring a type onto a new base class, interface, directory, or naming convention"
   - "A runtime conditional guards recovery, cleanup, or retry logic and may not be satisfiable in the state that triggers it"
-tags: [validation, verification, false-confidence, grep, regex, tooling, eco-modding, name-match, coverage-regression]
+tags: [validation, verification, false-confidence, grep, tooling, eco-modding, name-match, coverage-regression]
 related_components: [scripts, EcoServerMod/AdvancedElectronics]
 ---
 
@@ -50,6 +49,18 @@ symmetric, and the quiet one is the dangerous one:
 - Too broad: the gate reports types that need no asset. Cost: a visible false failure someone
   immediately investigates and fixes.
 - Too narrow: the gate reports nothing. Cost: a green check for years, and no signal at all.
+
+That first cost assumes the false failure is **rare**. Where over-broad output is instead the
+standing majority, it does not self-correct — it erodes, and the erosion arrives from the loud
+direction rather than the quiet one. The documented case in this repo is the citation validator over
+`docs/solutions/`, where eighteen flags on a single doc were all correct-on-purpose and the same
+SHA-shaped flag was re-adjudicated across four separate runs without anything ever being fixed. Once
+an output is routinely waved through as "the checker not understanding the doc", the real finding
+gets waved through with it — the same "output that is always present becomes chrome" failure below,
+reached by producing too much signal instead of none. See
+`docs/solutions/workflow-issues/a-crashed-check-and-a-flagged-check-are-opposite-problems.md`. The
+asymmetry above holds where a false failure is exceptional; where it is the norm, the response is
+per-item adjudication rather than a wider pattern.
 
 This is the same asymmetry argument as
 `docs/solutions/workflow-issues/release-scripts-should-refuse-not-warn.md`, applied one step earlier.
@@ -132,6 +143,17 @@ skips ignored and hidden paths by default. The identical command is then correct
 structurally blind in another, with nothing in the command to say which. Before reading an empty
 result as an answer, confirm the corpus you searched could have contained the thing — that is a
 different question from whether your pattern was right.
+
+**A complete corpus is not the same as an independent one.** Every narrowing above shrinks what the
+check looks at, and the tell is always a count that should not be zero. The last member of this
+family shrinks nothing. The check runs over its whole intended input, correctly, and still says
+nothing — because the input was authored by the same hand as the check. A unit test that constructs
+the data structure it then asserts on has a corpus that is complete by construction: it proves the
+consumer of that structure, while the producer that fills it in production is never exercised and
+cannot be, because no test ever asks it for one. The result is again correct and useless, and it is
+harder to see than an empty denominator, because the number of things checked is not zero and does
+not look wrong. So ask two questions of an empty result, not one: could the corpus have contained the
+thing, and who put the thing in it.
 
 ## When to Apply
 
@@ -234,8 +256,8 @@ base class is a new chance for the same silence.
 
 Two days later the same gate lost a type it had been checking correctly; the loss was not noticed for
 another two. `SurveyDroneItem` was `: Item` — visible in the post-fix output above — and the commit
-*"feat(drone): make the drone item a repairable module"* (2026-08-01, unmerged into `main` as of this
-writing) rebased it:
+*"feat(drone): make the drone item a repairable module"* (`842a44a`, 2026-08-01, since merged into
+`main`) rebased it:
 
 ```csharp
 -    public class SurveyDroneItem : Item
@@ -275,9 +297,10 @@ existed when it was last edited.
 
 ## Related
 
-- `docs/solutions/workflow-issues/release-scripts-should-refuse-not-warn.md` — the adjacent failure at
-  the next step: that doc is about a gate that detects a bad condition and declines to fail on it;
-  this one is about a gate whose detection stage was empty, so its failure logic never ran.
+- `docs/solutions/workflow-issues/release-scripts-should-refuse-not-warn.md` — the adjacent question at
+  the next step: that doc argues a gate which detects a bad condition should refuse rather than warn,
+  and states the premise that makes refusing right — a false failure that is rare and cheap to clear.
+  This one is about a gate whose detection stage was empty, so its failure logic never ran at all.
 - `docs/solutions/workflow-issues/verify-the-deploy-landed-before-asking-for-a-restart.md` — the same
   shape in the deploy path: a step that reports success without having confirmed the thing it claims.
 - `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` — why name match is
@@ -286,3 +309,7 @@ existed when it was last edited.
   first runtime member of this family. Same kernel, different axis: there the unsatisfiable condition
   guards a recovery handler rather than a validation step, so its silence reads as a successful
   recovery instead of a passing gate, and the symptom is an infinite loop instead of a green check.
+- `docs/solutions/workflow-issues/a-test-that-builds-the-input-proves-nothing-about-the-producer.md` —
+  the member of this family whose corpus is complete rather than empty. A suite that constructs its
+  own input runs over everything it was given, correctly, and still says nothing about the producer;
+  the green count is real and measures only half the path.

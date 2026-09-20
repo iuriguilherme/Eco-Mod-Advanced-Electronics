@@ -1,6 +1,7 @@
 ---
 title: "A document stored in its own generator has no past tense"
 date: 2026-08-08
+last_updated: 2026-09-15
 category: conventions
 module: EcoServerMod
 problem_type: convention
@@ -21,10 +22,12 @@ related_components: [scripts/package-release.sh, EcoServerMod/AdvancedElectronic
 
 `scripts/package-release.sh` builds the README that ships inside the release zip. It does not read
 it from anywhere — it writes it inline, from a heredoc that opens at
-`scripts/package-release.sh:124` and closes at `scripts/package-release.sh:313`. Nearly two hundred
-lines of player-facing prose: the game-version requirement, the ALPHA save warning, "WHAT IS NEW",
-INSTALL, UPDATING, KNOWN ISSUES, CREDITS, LICENSE. The version it claims to be comes from
-`VERSION="0.2.0"` at `scripts/package-release.sh:47`.
+`scripts/package-release.sh:134` and closes at `scripts/package-release.sh:365`. Well over two
+hundred lines of player-facing prose: the game-version requirement, the ALPHA save warning, "WHAT IS
+NEW", INSTALL, UPDATING, KNOWN ISSUES, CREDITS, LICENSE. The version it claims to be comes from the
+`VERSION=` assignment near the top of the script, at `scripts/package-release.sh:47`, which read
+`0.2.0` when this was written and reads `0.3.0` now — the line has held its place while its value
+moved, which is the arrangement this entry is about.
 
 That arrangement has one property nobody decides on: the file always describes the *next* release.
 There is no copy of last release's notes in the tree, because the heredoc was overwritten. Edit a
@@ -69,7 +72,7 @@ the wrong artifact: not examining a warning leaves it *asserted*, not dormant. S
 would have told every 0.1.0 player to destroy their placed docks and drones — losing survey areas
 and accumulated findings — for a release that did not require it.
 
-What ships in 0.2.0 instead (`scripts/package-release.sh:145-153`) keeps the general risk, replaces
+What shipped in 0.2.0 instead kept the general risk, replaced
 the specific instruction, and is explicit about how much it knows:
 
 > THIS VERSION, SPECIFICALLY: unlike 0.1.0, this release does not change the component set of the
@@ -81,11 +84,12 @@ the specific instruction, and is explicit about how much it knows:
 > warning still applies in full: remove every Drone Dock and Survey Drone with admin tools first, or
 > start a fresh world.
 
-That claim is checkable, and it checks out. Between `v0.1.0` and the current head, no
+That claim was checkable, and it checked out at the time. Between `v0.1.0` and the 0.2.0 head, no
 `[Serialized]` or `[RequireComponent]` line was added or removed in either
-`EcoServerMod/AdvancedElectronics/DroneDock.cs` (whose `[RequireComponent]` block sits at lines
-59-98, above `class DroneDockObject` at line 100) or
-`EcoServerMod/AdvancedElectronics/SurveyDrone.cs` (lines 193-206). Widening the same search to all
+`EcoServerMod/AdvancedElectronics/DroneDock.cs` or
+`EcoServerMod/AdvancedElectronics/SurveyDrone.cs` — the two files whose `[RequireComponent]` blocks
+sit immediately above `class DroneDockObject` and `class SurveyDroneObject` respectively, and which
+have both grown since. Widening the same search to all
 of `EcoServerMod` shows every added `[Serialized]` living in a file that is new in this release —
 `Battery.cs`, `MiningDrone.cs`, `HarvesterDrone.cs`,
 `EcoServerMod/UserCode/AutoGen/WorldObject/ElectronicsAssembly.override.cs` — and the only removals coming from
@@ -99,7 +103,7 @@ tag restriction from that list on every install. `SurveyDroneObject` gained the 
 `IDroneOwnable, IDroneToolbearer` and an expression-bodied `DroneTool Tool => DroneTool.Harvest` —
 no backing field, no attribute, nothing written to a save.
 
-**A third instance, found after 0.2.0 had already shipped.** The same check applied once more —
+**A third instance, found after 0.2.0 had already shipped, and since closed.** The same check applied once more —
 read the artifact, not the script — turned up a third drift in the same heredoc, this time in the
 published zip. `AdvancedElectronics.csproj:54-56` removes `AdvancedElectronicsAssembly.cs` from
 compilation, so that item, its world object and its recipe are absent from the shipped
@@ -107,10 +111,13 @@ compilation, so that item, its world object and its recipe are absent from the s
 `dist/AdvancedElectronics-0.2.0-eco0.14.0.0.zip` rather than by grepping the source. The shipped
 `README.txt` nonetheless tells players to build the Advanced Electronics Assembly and craft at it,
 and lists it under known issues as an object that still places normally. The exclusion's own comment
-in the `.csproj` points readers at "the release notes' known-issues block"; that block has never
-mentioned it. Two files each defer to the other for an explanation neither contains. The impact is
-bounded — every recipe players actually need registers against a vanilla table — but the
-instructions name a bench that was never shipped. Three drifts, one heredoc, one cause.
+in the `.csproj` pointed readers at "the release notes' known-issues block"; that block had never
+mentioned it. Two files each deferred to the other for an explanation neither contained. The impact
+was bounded — every recipe players actually need registers against a vanilla table — but the
+instructions named a bench that was never shipped. Three drifts, one heredoc, one cause. This one is
+closed as of 0.3.0: the `.csproj` comment now points at the notes' USAGE section, and the notes say
+plainly there that the Assembly is not in the release, as well as listing it under known issues. The
+two files now agree, and each contains the explanation it points at.
 
 ## Guidance
 
@@ -266,14 +273,18 @@ unchanged warning block both show up as suspiciously small diffs. The catch is t
 git-ignored, so on a fresh clone there is nothing to compare against; the step has to degrade to a
 warning rather than a hard failure, which weakens it exactly where a new contributor needs it most.
 
-*Interpolate the heading.* Write `WHAT IS NEW IN ${VERSION}` instead of a literal at
-`scripts/package-release.sh:155`. Near-zero cost, and it makes a heading that disagrees with the
+*Interpolate the heading.* Write `WHAT IS NEW IN ${VERSION}` instead of the literal heading, which
+is still a literal — `WHAT IS NEW IN 0.3.0` at `scripts/package-release.sh:175`. Near-zero cost, and it makes a heading that disagrees with the
 packaged version impossible. It does nothing about stale *content* under the heading and nothing at
 all about the warning, so it is a partial measure worth taking alongside one of the others rather
 than instead of them.
 
 ## Related
 
+- `docs/solutions/workflow-issues/a-fixed-defect-in-the-present-tense-passes-every-check.md` — the
+  same tense failure where the past tense *was* available and simply went unused. There a generator-stored
+  document structurally cannot say "this used to be true"; here a learning could have said it, and the
+  repair is exactly the scoping move this doc prescribes — mark the claim as expired rather than delete it.
 - `docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md` — why a
   component-set change breaks placed objects, and therefore why "did the component set change?" is
   the right question to ask before writing a compatibility claim.

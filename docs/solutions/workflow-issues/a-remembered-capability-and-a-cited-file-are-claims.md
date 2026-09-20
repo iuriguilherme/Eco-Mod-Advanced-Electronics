@@ -1,6 +1,7 @@
 ---
 title: "A remembered capability and a cited file are claims, and nothing checks either"
 date: 2026-08-10
+last_updated: 2026-09-15
 category: workflow-issues
 module: EcoServerMod
 problem_type: workflow_issue
@@ -65,6 +66,17 @@ this exist in the artifact I build against" — and here it would have *passed*.
 It is in the tree, it runs, it produces the very classes in question. What was false was not its
 existence but its output.
 
+**And it is not enough when the claim is about what a *document* says.** Everything in this doc is
+about whether a cited thing exists, or whether an existing thing does what it was remembered to do.
+The same gap opens one step further out: a citation whose file resolves, whose line number is right,
+and whose surrounding sentence describes the target as the opposite of what it argues. Nothing in
+this repo's tooling reaches that — the bundled claims validator resolves the path and never opens the
+file — so a cited document's *content* is as unchecked as a remembered capability, and it reads as
+more trustworthy because the pointer visibly works. That failure and the sweep that bounds it are in
+`docs/solutions/workflow-issues/a-cross-reference-makes-two-claims-and-only-the-path-is-checked.md`.
+The title of this doc claims more ground than its body covers; read the two together for the whole
+of it.
+
 **Grep the surface that would own the capability, not the first file with a plausible name.** The
 check this session actually ran was one grep for `icon|sprite|atlas` against
 `Assets/EcoModKit/Scripts/Editor/ModKitTools.cs`, returning 0 across its 160 lines — read as proof
@@ -112,13 +124,13 @@ works across. Before concluding a citation is bad, search the sibling checkouts 
 names — the same reflex as reaching for the vendor source tree when a type is not in this one.
 
 **Search the disk, not the index.** `git ls-files | grep -i "icons\.md"` also returns nothing here,
-and it is the wrong check: `.gitignore:147` is `/Assets/EcoModKit/`, so `git ls-files Assets/EcoModKit`
+and it is the wrong check: `.gitignore:156` is `/Assets/EcoModKit/`, so `git ls-files Assets/EcoModKit`
 returns zero files and a tracked-tree search is structurally blind to the exact directory the task
 pointed at. It gives the right answer for the wrong reason, which is worse than a wrong answer —
 it would go on giving that answer after someone added the file.
 
 The mechanism is already named in this store:
-`docs/solutions/conventions/a-fix-does-not-reach-the-copies-already-taken.md:58` — *"An untracked
+`docs/solutions/conventions/a-fix-does-not-reach-the-copies-already-taken.md:59` — *"An untracked
 file is invisible to every tool that would have shown the divergence."* And the shape it produces —
 an emptiness that reads as an answer — is
 `docs/solutions/workflow-issues/a-gate-that-discovers-nothing-passes-everything.md`. Note the
@@ -252,12 +264,13 @@ RIGHT -- confidence marked, verification upstream of the question
 What survived the checks is the useful part: the ModKit exposes icon authoring by hand — drag a
 template into the `Items` scene root, set two sprites — and this mod automated that into a menu
 command, because doing it by hand for every entry was the real cost.
-`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs:64` holds a
-class-name-to-fill-colour table, and `:166` exposes a
-`[MenuItem("Eco Tools/Advanced Electronics/Finish All Item Icons")]` command over it. The nine
-placeholder PNGs under `Assets/Art/AdvancedElectronics/Sprites/Icons/` are each about 200 bytes —
-flat generated squares — and there is no row for `AdvancedElectronicsSkill` in that table, which is
-the actual gap the brainstorm was after. None of that was discoverable from the remembered
+`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs:96-104` holds a
+class-name-to-fill-colour table, and `:201` exposes a
+`[MenuItem("Eco Tools/Advanced Electronics/Finish All Item Icons")]` command over it. When this was
+written the whole of `Assets/Art/AdvancedElectronics/Sprites/Icons/` was nine generated
+placeholders of about two hundred bytes each; today the three drone icons and their `_FG` twins are
+real artwork and only four are still flat squares. What has not changed is that there is no row for
+`AdvancedElectronicsSkill` in that table, which is the actual gap the brainstorm was after. None of that was discoverable from the remembered
 capability, the cited file, or the asserted vanilla path.
 
 ## Related
@@ -267,6 +280,11 @@ capability, the cited file, or the asserted vanilla path.
   a thing exists in the artifact you compile against; this one covers the case where it exists and
   still does not do what it was remembered to do, and extends the question to documentation and
   tooling capabilities, including the ModKit's own `README.md:8` still describing Eco 0.9.6.
+- `docs/solutions/workflow-issues/a-cross-reference-makes-two-claims-and-only-the-path-is-checked.md`
+  — the case this doc's title implies but its body does not cover. Here a cited file is a claim about
+  *existence*; there it is a claim about *content*, and the two fail differently: an absent file stops
+  a reader, while a resolving citation with a false gloss sends them away carrying the inverse of what
+  the target says.
 - `docs/solutions/workflow-issues/validate-the-instrument-before-the-hypothesis.md` — instruments do
   not look like claims, they look like results. A remembered capability and a task's citation are the
   same category: statements that arrive pre-trusted.

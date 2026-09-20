@@ -1,6 +1,7 @@
 ---
 title: "A release script should refuse to package a stale artifact, not warn about it"
 date: 2026-07-27
+last_updated: 2026-09-05
 category: workflow-issues
 module: AdvancedElectronics
 problem_type: workflow_issue
@@ -52,6 +53,25 @@ two errors are not symmetric:
 When one direction is loud and cheap and the other is silent and expensive, the default belongs on
 the loud side. Put the reasoning in a comment next to the check so nobody "fixes" the annoyance later.
 
+**Check the premise before reusing that asymmetry, because it is a condition and not a slogan.** It
+holds here because a false positive is rare and costs one rebuild. Where false positives are instead
+the *majority* of a check's output, the same reasoning inverts: a hard gate stops being a safety net
+and becomes pressure to remove whatever trips it. The documented case in this repo is the citation
+validator run over `docs/solutions/`, where the correct-on-purpose flags outnumber the real defects
+by an order of magnitude and the right response is per-flag adjudication rather than a gate — see
+`docs/solutions/workflow-issues/a-crashed-check-and-a-flagged-check-are-opposite-problems.md`. Refuse
+rather than warn where a failure is rare and each one is cheap to clear; adjudicate rather than gate
+where failures dominate and clearing one means editing the artifact the check is meant to protect.
+
+**A better signal does not always exist, and where it does it answers a narrower question.** The
+bundle's contents are now readable without Unity — `scripts/read-mod-bundle.py` reports the names
+inside a built `.unity3d`, which is how a separate class of claim gets settled exactly rather than
+guessed (`docs/solutions/workflow-issues/a-timestamp-says-when-a-file-was-written-not-what-is-in-it.md`).
+That is worth adding **alongside** this gate for name-presence questions: did a retired object leave
+the bundle, did a new one reach it. It is not a replacement for the mtime comparison, because most
+of what makes a bundle stale changes no name at all — an edited material, a moved mesh, a changed
+script inside a prefab. The imperfect signal still covers the wider question, so `--force` stays.
+
 **Gate on negative conditions too.** A release check is not only "is everything present" but "is
 anything present that must not ship". This script fails if the feasibility-spike DLL appears in the
 build output — an artifact that is useful in development, is deployed on the dev server, and would
@@ -101,17 +121,23 @@ The staleness gate, with the asymmetry recorded next to it
 # change. Fails closed: a git checkout rewrites mtimes and can trigger a false
 # positive, which is why --force exists -- but the default must be to refuse.
 NEWER="$(find Assets/Art -type f \
-            \( -name '*.cs' -o -name '*.prefab' -o -name '*.mat' -o -name '*.png' \) \
+            \( -name '*.cs' -o -name '*.prefab' -o -name '*.mat' -o -name '*.png' -o -name '*.unity' \) \
             -newer "$BUNDLE" 2>/dev/null | head -5)"
 
 if [ -n "$NEWER" ]; then
     echo "Client sources are newer than the asset bundle:" >&2
     echo "$NEWER" | sed 's/^/    /' >&2
+    echo "    (bundle built: $(date -r "$BUNDLE" '+%Y-%m-%d %H:%M'))" >&2
     if [ "$FORCE" -eq 0 ]; then
         fail "bundle is stale. Rebuild it in Unity, or pass --force if you just did."
     fi
+    echo "WARNING: packaging a possibly stale bundle because --force was given" >&2
 fi
 ```
+
+`*.unity` joined that list later, and the comment in the script now records why: an item's icon
+binding lives in the scene, so a scene edited after the last bundle build changes what the client
+renders while every other file type here stays untouched.
 
 The negative gate, which is easy to forget to write:
 
@@ -142,3 +168,7 @@ ERROR: bundle is stale. Rebuild it in Unity, or pass --force if you just did.
   duplicate out of the install.
 - `docs/solutions/workflow-issues/eco-mod-batched-live-testing.md` — the same instinct applied to
   test cadence rather than to packaging.
+- `docs/solutions/workflow-issues/a-crashed-check-and-a-flagged-check-are-opposite-problems.md` — the
+  case where this doc's asymmetry does not hold, and the reason the two are not in conflict. There
+  the false positives are structural and dominant, so the check hands back questions to adjudicate
+  instead of refusing; here they are rare and cheap, so it refuses.

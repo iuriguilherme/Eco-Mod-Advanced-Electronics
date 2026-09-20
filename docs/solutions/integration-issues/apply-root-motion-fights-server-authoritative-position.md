@@ -1,6 +1,7 @@
 ---
 title: "Two writers on one transform: root motion fought the server for the drone's position"
 date: 2026-08-08
+last_updated: 2026-09-15
 category: integration-issues
 module: AdvancedElectronics
 problem_type: integration_issue
@@ -25,7 +26,7 @@ tags: [eco-modding, unity, animator, root-motion, drone, server-authoritative, w
 
 The drone is an Eco `WorldObject` whose world position is owned by the server —
 `DroneMoverComponent.Tick()` writes `this.Parent.Position` and pushes the result to clients
-every tick (`EcoServerMod/AdvancedElectronics/DroneMoverComponent.cs:261` and `:274`). The
+every tick (`EcoServerMod/AdvancedElectronics/DroneMoverComponent.cs:312` and `:325`). The
 client, meanwhile, plays animation clips on the same object's `Animator`. The drone prefabs
 shipped with **Apply Root Motion** enabled, which means the animation clip also displaces the
 GameObject's transform. Two independent authorities were writing the same value every frame,
@@ -37,7 +38,7 @@ The tell came before the diagnosis, and it is the part worth recognising again: 
 that keeps getting tuned and never quite lands.** The drone's park height above its dock went
 `1f` → `1.5f` → `2f` across three commits on the `feat/drone-animation-dock-footprint` branch
 (the constant is `StandingHeightAboveDock`, now at `2f`, in
-`EcoServerMod/AdvancedElectronics/DroneDock.cs:591`; the history is visible with
+`EcoServerMod/AdvancedElectronics/DroneDock.cs:867`; the history is visible with
 `git log -G"StandingHeightAboveDock = " -- EcoServerMod/AdvancedElectronics/DroneDock.cs`).
 Each bump made the picture better. None of them made it right. A value that improves
 monotonically but never converges is not a value that is wrong — it is a value that something
@@ -50,7 +51,7 @@ The rest of what was observed, over many live-test deploys with screenshots:
 - The drift was worst while a long one-shot clip played and the server was otherwise idle —
   docking, and the mode-select/arm-select lead-in before take-off. Those are precisely the
   windows when the mover deliberately holds still (`DroneMoverComponent.HoldFor` /
-  `IsHolding`, `DroneMoverComponent.cs:190-198`), so the animation effectively had the
+  `IsHolding`, `DroneMoverComponent.cs:241-247`), so the animation effectively had the
   transform to itself.
 - Adjusting the prefab's root Y offset in Unity appeared to do nothing at all, because the
   server overwrites the root transform at runtime regardless of where the prefab authored it.
@@ -60,7 +61,7 @@ The rest of what was observed, over many live-test deploys with screenshots:
 **Raising the park-height constant.** Three rounds of it. It could not work: it moved the
 starting point of a fight without ending the fight. It did leave a real fix behind — the
 current `2f` is independently justified by the chassis's origin sitting at its centre with the
-hull reaching about half a block below (`DroneDock.cs:579-591`) — but that justification was
+hull reaching about half a block below (`DroneDock.cs:855-867`) — but that justification was
 found afterwards, not what the tuning was chasing.
 
 **Adjusting the prefab's root transform offset.** Invisible at runtime. The server writes the
@@ -71,7 +72,7 @@ because it looked like it had worked. The user later reported "turns out apply r
 wasn't carried to the prefabs" — the uncheck landed on the scene *instance* rather than on the
 prefab asset. The scene still carries the flag as a per-instance override — serialized as a
 `propertyPath: m_ApplyRootMotion` / `value: 0` pair rather than an inline field, at
-`Assets/Art/AdvancedElectronics/Scenes/AdvancedElectronicsScene.unity:457`, `:754` and `:985` —
+`Assets/Art/AdvancedElectronics/Scenes/AdvancedElectronicsScene.unity:528`, `:825` and `:1056` —
 while the superseded `OldHarvestDroneObject.prefab` and `OldMiningDroneObject.prefab` copies still
 carried `m_ApplyRootMotion: 1` at `:883`. (Those two were kept in the tree when this was written and
 have since been deleted, in `aac18e3` — the contrast is recorded here, not reproducible from the
@@ -82,9 +83,9 @@ FBX importer turns root motion on by default, so every regenerated drone gets it
 
 Turn root motion off, and make the tool that builds the prefabs turn it off every time. The
 prefab finisher now does this in `AttachAnimatorStates`
-(`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs:689-694`), which runs
+(`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs:963-968`), which runs
 for every drone finished by **Eco Tools > Advanced Electronics > Finish All Drone Prefabs**
-(`AdvancedElectronicsBuildTools.cs:149`):
+(`AdvancedElectronicsBuildTools.cs:179`):
 
 ```csharp
 if (animator.applyRootMotion)
@@ -96,15 +97,15 @@ if (animator.applyRootMotion)
 ```
 
 It reuses the `Animator` the FBX importer already placed on the rigged root rather than adding
-a second one (`AdvancedElectronicsBuildTools.cs:680-681`), so the flag it clears is the one that
+a second one (`AdvancedElectronicsBuildTools.cs:954-955`), so the flag it clears is the one that
 actually plays. All three live drone prefabs now carry `m_ApplyRootMotion: 0`:
 `Assets/Art/AdvancedElectronics/Prefabs/SurveyDroneObject.prefab:181`,
 `HarvestDroneObject.prefab:119`, `MiningDroneObject.prefab:975`.
 
 Two pieces of motion polish landed alongside it and are easy to confuse with the fix, so:
 the mover now rotates yaw-only, so a climbing drone stays level like a helicopter instead of
-pitching nose-up (`DroneMoverComponent.cs:270-272`), and cruise height came down from `4f` to
-`2.5f` above ground (`DroneMoverComponent.cs:88`). Both improve how the drone reads. Neither
+pitching nose-up (`DroneMoverComponent.cs:321-323`), and cruise height came down from `4f` to
+`2.5f` above ground (`DroneMoverComponent.cs:115`). Both improve how the drone reads. Neither
 addresses the contested transform.
 
 ## Why This Works
@@ -137,7 +138,7 @@ an ORM's dirty-tracking flush).
 
 **Where two systems touch one value, say who owns it in the code.** The mover's ownership is
 now stated in a comment at the point where the flag is cleared
-(`AdvancedElectronicsBuildTools.cs:683-688`) and reiterated by the log line, so the next person
+(`AdvancedElectronicsBuildTools.cs:957-962`) and reiterated by the log line, so the next person
 to open the finisher learns the rule without having to rediscover the bug.
 
 **Enforce ownership in the tool, not in a checkbox.** The manual uncheck failed twice over —
@@ -153,9 +154,9 @@ honest check:
 grep -rn "m_ApplyRootMotion" Assets/Art/AdvancedElectronics/Prefabs/
 ```
 
-Every prefab a server-driven object ships from should read `m_ApplyRootMotion: 0`. The `Old*`
-copies still reading `1` are superseded artefacts, and are themselves a useful reminder of what
-the pre-fix state looked like.
+Every prefab a server-driven object ships from should read `m_ApplyRootMotion: 0`. The superseded `Old*`
+copies that still read `1` were deleted in `aac18e3`, so the grep now returns only `0`; the
+pre-fix contrast they offered is recorded in What Didn't Work above.
 
 ## Related Issues
 

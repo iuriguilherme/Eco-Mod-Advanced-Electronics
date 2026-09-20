@@ -1,6 +1,7 @@
 ---
 title: "A knowledge store corroborates its own errors, and the copies outlive the correction"
 date: 2026-08-14
+last_updated: 2026-09-15
 category: workflow-issues
 module: docs
 problem_type: workflow_issue
@@ -118,6 +119,27 @@ components they were created with, which is why R17 exists"* — where it is not
 the justification for a requirement. A rename-driven pass finds the first line and cannot see the
 second. Fix the *proposition*, then the pointer.
 
+**Both of those lines are fixed, and the tense above is the point.** `96af0af` — the commit that
+recorded *this* learning — repaired them in the same diff: `:517`'s gloss now reads *"why component
+changes reach objects already placed, in both directions"*, and `:418` now opens *"**Component
+changes DO retrofit — corrected 2026-08-14.**"* with the superseded belief kept and labelled. So the
+paragraph above describes a state that ended the moment it was written down. It is left standing
+because it is the evidence, and because the tense slip is itself an instance: prose written from the
+pre-fix state, in a commit that also carried the fix.
+
+**A gloss can also be wrong on the day it is written, with the target never touched.** Everything
+above traces a gloss going stale *because* something moved — a doc renamed, a claim overturned, a
+pointer repaired without its sentence. That is not the only route. A description can be false from
+the start, about a document that was never renamed and never corrected, simply because it was
+written from memory rather than from the target. Two docs in this store independently described
+`docs/solutions/workflow-issues/release-scripts-should-refuse-not-warn.md` as arguing for warning
+instead of refusing, which is the anti-pattern that doc exists to eliminate. Nothing had moved. The
+mechanism, the sweep that bounds it, and why no validator can see it are in
+`docs/solutions/workflow-issues/a-cross-reference-makes-two-claims-and-only-the-path-is-checked.md`.
+For this doc the consequence is narrow: when you sweep the citers of a corrected claim, read each
+gloss against the target rather than only checking whether it survived a rename, because a rename is
+not the only thing that makes one wrong.
+
 **Correct by artifact class, not by search hit, because no single search reaches them all.** The
 five classes this store actually uses each fail a different query:
 
@@ -163,7 +185,7 @@ that could have caught this. The follow-up commit states the rule:
 Provenance is what lets a later reader rank two disagreeing copies instead of averaging them.
 
 **Retract in place; do not quietly delete.** Both corrections here kept the wrong version visible.
-`eco-server-only-mod-client-rendering-surfaces.md:213` begins **"RETRACTED — there is no
+`eco-server-only-mod-client-rendering-surfaces.md:218` begins **"RETRACTED — there is no
 custom-MonoBehaviour escape hatch"** and then says what was believed and why it was wrong.
 `an-attribute-that-only-feeds-a-tooltip.md` keeps its entire original analysis under a **"Resolved
 2026-08-10: the gate came back"** header, on the grounds that *"The account below is the state that
@@ -193,8 +215,8 @@ The compounding cost is that a store like this exists to be trusted without re-d
 its entire value proposition, and it is exactly what makes a wrong entry expensive: the doc is
 consulted *instead of* the source. Claim 1 was in the glossary a fresh session reads to orient. Claim
 3 was in the README a new contributor reads first — and that file managed to contradict itself, with
-`README.md:9-12` correctly stating there is no `Eco.ReferenceAssemblies` package for 0.14 while the
-setup section sixty-odd lines below promised the server half *"builds straight from a clone — its
+`README.md:24` correctly stating there is no `Eco.ReferenceAssemblies` package for 0.14 while the
+setup section far below promised the server half *"builds straight from a clone — its
 Eco dependency comes from the `Eco.ReferenceAssemblies` NuGet package."* Both sentences had readers.
 A contributor who followed the second one hit a hard csproj error and had no way to know which half
 of the file to believe.
@@ -283,7 +305,7 @@ have. Both are corrected now; `:418` carries a dated retraction rather than a si
 R17 was justified by the wrong version and whoever implements it needs to know that.
 
 **What a retraction that keeps the reader oriented looks like.** From
-`eco-server-only-mod-client-rendering-surfaces.md:213` — it names the wrong claim, says it was
+`eco-server-only-mod-client-rendering-surfaces.md:218` — it names the wrong claim, says it was
 recorded here, gives the mechanism, points at the doc that supersedes it, and states what became of
 the artifact built on it:
 
@@ -325,13 +347,19 @@ README.md:76     **The server half needs nothing extra.** `EcoServerMod/` builds
                  package.
 ```
 
-The fix at `README.md:77-86` replaced the second with three named build tiers, and — the useful
+The fix, now at `README.md:99` after the file was restructured, replaced the second with three named
+build tiers, and — the useful
 detail — made the dependency between the two statements explicit: *"As noted at the top of this
 file, there is no `Eco.ReferenceAssemblies` package for 0.14."* A cross-reference inside one file is
 how you stop it drifting against itself.
 
 ## Related
 
+- `docs/solutions/workflow-issues/a-fixed-defect-in-the-present-tense-passes-every-check.md` — the
+  general case of the tense slip recorded in this doc's own Guidance. The plan lines quoted here were
+  fixed in the same commit that wrote this learning; that doc collects three more instances, dates the
+  intervals, and gives the repair format. This doc's "retract in place, do not quietly delete" is the
+  rule it applies.
 - `docs/solutions/conventions/a-fix-does-not-reach-the-copies-already-taken.md` — the same mechanism
   in source rather than prose: `HarvestDrone.cs` was copied from `SurveyDrone.cs` and kept the
   pre-fix fuel tag along with the once-true comment justifying it. That one is about copies of code;
@@ -341,6 +369,11 @@ how you stop it drifting against itself.
   upstream half. That doc is about a claim entering the store unverified; this one is about what the
   store does with it afterwards. Read together they are the full lifecycle: nothing validates a
   claim on the way in, and once in, it multiplies.
+- `docs/solutions/workflow-issues/a-cross-reference-makes-two-claims-and-only-the-path-is-checked.md`
+  — the same gloss-versus-pointer split, reached without anything having moved. That doc establishes
+  that the bundled claims validator tests only whether a cited path resolves and never opens the
+  target, so a description that inverts its target passes every check; it also carries the sweep
+  procedure for finding how far one wrong description travelled.
 - `docs/solutions/conventions/an-attribute-that-only-feeds-a-tooltip.md` — instance 2, and the
   model retraction: the original analysis is kept intact under a "Resolved" header because it is the
   state that produced a decision that is still live.

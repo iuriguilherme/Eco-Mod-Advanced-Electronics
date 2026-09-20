@@ -1,0 +1,51 @@
+{
+  "reviewer": "maintainability",
+  "findings": [
+    {
+      "title": "Real farm areas never enter the new shared claim/overlap system",
+      "severity": "P2",
+      "file": "EcoServerMod/AdvancedElectronics/MiningComponent.cs",
+      "line": 275,
+      "why_it_matters": "This PR's whole premise is that a mining dock and a survey dock now read one shared ground record instead of separate books, and it adds a real one-way protection rule (R47): 'ground a farming area covers is reserved against a mining dock whether or not that farm is currently assigned' (CONCEPTS.md:137). But 'farming area' there means a SurveyAreaEntry whose Kind was flipped to Farming through the new /drone areakind command (SurveyComponent.ChangeAreaKind) -- it has nothing to do with the actual crop-growing area a citizen draws for the farming drone (FarmAreaEntry, DroneDock.Farming.cs:220, dock.FarmAreas). MiningComponent.AllAreaProjections() -- the single world walk that feeds every overlap/claim decision (AreaOverlap.Matches, AreaClaims.Conflicts) -- only enumerates dock.SurveyAreas; it never looks at dock.FarmAreas. So a mining dock can freely claim and dig ground a farm dock is actively growing crops on, unless the player also manually draws and marks a second, separate SurveyAreaEntry over the same footprint with /drone areakind. The new unified system therefore protects only a shadow copy of the real farm, not the farm the citizen actually assigned -- reintroducing, inside the very feature meant to remove it, the 'two docks keep separate books about the same ground' problem this branch is named for. It is also a pre-existing, unrelated 'Farm Marker' `[farm]` tag on FarmAreaEntry (CONCEPTS.md:194) colliding in name and in stated semantics with the new Kind-derived `[farm]` status (CONCEPTS.md:210 says protection there is symmetric geometry, no marker involved; CONCEPTS.md:137 says the new one is an asymmetric marker-driven reservation) -- a maintainer reading CONCEPTS.md gets two contradictory answers for what `[farm]` protects.",
+      "autofix_class": "manual",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Fold real farm ground into the same projection MiningComponent.AllAreaProjections() already builds: for each dock's dock.FarmAreas, add an AreaProjection with Kind = AreaKind.Farming and HoldsClaim = area.Assigned (mirroring the SurveyAreaEntry loop at MiningComponent.cs:271-283), so AreaClaims.Conflicts' existing R47 branch (AdvancedElectronics.Navigation/AreaOverlap.cs, claimantKind == Mining && other.Kind == Farming) reaches real farm areas without a second, manually-mirrored SurveyAreaEntry. Assumption: FarmAreaEntry's plot list is the right geometry source (it already flattens plots the same way SurveyAreaEntry does) -- if farm/survey unification is planned for a later unit instead, at minimum reconcile CONCEPTS.md's 'Claim' and 'Farm Marker' sections so they no longer state opposite protection models for the same tag.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/MiningComponent.cs:275 -- foreach (var area in dock.SurveyAreas)",
+        "EcoServerMod/AdvancedElectronics/DroneDock.Farming.cs:220 -- [Serialized] public ThreadSafeList<FarmAreaEntry> FarmAreas { get; private set; } = new();",
+        "CONCEPTS.md:137 -- Farmland qualifies that kind-blindness in one direction only. Ground a farming area covers is reserved against a mining dock whether or not that farm is currently assigned",
+        "CONCEPTS.md:194 -- `[farm]`, set on an area the moment it is assigned to a farm dock.",
+        "CONCEPTS.md:210 -- Neither is what keeps other drones off farmland. Two areas that share ground stop both their drones on the plots they share, symmetrically, so protection is a property of overlapping geometry rather than of any marker.",
+        "No reference to dock.FarmAreas or FarmAreaEntry exists anywhere in MiningComponent.cs, MiningStrategy.cs, or AreaClaims/AreaOverlap (grep across the full diff and current tree returns none), confirming the two area lists never meet."
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "New claim/sweep-pass logic added inline instead of a DroneDock.Survey.cs partial",
+      "severity": "P2",
+      "file": "EcoServerMod/AdvancedElectronics/DroneDock.cs",
+      "line": 510,
+      "why_it_matters": "DroneDock.cs was already the largest file in the mod at 1077 lines before this diff, and the codebase's own convention for a growing DroneDockObject is to split by feature into a partial file -- DroneDock.Mining.cs, DroneDock.Farming.cs, and this same diff's new DroneDock.GroundChange.cs all follow that pattern. This diff instead adds the U13 claim machinery directly to DroneDock.cs -- the AssignSurveyArea(int, out, out) overload (line 510), ReleaseHeldSurveyClaim (line 572), StartOrResumeSurveyPass/EndSurveyPass (lines 627, 655), IsInDockNetwork (line 189), plus the PersistAssignedAreaFindings changes -- pushing the file to 1292 lines with no split. A future contributor working on survey-area assignment now has to read the base file's grab-bag of Initialize, storage-change handling, and repair logic to find it, instead of one named partial the way mining and farming assignment already work.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Move IsInDockNetwork, AssignSurveyArea (both overloads), ReleaseHeldSurveyClaim, StartOrResumeSurveyPass, EndSurveyPass, and PersistAssignedAreaFindings into a new DroneDock.Survey.cs partial, following the same 'one file per feature area' split already established by DroneDock.Mining.cs / DroneDock.Farming.cs / DroneDock.GroundChange.cs. Assumption: the split boundary is 'survey-area assignment and pass lifecycle', matching what the other partials already split on; adjust if a different boundary (e.g. 'claim' vs 'sweep') is preferred.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/DroneDock.cs:510 -- public bool AssignSurveyArea(int id, out string refusalReason, out IReadOnlyList<PlotCoord> released)",
+        "EcoServerMod/AdvancedElectronics/DroneDock.cs is 1292 lines after this diff, up from 1077 before it (git show c21be8a:EcoServerMod/AdvancedElectronics/DroneDock.cs | wc -l = 1077); DroneDock.Mining.cs, DroneDock.Farming.cs and the new DroneDock.GroundChange.cs already carry the mining/farming/ground-change logic as separate partials of the same DroneDockObject class."
+      ],
+      "pre_existing": false
+    }
+  ],
+  "residual_risks": [
+    "SurveyAreaEntry.cs grew from 220 to 991 lines in this diff (git show c21be8a:...SurveyAreaEntry.cs | wc -l = 220 vs current 991), just under the 1000-line flag threshold. It now owns persistence, KTD1 shape migration, claim take/release, sweep-cursor remap, and per-plot reset logic for one area. It stays under the domain-complexity exception for now (the intent explicitly directs consolidating the ground record here), but the next unit of work that touches it should watch for the 1000-line line and consider splitting sweep/pass persistence (SweepColumns, SetSweep/ReadSweepColumns/RestoreInto) into a dedicated helper before it crosses.",
+    "DroneDock.cs's mining-side and survey-side claim-taking (DroneDock.Mining.cs and DroneDock.cs:510) both lock AreaClaimLock and call AreaClaims.ConflictOnTheAreaItself then AreaClaims.Conflicts in the same two-step order, duplicated as orchestration rather than shared as a helper. Low risk today since the actual conflict logic lives once in AreaClaims, but a third claim-taking caller (e.g. a future dock kind) would be the third copy of this exact lock+gather+respond shape.",
+    "callsite completeness for 'FarmAreaEntry is never referenced from the mining/claim side' rests on grep across the diff and a text search of the current tree, not a symbol-aware search across the whole assembly; a reflection-, string-key-, or generated-code path could still connect the two that neither tier would surface."
+  ],
+  "testing_gaps": [
+    "No test exercises a mining dock's claim/overlap check against an actively-assigned FarmAreaEntry (as opposed to a SurveyAreaEntry with Kind=Farming) -- AreaOverlapTests and AreaClaimTests only build test areas through the pure AreaProjection/Area(...) test helpers, never through DroneDock.Farming.cs's FarmAreaEntry, so the gap identified above (real farm ground unprotected from mining) has no failing test to catch a regression or confirm a fix."
+  ]
+}

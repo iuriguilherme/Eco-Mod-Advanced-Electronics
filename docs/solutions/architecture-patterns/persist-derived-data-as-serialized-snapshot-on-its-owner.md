@@ -1,6 +1,7 @@
 ---
 title: Persist derived aggregate data as a serialized snapshot on its owning entity
 date: 2026-07-26
+last_updated: 2026-09-15
 category: architecture-patterns
 module: EcoServerMod
 problem_type: architecture_pattern
@@ -34,7 +35,10 @@ longer surveys," because the data was tied to the *drone's current assignment*, 
 though the areas themselves (serialized on the dock) survived.
 
 The design changed to: **findings belong to the survey area, available until that area is
-deleted or edited.** This document is the shape that requirement forced.
+deleted or edited.** This document is the shape that requirement forced. The requirement has
+since been narrowed twice without changing that shape: an edit now drops only the plots it
+removes, and a newly started resurvey clears the area before the drone samples anything. Both
+are described under "Reset on the owner's lifecycle events" below.
 
 ## Guidance
 
@@ -48,7 +52,11 @@ Three moving parts:
    keyed by the owning entity's id. It is the running work, not the durable record. In this
    mod that is `SurveyRecord` (`EcoServerMod/AdvancedElectronics.Navigation/SurveyRecord.cs`) —
    an `Eco`-free class holding `Dictionary<int, ...>` keyed by `areaId`, deliberately never
-   `[Serialized]`.
+   `[Serialized]`. The class is still not serialized, but its pass state now is: the per-column
+   samples and the sweep cursor are projected onto the owning area (`SurveyAreaEntry.SweepColumns`,
+   written by `SetSweep` and replayed by `RestoreInto`), so a pass stopped by fuel, a reassignment
+   or a restart resumes instead of re-flying covered ground. That is this same pattern applied a
+   second time, not an exception to it.
 
 2. **Serialized snapshot — flat, minimal, ON the owning entity.** Store a projected, flattened
    copy of the *finished* result on the entity that owns the data, using only serializer-safe
@@ -56,24 +64,41 @@ Three moving parts:
    `float`) held in a `ThreadSafeList<OreFindingSnapshot>` on `SurveyAreaEntry`
    (`EcoServerMod/AdvancedElectronics/SurveyAreaEntry.cs`). Because it lives on the already-
    serialized area entry, it persists exactly when the area does and is discarded with it — no
-   separate registry, no separate lifetime to manage.
+   separate registry, no separate lifetime to manage. The rows are one per plot and material
+   rather than one per area, and the area totals every readout shows are re-derived from them at
+   read time by `SurveyRecord.AreaTotals`, so an edit can keep one plot's rows and drop another's.
 
 3. **A projection step that folds live → snapshot, guarded against clobber.** On a throttled
    tick, project the live accumulator's current result for the owning entity into that entity's
    snapshot. Guard it so an *empty* accumulator (e.g. right after a restart, before any new work)
    cannot overwrite a previously-persisted snapshot: `DroneDock.PersistAssignedAreaFindings`
-   skips the write when coverage is 0.
+   skips the write when coverage is 0. Once the accumulator can be restored from disk, that guard
+   stops being enough on its own: `SurveyAreaEntry.RestoreInto` rebuilds the live record from the
+   persisted findings rows as well as the sample columns, because a record rehydrated with samples
+   but no findings has coverage above zero, passes the guard, and overwrites a good snapshot with
+   an empty one on the first tick after a restart.
 
 **Reset on the owner's lifecycle events, never on transient re-targeting.** The data resets when
-the area is **edited** (its geometry is redrawn — effectively a new area) or **deleted**, and on
-nothing else. Reassigning the drone between areas is *not* a reset — it only changes which entity
-new samples are attributed to. `SurveyAreaEntry.SetPlots` clears the snapshot as part of a redraw;
-`DroneDock.ClearSurveyData` clears both snapshot and live record on edit and delete; the dispatch
-path that used to call `ResetSurvey` on reassign no longer does.
+the area is **deleted**, and when a **newly started resurvey** begins on it, and on nothing else.
+Reassigning the drone between areas is *not* a reset — it only changes which entity new samples
+are attributed to — and a pass *resuming* one that stopped is not a new start either. An **edit**
+is scoped rather than wholesale: the plots the redraw retains keep their findings, stamps and
+place in the sweep, and only the plots it removed lose theirs. `DroneDock.ClearSurveyData` clears
+both snapshot and live record on delete; `DroneDock.StartOrResumeSurveyPass` clears both at the
+start of a new pass, telling a new pass from a resuming one by `SurveyAreaEntry.SweepInProgress`;
+`SurveyAreaEntry.SetPlots` returns the plots the edit removed and `DroneDock.OnAreaEdited` drops
+only those from the live record through `SurveyRecord.ForgetPlot`. The dispatch path that used to
+call `ResetSurvey` on reassign no longer does.
+
+An earlier version of this pattern reset on edit too, reasoning that a redrawn area is
+effectively a new area. That was wrong, and per-plot findings exposed it: clearing the whole area
+on edit also cleared the surveyed stamps of every retained plot, so extending an area by one plot
+made the other plots read unsurveyed and refuse to be mined. The ownership test still decides the
+answer — a retained plot is the same ground with the same owner, so its data is still true.
 
 **Read the durable snapshot, not the live accumulator, everywhere the data is displayed.** The
-tab text, the world-space readout, the tooltip, and the chat commands all read the entity's
-snapshot. This is what makes the data visible even when the drone is between areas or docked, and
+Survey tab, the Mining tab's area list, and the chat commands all read the entity's snapshot; the
+world-space text and the object tooltip that once read it too have since been retired. This is what makes the data visible even when the drone is between areas or docked, and
 what makes it survive a restart — the readout is driven by the persisted copy, not by whether a
 producer is currently running.
 
@@ -82,8 +107,9 @@ producer is currently running.
 - **The reset trigger is a data-ownership question in disguise.** "Reset on reassign" felt right
   until you notice it binds the data's lifetime to the *consumer's* state (the drone's current
   target) rather than the *owner's* (the area). Once the requirement is "data belongs to the
-  area," the correct reset events fall out mechanically: only events on the area itself (edit,
-  delete) reset it. Getting this wrong is not a rendering bug — it silently destroys real user
+  area," the correct reset events fall out mechanically: only events on the area itself reset it,
+  and only to the extent the event reaches — a delete wholesale, a new pass wholesale, an edit
+  plot by plot. Getting this wrong is not a rendering bug — it silently destroys real user
   data on an ordinary action (switching targets).
 - **Direct serialization of the accumulator is the trap you avoid.** The live structure here uses
   a `HashSet` of block positions and nested dictionaries for dedupe and concentration — awkward
@@ -143,15 +169,23 @@ private void PersistAssignedAreaFindings() {
     if (entry == null || this.surveyRecord == null) return;
     var coverage = this.surveyRecord.Coverage(entry.ToSurveyArea());
     if (coverage <= 0f) return;                 // no new work yet — keep what's persisted
-    entry.SetFindings(this.surveyRecord.Findings(entry.Id), coverage * 100f);
+    entry.SetFindings(this.surveyRecord.Findings(entry.Id), coverage * 100f, depth, median);
 }
 
 // Reset ONLY on the owner's lifecycle events.
-public void SetPlots(...) { /* redraw geometry */ this.ClearFindings(); }   // edit = new area
-public void ClearSurveyData(int id) {                                        // edit + delete
+public void ClearSurveyData(int id) {                                        // delete
     this.SurveyAreas.FirstOrDefault(a => a.Id == id)?.ClearFindings();
     this.surveyRecord?.ClearArea(id);
 }
+public SweepCursor StartOrResumeSurveyPass(SurveyAreaEntry entry) {          // newly started pass
+    entry.RestoreInto(this.SurveyRecord);                                    // rehydrate first
+    if (entry.SweepInProgress) return this.SurveyRecord.SweepCursorFor(entry.Id);  // resuming: no reset
+    entry.ClearFindings(); this.SurveyRecord.ClearArea(entry.Id); entry.SweepInProgress = true;
+    return default;
+}
+// Edit: scoped, not wholesale — only the plots the redraw removed lose their data.
+var removed = area.SetPlots(plots);
+dock.OnAreaEdited(area.Id, removed);                                         // ForgetPlot per removed plot
 // Reassignment: no reset — the sensor just attributes new samples to the newly-assigned id.
 ```
 
@@ -165,6 +199,7 @@ same rule that governs the area's own `PlotCoords`.
 - `docs/solutions/best-practices/ship-the-readout-not-just-the-data.md` — the readout is part of
   the feature; this pattern is what makes that readout *durable* and consistent across surfaces.
 - `docs/solutions/conventions/eco-server-only-mod-client-rendering-surfaces.md` — the surfaces
-  (tab text, tooltip, world text, chat) that all read this one persisted snapshot.
+  a readout can reach; of those, the dock tabs and the chat commands are the ones that read this
+  one persisted snapshot.
 - `docs/solutions/conventions/consistent-grid-column-quantization.md` — the plot/column
   quantization the accumulator and area membership share.

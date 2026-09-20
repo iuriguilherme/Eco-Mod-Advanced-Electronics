@@ -130,6 +130,17 @@ namespace Eco.Mods.TechTree
     // and RoboticAssemblyLine both enumerate ItemTypes only, and no vanilla table matches on
     // "ModernUpgrade" any more.
     [AllowPluginModules(ItemTypes = new[] { typeof(AdvancedElectronicsUpgradeItem), typeof(ElectronicsUpgradeItem), typeof(IndustryUpgradeItem), typeof(BasicUpgradeItem), typeof(AdvancedUpgradeItem), typeof(ModernUpgradeItem) })] //noloc
+    // Draws vanilla's own generic crafting-table art rather than anything this mod ships.
+    // The client keeps ONE flat icon registry filled from vanilla's Addressables plus every
+    // mod bundle, so any name vanilla registered is a name a mod can ask for; naming one
+    // costs no asset, no scene object and no bundle rebuild.
+    //
+    // This entry was briefly rendered from AdvancedElectronicsAssemblyObject instead. That
+    // prefab is a hand-built primitive on the placeholder material, so the render was a flat
+    // blue-grey hexagon -- faithful to the model and worse than the generic. Render an object
+    // only when the model itself is worth photographing.
+    // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md
+    [HasIcon("Crafting Table")]
     public partial class AdvancedElectronicsAssemblyItem : WorldObjectItem<AdvancedElectronicsAssemblyObject>, IPersistentData
     {
         protected override OccupancyContext GetOccupancyContext => new SideAttachedContext( 0  | DirectionAxisFlags.Down , WorldObject.GetOccupancyInfo(this.WorldObjectType));

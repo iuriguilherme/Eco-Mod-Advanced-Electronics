@@ -156,6 +156,42 @@ namespace Eco.Mods.TechTree
         /// <summary>R26: the vanilla Store's own radius, not the engine's default of 9.</summary>
         private const float LinkRadius = 20f;
 
+        /// <summary>
+        /// R14, KTD9: how far a mining dock reaches for another dock's survey areas, in metres.
+        ///
+        /// <para>
+        /// Deliberately its OWN number, not <see cref="LinkRadius"/>, and the two must not be
+        /// folded together however tempting the coincidence gets. They answer different
+        /// questions: the link radius is the vanilla Store's own reach and is bound to a
+        /// believability question about hauling goods, while this one describes how far a built
+        /// network of docks can spread. R14 also expects this one to become an upgrade-module
+        /// effect, which a constant shared with storage could never carry -- widening the network
+        /// would silently widen every dock's storage reach with it.
+        /// </para>
+        /// <para>
+        /// Sixty is three times the link radius: far enough that a survey dock and its mining
+        /// docks read as one installation, close enough that the network is something the player
+        /// places rather than something that happens. The number is the user's, confirmed in play.
+        /// </para>
+        /// </summary>
+        public const float DockNetworkRadius = 60f;
+
+        /// <summary>
+        /// Whether <paramref name="other"/> is close enough to be part of this dock's network
+        /// (R14). Wrapped distance, because a world seam between two docks is not distance.
+        ///
+        /// <para>
+        /// A dock is always in its own network, which falls out of a zero distance rather than
+        /// being special-cased -- the self case reaches here through
+        /// <c>MiningComponent.OfferedAreas</c> whenever one dock both surveys and mines.
+        /// </para>
+        /// </summary>
+        public bool IsInDockNetwork(DroneDockObject other) =>
+            other != null
+            && !other.IsDestroyed
+            && MiningReadout.IsWithinDockNetwork(
+                SVector3.WrappedDistance(this.Position, other.Position), DockNetworkRadius);
+
         public override LocString DisplayName => Localizer.DoStr("Drone Dock");
 
         /// <summary>
@@ -392,9 +428,15 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// Drops an area's findings from both the serialized snapshot (if the entry still exists)
-        /// and the live in-memory record (KTD11). Called on delete and on edit — an edit redraws
-        /// the geometry, so its old survey no longer describes it. Reassignment does NOT call this:
-        /// findings belong to the area, not the drone's current target.
+        /// and the live in-memory record (KTD11). Called on DELETE. Reassignment does not call
+        /// this: findings belong to the area, not the drone's current target.
+        ///
+        /// <para>
+        /// An EDIT no longer calls it either (U9, R20). It used to, and wholesale is the wrong
+        /// scope for an edit: the plots a redraw retains still describe their own ground, so only
+        /// the plots it removed leave the record — see <see cref="OnAreaEdited"/>. Delete is
+        /// still wholesale, because there is no area left for anything to describe.
+        /// </para>
         /// </summary>
         public void ClearSurveyData(int id)
         {
@@ -418,13 +460,30 @@ namespace Eco.Mods.TechTree
             this.AssignedSurveyAreaId != 0 ? $"area:{this.AssignedSurveyAreaId}:{this.assignedAreaEpoch}" : null;
 
         /// <summary>
-        /// Called after an area's plots are redrawn (edit): clears its survey data (new geometry =
-        /// new survey) and, when it is the assigned area, bumps the epoch so the drone restarts its
-        /// pathfinding and sweep for the new shape as if it had been unassigned and reassigned.
+        /// Called after an area's plots are redrawn (edit), with the plots the edit REMOVED —
+        /// which is what <see cref="SurveyAreaEntry.SetPlots"/> hands back.
+        ///
+        /// <para>
+        /// Only those plots leave the live record (U9, R20/R22). The retained plots keep their
+        /// samples, and with them their coverage and their place in the sweep, so a pass in
+        /// flight carries on rather than restarting: the dock's next readout tick projects the
+        /// live record back onto the area, and a record cleared here would overwrite everything
+        /// <c>SetPlots</c> just took care to preserve. <c>SurveyRecord.Coverage</c> reads the
+        /// area's CURRENT plots, so dropping the removed plots is also what takes them out of
+        /// the coverage denominator.
+        /// </para>
+        /// <para>
+        /// The re-dispatch epoch still bumps for the assigned area: the drone rebuilds its
+        /// strategy against the new shape, and the sweep cursor it picks up has already been
+        /// remapped onto that shape.
+        /// </para>
         /// </summary>
-        public void OnAreaEdited(int id)
+        public void OnAreaEdited(int id, IEnumerable<PlotCoord> removedPlots = null)
         {
-            this.ClearSurveyData(id);
+            if (removedPlots != null && this.surveyRecord != null)
+                foreach (var plot in removedPlots)
+                    this.surveyRecord.ForgetPlot(id, plot);
+
             if (this.AssignedSurveyAreaId == id)
                 this.assignedAreaEpoch++;
         }
@@ -434,16 +493,88 @@ namespace Eco.Mods.TechTree
         /// the assignment when <paramref name="id"/> is 0. Ignores an id that does not resolve to
         /// one of this dock's areas.
         /// </summary>
-        public void AssignSurveyArea(int id)
-        {
-            if (id == 0)
-            {
-                this.AssignedSurveyAreaId = 0;
-                return;
-            }
+        public void AssignSurveyArea(int id) => this.AssignSurveyArea(id, out _, out _);
 
-            if (this.SurveyAreas.Any(a => a.Id == id))
+        /// <summary>
+        /// <inheritdoc cref="AssignSurveyArea(int)"/>
+        ///
+        /// <para>
+        /// Assignment is what CLAIMS the area's plots (U13, R37), so this carries the same two
+        /// answers the mining path does: whether the claim could be taken, and what the previous
+        /// one released. A drone works only plots its own dock has claimed, which is what keeps
+        /// it from having to ask mid-pass what another dock is doing.
+        /// </para>
+        /// </summary>
+        /// <param name="refusalReason">Why the claim could not be taken; null on success.</param>
+        /// <param name="released">Plots the previous claim gave up (R38); empty when there was none.</param>
+        public bool AssignSurveyArea(int id, out string refusalReason, out IReadOnlyList<PlotCoord> released)
+        {
+            refusalReason = null;
+            released = Array.Empty<PlotCoord>();
+
+            // The same single lock the mining path takes, for the same reason (KTD6): the
+            // conflict spans every area overlapping this one, so the unit of exclusion is the
+            // operation and not the entry.
+            lock (AreaClaimLock)
+            {
+                if (id == 0)
+                {
+                    released = this.ReleaseHeldSurveyClaim();
+                    this.AssignedSurveyAreaId = 0;
+                    return true;
+                }
+
+                var area = this.SurveyAreas.FirstOrDefault(a => a.Id == id);
+                if (area == null) return false;
+
+                // The area's own claim first: one area, one holder (R37, R39). The overlap scan
+                // below skips self by identity, so this is the only thing that sees it. Assigning
+                // the area to the dock that already holds it is the ordinary re-dispatch and is
+                // not refused.
+                var status = StatusOfArea(this.ObjectID, area, null, area.Kind);
+
+                var conflicts = AreaClaims.ConflictOnTheAreaItself(
+                        new AreaProjection(
+                            area.Id, this.ObjectID, area.Plots(),
+                            AreaClaims.HoldsClaim(area.HasClaim, status), area.Kind),
+                        claimantIsHolder: area.IsClaimedBy(this.ObjectID))
+                    // Then every OTHER area this one overlaps. The claimant's kind is the AREA's
+                    // own (R30): a survey pass serves whatever the area is for and removes nothing
+                    // from the ground, so surveying farmland is farming work and R47's one-way
+                    // reservation does not fire against it. R47 names the mining dock, and
+                    // DroneDock.Mining.cs is where that is enforced.
+                    .Concat(AreaClaims.Conflicts(
+                        area.Kind,
+                        MiningComponent.OverlapsOf(this, area, MiningComponent.AllAreaProjections()),
+                        this.HoldsClaimOn))
+                    .ToList();
+
+                if (conflicts.Count > 0)
+                {
+                    refusalReason = MiningReadout.FormatClaimRefusal(conflicts, PlotUtil.PropertyPlotLength);
+                    return false;
+                }
+
+                released = this.ReleaseHeldSurveyClaim();
+
                 this.AssignedSurveyAreaId = id;
+                this.assignedAreaEpoch++;
+                area.RecordClaim(this.ObjectID, this.assignedAreaEpoch, forMining: false);
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Drops the claim this dock holds through its survey assignment. Caller holds
+        /// <see cref="AreaClaimLock"/>. Scoped by holder, so a dock never drops a claim another
+        /// dock took in the meantime.
+        /// </summary>
+        private IReadOnlyList<PlotCoord> ReleaseHeldSurveyClaim()
+        {
+            if (this.AssignedSurveyAreaId == 0) return Array.Empty<PlotCoord>();
+
+            var held = this.SurveyAreas.FirstOrDefault(a => a.Id == this.AssignedSurveyAreaId);
+            return held == null ? Array.Empty<PlotCoord>() : held.ReleaseClaimBy(this.ObjectID);
         }
 
         /// <summary>
@@ -465,10 +596,11 @@ namespace Eco.Mods.TechTree
 
         // The dock's live, in-memory survey record (KTD11): the OreSensorComponent feeds every
         // sample here attributed to the assigned area id, and RefreshReadout projects the assigned
-        // area's findings into that area's serialized snapshot for persistence + display. NOT
-        // serialized itself — it is the running accumulator (raw sampled blocks + per-plot
-        // concentration); the durable, restart-surviving copy is the per-area OreFindingSnapshot
-        // list on each SurveyAreaEntry. plotSize matches IsPositionInAssignedArea's plot mapping.
+        // area's findings into that area's serialized snapshot for persistence + display. The
+        // FIELD is not serialized -- it is the running accumulator -- but since U7 its contents
+        // are: the durable copy is the per-area OreFindingSnapshot rows plus the per-column
+        // SweepColumns rows on each SurveyAreaEntry, and StartOrResumeSurveyPass rehydrates it
+        // from them. plotSize matches IsPositionInAssignedArea's plot mapping.
         private SurveyRecord surveyRecord;
 
         /// <summary>The dock's per-area survey accumulator, created on first use.</summary>
@@ -476,10 +608,61 @@ namespace Eco.Mods.TechTree
             this.surveyRecord ??= new SurveyRecord(PlotUtil.PropertyPlotLength);
 
         /// <summary>
+        /// Opens a survey pass on <paramref name="entry"/> and returns the sweep cursor it should
+        /// begin from. This is the one place the two halves of U7 are decided between:
+        ///
+        /// A pass RESUMING one that stopped (R25) keeps everything the stopped pass reached — its
+        /// findings, its coverage, its sampled blocks and its place in the sweep — so the drone
+        /// picks up where it left off instead of re-flying ground already covered.
+        ///
+        /// A NEWLY STARTED pass (R10) clears the area's findings rows, its live sample record and
+        /// its at-bedrock observations before the drone samples anything, so the resurvey reports
+        /// only what it observes (R12) and coverage starts at zero and climbs (R11).
+        ///
+        /// The clear deliberately does NOT reach <see cref="SurveyAreaEntry.MinedStamps"/> (R13).
+        /// A finding is a claim about what is in the ground and a resurvey replaces it; a mined
+        /// stamp records that digging happened, which no later survey makes untrue — and keeping
+        /// it is what makes the resurveyed area mineable again rather than merely un-mined.
+        /// </summary>
+        public SweepCursor StartOrResumeSurveyPass(SurveyAreaEntry entry)
+        {
+            if (entry == null)
+                return default;
+
+            var record = this.SurveyRecord;
+
+            // Always rehydrate first: after a restart the live record is empty, and even a
+            // newly started pass wants the persisted state loaded before it is cleared, so the
+            // clear is what empties the record rather than the restart having emptied it.
+            entry.RestoreInto(record);
+
+            if (entry.SweepInProgress)
+                return record.SweepCursorFor(entry.Id);
+
+            entry.ClearFindings();          // findings, coverage, surveyed stamps, at-bedrock, sweep
+            record.ClearArea(entry.Id);     // and the live sample record this pass must not dedupe against
+            entry.SweepInProgress = true;
+            return default;
+        }
+
+        /// <summary>
+        /// Closes a finished survey pass on <paramref name="entry"/>: the sweep is no longer in
+        /// progress, so the next dispatch reads as a new pass and clears (R10) rather than
+        /// resuming into a completed one. Drops the per-column pass rows with it — they exist to
+        /// let a stopped pass resume, and a finished pass has nothing to resume into, so keeping
+        /// them would persist the mod's largest structure for no reader.
+        /// </summary>
+        public void EndSurveyPass(SurveyAreaEntry entry) => entry?.ClearSweep();
+
+        /// <summary>
         /// Copies the assigned area's live findings into its persisted snapshot (KTD11), so they
         /// survive a restart and remain readable while another area is assigned. Skips when there
         /// is no assigned area or no samples yet, so an empty post-restart record does not wipe a
         /// previously-persisted snapshot before the drone has re-surveyed.
+        ///
+        /// What is projected is one row per (plot, ore) (KTD1) — the area totals the readouts show
+        /// are re-derived from those rows on read, not stored. <see cref="SurveyAreaEntry.CoveragePercent"/>
+        /// stays a persisted scalar: it is written on this same tick and has no per-plot consumer.
         /// </summary>
         private void PersistAssignedAreaFindings()
         {
@@ -499,6 +682,20 @@ namespace Eco.Mods.TechTree
             var median = this.surveyRecord.MedianSurfaceLevel(entry.Id) ?? 0;
 
             entry.SetFindings(this.surveyRecord.Findings(entry.Id), coverage * 100f, depth, median);
+
+            // The pass's at-bedrock observation (U4), persisted beside the findings rows and on
+            // the same schedule: it is derived from the same sweep, and R8 requires it to be
+            // re-stated by every survey rather than stored once as a flag. Written even when the
+            // projection is empty — "nothing is at bedrock any more" is the answer that returns a
+            // filled-in area to the ramp (AE5).
+            entry.SetBedrockPlots(this.surveyRecord.BedrockPlots(entry.Id));
+
+            // The pass itself (U7, R25): the per-column sample record and the sweep cursor,
+            // written on the same tick as the findings they were derived from, so a pass stopped
+            // by fuel, a reassignment or a restart resumes from where the drone stopped rather
+            // than starting the area over.
+            if (entry.SweepInProgress)
+                entry.SetSweep(this.surveyRecord);
         }
 
         /// <summary>Hook for mods to customize WorldObject before initialization. You can change housing values here.</summary>
@@ -572,6 +769,12 @@ namespace Eco.Mods.TechTree
                     new() { TypeName = nameof(SteelGearItem), Quantity = 2},
                 });
             }
+
+            // U8, KTD7: watch for ground changing under this dock's areas, and register the
+            // detach on the dock's destroy path in the same call. LAST in Initialize on purpose --
+            // a throw above aborts the rest of it and leaves a half-built dock behind, and a
+            // half-built dock that never subscribed is the harmless version of that.
+            this.SubscribeToGroundChanges();
         }
 
         /// <summary>
@@ -994,6 +1197,18 @@ namespace Eco.Mods.TechTree
             this.PersistMiningJob();
             if (this.TryGetComponent<MiningComponent>(out var miningTab))
                 miningTab.RefreshAll();
+
+            // The farm's storage watch is re-pointed from here rather than from a link event,
+            // because the link component raises none for its own membership changing -- the
+            // same reason the unload retry lives on this tick. Comparing the resolved set
+            // against the watched one makes it a no-op when nothing moved.
+            this.RefreshLinkedStorageWatch();
+
+            if (this.TryGetComponent<FarmingComponent>(out var farmingTab))
+                farmingTab.RefreshAll();
+
+            if (this.TryGetComponent<CropCeilingComponent>(out var ceilingTab))
+                ceilingTab.RefreshAll();
 
             // Temporary, with the U1 probe: drives the showcase's server-state mirror so a write
             // can be observed without a restart. Goes when the showcase does.

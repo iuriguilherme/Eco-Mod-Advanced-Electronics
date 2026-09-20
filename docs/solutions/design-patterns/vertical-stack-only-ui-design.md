@@ -1,7 +1,7 @@
 ---
 title: Designing a usable panel when the only primitive is a vertical stack
 date: 2026-07-27
-last_updated: 2026-08-21
+last_updated: 2026-09-15
 category: design-patterns
 module: EcoServerMod
 problem_type: design_pattern
@@ -100,14 +100,18 @@ applied, rows stop scaling with object count and length rarely forces a split. W
 `BigButton`: it is the panel's commit control, so a panel wants at most one, and a second genuine
 action needs its own pane to live in. This panel split into Areas and Results, then collapsed back to
 a single Survey tab the moment assignment stopped needing a button of its own — the split's only
-remaining job had been hosting one. The dock carries a second tab again today (**Mining**), but that
-one is a different job on a different drone, not a second commit action on the same work.
+remaining job had been hosting one. The dock carries other tabs again today, but they are
+lent by whichever drone is slotted into it — Survey by the survey drone, Mining by the mining
+drone, Farming and Crop Ceilings by the harvester drone — so each is a different job on a
+different drone, not a second commit action on the same work.
 
 > **This rule is currently violated in shipped code, and the constraint is still in force**
 > (owner-restated 2026-08-21: two and three buttons per pane is "not good UI at all"). The Survey tab
 > declares three `BigButton`s — Manage Areas on Map, Assign Selected Area, Unassign Area
-> (`EcoServerMod/AdvancedElectronics/SurveyComponent.cs:204`, `:217`, `:240`) — and Mining declares
-> two (`MiningComponent.cs:94`, `:118`). Each costs about 3.2 standard rows and leaves roughly
+> (`EcoServerMod/AdvancedElectronics/SurveyComponent.cs:206`, `:219`, `:255`) — Mining declares
+> two (`MiningComponent.cs:96`, `:120`), and the harvester drone's tabs, added since, declare five on
+> Farming (`FarmingComponent.cs:150`, `:173`, `:229`, `:251`, `:273`) and two on Crop Ceilings
+> (`CropCeilingComponent.cs:82`, `:125`). Each costs about 3.2 standard rows and leaves roughly
 > two-thirds of the panel width dead; the measurements are in
 > `docs/ideation/2026-07-31-dock-ui-palette.html`.
 >
@@ -126,12 +130,12 @@ state**, so reading item B does not disturb what the machine is doing to item A.
 
 Prev/Next buttons were the first shape tried and are not the one that shipped: two buttons cost two
 rows and are two more commit-shaped controls. What shipped is a single `Int32` stepper with a
-`Range` — a two-button cursor in one row (`SurveyComponent.cs:147`, `MiningComponent.cs:79`). Read
+`Range` — a two-button cursor in one row (`SurveyComponent.cs:149`, `MiningComponent.cs:81`). Read
 this rule as "one cursor control", not "Previous and Next".
 
 **6. If a fixed control pool is unavoidable, size it by real use, not by tidiness.**
 Rule 3 usually removes the need for a pool entirely, and it did here — the six-button assign pool
-described below no longer exists, replaced by the one stepper plus one commit button in rule 5. Keep
+described below no longer exists, replaced by the one stepper in rule 5 plus the Assign and Unassign buttons that rule 4's note counts. Keep
 this rule for the cases where a pool genuinely cannot collapse to a single control.
 
 When a compile-time pool stands in for a dynamic list, the cap is a **product** decision. The
@@ -212,7 +216,7 @@ whatever their declaration order, so the file declares the buttons last because 
 land anyway:
 
 ```csharp
-// Readouts first: header, the numbered area list, drone status.
+// Readouts first: drone status and assigned area, then the header and the numbered area list.
 [SyncToView, Autogen, UITypeName("StringTitle")]
 public string AssignHeader { get; private set; } = "Areas";
 
@@ -233,7 +237,7 @@ public async Task ManageAreasOnMap(Player player) { ... }
 ```
 
 The cap that used to size a control pool is now just a range on the cursor, so ten areas cost the
-same one row as one area (`SurveyComponent.cs:71`, `:147`):
+same one row as one area (`SurveyComponent.cs:73`, `:149`):
 
 ```csharp
 public const int MaxSurveyAreas = 10;

@@ -1,6 +1,7 @@
 ---
 title: "A mod recipe that makes its own skill an ancestor overflows the stack at 'Initializing skills'"
 date: 2026-07-31
+last_updated: 2026-09-15
 category: runtime-errors
 module: EcoServerMod
 problem_type: runtime_error
@@ -175,9 +176,10 @@ transitively, anything its own unlock path consumes.**
 
 - `docs/solutions/conventions/auditing-content-derived-from-autogen-templates.md` — the class this
   bug belongs to: content copied from a vanilla AutoGen file keeping a reference to the template's
-  own item. That doc lists this exact line as an example of harmless-looking "silent residue"
-  deferred as a balance question; it is the proximate cause of this crash and its severity there
-  is understated.
+  own item. That doc lists this exact line among its silent-residue examples and now names
+  the crash outright rather than filing it as balance, which is the correction this incident
+  bought: a mismatched `CraftingElement<T>` is a correctness defect on sight, because it writes
+  an edge into the tech-tree graph.
 - `docs/solutions/workflow-issues/validate-the-instrument-before-the-hypothesis.md` — why this took
   four wrong culprits before the real one: contaminated scratch restores and runs read as passes
   without checking they reached the phase under test.

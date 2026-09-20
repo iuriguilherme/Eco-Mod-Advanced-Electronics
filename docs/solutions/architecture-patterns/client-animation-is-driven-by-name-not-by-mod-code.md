@@ -4,7 +4,7 @@ date: 2026-08-08
 last_updated: 2026-08-14
 category: architecture-patterns
 module: EcoServerMod
-problem_type: architecture_decision
+problem_type: architecture_pattern
 component: animation
 severity: high
 applies_when:
@@ -13,7 +13,7 @@ applies_when:
   - "Making a modded WorldObject animate in response to server state"
   - "Choosing names for the booleans a server pushes with SetAnimatedState"
   - "The client log says a referenced script on a mod prefab is missing"
-tags: [eco-modding, animation, animator, monobehaviour, asset-bundle, world-space-ui, modkit, il2cpp, client-server, silent-failure]
+tags: [eco-modding, animation, monobehaviour, asset-bundle, world-space-ui, il2cpp, client-server, silent-failure]
 related_components: [Assets/Art/AdvancedElectronics, EcoServerMod/AdvancedElectronics.Navigation]
 ---
 

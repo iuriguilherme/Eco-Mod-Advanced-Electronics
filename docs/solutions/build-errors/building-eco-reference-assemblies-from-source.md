@@ -1,6 +1,7 @@
 ---
-title: "Building Eco reference assemblies from source: four traps between a checkout and a usable DLL"
+title: "Building Eco reference assemblies from source: five traps between a checkout and a usable DLL"
 date: 2026-08-01
+last_updated: 2026-09-19
 category: build-errors
 module: EcoServerMod
 problem_type: build_error
@@ -11,23 +12,24 @@ symptoms:
   - "CS0103 The name 'EcoVersion' does not exist in the current context"
   - "Hundreds of CS0246 on generated type names such as WallFormType and WindowFormType"
   - "A collected assembly is silently the wrong target framework"
+  - "Unhandled exception: startIndex ('-1') must be a non-negative value, from the tech-tree prebuild"
 root_cause: "Building the Eco server outside its solution skips prebuild steps that generate sources and resolve paths, and a source checkout ships LFS-backed binaries as pointer files."
-resolution_type: workaround
+resolution_type: environment_setup
 applies_when:
   - "No Eco.ReferenceAssemblies package exists for the version the mod targets"
   - "Retargeting a mod to a new Eco release"
   - "Re-deriving reference assemblies after moving the Eco checkout to a different commit"
-tags: [eco-modding, reference-assemblies, msbuild, git-lfs, code-generation, solutiondir, retarget, toolchain]
+tags: [eco-modding, reference-assemblies, msbuild, git-lfs, code-generation, retarget, toolchain, windows-paths]
 related_components: [EcoServerMod/AdvancedElectronics, scripts]
 ---
 
-# Building Eco reference assemblies from source: four traps between a checkout and a usable DLL
+# Building Eco reference assemblies from source: five traps between a checkout and a usable DLL
 
 ## Problem
 
 Retargeting the mod to Eco 0.14 needed reference assemblies that do not exist as a package, and
 cannot be extracted from the shipped server because it is a single-file bundle with its managed
-assemblies embedded. They have to be built from a source checkout. Four separate failures sit
+assemblies embedded. They have to be built from a source checkout. Five separate failures sit
 between `dotnet build` and a usable set, none of which name their real cause.
 
 ## Symptoms
@@ -42,6 +44,9 @@ EcoVersionUtils.cs(16,78): error CS0103: The name 'EcoVersion' does not exist in
 
 Mods/__core__/Vehicles/Crane.cs(79,44): error CS0246: The type or namespace name
         'WallFormType' could not be found        (×426, all generated type names)
+
+Unhandled exception. System.ArgumentOutOfRangeException: startIndex ('-1') must be a
+        non-negative value.  at TechTreeGenerator.TechTreeLoader.LoadTechTree(String[] paths)
 ```
 
 The fourth produces no error at all — a collected assembly is quietly built against the wrong
@@ -63,7 +68,7 @@ up for it.
 
 ## Solution
 
-Four fixes, in the order they bite. `scripts/gather-eco-refs.sh` encodes all of them.
+Five fixes, in the order they bite. `scripts/gather-eco-refs.sh` encodes all of them.
 
 **1. Fetch LFS objects.** A source checkout ships LFS-backed binaries as 131-byte pointer files
 whose first line reads `version https://git-lfs.github.com/spec/v1`. MSBuild reports that as a bad
@@ -90,8 +95,10 @@ Building a `.csproj` directly leaves `SolutionDir` unset, so the generator write
 nowhere and the compile fails on every type they would have declared:
 
 ```bash
-dotnet build "<eco>/Server/Eco.Mods/Eco.Mods.csproj" -c Release -p:SolutionDir="<eco>/Server/"
+dotnet build "<eco>/Server/Eco.Mods/Eco.Mods.csproj" -c Release -p:SolutionDir="<eco>\Server\"
 ```
+
+Note the separators: on Windows that path must use backslashes. Trap 5 is why.
 
 **4. Collect only the target framework you want.** Several projects multi-target, so the same
 assembly name is produced more than once. Matching loosely lets the filesystem decide which copy
@@ -104,6 +111,27 @@ find "$ECO_ROOT/Server" -path "*/bin/Release/net10.0*/ref/*.dll" -exec cp {} "$O
 
 Reference assemblies land under a per-project TFM that varies — `Eco.Gameplay` under
 `net10.0-windows`, `Eco.Core` under `net10.0` — so find them rather than assuming one path.
+
+**5. On Windows, hand `SolutionDir` a Windows path.** The tech-tree generator names each CSV by
+the text after the last `Path.DirectorySeparatorChar` in its path
+(`Tools/TechTreeGenerator/TechTreeLoader.cs:26-27`):
+
+```csharp
+var start = path.LastIndexOf(Path.DirectorySeparatorChar);
+var pathName = path.Substring(start, path.LastIndexOf('.') - start);
+```
+
+A forward-slash path contains no backslash, so `LastIndexOf` returns -1 and `Substring` throws
+before a single file is generated. Git Bash hands MSBuild forward slashes by default, which makes
+this the normal case there rather than an edge one. The gather script converts first:
+
+```bash
+SOLUTION_DIR="$(cygpath -w "$ECO_ROOT")\\Server\\"
+```
+
+This trap hides behind trap 2. The failure kills the prebuild, so the build fails the same way a
+cold checkout does, and a second pass does not clear it -- which reads as "the two-pass rule did
+not work" rather than as a separate fault.
 
 ## Why This Works
 
@@ -125,8 +153,13 @@ candidate subpaths per project, is upstream's own acknowledgement that the outpu
 ## Prevention
 
 **Encode the sequence in a script, not in a runbook.** All four steps are invisible from the error
-messages and none are guessable. `scripts/gather-eco-refs.sh` fetches, double-builds, passes
-`SolutionDir`, filters by TFM, and refuses to write a set of fewer than ten assemblies.
+messages and none are guessable. `scripts/gather-eco-refs.sh` double-builds, passes
+`SolutionDir`, filters by TFM, and refuses to write a set of fewer than ten assemblies. It does not fetch
+the LFS objects for you: it reads the first bytes of one known LFS-backed binary in the
+checkout, and if it finds a pointer file there it stops and tells you to run `git lfs pull`
+yourself. That is deliberate. Fetching another repository's LFS objects is a slow,
+network-bound side effect a gather script should not take on your behalf, and the detection
+is what turns MSB3246 into a sentence naming LFS.
 
 **Verify the output before trusting it.** Collecting the wrong TFM fails silently, so check the
 count and the names:
@@ -141,7 +174,13 @@ irreproducible assemblies. The gather script reads the pinned SHA out of the mod
 tracked single source of truth — and refuses a checkout that is not on it.
 
 **Expect this to recur on every Eco update.** These are properties of upstream's build, not of one
-version. Budget the four traps rather than rediscovering them.
+version. Budget the five traps rather than rediscovering them.
+
+**Build from a worktree at the release tag, not by moving the checkout.** The Eco checkout is
+shared and may sit on a branch with local edits. `git worktree add --detach <path> <tag>` gives a
+clean tree at the tag and leaves the checkout alone; the gather script then runs against that
+worktree. Its LFS objects come from the shared object store, so `git lfs pull` usually does not
+need repeating.
 
 ## Related
 
@@ -150,3 +189,6 @@ version. Budget the four traps rather than rediscovering them.
   settled.
 - `docs/solutions/conventions/document-the-path-you-actually-deploy-to.md` — the other half of a
   retarget, where the freshly built output has to end up.
+- `docs/solutions/runtime-errors/a-game-update-past-the-pinned-reference-assemblies.md` — what
+  makes a rebuild necessary in the first place: the server updating past the pin, which surfaces
+  only at runtime.

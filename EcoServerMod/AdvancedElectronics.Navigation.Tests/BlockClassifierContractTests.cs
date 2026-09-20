@@ -75,6 +75,114 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.Equal(3, table.YieldFor(BlockClassification.Excavatable));
         }
 
+        // --- U4: the at-bedrock walk down a column (R7, R8, KTD4) ---
+        //
+        // The walk exists because the recorded surface is the top SOLID block
+        // (Eco's GetTopSolidBlockY), and a player-built block is solid. On a capped
+        // column the "surface" is the cap, so a single read beneath it finds only the
+        // dug-out air the mining drone left -- never the impenetrable block. Every
+        // scenario below is decided by the walk's termination rules alone, which is
+        // why it lives in the Eco-free library (KTD12).
+
+        [Fact]
+        public void ColumnRestingDirectlyOnImpenetrable_ReadsAtBedrock()
+        {
+            var probe = new FakeColumnProbe();
+            probe.Set(4, 0, 9, ColumnBlock.Impenetrable);
+
+            Assert.True(BedrockWalk.ColumnRestsOnBedrock(probe, 4, surfaceY: 0, z: 9));
+            Assert.Equal(1, probe.CallCount);   // no walk needed: the surface IS the floor
+        }
+
+        [Fact]
+        public void ColumnWithOrdinaryRockAboveTheFloor_DoesNotReadAtBedrock()
+        {
+            var probe = new FakeColumnProbe();
+            probe.Set(4, 1, 9, ColumnBlock.Terrain);        // one rock layer left standing
+            probe.Set(4, 0, 9, ColumnBlock.Impenetrable);
+
+            Assert.False(BedrockWalk.ColumnRestsOnBedrock(probe, 4, surfaceY: 1, z: 9));
+            Assert.Equal(1, probe.CallCount);   // natural terrain stops the walk at once
+        }
+
+        [Fact]
+        public void CappedAndDugOutColumn_WalksPastTheCapAndTheAirToTheFloor()
+        {
+            // Covers AE9. A player-built block caps the column; the mining drone skipped
+            // that column's cap but dug everything beneath it out, so the shaft is air
+            // from the cap down to the impenetrable floor.
+            var probe = new FakeColumnProbe();
+            probe.Set(4, 70, 9, ColumnBlock.Built);
+            for (var y = 69; y >= 1; y--)
+                probe.Set(4, y, 9, ColumnBlock.Empty);
+            probe.Set(4, 0, 9, ColumnBlock.Impenetrable);
+
+            Assert.True(BedrockWalk.ColumnRestsOnBedrock(probe, 4, surfaceY: 70, z: 9));
+        }
+
+        [Fact]
+        public void ColumnUnderATallTower_StopsAtTheReadCap_RatherThanWalkingUnbounded()
+        {
+            // Every read is a built block, so nothing but the cap can end the walk.
+            var probe = new FakeColumnProbe(unsetIs: ColumnBlock.Built);
+
+            Assert.False(BedrockWalk.ColumnRestsOnBedrock(probe, 4, surfaceY: 100000, z: 9));
+            Assert.Equal(BedrockWalk.MaxColumnReads, probe.CallCount);
+        }
+
+        [Fact]
+        public void DirtHoldingAPlant_IsGroundNotAnObstruction_SoTheColumnIsNotAtBedrock()
+        {
+            // R7 draws the line the walk needs: the plant block itself is an obstruction
+            // the walk steps past, but the dirt holding it is ground standing above the
+            // floor, so the column is not at bedrock.
+            var probe = new FakeColumnProbe();
+            probe.Set(4, 61, 9, ColumnBlock.Built);        // the plant
+            probe.Set(4, 60, 9, ColumnBlock.Terrain);      // the dirt it grows in
+            probe.Set(4, 0, 9, ColumnBlock.Impenetrable);
+
+            Assert.False(BedrockWalk.ColumnRestsOnBedrock(probe, 4, surfaceY: 61, z: 9));
+        }
+
+        [Fact]
+        public void WalkThatRunsOutOfWorldBeneathTheColumn_DoesNotReadAtBedrock()
+        {
+            // Nothing but air all the way down past y = 0: the world floor bound ends the
+            // walk, and an unproven column never claims bedrock.
+            var probe = new FakeColumnProbe(unsetIs: ColumnBlock.Empty);
+
+            Assert.False(BedrockWalk.ColumnRestsOnBedrock(probe, 4, surfaceY: 5, z: 9));
+            Assert.Equal(6, probe.CallCount);              // y = 5 down to y = 0 inclusive
+        }
+
+        [Fact]
+        public void WalkBelowTheWorldFloor_IsNeverAttempted()
+        {
+            var probe = new FakeColumnProbe(unsetIs: ColumnBlock.Empty);
+
+            Assert.False(BedrockWalk.ColumnRestsOnBedrock(probe, 4, surfaceY: -1, z: 9));
+            Assert.Equal(0, probe.CallCount);
+        }
+
+        /// <summary>Hand-rolled fake IColumnProbe: whatever the test puts at each y, defaulting to <c>unsetIs</c>.</summary>
+        private sealed class FakeColumnProbe : IColumnProbe
+        {
+            private readonly Dictionary<(int, int, int), ColumnBlock> _blocks = new Dictionary<(int, int, int), ColumnBlock>();
+            private readonly ColumnBlock _unset;
+
+            public FakeColumnProbe(ColumnBlock unsetIs = ColumnBlock.Empty) => _unset = unsetIs;
+
+            public int CallCount { get; private set; }
+
+            public void Set(int x, int y, int z, ColumnBlock block) => _blocks[(x, y, z)] = block;
+
+            public ColumnBlock ProbeColumn(int x, int y, int z)
+            {
+                CallCount++;
+                return _blocks.TryGetValue((x, y, z), out var b) ? b : _unset;
+            }
+        }
+
         public enum FakeReason
         {
             Removable,

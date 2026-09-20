@@ -1,0 +1,80 @@
+{
+  "reviewer": "correctness",
+  "findings": [
+    {
+      "title": "A [cleared] area can never be reassigned, so its exclusions never lift",
+      "severity": "P1",
+      "file": "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs",
+      "line": 460,
+      "why_it_matters": "A mining area that every pass was refused on (a settlement law over the whole area, a property boundary) becomes permanently dead: the player is told \"excluded until reassigned\", and reassignment is the refused act. AssignMiningArea derives the status BEFORE lifting the dock's attempt facts, and those very attempt facts are what make DeriveStatus return [cleared] (every plot finished = at bedrock OR excluded, with at least one exclusion). MayBeOfferedToMiningDock(Mining, Cleared) is false, so the call returns \"has nothing left to mine -- survey it again first\" and never reaches ClearMiningExclusions at line 514. Resurveying does not help either: ClearFindings drops the area's bedrock observations and stamps but not the dock's attempt facts, which live on the dock and are unioned back in by AssembleAreaExclusions, so the area re-derives [cleared] on the very next read. The advertised recovery path (R45: assignment is the retry that lifts a refusal) is unreachable for exactly the state it exists to recover.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Derive the offer-test status with THIS dock's own attempt facts excluded, so a [cleared] that rests only on this dock's refusals does not block the retry that lifts them. Concretely, in AssignMiningArea build the ledger as AreaLifecycle.AssembleExclusions(area.ReadBedrockPlots(), <every dock's attempt facts except this.ExclusionHolderId>) and run AreaLifecycle.StatusFor(area.Kind, () => DeriveStatus(...)) against it for the MayBeOfferedToMiningDock gate only (the roster render keeps using the full union, so the displayed status is unchanged). Assumption: the intent is that a dock may always re-point at an area whose finish rests on its own refusals; if instead the offer gate should stay strict, the equivalent fix is to move ClearMiningExclusions above the status read and re-derive, accepting that a later claim refusal will have already cleared them.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs:460 -- if (!AreaClaims.MayBeOfferedToMiningDock(area.Kind, status))",
+        "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs:464 -- : $\"'{area.Name}' has nothing left to mine -- survey it again first\";",
+        "EcoServerMod/AdvancedElectronics/DroneDock.Mining.cs:514 -- this.ClearMiningExclusions(sourceDock.ObjectID, area.Id);  (only reached after the gate above returns)",
+        "EcoServerMod/AdvancedElectronics.Navigation/AreaLifecycle.cs:280 -- public static bool IsOfferableToMiningDock(AreaLifecycleStatus status) => status != AreaLifecycleStatus.Cleared && status != AreaLifecycleStatus.Empty;",
+        "EcoServerMod/AdvancedElectronics.Navigation/MiningReadout.cs:283 -- var line = \"excluded until reassigned: \" + string.Join(\", \", parts);",
+        "AreaLifecycle.DeriveStatus: a plot counts as finished when assembledExclusions.IsAccountedForByAttempt(plot) is true, so all-excluded => allFinished && anyExclusion => Cleared, and ClearFindings never touches the dock-side MiningExclusions list."
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "Level pass writes ground unattributed, unsurveying overlapping survey areas",
+      "severity": "P1",
+      "file": "EcoServerMod/AdvancedElectronics/FarmingStrategy.cs",
+      "line": 184,
+      "why_it_matters": "A farm's level pass silently destroys the survey findings of any survey area covering the same ground. LevelPassDriver.Tick removes and places blocks through MiningRemovalService/BlockPlacementService, whose post-effects fire World.OnTopBlockChanged, but the call site opens no ModGroundWrite scope -- so ModGroundWrite.Current is Outside, GroundChange.VerdictFor returns ResetToUnsurveyed, and DroneDock.GroundChange resets every covered plot's findings rows, surveyed stamps, at-bedrock observations and pass rows. This is the exact fault the sibling path guards against: FarmingStrategy.Perform at line 330 opens the scope and its own doc comment says \"without it the farm drone's own work reads as an outside change ... and a mining area covering the same plots would unsurvey itself as the farm worked\". The level pass is the more destructive of the two (whole-area levelling, 24 blocks per dispatch over many dispatches), and overlapping farm/mining ground is the case R35 and R47 exist for. Wrapping the Tick call the same way Perform is wrapped closes it.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Wrap the level-pass dispatch in the same attribution scope Perform uses: at FarmingStrategy.cs:184, `using (ModGroundWrite.Attribute(GroundWriteAttribution.ByDrone(this.homeDock.ObjectID.ToString(), area.Id, AreaKind.Farming))) { var level = this.LevelDriver(area).Tick(); ... }`. Placing it at the call site rather than inside LevelPassDriver keeps the driver Eco-attribution-free and matches Perform's stated reason for wrapping the whole switch (an action added later is covered without anyone remembering).",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/FarmingStrategy.cs:184 -- var level = this.LevelDriver(area).Tick();   (no enclosing ModGroundWrite scope)",
+        "EcoServerMod/AdvancedElectronics/FarmingStrategy.cs:330 -- using var attribution = ModGroundWrite.Attribute(GroundWriteAttribution.ByDrone(",
+        "EcoServerMod/AdvancedElectronics/LevelPassDriver.cs:374 -- var result = this.removal.Remove(positions, citizen, this.miningArm, this.hold, ...)",
+        "EcoServerMod/AdvancedElectronics/LevelPassDriver.cs:400 -- var result = this.placement.Place(positions, typeof(DirtBlock), typeof(DirtItem), ...)",
+        "EcoServerMod/AdvancedElectronics/DroneDock.GroundChange.cs:143 -- var attribution = ModGroundWrite.Current;  then line 162 -- foreach (var reset in entry.ResetPlotsToUnsurveyed(single))",
+        "grep over EcoServerMod for ModGroundWrite shows exactly two production Attribute call sites: MiningStrategy.cs:390 and FarmingStrategy.cs:330 (callsite completeness: grep-only)"
+      ],
+      "pre_existing": false
+    },
+    {
+      "title": "Sweep rewind after an outside ground change never reaches the running pass",
+      "severity": "P1",
+      "file": "EcoServerMod/AdvancedElectronics/DroneDock.GroundChange.cs",
+      "line": 162,
+      "why_it_matters": "When a player digs behind a survey drone mid-pass, the plot is reset to unsurveyed but the drone never flies back to it, so the pass finishes with a hole and the whole area then reads [unsurveyed] on the ladder (the unsurveyed guard outranks everything). SurveyAreaEntry.ResetPlotsToUnsurveyed rewinds the PERSISTED SweepPlotIndex (line 697), but the in-flight SurveyStrategy holds its own private plotIndex field and only ever reads the entry's cursor once, inside EnsureInitialized behind `if (this.plots != null) return;`. Worse, the strategy keeps pushing its un-rewound index into the live record via PublishCursor, and the dock's next readout tick writes that live cursor straight back over the rewound one (DroneDock.cs:698 -> SurveyAreaEntry.cs:745). The reset's own doc comment says both halves are handled \"because either alone is a plot that can never be re-read\" -- the rewind half is the one that does not take effect. Having the handler ask the live record to rewind too closes the gap without touching the persisted path.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "In DroneDock.GroundChange.ReactToGroundChange, after `entry.ResetPlotsToUnsurveyed(single)` and the ForgetPlot calls, push the entry's now-rewound cursor into the live record so the running strategy and the next persist agree: `this.surveyRecord?.SetSweepCursor(entry.Id, entry.SweepPlotIndex, entry.SweepColumnCursor);`. Then have SurveyStrategy re-read the record's cursor when it has fallen behind its own plotIndex (e.g. in TickParkedWork, `var c = record.SweepCursorFor(areaId); if (c.PlotIndex < this.plotIndex) { this.plotIndex = c.PlotIndex; this.columnCursor = c.ColumnCursor; }`) so the in-flight pass actually turns around. Assumption: the rewind is meant to affect the pass currently running, which is what the reset's doc comment states.",
+      "confidence": 75,
+      "evidence": [
+        "EcoServerMod/AdvancedElectronics/DroneDock.GroundChange.cs:162 -- foreach (var reset in entry.ResetPlotsToUnsurveyed(single))  / :163 -- this.surveyRecord?.ForgetPlot(entry.Id, reset);   (no SetSweepCursor)",
+        "EcoServerMod/AdvancedElectronics/SurveyAreaEntry.cs:697 -- this.SweepPlotIndex = rewound;",
+        "EcoServerMod/AdvancedElectronics/SurveyStrategy.cs:134 -- if (this.plots != null) return;   (EnsureInitialized reads the entry cursor only on a rebuild)",
+        "EcoServerMod/AdvancedElectronics/SurveyStrategy.cs:186 -- private void PublishCursor() => ... SetSweepCursor(areaId, this.plotIndex, this.columnCursor)",
+        "EcoServerMod/AdvancedElectronics/DroneDock.cs:698 -- entry.SetSweep(this.surveyRecord);  and SurveyAreaEntry.cs:745 -- var cursor = record.SweepCursorFor(this.Id);  (live cursor overwrites the rewound one)"
+      ],
+      "pre_existing": false
+    }
+  ],
+  "residual_risks": [
+    "SurveyAreaEntry.SetPlots remaps the persisted sweep cursor onto the new plot list (AreaEdit.RemapSweep), but SurveyAreaPicker/OnAreaEdited never pushes the remapped value into the live SurveyRecord. If the dock's readout tick runs before the drone re-dispatches, DroneDock.cs:698 persists the stale live cursor back over the remap. Same class as finding 3; the edit path additionally re-dispatches, so whether it bites depends on tick interleaving I could not confirm.",
+    "MiningComponent.AllAreaProjections() and DroneDockObject.StatusOfArea() are called per area from both tabs' RefreshAll, and StatusOfArea re-reads the area's stamps and re-assembles every dock's exclusions each time. This is a repeating dock-tick path; correctness is fine but the cost scales as areas x docks. Left to the performance reviewer.",
+    "DroneCommands.AssignArea and DroneDock.Mining.AssignMiningArea both discard the plots released by the PREVIOUS claim when a new assignment succeeds, so R38's 'unconditional release message' fires only on the explicit unassign paths. Behavioural gap rather than a defect in the claim record itself.",
+    "GroundWriteAttribution identifies an area by (owning dock id, area id), but FarmAreaEntry ids and SurveyAreaEntry ids come from two independent counters on the same dock (DroneDock.cs:385 nextAreaId, DroneDock.Farming.cs:225 nextFarmAreaId). A farm write on farm area N therefore matches survey area N's identity test before the kind test runs. Both branches happen to be non-reset today, so there is no current behavioural difference -- but the identity is not actually unique and a third verdict would expose it.",
+    "callsite completeness: grep-only. Claims about 'the only place that opens an attribution scope' and 'no remaining callers of the removed PlotFreshness.IsMinedOut / old marker constants' rest on text search over EcoServerMod, with no symbol-aware index available in this harness."
+  ],
+  "testing_gaps": [
+    "No test covers the assign path's offer gate against an area whose [cleared] rests on the asking dock's own attempt facts -- AreaClaimTests pins MayBeOfferedToMiningDock(Mining, Cleared) == false but nothing exercises the R45 lift through DroneDockObject.AssignMiningArea, which is where the two rules collide.",
+    "No test asserts that every mod-owned ground-write path opens a ModGroundWrite scope. AreaLifecycleTests exercises the scope's semantics against hand-built attributions only, so a production write site that forgets to wrap (the level pass) passes the suite. A test that enumerates the strategies' write entry points, or an assertion inside the removal/placement services that ModGroundWrite.Current.IsModsOwn is true, would catch it.",
+    "SurveyAreaEntry.ResetPlotsToUnsurveyed's cursor rewind is only tested against the entry's own fields; nothing pins that a pass in flight actually revisits the reset plot, which is the property the code comment claims. A test over SurveyRecord + SweepOrder that resets a plot behind the cursor and asserts the next offered plot is the reset one would cover it.",
+    "AreaEdit.RemapSweep is unit-tested, but the SurveyAreaEntry.SetPlots -> OnAreaEdited -> SurveyRecord round trip that decides whether the remap survives to the next dispatch has no coverage on either side of the Eco seam."
+  ]
+}

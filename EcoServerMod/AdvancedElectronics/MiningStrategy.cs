@@ -1,8 +1,11 @@
+using System;
 using System.Linq;
 using AdvancedElectronics.Navigation;
 using Eco.Gameplay.Components;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Players;
+using Eco.Shared.Localization;
+using Eco.Shared.Logging;
 
 namespace Eco.Mods.TechTree
 {
@@ -113,6 +116,43 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>
+        /// Records that the world at <paramref name="plot"/> does not match what the survey
+        /// recorded for it, by marking the plot for re-reading (R12, R13).
+        ///
+        /// <para>
+        /// The consequences are the ones every other reaction has: every survey result on the plot
+        /// is kept, the drones treat the plot as not yet read so no mining drone works it again
+        /// until a survey has, and the readout labels the area's figures as out of date. Nothing
+        /// is deleted, because the mod knows the reading is stale and not that it was wrong.
+        /// </para>
+        /// <para>
+        /// <b>What this detects and what it does not.</b> It detects the survey having promised
+        /// ore in a plot whose ground is not there when the drone arrives -- a player dug it out,
+        /// an administrator removed it, another mod took it. It does NOT detect the opposite case,
+        /// ground appearing where the survey recorded none: the survey stores one aggregated row
+        /// per ore type per plot rather than a position for every block, so there is nothing
+        /// precise to compare a newly present block against. That direction is a gap, and it is
+        /// stated here rather than papered over with a heuristic.
+        /// </para>
+        /// <para>
+        /// Silent when the survey recorded nothing for this plot. An empty plot with nothing
+        /// removable at the surface is a plot with nothing in it, not a plot that changed.
+        /// </para>
+        /// </summary>
+        private void RecordSiteDiscrepancy(PlotCoord plot)
+        {
+            var area = this.ResolveSourceArea();
+            if (area == null) return;
+
+            // Only a plot the survey made a claim about can contradict the survey.
+            if (!area.ReadFindings(plot).Any()) return;
+
+            if (area.MarkPlotForReReading(plot))
+                Log.WriteLineLoc(
+                    $"Drone Dock: the ground at plot ({plot.X}, {plot.Z}) does not match what the survey recorded, so the plot is marked for re-reading.");
+        }
+
+        /// <summary>
         /// Starts a pass on <paramref name="plot"/>: plans against the current surface, and
         /// records the floor that plan reaches so an interrupted pass stops in the same place.
         /// </summary>
@@ -184,8 +224,26 @@ namespace Eco.Mods.TechTree
         /// </summary>
         private SurveyAreaEntry ResolveSourceArea()
         {
-            var signal = this.areaRef.Resolve(out _, out var area);
-            var outcome = AreaResolutionPolicy.Resolve(signal, this.areaRef.StoredChangeToken, area == null ? null : MiningAreaRef.CurrentChangeToken(area));
+            var signal = this.areaRef.Resolve(out var owningDock, out var area);
+
+            // R21: an edit ends this job only when it removed plots the job STILL HAS TO WORK.
+            // The job's ledger is the pre-edit plot list — it is built from the area's plots at
+            // dispatch and never re-keyed — so asking which of its unworked plots the area no
+            // longer holds is the whole test, and nothing has to remember the old geometry.
+            var outcome = AreaResolutionPolicy.Resolve(
+                signal,
+                this.areaRef.StoredChangeToken,
+                area == null ? null : MiningAreaRef.CurrentChangeToken(area),
+                () => area != null && AreaEdit.RemovesPendingWork(this.job.PendingPlots(), area.Plots()));
+
+            if (outcome == AreaResolutionOutcome.Reacquired)
+            {
+                // The job runs on over the plots the edit retained, and this reference stops
+                // reporting the edit. The ASSIGNMENT is untouched either way -- it outlives a
+                // job, so nothing here reaches the claim it carries (U9 step 5, KTD6).
+                this.areaRef.AdoptEpoch(area);
+                outcome = AreaResolutionOutcome.StillValid;
+            }
 
             switch (outcome)
             {
@@ -205,12 +263,59 @@ namespace Eco.Mods.TechTree
                 case AreaResolutionOutcome.NotYetResolved:
                     return null;
                 default:
+                    // R24: a world upgrading into the dock-network radius can separate a pair
+                    // that was legally assigned before the radius existed, with a drone already
+                    // out over the ground. The area is not gone and the assignment is not
+                    // cleared -- but this dock may no longer work it, so the pass ends here and
+                    // the drone comes home on the SAME path a destroyed area takes: the job goes
+                    // terminal, TryGetNextTarget reports no target, and the lifecycle's
+                    // return-to-dock branch fires unchanged. No second homecoming route is added.
+                    //
+                    // The end reason is its own member. It used to be AreaGone -- the path, borrowed
+                    // for want of a word -- and the panel corrected it, because an assignment that
+                    // resolves but is out of range outranks the job's end reason in
+                    // MiningReadout.FormatBlockedReason. But the panel is not the only reader:
+                    // /drone state prints job.EndReason directly, and it said the area was gone
+                    // about an area plainly still on the map (R23). A borrowed member is only
+                    // correct in the one place that knows to override it.
+                    if (owningDock != null && !this.homeDock.IsInDockNetwork(owningDock))
+                    {
+                        this.job.End(MiningEndReason.AreaOutOfRange);
+                        return null;
+                    }
+
                     return area;
             }
         }
 
+        // Both stamps come off the source area (U2, R1): the mined record moved there from the
+        // dock, so a plot another dock has already dug is refused to this one as well.
+        //
+        // A plot recorded as needing re-reading is refused too (R6). This test is the SECOND place
+        // that decides whether a plot counts as read -- the first is the area's status derivation,
+        // which this deliberately does not go through -- and both have to agree. Without the check
+        // here, the area would read as needing a survey while a mining drone went on flying to the
+        // plot and digging for ore recorded from ground that is no longer there.
         private bool IsSurveyed(SurveyAreaEntry sourceArea, PlotCoord plot) =>
-            PlotFreshness.IsMineable(sourceArea.ReadSurveyedStamps().StampFor(plot), this.homeDock.ReadMinedStamps().StampFor(plot));
+            !sourceArea.PlotNeedsReReading(plot)
+            && PlotFreshness.IsMineable(sourceArea.ReadSurveyedStamps().StampFor(plot), sourceArea.ReadMinedStamps().StampFor(plot));
+
+        /// <summary>
+        /// What this dock is OFFERED (R19): a plot that is mineable by the stamps AND not
+        /// excluded -- the union of the area's ground facts (its at-bedrock observation, which
+        /// binds every dock) and THIS dock's own attempt facts (what it was refused, which bind
+        /// nobody else).
+        ///
+        /// The ledger is built once per target selection rather than per plot: it re-reads the
+        /// area, and the exclusion set is the same for every plot in the pass.
+        /// </summary>
+        private Func<PlotCoord, bool> OfferablePlots(SurveyAreaEntry sourceArea)
+        {
+            var exclusions = this.homeDock.ReadMiningExclusions(this.areaRef.OwningDockId, sourceArea);
+            var holder = this.homeDock.ExclusionHolderId;
+
+            return plot => !exclusions.SuppressesFor(holder, plot) && this.IsSurveyed(sourceArea, plot);
+        }
 
         public bool TryGetNextTarget(out PlotCoord plot)
         {
@@ -236,7 +341,10 @@ namespace Eco.Mods.TechTree
             if (sourceArea == null)
                 return false; // either not-yet-resolved (retry) or just ended (Invalidated) -- both report no target.
 
-            bool IsSurveyed(PlotCoord p) => this.IsSurveyed(sourceArea, p);
+            // R19: what this dock is offered, not merely what is mineable. Built once here and
+            // handed to both TryComplete and NextPlot, so the plot a refusal took off the table
+            // is equally not a reason to keep the job running.
+            var offerable = this.OfferablePlots(sourceArea);
 
             if (this.job.Status == MiningJobStatus.Idle)
                 this.job.Dispatch();
@@ -244,10 +352,10 @@ namespace Eco.Mods.TechTree
             if (this.job.Status != MiningJobStatus.Working)
                 return false;
 
-            if (this.job.TryComplete(IsSurveyed))
+            if (this.job.TryComplete(offerable))
                 return false;
 
-            var next = this.job.NextPlot(IsSurveyed);
+            var next = this.job.NextPlot(offerable);
             if (next == null)
                 return false;
 
@@ -289,7 +397,7 @@ namespace Eco.Mods.TechTree
                 this.currentShaftPlan.Layers.Count - layers.Count,
                 this.currentShaftPlan.Layers.Count,
                 progressArea == null ? 0 : progressArea.ReadSurveyedStamps().StampFor(target),
-                this.homeDock.ReadMinedStamps().StampFor(target));
+                progressArea == null ? 0 : progressArea.ReadMinedStamps().StampFor(target));
 
             if (layers.Count == 0)
             {
@@ -309,19 +417,54 @@ namespace Eco.Mods.TechTree
 
             if (removable.Count == 0)
             {
+                // R12, R13. This is the moment of in situ discovery, and it is the ONLY way this
+                // mod ever learns that ground it did not change has changed. It does not monitor
+                // the world; a drone finds out by standing on the ground and looking at it.
+                //
+                // Scoped to the FIRST layer of the pass on purpose. Deeper down, a layer with
+                // nothing removable is ordinary -- a layer of wall, or ground already taken -- and
+                // treating that as a discrepancy would mark half the plots on the server. On the
+                // first layer the drone has just arrived at the plot's surface, so nothing
+                // removable there while the survey recorded ore in this plot means the ground the
+                // survey described is not the ground that is here.
+                if (this.shaftResumeIndex == 0)
+                    this.RecordSiteDiscrepancy(target);
+
                 // Nothing to submit, so this layer IS finished -- advance past it or the shaft
                 // stalls on a layer of wall (AE5) or already-empty ground.
                 this.shaftResumeIndex += layer.Positions.Count;
                 return ParkedWorkOutcome.StillWorking;
             }
 
-            var result = this.removalService.Remove(
-                removable.Select(c => (c.Position, c.Classification)).ToList(),
-                this.homeDock.StampedCitizen,
-                this.tool,
-                this.hold,
-                this.yieldTable,
-                this.classifier);
+            // R2, R3: mark this write as the mod's own before the pack runs. The engine's
+            // top-block-changed event does not name its writer, and the blocks are actually
+            // deleted by the pack's post-effects -- which run synchronously on THIS thread inside
+            // TryPerform -- so an ambient thread-scoped attribution is what carries "the drone did
+            // this, serving area N of dock D" across the frames in between.
+            //
+            // What the marker is FOR changed when the listener was narrowed, and the old reason no
+            // longer holds. It used to prevent the area being dug from unsurveying itself, because
+            // an unmarked write was treated as an outside change and deleted the survey results
+            // for the plots it touched. An unmarked write is now ignored entirely, so forgetting
+            // the marker would cost nothing here.
+            //
+            // Its purpose now is the opposite one, and it is about OTHER areas. Marking the write
+            // is what lets the listener recognise that this dig also fell inside some other dock's
+            // area, and mark that area's plots for re-reading. Drop the marker and the dig becomes
+            // invisible to every area on the server, including the ones whose surveys it just
+            // invalidated.
+            RemovalResult result;
+            using (ModGroundWrite.Attribute(GroundWriteAttribution.ByDrone(
+                       this.areaRef.OwningDockId.ToString(), this.areaRef.AreaId, AreaKind.Mining)))
+            {
+                result = this.removalService.Remove(
+                    removable.Select(c => (c.Position, c.Classification)).ToList(),
+                    this.homeDock.StampedCitizen,
+                    this.tool,
+                    this.hold,
+                    this.yieldTable,
+                    this.classifier);
+            }
 
             if (result.Outcome == RemovalOutcome.Refused && !this.hold.IsEmpty)
             {
@@ -353,6 +496,12 @@ namespace Eco.Mods.TechTree
                 // names the bucket and not the cause. Live pass #2 lost two of three plots to
                 // exactly that, with the answer already computed and thrown away here.
                 this.job.MarkSkipped(target, RefusalMapping.ToSkipCategory(result.RefusalStage), result.Message);
+
+                // R18: the refusal outlives the job. Persisted at the skip rather than at the
+                // job's end so the engine's own wording is captured while it is still in hand
+                // -- the dock's flat projection of the job cannot carry a string -- and so a
+                // job that never ends cleanly still leaves its record.
+                this.homeDock.PersistMiningExclusions(this.job);
                 this.EndPass();
                 return ParkedWorkOutcome.PlotFailed;
             }
@@ -412,6 +561,7 @@ namespace Eco.Mods.TechTree
             if (plot == null) return;
 
             this.job.MarkSkipped(plot.Value, SkipCategory.Unreachable);
+            this.homeDock.PersistMiningExclusions(this.job); // R18 -- a failed route is this dock's fact, and it outlives the job.
             this.EndPass();
             this.lastOfferedPlot = null;
         }
