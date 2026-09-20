@@ -422,6 +422,14 @@ mod's own load line rather than the presence of an error. The distinction from [
 the useful test: if a value can be recomputed from something already known, it is a signal and
 persisting it creates a second source of truth.
 
+What is saved is bound by the member's own name, on the class that declared it. Renaming that member,
+or moving what it holds to another class, leaves the saved value addressed to something that no
+longer exists, and it is not carried across by anything the compiler knows about. The reverse case —
+a member the code now expects that an older save never wrote — restores as the type's default, so the
+meaning of that default is a decision rather than an accident: either reserve a value for "never
+written", or stamp the shape with a version, because a default that is also a legitimate value cannot
+tell the two apart.
+
 ## Dock and assignment
 
 ### Drone Dock
