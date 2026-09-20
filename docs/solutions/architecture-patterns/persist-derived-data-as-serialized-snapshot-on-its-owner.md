@@ -1,7 +1,7 @@
 ---
 title: Persist derived aggregate data as a serialized snapshot on its owning entity
 date: 2026-07-26
-last_updated: 2026-09-15
+last_updated: 2026-09-20
 category: architecture-patterns
 module: EcoServerMod
 problem_type: architecture_pattern
@@ -194,6 +194,21 @@ a `ThreadSafeList`/`ThreadSafeDictionary`, not a plain `List`, or Eco fails serv
 "Attempting to serialize non-immutable member … Either make immutable or add [ThreadSafe]" — the
 same rule that governs the area's own `PlotCoords`.
 
+## Moving a snapshot after it has shipped
+
+Choosing the owner is the whole of this pattern, and the choice is sometimes made wrong first and
+corrected later. Once a snapshot has shipped, correcting it is no longer a refactor: the saved value
+is addressed to the member that declared it, on the class that declared it, so moving the member to
+the entity that should have owned it all along leaves every existing world holding data nothing
+reads. The compiler sees a clean rename; the save file sees a field with no destination.
+
+This mod has now done exactly that once, moving the mined-plot stamps off the mining dock and onto
+the area — the same ownership argument this pattern makes, applied a release late. The migration it
+needed, and the shape of the general answer, are in
+`docs/solutions/conventions/a-moved-serialized-member-needs-a-stand-in-under-its-old-name.md`. Read
+it before relocating any snapshot that has been in a release, and note the ordering it implies for
+new work: this pattern's ownership test is cheapest to apply *before* the first world is saved.
+
 ## Related
 
 - `docs/solutions/best-practices/ship-the-readout-not-just-the-data.md` — the readout is part of
@@ -203,3 +218,7 @@ same rule that governs the area's own `PlotCoords`.
   one persisted snapshot.
 - `docs/solutions/conventions/consistent-grid-column-quantization.md` — the plot/column
   quantization the accumulator and area membership share.
+- `docs/solutions/conventions/a-moved-serialized-member-needs-a-stand-in-under-its-old-name.md` —
+  what this pattern costs when the owner is chosen wrong and corrected after release. This doc says
+  where derived data belongs; that one says how to carry existing saves across when the answer
+  changes, and why the member's old name has to stay behind to catch them.
