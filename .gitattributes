@@ -1,1 +1,23 @@
+# Shell scripts run on the server side and are executed by bash, which will not
+# tolerate a CR at the end of a line.
 *.sh text eol=lf
+
+# Unity's own serialized files: stored byte-for-byte, with no line-ending
+# conversion in either direction.
+#
+# core.autocrlf is true on this machine, so without this git converts these on
+# checkout and re-checks them on every status. Unity rewrites them whenever the
+# Editor opens, saves a scene, or edits the tag and build-settings lists, and the
+# two conventions disagreed often enough that ProjectSettings/*.asset sat in
+# `git status` as modified with an empty `git diff` -- a permanent false positive
+# that hides a real edit when one does happen.
+#
+# Nothing here is merged by hand or read across platforms, so normalization buys
+# this repository nothing. Whatever the Editor writes is what git stores.
+*.asset  -text
+*.unity  -text
+*.prefab -text
+*.meta   -text
+*.mat    -text
+*.mask   -text
+*.inputactions -text
