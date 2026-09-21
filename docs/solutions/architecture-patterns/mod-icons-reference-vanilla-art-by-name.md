@@ -1,7 +1,7 @@
 ---
 title: "A mod gets a real icon by naming vanilla's, not by shipping one"
 date: 2026-08-22
-last_updated: 2026-09-15
+last_updated: 2026-09-21
 category: architecture-patterns
 module: EcoServerMod
 problem_type: architecture_pattern
@@ -202,7 +202,9 @@ the baked atlas. That does not matter — the point is the *name*, not the file.
    sprite is a competent drawing that costs nothing, and a coloured square costs an Editor
    session, a bundle rebuild, a deploy and a restart every time it changes. Never.
 
-The distinction that matters: (2) must be **replaced**, (3) should never have been **written**.
+The distinction that matters: (2) must be **replaced**, (3) should never have been
+**written**. (3) is a rule about what you write from now on, not a demand to strip what already
+shipped — see the grandfathered pair under "Render only what is worth photographing".
 
 ### Beware the space-named generics
 
@@ -352,8 +354,15 @@ faithful to the model and worse than the client's own missing-icon sprite. The a
 flat-colour rows for the assembly and the dock are still in the icon table, their PNGs are
 still on disk, and their scene objects are still under the "Items" root, so the bundle keeps
 registering art under both class names. By the rule two sections above, that registered art is
-what every class-name-keyed surface draws, whatever the attribute says. Removing the two rows
-is the remaining half of the assembly's fix and the whole of the dock's.
+what every class-name-keyed surface draws, whatever the attribute says.
+
+**Those two rows stay, and that is not an oversight.** They predate this rule, which was
+written on 2026-08-22. The dock and the assembly have placeholder *models* for the same reason
+they have placeholder icons — no real art exists for either yet — and the flat render is
+faithful to the primitive it photographs. The rule binds new work: authoring a placeholder for
+something that does not have one is the regression. Carrying two that were already there is
+not, and an audit that flags them is reading the rule as retroactive. Both rows go when the
+models do, and not before.
 
 ### When the art really is new
 
@@ -479,7 +488,8 @@ Giving a new entry an icon, in order:
    icon-table row, `Finish All Item Icons`, save the scene, run
    `scripts/validate-icon-binding.sh` and `scripts/validate-name-match.sh` before building the
    bundle, then deploy bundle *and* assembly together.
-4. Never ship a flat-colour placeholder. The client's own missing-icon sprite is better and free.
+4. Never author a *new* flat-colour placeholder. The client's own missing-icon sprite is better
+   and free. The two that predate this rule are grandfathered and are not a defect to fix.
 
 ## Examples
 

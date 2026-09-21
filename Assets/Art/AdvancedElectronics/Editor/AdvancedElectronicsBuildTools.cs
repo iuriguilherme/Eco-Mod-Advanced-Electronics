@@ -92,13 +92,20 @@ public static class AdvancedElectronicsBuildTools
     // flat colour under those names, every one of those surfaces drew the flat colour no matter
     // what the server classes declared.
     //
+    // GRANDFATHERED, also deliberately: DroneDockItem and AdvancedElectronicsAssemblyItem keep
+    // their rows even though the assembly declares [HasIcon("Crafting Table")]. Both objects are
+    // hand-built primitives with no real art, so a render of them is a flat shape either way.
+    // The never-ship-a-flat-colour rule binds NEW work -- authoring a placeholder for something
+    // that does not have one. These two predate it and are not a defect to clean up. They go when
+    // the models do.
+    //
     // See docs/solutions/architecture-patterns/mod-icons-reference-vanilla-art-by-name.md.
     private static readonly (string TypeName, Color Fill)[] ItemIcons =
     {
         ("SurveyDroneItem",                      new Color(0.25f, 0.55f, 0.85f, 1f)), // teal-blue (pre-existing)
-        ("DroneDockItem",                        new Color(0.40f, 0.45f, 0.50f, 1f)), // steel grey -- shipped without an icon; see below
+        ("DroneDockItem",                        new Color(0.40f, 0.45f, 0.50f, 1f)), // steel grey -- grandfathered placeholder; see above
         ("EngineeringResearchPaperPostModernItem", new Color(0.90f, 0.90f, 0.95f, 1f)), // near-white paper
-        ("AdvancedElectronicsAssemblyItem",      new Color(0.85f, 0.50f, 0.15f, 1f)), // orange
+        ("AdvancedElectronicsAssemblyItem",      new Color(0.85f, 0.50f, 0.15f, 1f)), // orange -- grandfathered placeholder; see above
         ("BatteryItem",                          new Color(0.20f, 0.70f, 0.35f, 1f)), // green
         ("HarvestDroneItem",                     new Color(0.42f, 0.26f, 0.14f, 1f)), // chocolate -- was amber, too close to the assembly's orange
         ("MiningDroneItem",                      new Color(0.60f, 0.85f, 0.10f, 1f)), // lime -- green-dominant, unlike HarvestDrone's red-dominant amber
