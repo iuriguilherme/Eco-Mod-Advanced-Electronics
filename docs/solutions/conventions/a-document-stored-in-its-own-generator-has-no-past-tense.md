@@ -293,5 +293,6 @@ than instead of them.
   Here it is a warning to players instead of a rule for readers, and the reader acts on it.
 - `docs/solutions/conventions/document-the-path-you-actually-deploy-to.md` — user-facing instructions
   drifting from what the project actually does.
-- `docs/solutions/conventions/commit-bodies-list-changes-not-lessons.md` — the counterpart division
-  of labour: commits record what changed, and the durable reasoning lives here.
+- `docs/solutions/workflow-issues/a-commit-message-rule-failed-five-times-and-was-withdrawn.md` — the
+  counterpart division of labour, and the record of it being withdrawn. Durable reasoning still
+  lives in `docs/solutions/`; nothing forbids a commit body from also carrying it.

@@ -171,9 +171,9 @@ mentioning the bundling only as a note in passing if it matters at all.
 - `docs/solutions/conventions/document-the-path-you-actually-deploy-to.md` — already establishes that
   a written copy of a fact the running system owns is a second, untested source that drifts. That is
   the argument against the backlog file, borrowed rather than re-derived.
-- `docs/solutions/conventions/commit-bodies-list-changes-not-lessons.md` — the same drift rule applied
-  to artifact placement. That one answers where a fact should live; this one answers the prior
-  question of whether a new place should exist at all.
+- `docs/solutions/workflow-issues/a-commit-message-rule-failed-five-times-and-was-withdrawn.md` — the same
+  drift argument applied to artifact placement. It was withdrawn as a rule, but its reasoning about
+  a second unmaintainable copy is the same one this entry borrows.
 - `docs/solutions/workflow-issues/a-user-report-carries-evidence-and-a-request.md` — its "restate the
   observation before acting on the request" check is the cheap catch here too. Restating as "tasks
   live in the harness list, not in a file" is itself the complete answer, and would have stopped the

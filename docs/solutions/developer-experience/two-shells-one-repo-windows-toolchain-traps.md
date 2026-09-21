@@ -317,9 +317,9 @@ git log -1 --format='--- %h%n%B'
 - `docs/solutions/workflow-issues/a-gate-that-discovers-nothing-passes-everything.md` — the same
   defect one level up: a check whose output cannot distinguish the failure it exists to find will
   report clean forever. A subject-line read-back is a gate of that kind for this corruption.
-- `docs/solutions/conventions/commit-bodies-list-changes-not-lessons.md` — what a correct message
-  looks like here (subject, blank line, trailer; no prose rationale), and the forward-only stance on
-  never rewriting pushed history to fix one.
+- `docs/solutions/workflow-issues/a-commit-message-rule-failed-five-times-and-was-withdrawn.md` — why this
+  repository has no rule about commit-body *content*, only the mechanical constraints above. Five
+  attempts at one were withdrawn.
 - `docs/solutions/security-issues/machine-local-paths-leaked-into-a-public-repo.md` — the other
   commit-content rule, and what remediation costs once a bad message has been pushed.
 - `docs/solutions/workflow-issues/a-remembered-capability-and-a-cited-file-are-claims.md` — the
