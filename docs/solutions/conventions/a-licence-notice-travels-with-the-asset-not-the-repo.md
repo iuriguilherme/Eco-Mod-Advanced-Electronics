@@ -1,7 +1,7 @@
 ---
 title: "Licensing a contributed asset: what decides the licence, and where the notice has to travel"
 date: 2026-08-08
-last_updated: 2026-09-15
+last_updated: 2026-09-21
 category: conventions
 module: AdvancedElectronics
 problem_type: convention
@@ -26,8 +26,8 @@ related_components:
 Two questions come up whenever someone else's work enters this repository, and they are
 easy to conflate. **Which licence covers a given file?** and **where does the notice have to
 be so that it reaches whoever ends up with the file?** The first half of this document is the
-one that was got wrong; the second is the one that was got right first time and is worth
-keeping.
+one that was got wrong; the second was got right first time, except for one paragraph that
+repeated the same conflation about the repository as a whole and is corrected below.
 
 ## Context
 
@@ -149,11 +149,25 @@ So the notice lives in three places, each aimed at a different reader:
    `scripts/package-release.sh:132`, with the attribution repeated in the generated
    `README.txt`. For whoever ends up with the artifact and no context at all.
 
-**A blanket "everything here is our own work" claim has an expiry date.** `README.md` carried
-exactly that sentence, and it stopped being true the moment the model landed. Nothing
-enforces it — no compiler, no test, no CI job diffing the contributor list against the licence
-file. It stayed wrong for 46 commits across five days in a public repository. Re-read it
-whenever a contribution arrives.
+**A contributor's work is still "our own work" — what a contribution changes is the licence,
+not the authorship claim.** `README.md:111` says this repository contains only our own work,
+and that is accurate. Phlo123 is a project contributor who asked for his work to be
+distributed with the mod, free and publicly available; he has been invited to the repository
+and the arrangement suits him as it is. `LICENSE-ART` exists because the maintainer decided to
+license art differently from code and to record attribution for someone who does not commit
+here himself. A second licence file marks a licensing decision, not foreign material.
+
+An earlier version of this document claimed that sentence had expired the moment the model
+landed, and counted the commits it stayed "wrong". That was this document reproducing, one
+section after diagnosing it, the very conflation it is about: it read a claim about authorship
+as a claim about uniform licensing. The two are independent, which is the whole point of the
+section above.
+
+So the thing to re-read when a contribution arrives is not "is this still our own work". It is
+**"is the attribution present, and is the licence right"** — the two claims a new asset can
+actually falsify. Nothing checks either automatically: no compiler, no test, no CI job diffing
+the contributor list against the licence file. The carve-out above survived eight commits and
+about fifteen hours, which was long enough to ship in `v0.2.0`.
 
 **Verify from the artifact, not from the tree.** The repo having a `LICENSE-ART` proves
 nothing about the zip. Read the file back out of the archive; a green `git status` is not
@@ -261,8 +275,9 @@ was made *from* the licensed material.
   of the licensing picture: material that must stay out of a public repo entirely because
   redistribution is not permitted.
 - `docs/solutions/conventions/a-defensive-rule-outlives-the-danger-it-answered.md` — the shape
-  of why "everything here is our own work" went stale unnoticed: a claim keeps standing after
-  the thing that made it true has changed.
+  this document wrongly attributed to `README.md:111`: a claim that keeps standing after the
+  thing that made it true has changed. Worth reading for what that failure actually looks like,
+  and as the reason to check whether a claim has expired before asserting that it has.
 - `docs/solutions/conventions/a-document-stored-in-its-own-generator-has-no-past-tense.md` —
   the same generated readme, a different failure. Its attribution block is hand-written prose,
   so it will not update itself when the next asset arrives.
