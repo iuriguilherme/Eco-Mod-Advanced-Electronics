@@ -1,7 +1,7 @@
 ---
 title: "A mod cannot ship client code, so animation is driven by matching names"
 date: 2026-08-08
-last_updated: 2026-08-14
+last_updated: 2026-09-21
 category: architecture-patterns
 module: EcoServerMod
 problem_type: architecture_pattern
@@ -33,6 +33,22 @@ The referenced script (DroneAnimatorStates) on this Behaviour is missing!
 
 A whole night went into the server half — names, push timing, state derivation — while the
 client half could never have run.
+
+## Status: unsettled against the prefabs and the build tool
+
+Animation is unfinished, and the tree does not agree with itself. `AttachAnimatorStates` in
+`Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs` instructs Inspector
+wiring of each state's UnityEvent to `Animator.SetTrigger`. This document, `CONCEPTS.md` and the
+five prefabs describe the name-match binding below, and the prefabs carry half-finished
+`SetTrigger` overrides that reach nothing.
+
+The working assumption is that this document leads and the prefabs are the side that is wrong.
+**That assumption has not been established.** The research that would settle it — reading the
+client and watching it run — has not been done, and this document's own closing section is about
+what it costs to record a client-side claim as proven on weaker evidence than that. So do not
+reconcile the two sides by editing one to match the other, and do not finish or delete the
+prefabs' overrides. See `docs/plans/2026-09-21-1856-feat-drone-animation-plan.md` for what has to
+happen first.
 
 ## Guidance
 

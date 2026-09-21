@@ -941,6 +941,12 @@ public static class AdvancedElectronicsBuildTools
     /// cannot be delivered to the client. Wire each state's enabled/disabled event to
     /// <c>Animator.SetTrigger</c> with a static trigger name -- SetBool takes two arguments
     /// and a UnityEvent persistent call binds only one.
+    ///
+    /// UNVERIFIED. Animation is unfinished and this paragraph is research of unknown currency.
+    /// The learning doc, CONCEPTS.md and all five prefabs describe a different arrangement, and
+    /// which side is right has never been established. Do not reconcile them by editing one to
+    /// match the other. See docs/plans/2026-09-21-1856-feat-drone-animation-plan.md, which says
+    /// what has to happen first.
     /// </summary>
     private static void AttachAnimatorStates(GameObject go, WorldObject worldObject, string controllerPath)
     {
