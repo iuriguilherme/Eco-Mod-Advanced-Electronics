@@ -90,7 +90,14 @@ echo "==> Running navigation tests"
 dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests --nologo -v q \
     || fail "tests failed -- not packaging"
 
-# --- 3. Asset bundle, and the staleness guard -----------------------------------
+# --- 3. Licences must be declared -----------------------------------------------
+# The zip is where the licence obligation actually lands: the drone model is inside the
+# bundle and reaches admins who will never see the repository. Verify before staging, not
+# after, and from the tracked set rather than from memory.
+echo "==> Checking provenance"
+scripts/validate-provenance.sh || fail "provenance check failed -- not packaging"
+
+# --- 4. Asset bundle, and the staleness guard -----------------------------------
 [ -f "$BUNDLE" ] || fail "$BUNDLE not found. Build it in Unity: Eco Tools > Mod Kit > Build Current Bundle"
 
 # Anything under Assets/Art newer than the bundle means the bundle predates a client
@@ -117,7 +124,7 @@ if [ -n "$NEWER" ]; then
     echo "WARNING: packaging a possibly stale bundle because --force was given" >&2
 fi
 
-# --- 4. Stage and zip -----------------------------------------------------------
+# --- 5. Stage and zip -----------------------------------------------------------
 echo "==> Staging"
 rm -rf "$STAGE"
 MODDIR="$STAGE/AdvancedElectronics"

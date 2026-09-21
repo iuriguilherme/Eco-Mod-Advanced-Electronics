@@ -1,0 +1,63 @@
+# Provenance manifest -- which licence covers which tracked file.
+#
+# Read scripts/validate-provenance.sh for how this is enforced, and
+# docs/solutions/conventions/a-licence-notice-travels-with-the-asset-not-the-repo.md
+# for how the question is decided. The short version: the test is what a file was made
+# FROM, not who made it and not where it sits.
+#
+# Verbs:
+#   licensed-source <dir>        art contributed under a copyleft licence. Everything in
+#                                it is cc-by-sa, and every GUID it owns is a derivation
+#                                marker the gate looks for elsewhere.
+#   cc-by-sa        <glob>       contributed art, or work adapted from it. ShareAlike
+#                                carries adaptations out under the same terms.
+#   lgpl            <glob>       the project's own work, not made from licensed material.
+#                                A file declared here that references a licensed GUID
+#                                fails the gate.
+#   lgpl-assembly   <path> -- <reason>
+#                                references licensed material but is declared assembly
+#                                rather than adaptation. Exact paths only, no globs, and
+#                                a written reason per file. Use sparingly: the licensing
+#                                doc says the cheap move where the line is unclear is the
+#                                stricter licence.
+#   not-tracked     <glob>       must never be in version control at all. Non-redistribution
+#                                rather than attribution.
+#
+# Declaration order is precedence: the first matching line wins, so the specific cc-by-sa
+# globs sit above the broad lgpl ones.
+#
+# A tracked file under Assets/ that no line covers fails the gate. That is the point: new
+# art forces a decision instead of defaulting to ours.
+
+licensed-source  Assets/Art/AdvancedElectronics/Sprites/HRVSTR
+
+# -- Contributed art and adaptations of it ----------------------------------------------
+cc-by-sa  Assets/Art/AdvancedElectronics/Sprites/HRVSTR/*
+cc-by-sa  Assets/Art/AdvancedElectronics/Materials/HRVSTR_*.mat
+cc-by-sa  Assets/Art/AdvancedElectronics/Animators/HRVSTR_*.controller
+# Renders of the HRVSTR chassis. A render of a model is made from it -- the licensing doc
+# lists this case explicitly.
+cc-by-sa  Assets/Art/AdvancedElectronics/Sprites/Icons/SurveyDroneItem_icon*.png
+cc-by-sa  Assets/Art/AdvancedElectronics/Sprites/Icons/MiningDroneItem_icon*.png
+cc-by-sa  Assets/Art/AdvancedElectronics/Sprites/Icons/HarvestDroneItem_icon*.png
+
+# -- Declared assembly, not adaptation --------------------------------------------------
+lgpl-assembly  Assets/Art/AdvancedElectronics/Prefabs/SurveyDroneObject.prefab  -- instantiates the chassis and adds mod components; the hierarchy is not the model's
+lgpl-assembly  Assets/Art/AdvancedElectronics/Prefabs/MiningDroneObject.prefab  -- same as SurveyDroneObject
+lgpl-assembly  Assets/Art/AdvancedElectronics/Prefabs/HarvestDroneObject.prefab  -- same as SurveyDroneObject
+
+# -- The project's own work -------------------------------------------------------------
+lgpl  Assets/Art/AdvancedElectronics/Editor/*
+lgpl  Assets/Art/AdvancedElectronics/Prefabs/*
+lgpl  Assets/Art/AdvancedElectronics/Scenes/*
+lgpl  Assets/Art/AdvancedElectronics/Materials/*
+lgpl  Assets/Art/AdvancedElectronics/Sprites/*.png
+lgpl  Assets/Art/AdvancedElectronics/Sprites/Icons/*.png
+lgpl  Assets/Settings/*
+lgpl  Assets/InputSystem_Actions.inputactions
+
+# -- Must not be in version control -----------------------------------------------------
+not-tracked  Assets/EcoModKit/*
+not-tracked  Assets/EcoLibs/*
+not-tracked  Assets/Art/ThirdPartyPublic/*
+not-tracked  Packages/com.strangeloopgames.*
