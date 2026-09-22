@@ -1,7 +1,7 @@
 ---
 title: "Two shells, one repo: Windows toolchain assumptions that fail silently"
 date: 2026-07-27
-last_updated: 2026-08-21
+last_updated: 2026-09-22
 category: developer-experience
 module: AdvancedElectronics
 problem_type: developer_experience
@@ -152,6 +152,45 @@ That is line-ending bookkeeping, not a content change. Chasing it wastes time, a
 committing it produces a diff-less commit that pollutes history. `git checkout -- <file>` clears it.
 The tell is an empty `git diff` for a file `git status` calls modified.
 
+### Silent: a Python shim eats a stdin redirect but passes a pipe
+
+`python` on this machine is a pyenv-win shim (`~/.pyenv/pyenv-win/shims/python`), not an
+interpreter. Hand a script its input with `< file` through that shim and the script sees an empty
+stdin, does its work on nothing, and exits 0:
+
+```bash
+$ printf 'a
+b
+c
+' > in.txt
+$ python count.py < in.txt          # shim, redirect
+lines: 0
+$ cat in.txt | python count.py      # same shim, piped
+lines: 3
+$ "$(python -c 'import sys;print(sys.executable)')" count.py < in.txt
+lines: 3
+```
+
+The pipe works and the redirect does not. That asymmetry is why the trap survives: a script gets
+piped input while you are poking at it, and only the `< file` invocation in the real command fails.
+
+What it looked like in practice. A bundled extractor invoked as
+`python extract-skeleton.py --output out.txt < session.jsonl` wrote
+`{"_meta": true, "lines": 0, "parse_errors": 0, "user": 0, "assistant": 0}` and exited 0. Zero
+parse errors alongside zero lines reads as *there was nothing in the input*, not as *the input
+never arrived* — and the caller's next step, reasonably, was to report no findings. Re-run through
+the resolved interpreter, the identical command produced a 1.2 MB result.
+
+Resolve the interpreter once and call it directly:
+
+```bash
+PYREAL=$(python -c "import sys;print(sys.executable)")
+"$PYREAL" script.py < input
+```
+
+And when you write a script that lives in this repo, give it a path argument rather than making it
+read stdin. A path cannot be silently emptied on the way in.
+
 ### Loud: a long heredoc through the Bash tool dies on a phantom quote
 
 A command whose heredoc body runs to roughly two hundred lines fails with:
@@ -256,6 +295,8 @@ step that could have reported failure renders the failure as success.
 - When a rule in `docs/solutions/` has been violated *again* — the recurrence is the signal that its
   check is wrong, not that its prose needs to be louder.
 - When writing a script that will live in the repo and run on other people's machines.
+- When a script that reads stdin returns an empty or zero-count result. Check that its input
+  actually arrived before believing the count, especially where `python` resolves to a shim.
 - When `git status` and `git diff` disagree about whether a file changed.
 - When a git operation fails on a path rather than on content — suspect length before suspecting
   corruption.
