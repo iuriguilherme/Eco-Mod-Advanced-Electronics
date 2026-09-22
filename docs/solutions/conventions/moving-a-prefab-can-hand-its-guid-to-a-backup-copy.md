@@ -1,7 +1,7 @@
 ---
 title: "Moving a prefab can hand its GUID to a backup copy, and the scene keeps pointing at the backup"
 date: 2026-08-07
-last_updated: 2026-09-15
+last_updated: 2026-09-22
 category: conventions
 module: Assets
 problem_type: convention
@@ -47,10 +47,11 @@ and clearing them out of the container is what would let a clean result mean som
 The gap between those two dates is the reason
 `docs/solutions/workflow-issues/a-fixed-defect-in-the-present-tense-passes-every-check.md` exists.
 This document described a resolved state as current for thirty days, through a refresh pass
-(`3bd0cf1`, branch-local on `feat/tech-tree-icons` and so not a durable reference) that edited
-the paragraph immediately above the table and left the table itself
-untouched, because every check that pass ran asks whether a citation resolves and none asks
-whether the prose is still true.
+(`3bd0cf1`, *"refresh the logic-errors learnings against the tree"*, 2026-09-05) that edited the
+paragraph immediately above the table and left the table itself untouched, because every check
+that pass ran asks whether a citation resolves and none asks whether the prose is still true.
+That SHA was branch-local when this paragraph was written; `feat/tech-tree-icons` has since
+merged in `d35c722` without squashing, so it is reachable from `origin/main` and stable.
 
 The art folder was reorganised into per-kind subfolders (`Prefabs/`, `Icons/`, `Materials/`,
 `Models/`, `Animators/` — the layout has shifted again since, and `Icons/` now sits under
@@ -152,3 +153,8 @@ when the natural conclusion from "nothing changed in game" is that the fixes wer
   way this project has shipped the wrong prefab: the tool wrote to a path derived from the
   scene object's name. Same outcome, different mechanism, and worth reading together as the
   two halves of "the asset you built is not the asset that shipped".
+- `docs/solutions/workflow-issues/an-accepted-deviation-is-indistinguishable-from-drift.md` — the
+  general form of the five dead slots above. They are accepted residue, and the only place that
+  is written down is this document; the scene file itself says nothing, so an auditor resolving
+  those GUIDs meets five misses with no marker beside them. That entry is about what it costs
+  when the acceptance lives outside the artifact.

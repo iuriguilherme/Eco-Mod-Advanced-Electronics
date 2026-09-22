@@ -331,6 +331,12 @@ the object renders as a missing-model placeholder, so the symptom appears purely
 away from the cause. Renaming either half without the other, or letting a tool regenerate a prefab
 under a different name, breaks the binding with no error at build or load time.
 
+A matching name is necessary and not sufficient. The bundle ships only the prefabs a scene's
+container list references, and that list points at asset identities rather than names. A correctly
+named prefab the list omits, or whose identity the list resolves to some other asset, reaches the
+client wrong or not at all — and the name check passes in both cases, because it compares names and
+the binding that broke is not a name.
+
 Which artifact carries the bound name differs by kind, and in neither case is it the image file. A
 World Object binds through its prefab asset's own name; the scene object that prefab was built from
 may be named differently without consequence. An item binds through the name of its object inside
