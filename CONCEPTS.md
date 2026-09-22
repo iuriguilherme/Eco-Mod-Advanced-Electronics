@@ -394,6 +394,11 @@ A small set of names is reserved, because the engine already publishes those sta
 one is the rare loud failure in this area, and it is loud only in the *client* log. Contrast
 [[Persisted State]], which is what a value must be to survive a reload.
 
+The self-wiring account above is the project's working understanding and has not been confirmed
+against a running client. The build tooling still carries an older account in which each state has
+to be wired by hand to an animation call, and the authored objects follow that older one. Until
+something settles it, treat the binding mechanism as the part of this entry that may move.
+
 ### Position Authority
 The rule that exactly one writer sets a placed object's transform: the server, which assigns the
 position and pushes it to clients. Everything on the client side animates the model *within* that
