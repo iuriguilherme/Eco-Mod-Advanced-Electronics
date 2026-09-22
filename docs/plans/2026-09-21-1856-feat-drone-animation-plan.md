@@ -28,8 +28,9 @@ The two sides:
   `Animator.SetTrigger` with a static trigger name, because a custom relay component cannot be
   delivered to the client.
 - `docs/solutions/architecture-patterns/client-animation-is-driven-by-name-not-by-mod-code.md`,
-  `CONCEPTS.md`, and all five prefabs say otherwise. The prefabs carry half-finished `SetTrigger`
-  overrides that reach nothing.
+  `CONCEPTS.md` say otherwise, and the prefabs follow neither. No prefab contains the string
+  `SetTrigger`; three of the five declare animated-state names whose enabled and disabled events
+  hold no persistent calls, and the other two declare no states.
 
 ## What must happen before any of it is touched
 
@@ -48,7 +49,8 @@ establishes. Only then is there something to plan.
 
 - Do not reconcile the docstring and the doc by editing one to match the other. Nobody has
   established which is right.
-- Do not finish or delete the prefabs' `SetTrigger` overrides. They are evidence of what was tried.
+- Do not wire or strip the prefabs' state events. Their emptiness is evidence of where the work
+  stopped.
 - Do not treat this file as a scoped plan. It has no requirements, no sequencing, and no product
   contract, because none have been decided.
 

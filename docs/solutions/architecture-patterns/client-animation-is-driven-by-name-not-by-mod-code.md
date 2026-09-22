@@ -1,7 +1,7 @@
 ---
 title: "A mod cannot ship client code, so animation is driven by matching names"
 date: 2026-08-08
-last_updated: 2026-09-21
+last_updated: 2026-09-22
 category: architecture-patterns
 module: EcoServerMod
 problem_type: architecture_pattern
@@ -38,9 +38,11 @@ client half could never have run.
 
 Animation is unfinished, and the tree does not agree with itself. `AttachAnimatorStates` in
 `Assets/Art/AdvancedElectronics/Editor/AdvancedElectronicsBuildTools.cs` instructs Inspector
-wiring of each state's UnityEvent to `Animator.SetTrigger`. This document, `CONCEPTS.md` and the
-five prefabs describe the name-match binding below, and the prefabs carry half-finished
-`SetTrigger` overrides that reach nothing.
+wiring of each state's UnityEvent to `Animator.SetTrigger`. This document and `CONCEPTS.md`
+describe the name-match binding below. The prefabs follow neither: the string `SetTrigger` appears
+in none of them, three of the five declare animated-state names whose `OnStateEnabledEvents` and
+`OnStateDisabledEvents` hold no persistent calls at all, and the remaining two declare no states.
+Nobody did the wiring the docstring asks for, and nothing records why.
 
 The working assumption is that this document leads and the prefabs are the side that is wrong.
 **That assumption has not been established.** The research that would settle it — reading the
