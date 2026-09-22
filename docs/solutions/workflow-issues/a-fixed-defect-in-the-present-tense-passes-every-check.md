@@ -1,7 +1,7 @@
 ---
 title: "A fixed defect described in the present tense passes every check there is"
 date: 2026-09-06
-last_updated: 2026-09-15
+last_updated: 2026-09-22
 category: workflow-issues
 module: docs
 problem_type: workflow_issue
@@ -38,14 +38,17 @@ related_components:
 
 # A fixed defect described in the present tense passes every check there is
 
-Every commit named below that is *not* reachable from `origin/main` is on `feat/tech-tree-icons`,
-which is unmerged and has no pull request. There is therefore no PR number to cite for those, and the
-short SHAs are branch-local: they are the only way to name that work today, they are cited here the
-way `a-cross-reference-makes-two-claims-and-only-the-path-is-checked.md` and two other docs in this
-store cite branch-local SHAs, and they are not durable references. If this branch is ever squashed or
-rebased, look those commits up by their subject lines rather than by these hashes. The commits that
-closed the four underlying defects — `7f3b526`, `aac18e3`, `186e648`, `96af0af` — are all reachable
-from `origin/main` and are stable history.
+**That caveat has expired, and the expiry is worth reading before the document it introduces.** When
+this was written, several commits named below were branch-local on `feat/tech-tree-icons`, which was
+unmerged and had no pull request, so this paragraph warned that those SHAs were not durable
+references. That branch merged in `d35c722`, and the merge preserved the commits rather than squashing
+them: every SHA cited anywhere below is now reachable from `origin/main` and is stable history. The
+commits that closed the four underlying defects — `7f3b526`, `aac18e3`, `186e648`, `96af0af` — were
+already stable when this was written and remain so. Cite them by hash without hesitation.
+
+The paragraph is kept rather than deleted because it is the document's own subject happening to the
+document: a true, carefully-hedged statement about the repository that a later commit silently turned
+false, while every hash in it still resolved.
 
 ## Context
 
@@ -271,6 +274,17 @@ because at the moment of writing the present tense is simply accurate.
 This is why the two detectors belong together. The tense read tells you which docs are exposed; the
 command re-run tells you which of the exposed ones have actually drifted.
 
+**A third outcome exists, and this document's fix pattern is wrong for it.** The two detectors sort a
+present-tense claim into current or stale. A claim can also be *current and deliberate*: the
+demonstration still reproduces, the deviation it describes is still in the tree, and it is there on
+purpose for a reason nobody wrote down. The prose then reads as outstanding work while being entirely
+accurate. Applying the four moves below to that case writes a false history — there is no closing
+commit to name, and past-tensing a live arrangement asserts it ended. The repair is the opposite one:
+record why the deviation is accepted, at the deviation and at the rule, with the condition that would
+end it. `docs/solutions/workflow-issues/an-accepted-deviation-is-indistinguishable-from-drift.md`
+carries that case. The question that separates it from this one: can someone still state why the
+deviation is acceptable? If yes, that document applies; if no, this one does.
+
 ### The fix pattern
 
 **Do not delete the incident.** This is the first and most important part, and it is where the obvious
@@ -314,8 +328,20 @@ second, and a claims validator flagging that path has the annotation sitting rig
 makes the flag safe to confirm as intentional.
 
 The status note that `195797a` added to the prefab doc is the same pattern applied to a demonstration
-rather than a citation, and its last clause is the part worth copying verbatim into any similar note:
-*"a clean result from that loop today is the expected state, not a sign the check is broken."*
+rather than a citation. Its last clause read:
+
+> a clean result from that loop today is the expected state, not a sign the check is broken.
+
+**Do not copy that clause.** It is no longer in the prefab doc, because it was not true. A later
+refresh re-ran the loop and found it does *not* come back clean: five dead container slots survive the
+deletion of the backups, so the sentence was telling a reader to expect a result the tree does not
+produce. What replaced it says what a dirty result means instead.
+
+The shape is still the one to copy — a note that says explicitly what a reader should expect to see
+today. What this shows is that the shape does not spare you from re-running the check: a status note
+asserting a clean result is itself a present-tense claim about the repository, and it goes stale the
+same way everything else here does. The fourth move in the fix pattern has to be *verified*, not
+merely written.
 
 ### When you cannot name a closing commit
 
@@ -572,6 +598,10 @@ loop under **Guidance** is how you would catch it again; a clean result from tha
 the expected state, not a sign the check is broken.
 ```
 
+That block reproduces the note as it stood on 2026-09-06 and is left unedited, because it is the
+evidence. Its final clause has since been retracted in the prefab doc itself, for the reason given
+under **The fix pattern** above — the loop does not come back clean.
+
 That note was missing step 2 of the fix pattern when this was written, and the tree supplied it: the
 closing commit is `aac18e3`, 2026-08-08, *"feat(art): re-export the HRVSTR chassis and mask the
 propeller layer"*, reachable from `origin/main`, whose body records *"Drop the superseded Old* prefab
@@ -640,6 +670,10 @@ could not produce a result.
   the reason a status note beats a silent edit: the copies of a claim are still out there, and a
   reader arriving from one of them needs to land on a page that recognises what they were told rather
   than one that has quietly changed the subject.
+- `docs/solutions/workflow-issues/an-accepted-deviation-is-indistinguishable-from-drift.md` — the
+  third outcome, and the one case where this document's fix pattern is the wrong repair. There the
+  present-tense claim is accurate and the deviation it describes is deliberate, so there is no closing
+  commit and nothing to past-tense; what is missing is the record of why it was accepted.
 - `docs/solutions/workflow-issues/a-gate-that-discovers-nothing-passes-everything.md` — the same
   ambiguity at the tooling layer. There a check reports clean because its corpus was empty; here a
   demonstration reports clean because its subject was fixed. In both cases an empty result and a
