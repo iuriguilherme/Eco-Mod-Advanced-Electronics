@@ -68,12 +68,18 @@ namespace AdvancedElectronics.Navigation.Tests
             Assert.True(AreaCapacity.MaxAddressablePositions >= AreaCapacity.MaxAreasPerDock + AreaCapacity.MaxLegacyFarmAreas);
         }
 
+        /// <summary>
+        /// The clamp itself is <see cref="DockReadout.ClampCursor"/>, which predates the cap work
+        /// and is the one implementation now. What is pinned here is the USE the tabs make of it:
+        /// the count passed in is the count of the areas one tab shows, not the dock's whole
+        /// collection.
+        /// </summary>
         [Fact]
         public void TheClampHoldsTheCursorInsideItsOwnKindsCount()
         {
-            Assert.Equal(2, AreaCapacity.ClampToKindCount(2, 3));
-            Assert.Equal(2, AreaCapacity.ClampToKindCount(7, 3));
-            Assert.Equal(0, AreaCapacity.ClampToKindCount(-4, 3));
+            Assert.Equal(2, DockReadout.ClampCursor(2, 3));
+            Assert.Equal(2, DockReadout.ClampCursor(7, 3));
+            Assert.Equal(0, DockReadout.ClampCursor(-4, 3));
         }
 
         /// <summary>
@@ -84,8 +90,8 @@ namespace AdvancedElectronics.Navigation.Tests
         [Fact]
         public void TheClampRestsAtZeroWhenThatKindHasNoAreas()
         {
-            Assert.Equal(0, AreaCapacity.ClampToKindCount(5, 0));
-            Assert.Equal(0, AreaCapacity.ClampToKindCount(0, 0));
+            Assert.Equal(0, DockReadout.ClampCursor(5, 0));
+            Assert.Equal(0, DockReadout.ClampCursor(0, 0));
         }
     }
 }

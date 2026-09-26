@@ -82,7 +82,7 @@ namespace Eco.Mods.TechTree
             var entryStatus = new Dictionary<int, EditableEntryStatus>();
 
             var index = 0;
-            foreach (var area in SurveyKindAreas(dock))
+            foreach (var area in dock.SurveyKindAreas)
             {
                 foreach (var plot in area.Plots())
                     map[new Vector2i(plot.X, plot.Z)] = area.Id;
@@ -166,9 +166,16 @@ namespace Eco.Mods.TechTree
 
             // Deletions first: an area whose entry the player removed is gone, along with its findings.
             // DeleteSurveyArea also unassigns the drone when it was working that area.
-            foreach (var area in SurveyKindAreas(dock))
+            foreach (var area in dock.SurveyKindAreas)
                 if (!edited.MapEntries.ContainsKey(area.Id))
                     dock.DeleteSurveyArea(area.Id);
+
+            // Built ONCE, after the deletions and before the pair loop, rather than per pair:
+            // the deletion pass is complete, so nothing below removes an area, and rebuilding it
+            // inside the loop walked the dock's whole collection once per map entry. The one
+            // thing the loop does add is a created area, and that is appended below so the
+            // lookup sees exactly what a rebuild would have shown it.
+            var listed = dock.SurveyKindAreas;
 
             foreach (var pair in edited.MapEntries)
             {
@@ -179,7 +186,7 @@ namespace Eco.Mods.TechTree
                 // resolves to nothing here and is created as a new area with an id the dock
                 // mints itself, rather than silently renaming and redrawing somebody's farm
                 // from the survey tab.
-                var area    = SurveyKindAreas(dock).FirstOrDefault(a => a.Id == entryId);
+                var area    = listed.FirstOrDefault(a => a.Id == entryId);
 
                 // The client's MaxArea is a hint, not a guarantee -- re-check server-side, exactly as
                 // the single-area picker did, so an over-cap area never reaches the drone's sweep.
@@ -208,7 +215,10 @@ namespace Eco.Mods.TechTree
                         continue;
                     }
 
-                    dock.CreateSurveyArea(ResolveNewAreaName(dock, name), plots);
+                    // Appended to the hoisted list as well as to the dock: a later entry whose id
+                    // happens to match the id the dock just minted has always resolved to this
+                    // new area, and it still does.
+                    listed.Add(dock.CreateSurveyArea(ResolveNewAreaName(dock, name), plots));
                     continue;
                 }
 
@@ -262,13 +272,11 @@ namespace Eco.Mods.TechTree
             }
         }
 
-        /// <summary>
-        /// The areas this picker manages: everything the dock holds that is not a farm (U10,
-        /// KTD7). Materialised because every caller walks it more than once, and the dock's
-        /// collection can be written by another thread between walks.
-        /// </summary>
-        private static List<SurveyAreaEntry> SurveyKindAreas(DroneDockObject dock) =>
-            dock.SurveyAreas.Where(a => a.Kind != AreaKind.Farming).ToList();
+        // The areas this picker manages -- everything the dock holds that is not a farm (U10,
+        // KTD7) -- used to be a private copy of the filter declared here. It is the dock's own
+        // DroneDockObject.SurveyKindAreas now, the mirror of FarmingAreas: the Survey tab had a
+        // second, verbatim copy of the same three lines, and one filter behind both views is
+        // what stops the two drifting into showing different rows.
 
         /// <summary>True when the name is blank or one of the client's own defaults for a new entry.</summary>
         private static bool IsPlaceholderName(string name)

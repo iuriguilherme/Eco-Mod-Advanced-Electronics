@@ -120,8 +120,13 @@ namespace Eco.Mods.TechTree
                 // R17) -- the survey id only ever names the one area a survey drone sweeps. A
                 // folded farm read against that id alone printed as unassigned while its drone
                 // was working it, which is the one thing this listing exists to answer.
-                var isAssigned = a.Id == dock.AssignedSurveyAreaId
-                                 || (a.Kind == AreaKind.Farming && a.IsClaimedForFarming && a.IsClaimedBy(dock.ObjectID));
+                //
+                // Through the dock's own test rather than a copy of it: IsFarmAssignmentOfMine
+                // IS "claimed for farming, by me", and a per-caller copy of that question is how
+                // the two halves of it drift apart. The kind test the copy carried was
+                // redundant -- IsClaimedForFarming reads the CLAIM's work value, which only the
+                // farm assignment path ever writes.
+                var isAssigned = a.Id == dock.AssignedSurveyAreaId || dock.IsFarmAssignmentOfMine(a);
 
                 user.MsgLocStr($"  {a.Id}. {a.Name} -- {a.PlotCount} plots, for {KindWord(a.Kind)}{(isAssigned ? " [assigned]" : string.Empty)}");
             }

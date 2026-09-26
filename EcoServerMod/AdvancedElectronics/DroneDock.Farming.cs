@@ -288,6 +288,28 @@ namespace Eco.Mods.TechTree
             this.SurveyAreas.Where(a => a.Kind == AreaKind.Farming);
 
         /// <summary>
+        /// The mirror of <see cref="FarmingAreas"/>: everything this dock holds that is NOT a
+        /// farm (U10, KTD7) — what the Survey tab lists and what its picker manages.
+        ///
+        /// <para>
+        /// One collection, two views. Both tabs read one of these two members, so neither can
+        /// list rows the other owns: without the filter the Survey tab would show every farm on
+        /// the dock as a survey area, and its picker — which treats "absent from the returned
+        /// entries" as a deletion — would delete every farm the first time a player confirmed
+        /// the survey map.
+        /// </para>
+        /// <para>
+        /// Materialised where <see cref="FarmingAreas"/> is deferred, and deliberately: every
+        /// caller indexes it or counts it and some do both, and the dock's collection can be
+        /// written from another thread between two walks of a deferred query. A
+        /// <see cref="List{T}"/> rather than a read-only view because one caller asks it for an
+        /// area's position with <c>IndexOf</c>.
+        /// </para>
+        /// </summary>
+        public List<SurveyAreaEntry> SurveyKindAreas =>
+            this.SurveyAreas.Where(a => a.Kind != AreaKind.Farming).ToList();
+
+        /// <summary>
         /// The farming-kind areas this dock's drone is assigned to (U8, R17): the ones carrying
         /// this dock's own farming claim.
         ///
@@ -909,15 +931,24 @@ namespace Eco.Mods.TechTree
         /// drone is nowhere near, and a tab that waited for a visit to notice would be
         /// telling a player their own edit had not taken.
         /// </summary>
-        public IReadOnlyList<FarmAreaReadout> ReadFarmJobStates()
-        {
-            var ledger = this.ReadCropCeilings();
-            var readouts = new List<FarmAreaReadout>();
-
+        public IReadOnlyList<FarmAreaReadout> ReadFarmJobStates() =>
             // The AREAS, kind-filtered (U10, R17) — not the legacy collection the fold empties.
             // Reading that one here is what made the Farming tab report "no farm areas drawn" on
             // every migrated dock, whatever the player had drawn or the drone was working.
-            foreach (var area in this.FarmingAreas)
+            this.ReadFarmJobStates(this.FarmingAreas, this.ReadCropCeilings());
+
+        /// <summary>
+        /// The same readouts over a farm list and a ledger the caller already holds — for the
+        /// tab refresh, which needs these states, the job below and the area count in one pass
+        /// and would otherwise re-filter the dock's collection and rebuild the ceiling ledger
+        /// once for each.
+        /// </summary>
+        public IReadOnlyList<FarmAreaReadout> ReadFarmJobStates(
+            IEnumerable<SurveyAreaEntry> farmingAreas, CropCeilingLedger ledger)
+        {
+            var readouts = new List<FarmAreaReadout>();
+
+            foreach (var area in farmingAreas)
             {
                 readouts.Add(new FarmAreaReadout(area, this.StateFor(area, ledger), area.LastFlat));
             }
@@ -933,11 +964,17 @@ namespace Eco.Mods.TechTree
         /// dock with drawn-but-unassigned areas report "working", and made
         /// "no areas assigned" reachable only when nothing was drawn at all.
         /// </summary>
-        public FarmJob ReadFarmJob()
-        {
-            var ledger = this.ReadCropCeilings();
-            return new FarmJob(this.AssignedFarmingAreas.Select(area => this.StateFor(area, ledger)));
-        }
+        public FarmJob ReadFarmJob() => this.ReadFarmJob(this.FarmingAreas, this.ReadCropCeilings());
+
+        /// <summary>
+        /// The same job over a farm list and a ledger the caller already holds. The assigned
+        /// subset is taken here, exactly as <see cref="AssignedFarmingAreas"/> takes it, so the
+        /// caller passes the farms and never has to know how an assignment is recognised.
+        /// </summary>
+        public FarmJob ReadFarmJob(IEnumerable<SurveyAreaEntry> farmingAreas, CropCeilingLedger ledger) =>
+            new FarmJob(farmingAreas
+                .Where(this.IsFarmAssignmentOfMine)
+                .Select(area => this.StateFor(area, ledger)));
 
         private FarmAreaState StateFor(SurveyAreaEntry area, CropCeilingLedger ledger)
         {

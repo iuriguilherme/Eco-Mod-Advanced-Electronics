@@ -45,7 +45,12 @@ namespace AdvancedElectronics.Navigation
         /// </para>
         /// <para>
         /// It is a ceiling on the CONTROL, not a second cap. The live clamp is
-        /// <see cref="ClampToKindCount"/>, against the count of the kind that tab shows.
+        /// <see cref="DockReadout.ClampCursor"/>, applied against the count of the areas THAT TAB
+        /// shows rather than against the dock's whole collection: the two tabs are separate views
+        /// onto one collection (KTD7), so a Farming tab cursor clamped against the total would let
+        /// a player select past the last farm and land on nothing, and the reverse on the Survey
+        /// tab. That clamp returns 0 for an empty list, which is what every caller renders as "no
+        /// areas yet".
         /// </para>
         /// </summary>
         public const int MaxAddressablePositions = MaxAreasPerDock + MaxLegacyFarmAreas;
@@ -69,22 +74,11 @@ namespace AdvancedElectronics.Navigation
         public static int OverLimitBy(int currentAreaCount) =>
             Math.Max(0, currentAreaCount - MaxAreasPerDock);
 
-        /// <summary>
-        /// A tab cursor clamped against the number of areas THAT TAB shows
-        /// (<paramref name="kindCount"/>), never against the dock's whole collection.
-        ///
-        /// <para>
-        /// The two tabs are separate views onto one collection (KTD7), so a Farming tab cursor
-        /// clamped against the total would let a player select past the last farm and land on
-        /// nothing, and the reverse on the Survey tab. Returns 0 for an empty list, which is
-        /// what every caller renders as "no areas yet".
-        /// </para>
-        /// </summary>
-        public static int ClampToKindCount(int index, int kindCount)
-        {
-            if (kindCount <= 0) return 0;
-            if (index < 0) return 0;
-            return index >= kindCount ? kindCount - 1 : index;
-        }
+        // ClampToKindCount used to be declared here and was byte-identical to
+        // DockReadout.ClampCursor, which predates it -- two live names for one clamp, called
+        // inconsistently by the three tabs doing the same job. DockReadout.ClampCursor is the
+        // canonical one (CycleCursor already depends on it); the per-kind framing this
+        // arithmetic needs is written into MaxAddressablePositions above, beside the cap it
+        // qualifies.
     }
 }

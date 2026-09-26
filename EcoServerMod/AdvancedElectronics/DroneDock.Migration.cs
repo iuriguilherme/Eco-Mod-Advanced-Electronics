@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using AdvancedElectronics.Navigation;
@@ -243,6 +244,18 @@ namespace Eco.Mods.TechTree
                     var entry = ToAreaEntry(folded);
                     this.SurveyAreas.Add(entry);
 
+                    // Advance the counter with each area, not once when the loop finishes. The
+                    // per-dock catch in ModRegistration lets the world load after a fold throws,
+                    // so a half-finished fold PERSISTS: the areas already added are on disk, the
+                    // rows already consumed are gone, and a counter bumped only at the end would
+                    // still point at an id this loop has already handed out. The next load skips
+                    // the folded rows correctly -- their markers are set -- and then mints the
+                    // remaining ones from that stale counter, straight onto an existing area.
+                    // Two areas would share an id, and every id-keyed lookup on the dock resolves
+                    // ambiguously from then on. That is the collision KTD3 exists to prevent,
+                    // arriving by a different door.
+                    this.nextAreaId = Math.Max(this.nextAreaId, folded.AreaId + 1);
+
                     if (folded.Assigned)
                         entry.RecordClaim(this.ObjectID, claimEpoch, SurveyAreaEntry.ClaimWorkFarming);
 
@@ -258,8 +271,10 @@ namespace Eco.Mods.TechTree
                 }
 
                 // Never lower than it was: the fold hands back the counter it minted from, so a
-                // later area cannot collide with one this fold placed.
-                this.nextAreaId = fold.NextAreaId;
+                // later area cannot collide with one this fold placed. The per-area bump above
+                // already covers every area that landed; this closes the gap for rows the fold
+                // counted but declined to place.
+                this.nextAreaId = Math.Max(this.nextAreaId, fold.NextAreaId);
             }
         }
 
@@ -406,7 +421,11 @@ namespace Eco.Mods.TechTree
 
             // The RAW projection set (KTD8), unfiltered by owner and by radius: two areas collide
             // however far apart their docks sit and whoever owns them.
-            var undone = AreaReconciliation.AssignmentsToUndo(MiningComponent.AllAreaProjections());
+            //
+            // Built from the list this method was handed rather than from a second world walk:
+            // the caller materialised exactly this set to run the fold over, and the projection
+            // reads each dock's areas live, so the fold's writes are in it either way.
+            var undone = AreaReconciliation.AssignmentsToUndo(MiningComponent.AllAreaProjections(docks));
             if (undone.Count == 0) return;
 
             foreach (var assignment in undone)

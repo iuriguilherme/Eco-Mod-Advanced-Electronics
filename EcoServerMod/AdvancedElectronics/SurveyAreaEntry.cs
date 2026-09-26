@@ -629,9 +629,7 @@ namespace Eco.Mods.TechTree
         /// <summary>The contested plots as <see cref="PlotCoord"/>s (unflattening the pairs).</summary>
         public IEnumerable<PlotCoord> ReconciliationBlockPlots()
         {
-            var coords = this.ReconciliationBlockPlotCoords;
-            for (var i = 0; i + 1 < coords.Count; i += 2)
-                yield return new PlotCoord(coords[i], coords[i + 1]);
+            foreach (var plot in UnflattenPlots(this.ReconciliationBlockPlotCoords)) yield return plot;
         }
 
         /// <summary>
@@ -664,14 +662,7 @@ namespace Eco.Mods.TechTree
             if (plots.Count == 0) return;
 
             this.ReconciliationBlockValue = (int)reason;
-
-            var flattened = new ThreadSafeList<int>();
-            foreach (var plot in plots)
-            {
-                flattened.Add(plot.X);
-                flattened.Add(plot.Z);
-            }
-            this.ReconciliationBlockPlotCoords = flattened;
+            this.ReconciliationBlockPlotCoords = FlattenPlots(plots);
 
             // The farm side's own reason, given the count it has never had a producer for. The
             // Farming tab reads LastStallReason, not this record, so a farming area whose block
@@ -942,12 +933,7 @@ namespace Eco.Mods.TechTree
             foreach (var removed in plan.Removed)
                 this.ClearReReadingMark(removed);
 
-            this.PlotCoords = new ThreadSafeList<int>();
-            foreach (var p in after)
-            {
-                this.PlotCoords.Add(p.X);
-                this.PlotCoords.Add(p.Z);
-            }
+            this.PlotCoords = FlattenPlots(after);
             this.Epoch++;
 
             // 3. Coverage against the new denominator. Step 1 took the removed plots' share out
@@ -1433,20 +1419,13 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public void SetBedrockPlots(IEnumerable<PlotCoord> plots)
         {
-            var flat = new ThreadSafeList<int>();
-            foreach (var p in plots)
-            {
-                flat.Add(p.X);
-                flat.Add(p.Z);
-            }
-            this.BedrockPlotCoords = flat;
+            this.BedrockPlotCoords = FlattenPlots(plots);
         }
 
         /// <summary>This area's persisted at-bedrock plots (unflattening the pairs).</summary>
         public IEnumerable<PlotCoord> ReadBedrockPlots()
         {
-            for (var i = 0; i + 1 < this.BedrockPlotCoords.Count; i += 2)
-                yield return new PlotCoord(this.BedrockPlotCoords[i], this.BedrockPlotCoords[i + 1]);
+            foreach (var plot in UnflattenPlots(this.BedrockPlotCoords)) yield return plot;
         }
 
         /// <summary>
@@ -1600,8 +1579,38 @@ namespace Eco.Mods.TechTree
         /// <summary>The stored plots as <see cref="PlotCoord"/>s (unflattening the pairs).</summary>
         public IEnumerable<PlotCoord> Plots()
         {
-            for (var i = 0; i + 1 < this.PlotCoords.Count; i += 2)
-                yield return new PlotCoord(this.PlotCoords[i], this.PlotCoords[i + 1]);
+            foreach (var plot in UnflattenPlots(this.PlotCoords)) yield return plot;
+        }
+
+        // ---------------------------------------------------------------
+        // The one flatten/unflatten pair. Three different lists on this class store plots as
+        // consecutive (x, z) ints because Eco's Vector2i is not [Serialized] -- the area's own
+        // geometry, its at-bedrock observations and the contested plots of a reconciliation
+        // block -- and each had grown its own copy of the same two loops. One pair, so the
+        // stride, the raster order and the treatment of a trailing unpaired int cannot differ
+        // between them.
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// A flattened (x, z) list as <see cref="PlotCoord"/>s, in stored order. A trailing int
+        /// with no partner is not half a plot and is passed over.
+        /// </summary>
+        private static IEnumerable<PlotCoord> UnflattenPlots(ThreadSafeList<int> coords)
+        {
+            for (var i = 0; i + 1 < coords.Count; i += 2)
+                yield return new PlotCoord(coords[i], coords[i + 1]);
+        }
+
+        /// <summary>Plots flattened to the consecutive (x, z) pairs the serializer can carry.</summary>
+        private static ThreadSafeList<int> FlattenPlots(IEnumerable<PlotCoord> plots)
+        {
+            var flat = new ThreadSafeList<int>();
+            foreach (var p in plots)
+            {
+                flat.Add(p.X);
+                flat.Add(p.Z);
+            }
+            return flat;
         }
 
         /// <summary>Projects this entry into the Eco-free <see cref="SurveyArea"/> for membership and cap logic (U2).</summary>

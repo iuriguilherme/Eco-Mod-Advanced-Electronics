@@ -306,19 +306,37 @@ namespace Eco.Mods.TechTree
         /// materialised list, because this feeds a roster refresh that runs on the dock's tick.
         /// </para>
         /// </summary>
-        public static IReadOnlyList<AreaProjection> AllAreaProjections()
-        {
-            var docks = ServiceHolder<IWorldObjectManager>.Obj.All
+        public static IReadOnlyList<AreaProjection> AllAreaProjections() =>
+            AllAreaProjections(ServiceHolder<IWorldObjectManager>.Obj.All
                 .OfType<DroneDockObject>()
                 .Where(d => !d.IsDestroyed)
+                .ToList());
+
+        /// <summary>
+        /// The same projection set, built from a dock list the caller already holds instead of
+        /// from a fresh world walk. Everything the parameterless overload's documentation says
+        /// about what a projection carries and why it is built here applies unchanged.
+        /// </summary>
+        /// <param name="docks">
+        /// Every dock in the world, already materialised by the caller -- the overload for a
+        /// caller that has just walked the world for its own reasons and would otherwise make
+        /// this walk it again. Same shape as the hoisted <c>published</c> list
+        /// <see cref="OverlapsAnything"/> and <see cref="OverlapsOf"/> already accept, and for
+        /// the same reason. Destroyed docks are filtered here rather than trusted to the
+        /// caller, so the projection set is the same whichever entry point built it.
+        /// </param>
+        public static IReadOnlyList<AreaProjection> AllAreaProjections(IReadOnlyList<DroneDockObject> docks)
+        {
+            var live = (docks ?? Array.Empty<DroneDockObject>())
+                .Where(d => d != null && !d.IsDestroyed)
                 .ToList();
 
             // The same subset DocksHoldingExclusions() collects, taken off the list already in
             // hand rather than by walking the world a second time.
-            var exclusionHolders = docks.Where(d => d.MiningExclusions.Count > 0).ToList();
+            var exclusionHolders = live.Where(d => d.MiningExclusions.Count > 0).ToList();
 
             var projections = new List<AreaProjection>();
-            foreach (var dock in docks)
+            foreach (var dock in live)
             {
                 if (!Publishes(dock)) continue;
 
@@ -588,10 +606,17 @@ namespace Eco.Mods.TechTree
                 // record and cannot be the one that says so. The area's own line can, and it is
                 // the same line on both tabs -- which is what stops the Mining tab and the
                 // Survey tab telling one player two different stories about one area.
-                reconciliationBlock: MiningReadout.FormatReconciliationBlock(
-                    area.ReconciliationBlock,
-                    area.ReconciliationBlockPlots().ToList(),
-                    PlotUtil.PropertyPlotLength));
+                //
+                // Guarded on the reason rather than handed straight to the formatter, which
+                // early-exits on a null one and returns string.Empty -- the same value this
+                // branch produces. Virtually every area has no record, and unflattening its
+                // (empty) contested-plot list allocated per area per tick to reach that exit.
+                reconciliationBlock: area.ReconciliationBlock == null
+                    ? string.Empty
+                    : MiningReadout.FormatReconciliationBlock(
+                        area.ReconciliationBlock,
+                        area.ReconciliationBlockPlots().ToList(),
+                        PlotUtil.PropertyPlotLength));
         }
 
         /// <summary>True when this dock's drone is currently reporting that it cannot reach its area.</summary>

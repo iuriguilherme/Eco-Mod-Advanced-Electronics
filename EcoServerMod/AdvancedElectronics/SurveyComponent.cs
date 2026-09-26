@@ -165,7 +165,7 @@ namespace Eco.Mods.TechTree
                 if (this.Parent is not DroneDockObject dock) return;
                 if (this.viewIndex == value - 1) return;    // batch write-back of an unchanged value
 
-                this.viewIndex = AreaCapacity.ClampToKindCount(value - 1, SurveyKindAreas(dock).Count);
+                this.viewIndex = DockReadout.ClampCursor(value - 1, dock.SurveyKindAreas.Count);
                 this.RefreshAll();
             }
         }
@@ -230,7 +230,7 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
 
-            var listed = SurveyKindAreas(dock);
+            var listed = dock.SurveyKindAreas;
             if (this.viewIndex < 0 || this.viewIndex >= listed.Count)
             {
                 player?.MsgLocStr("No area is selected to assign.", NotificationStyle.Error);
@@ -306,13 +306,19 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
 
-            this.viewIndex = AreaCapacity.ClampToKindCount(this.viewIndex, SurveyKindAreas(dock).Count);
+            // Hoisted once for the whole refresh, for the same reason the roster's
+            // exclusionHolders and published lists are hoisted inside BuildAreasText: this runs
+            // off the dock's one-second tick, and the five builders below used to rebuild this
+            // filtered list from the dock's whole collection one after another.
+            var listed = dock.SurveyKindAreas;
+
+            this.viewIndex = DockReadout.ClampCursor(this.viewIndex, listed.Count);
 
             this.DroneStatus     = BuildDroneStatus(dock);
-            this.AreasDisplay    = this.BuildAreasText(dock);
-            this.AssignedArea = BuildAssignedText(dock);
-            this.ViewingDisplay  = this.BuildViewingText(dock);
-            this.ResultsDisplay  = this.BuildResultsText(dock);
+            this.AreasDisplay    = this.BuildAreasText(dock, listed);
+            this.AssignedArea = BuildAssignedText(dock, listed);
+            this.ViewingDisplay  = this.BuildViewingText(dock, listed);
+            this.ResultsDisplay  = this.BuildResultsText(dock, listed);
 
             this.Changed(nameof(this.DroneStatus));
             this.Changed(nameof(this.AreasDisplay));
@@ -382,9 +388,8 @@ namespace Eco.Mods.TechTree
                        || lifecycle.CannotReachAssignedArea);
         }
 
-        private string BuildAreasText(DroneDockObject dock)
+        private string BuildAreasText(DroneDockObject dock, List<SurveyAreaEntry> listed)
         {
-            var listed = SurveyKindAreas(dock);
             if (listed.Count == 0)
                 return "No survey areas yet. Use Manage Areas on Map to draw your first one.";
 
@@ -404,7 +409,7 @@ namespace Eco.Mods.TechTree
             return DockReadout.AtReadableSize(sb.ToString());
         }
 
-        private static string BuildAssignedText(DroneDockObject dock)
+        private static string BuildAssignedText(DroneDockObject dock, List<SurveyAreaEntry> listed)
         {
             var area = dock.AssignedSurveyArea;
             if (area == null) return "none -- select an area below, then Assign Selected Area";
@@ -412,24 +417,24 @@ namespace Eco.Mods.TechTree
             // The position as THIS TAB counts rows, not as the dock stores them: the collection
             // holds the farms too since U3, so the stored index would name a different row than
             // the one the player is reading.
-            var position = SurveyKindAreas(dock).IndexOf(area) + 1;
+            var position = listed.IndexOf(area) + 1;
             return $"{position} -- {area.Name}";
         }
 
-        private string BuildViewingText(DroneDockObject dock)
+        private string BuildViewingText(DroneDockObject dock, List<SurveyAreaEntry> listed)
         {
-            var area = this.ViewedArea(dock);
+            var area = this.ViewedArea(listed);
             if (area == null) return "no areas yet -- draw one on the map";
 
             return DockReadout.FormatViewingLine(
-                Snapshot(area, this.viewIndex + 1, dock), SurveyKindAreas(dock).Count);
+                Snapshot(area, this.viewIndex + 1, dock), listed.Count);
         }
 
-        private string BuildResultsText(DroneDockObject dock)
+        private string BuildResultsText(DroneDockObject dock, List<SurveyAreaEntry> listed)
         {
             this.ApplyPickerSelection(dock);
 
-            var entry = this.ViewedArea(dock);
+            var entry = this.ViewedArea(listed);
             if (entry == null)
                 return "Draw an area on the map, then select it above and click Assign Selected Area.";
 
@@ -485,34 +490,14 @@ namespace Eco.Mods.TechTree
             return $"Surveyed {entry.CoveragePercent:F0}% so far -- nothing found yet.";
         }
 
-        private SurveyAreaEntry ViewedArea(DroneDockObject dock)
-        {
-            var listed = SurveyKindAreas(dock);
-            return this.viewIndex >= 0 && this.viewIndex < listed.Count ? listed[this.viewIndex] : null;
-        }
+        private SurveyAreaEntry ViewedArea(List<SurveyAreaEntry> listed) =>
+            this.viewIndex >= 0 && this.viewIndex < listed.Count ? listed[this.viewIndex] : null;
 
-        /// <summary>
-        /// The areas THIS TAB shows: everything the dock holds that is not a farm (U10, KTD7).
-        ///
-        /// <para>
-        /// The dock has one area collection since U3 and the two tabs are two views onto it,
-        /// each filtered by the kind it shows. Without the filter this tab would list every farm
-        /// on the dock as a survey area -- deriving the mining ladder's status for ground that
-        /// never reads a rung of it -- and its cursor, its assign button and its "area N of M"
-        /// line would all be counting rows the player is not looking at.
-        /// </para>
-        /// <para>
-        /// Materialised rather than returned lazily: every caller indexes it or counts it and
-        /// some do both, and the dock's collection can be written from another thread between
-        /// two walks of a deferred query.
-        /// </para>
-        /// <para>
-        /// <b>Seam.</b> Eco-coupled, like the rest of this tab. The clamp it feeds is
-        /// <see cref="AreaCapacity.ClampToKindCount"/>, unit-tested in the navigation assembly.
-        /// </para>
-        /// </summary>
-        private static List<SurveyAreaEntry> SurveyKindAreas(DroneDockObject dock) =>
-            dock.SurveyAreas.Where(a => a.Kind != AreaKind.Farming).ToList();
+        // The areas THIS TAB shows -- everything the dock holds that is not a farm (U10, KTD7)
+        // -- used to be a private copy of the filter declared here, verbatim beside the picker's
+        // own copy of it. It is DroneDockObject.SurveyKindAreas now, the mirror of FarmingAreas,
+        // so the tab and its picker cannot drift into listing different rows. The clamp it feeds
+        // is DockReadout.ClampCursor, unit-tested in the navigation assembly.
 
         // ---------------------------------------------------------------
         // U11: changing what an area is FOR (R30, R31, R32).
@@ -806,8 +791,15 @@ namespace Eco.Mods.TechTree
                 // The Mining tab cannot carry it: after reconciliation the dock's assigned area is
                 // null and the area no longer names its former holder, so that tab has no route
                 // back to this record. Empty record, unchanged line.
-                reconciliationBlock: MiningReadout.FormatReconciliationBlock(
-                    area.ReconciliationBlock, area.ReconciliationBlockPlots().ToList(), PlotUtil.PropertyPlotLength));
+                //
+                // Guarded on the reason rather than handed straight to the formatter, which
+                // early-exits on a null one and returns string.Empty -- the same value this
+                // branch produces. Virtually every area has no record, and unflattening its
+                // (empty) contested-plot list allocated per area per tick to reach that exit.
+                reconciliationBlock: area.ReconciliationBlock == null
+                    ? string.Empty
+                    : MiningReadout.FormatReconciliationBlock(
+                        area.ReconciliationBlock, area.ReconciliationBlockPlots().ToList(), PlotUtil.PropertyPlotLength));
         }
 
         // --- Material filter ---

@@ -92,7 +92,7 @@ namespace Eco.Mods.TechTree
                 if (this.browseIndex == value - 1) return;
 
                 var count = this.Parent is DroneDockObject dock ? dock.FarmingAreas.Count() : 0;
-                this.browseIndex = AreaCapacity.ClampToKindCount(value - 1, count);
+                this.browseIndex = DockReadout.ClampCursor(value - 1, count);
                 this.RefreshAll();
             }
         }
@@ -320,11 +320,18 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
 
-            var farmCount = dock.FarmingAreas.Count();
-            this.browseIndex = AreaCapacity.ClampToKindCount(this.browseIndex, farmCount);
+            // Materialised once for the whole refresh. FarmingAreas is a deferred filter over
+            // the dock's whole collection, and this ran off the dock's tick walking it three
+            // times -- once for the count, once inside the states and once more inside the job.
+            // The ceiling ledger is built once here for the same reason: the two readers below
+            // each rebuilt it from the dock's ceiling rows.
+            var farms = dock.FarmingAreas.ToList();
+            var farmCount = farms.Count;
+            this.browseIndex = DockReadout.ClampCursor(this.browseIndex, farmCount);
 
-            var states = dock.ReadFarmJobStates();
-            var job = dock.ReadFarmJob();
+            var ledger = dock.ReadCropCeilings();
+            var states = dock.ReadFarmJobStates(farms, ledger);
+            var job = dock.ReadFarmJob(farms, ledger);
 
             this.AreasDisplay = DockReadout.AtReadableSize(
                 farmCount == 0
@@ -378,7 +385,8 @@ namespace Eco.Mods.TechTree
         /// </para>
         /// <para>
         /// <b>Seam.</b> Eco-coupled: the parent is a world object and the entry is its
-        /// serialized state. The cursor arithmetic is <see cref="AreaCapacity.ClampToKindCount"/>,
+        /// serialized state. The cursor arithmetic is <see cref="DockReadout.ClampCursor"/>,
+        /// applied against the count of FARMS rather than of the dock's whole collection, and
         /// unit-tested in the navigation assembly.
         /// </para>
         /// </summary>
