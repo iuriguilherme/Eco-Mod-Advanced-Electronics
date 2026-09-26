@@ -115,7 +115,16 @@ namespace Eco.Mods.TechTree
 
             user.MsgLocStr($"Survey areas on {dock.Name} (assigned id: {dock.AssignedSurveyAreaId}):");
             foreach (var a in dock.SurveyAreas)
-                user.MsgLocStr($"  {a.Id}. {a.Name} -- {a.PlotCount} plots, for {KindWord(a.Kind)}{(a.Id == dock.AssignedSurveyAreaId ? " [assigned]" : string.Empty)}");
+            {
+                // A farm's assignment is its own farming CLAIM, not AssignedSurveyAreaId (U8,
+                // R17) -- the survey id only ever names the one area a survey drone sweeps. A
+                // folded farm read against that id alone printed as unassigned while its drone
+                // was working it, which is the one thing this listing exists to answer.
+                var isAssigned = a.Id == dock.AssignedSurveyAreaId
+                                 || (a.Kind == AreaKind.Farming && a.IsClaimedForFarming && a.IsClaimedBy(dock.ObjectID));
+
+                user.MsgLocStr($"  {a.Id}. {a.Name} -- {a.PlotCount} plots, for {KindWord(a.Kind)}{(isAssigned ? " [assigned]" : string.Empty)}");
+            }
         }
 
         /// <summary>
@@ -162,6 +171,15 @@ namespace Eco.Mods.TechTree
         /// The refusal logic is <see cref="SurveyComponent.ChangeAreaKind"/>'s, not this method's:
         /// the gate belongs beside the areas, so a second caller cannot forget it. Everything the
         /// area recorded — findings, mined stamps, exclusions — survives a change (R32).
+        /// </para>
+        /// <para>
+        /// <b>This reaches folded farms unchanged (U9, R17).</b> The lookup is over
+        /// <c>SurveyAreas</c> by id, and since U3 a farm IS an entry in that collection carrying
+        /// <see cref="AreaKind.Farming"/> — so a farm rescued from a pre-fold save, and one drawn
+        /// through the Farming tab, are both addressable here with no branch of their own. That
+        /// is the point of one area type carrying a kind rather than two types bridged: the
+        /// command that turns exhausted ground into farmland is the same command that turns it
+        /// back, in both directions, with nothing here knowing which case it is in.
         /// </para>
         /// </summary>
         [ChatSubCommand("Drone", "Read or set what a survey area is for. Usage: /drone areakind <id> [mining|farming]", "areakind", ChatAuthorizationLevel.User)]

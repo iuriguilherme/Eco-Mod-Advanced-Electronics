@@ -433,7 +433,7 @@ No shape-version stamp is added. The only default-collision hazard here is `Area
 - Covers AE8. A mining assignment overlapping a farming area is returned as an assignment to undo, with the shared plots and the farm named.
 - Covers AE9. A projection set with no overlaps returns an empty result.
 - Covers AE2, R4. A farming assignment overlapping a mining area whose ground reads empty is not returned — the farm is entitled to it.
-- Covers AE3, R5. A farming assignment overlapping a mining area whose ground reads cleared rather than empty **is** returned — the exclusion behind cleared may lift, so the claim stands.
+- Covers R5. A farming assignment overlapping a mining area whose ground reads **cleared** produces a reconciliation where **empty** produces none — and the offender is the mine, per KTD10. AE3 itself is an assignment-time fact and is verified on U8's path, not here: the projection carries `HoldsClaim`, not the status behind it, so at this boundary "assigned farm over cleared mine" is indistinguishable from "assigned farm over assigned mine". Undoing the farm instead would leave the mine standing on farmland, and the next load would undo the mine as well, so reconciliation would never be the fixed point R16 requires.
 - Covers KTD10. A mining assignment overlapping an assigned farming area returns exactly one assignment to undo, and it is the mining one.
 - Covers KTD10. Two same-kind areas colliding return the same single offender whatever order the projections arrive in.
 - Covers R3. A mining assignment overlapping an unassigned farming area is still returned.

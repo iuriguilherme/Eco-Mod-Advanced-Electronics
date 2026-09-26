@@ -7,6 +7,7 @@ using Eco.Gameplay.Components;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Players;
 using Eco.Shared.Serialization;
+using Eco.Shared.Voxel;
 
 namespace Eco.Mods.TechTree
 {
@@ -251,6 +252,50 @@ namespace Eco.Mods.TechTree
         /// <summary>The areas the drone currently farms.</summary>
         public IEnumerable<FarmAreaEntry> AssignedFarmAreas => this.FarmAreas.Where(a => a.Assigned);
 
+        // ---------------------------------------------------------------
+        // U8: the farm as an ORDINARY AREA. Since U3 a farm is a SurveyAreaEntry carrying
+        // AreaKind.Farming (R17), and these three are how the rest of the mod asks for one by
+        // that shape. They are additive on purpose: the FarmAreaEntry members above still serve
+        // the tab and the strategy while a pre-fold save is being carried forward, and nothing
+        // that reads them changes type here.
+        //
+        // These are the shape a CLAIM can attach to, which the legacy row never could -- it has
+        // no kind, no claim holder and no plots the world walk can see. Everything in this file
+        // that has to answer "what ground does this dock hold, and for what" goes through them.
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// Every farming-kind area this dock holds (U8, R17), assigned or not. R3's reservation
+        /// rides on the KIND rather than on the claim, so this -- not
+        /// <see cref="AssignedFarmingAreas"/> -- is the answer to "what ground here is farmland".
+        /// </summary>
+        public IEnumerable<SurveyAreaEntry> FarmingAreas =>
+            this.SurveyAreas.Where(a => a.Kind == AreaKind.Farming);
+
+        /// <summary>
+        /// The farming-kind areas this dock's drone is assigned to (U8, R17): the ones carrying
+        /// this dock's own farming claim.
+        ///
+        /// <para>
+        /// The claim IS the assignment for a folded farm — <c>MigrateLegacyFarmAreas</c> restores
+        /// a legacy row's <c>Assigned</c> flag by recording
+        /// <see cref="SurveyAreaEntry.ClaimWorkFarming"/>, and <see cref="AssignFarmArea"/>
+        /// writes the same record. Scoped by holder, because an area claimed by some other dock
+        /// is not this dock's assignment however it is drawn.
+        /// </para>
+        /// </summary>
+        public IEnumerable<SurveyAreaEntry> AssignedFarmingAreas =>
+            this.FarmingAreas.Where(a => a.IsClaimedForFarming && a.IsClaimedBy(this.ObjectID));
+
+        /// <summary>
+        /// One farming-kind area by id, or null (U8, R17). The kind is part of the lookup rather
+        /// than a test on the result: ids are minted from the dock's one area counter, so an id
+        /// naming a mining area is a caller asking for a farm that does not exist, not a farm
+        /// that happens to be for something else.
+        /// </summary>
+        public SurveyAreaEntry FarmingArea(int id) =>
+            this.SurveyAreas.FirstOrDefault(a => a.Id == id && a.Kind == AreaKind.Farming);
+
         /// <summary>
         /// Change-detection token across every assigned area, or null when none is
         /// assigned. Folds in each area's own epoch, so redrawing one of several assigned
@@ -377,18 +422,69 @@ namespace Eco.Mods.TechTree
 
         /// <summary>
         /// Assigns or unassigns one farm area, stamping <paramref name="actingCitizen"/> as
-        /// the party accountable for everything the drone then does there (R6).
+        /// the party accountable for everything the drone then does there (R6), and TAKING THE
+        /// CLAIM on its plots when the answer is yes (U8, R1, R2).
         ///
+        /// <para>
         /// Refuses the whole call when the citizen lacks full access on this dock: the
         /// farming actions write to the world in that citizen's name, so anything less
         /// would let a passer-by point someone else's drone at ground they cannot touch.
+        /// </para>
+        /// <para>
+        /// <b>The claim test (U8, R1, R2, R4, R5, R7).</b> This was the one assignment path that
+        /// scanned nothing, so a farm could be pointed at ground a mining dock was already
+        /// working and neither side objected. It now runs the SAME two tests the mining and
+        /// survey paths run, under the SAME single static lock (<see cref="AreaClaimLock"/>,
+        /// KTD6) so a scan on one dock cannot interleave with a write on another, and it refuses
+        /// through the SAME formatter (<c>MiningReadout.FormatClaimRefusal</c>) so one rule keeps
+        /// one wording. Nothing new is disclosed about a foreign area: that formatter names plot
+        /// coordinates and the rule that lifts them, never the other area or its owner.
+        /// </para>
+        /// <para>
+        /// The claimant kind is <see cref="AreaKind.Farming"/>, and that is what makes R4's
+        /// asymmetry run one way here: R47's farmland reservation fires only for a MINING
+        /// claimant, so a farm may take ground a mine has finished with. An overlapping mining
+        /// area that still HOLDS its claim is a refusal (R2); one that does not, is not (R5 —
+        /// the <c>[empty]</c> exception is already folded into
+        /// <c>AreaClaims.HoldsClaim</c> at the projection).
+        /// </para>
+        /// <para>
+        /// The existing refusals — area missing, no acting citizen, insufficient access — stay
+        /// AHEAD of it. Each is a fact about this dock and this call that needs no world scan,
+        /// and a citizen who may not act here should not be handed a reading of somebody else's
+        /// ground to explain why.
+        /// </para>
+        /// <para>
+        /// <b>Unassigning releases the claim and not the ground.</b> R3's reservation rides on
+        /// the area's KIND, not on its claim, so a farm between passes still holds its plots
+        /// against a mining dock; what unassigning gives up is only the "a drone is on it now"
+        /// record. Deleting the area or changing its kind is what releases the ground (R6), and
+        /// neither of those is this method.
+        /// </para>
+        /// <para>
+        /// <b>Seam.</b> Eco-coupled and carrying no unit test: this reaches the world walk, the
+        /// auth manager and the dock's own serialized state, and the test project references the
+        /// navigation assembly alone. The DECISION is covered there, by <c>AreaClaimTests</c>
+        /// (both directions of the asymmetry, the same-dock exemption, the <c>[empty]</c>
+        /// exception). What is unverified here is the wiring — that the area resolves, that the
+        /// lock taken is the shared one, that the refusal reaches the tab — and that is what the
+        /// batched live session of U12 proves.
+        /// </para>
         /// </summary>
         public bool AssignFarmArea(int id, bool assigned, User actingCitizen, out string refusalReason)
         {
             refusalReason = null;
 
-            var entry = this.FarmArea(id);
-            if (entry == null)
+            // Two lookups for one id, because a farm can be either shape while a pre-fold save
+            // is still being carried forward. The ORDINARY AREA is what a farm is since U3 and
+            // the only shape a claim can attach to — the legacy row has no kind, no claim holder
+            // and no presence in the world walk, so nothing about it could ever be tested. The
+            // legacy row is still written below, so a dock whose fold has not run behaves
+            // exactly as it did.
+            var area = this.FarmingArea(id);
+            var legacy = this.FarmArea(id);
+
+            if (area == null && legacy == null)
             {
                 refusalReason = "that area no longer exists";
                 return false;
@@ -408,11 +504,110 @@ namespace Eco.Mods.TechTree
                 return false;
             }
 
-            if (assigned) this.StampCitizen(actingCitizen);
+            // ---------------------------------------------------------------
+            // The one lock KTD6 defines, over the scan AND the write together.
+            //
+            // A lock per area entry would not serialise this: the conflict spans every area
+            // overlapping the one being assigned, so a farm here and a mine there would take two
+            // different locks, each scan a world in which the other had not yet written, and
+            // both would win the same ground. Assignment is a player action already off the
+            // drone's hot path, so the contention costs nothing worth counting.
+            // ---------------------------------------------------------------
+            lock (AreaClaimLock)
+            {
+                if (assigned && area != null)
+                {
+                    var refusal = this.FarmClaimRefusal(area);
+                    if (refusal != null)
+                    {
+                        refusalReason = refusal;
+                        return false;
+                    }
+                }
 
-            entry.Assigned = assigned;
-            this.farmAssignmentEpoch++;
-            return true;
+                if (assigned) this.StampCitizen(actingCitizen);
+
+                if (legacy != null) legacy.Assigned = assigned;
+
+                this.farmAssignmentEpoch++;
+
+                if (area != null)
+                {
+                    if (assigned)
+                    {
+                        // The claim, at the epoch this act minted — the same record the fold
+                        // writes when it restores a legacy row's assignment, so a folded farm
+                        // and a freshly assigned one are one state and not two.
+                        area.RecordClaim(this.ObjectID, this.farmAssignmentEpoch, SurveyAreaEntry.ClaimWorkFarming);
+
+                        // R16, and the seam's first caller: an area assigned again is no longer
+                        // the area reconciliation unassigned, so the blocked reason it left
+                        // behind has stopped being true. Clearing it here rather than at load is
+                        // what makes the reason answer "why is nothing happening" and not "what
+                        // happened once".
+                        area.ClearReconciliationBlock();
+                    }
+                    else
+                    {
+                        // Scoped by holder: the claim may have been taken by another dock since,
+                        // and walking away from an area must not drop a record this dock does
+                        // not own.
+                        area.ReleaseClaimBy(this.ObjectID);
+                    }
+                }
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// The claim conflicts standing between this dock and <paramref name="area"/>'s ground,
+        /// as the sentence <see cref="AssignFarmArea"/> refuses with, or null when there are
+        /// none (U8, R1, R2, R4, R5, R7). Caller holds <see cref="AreaClaimLock"/>.
+        ///
+        /// <para>
+        /// Two tests, and neither subsumes the other. The FIRST is the area's own claim: one
+        /// area, one holder (R2), which the overlap scan cannot see because an area does not
+        /// overlap itself. Reassigning the dock that already holds it goes through, which is the
+        /// ordinary re-dispatch. The SECOND is every OTHER area this one overlaps, from the
+        /// unfiltered world walk — no owner test and no distance test, because two areas collide
+        /// however far apart their docks sit and whoever owns them (R7).
+        /// </para>
+        /// <para>
+        /// R7a is NOT applied here and must not be: <c>AreaClaims.Conflicts</c> exempts
+        /// same-dock pairs itself, ahead of the farmland branch, and a second copy of that rule
+        /// at this call site is a second thing to keep in step. It is also what makes
+        /// <see cref="HoldsClaimOn"/> sufficient unchanged — that predicate does not know about
+        /// farming claims, and it does not need to, because every farming claim this dock holds
+        /// is on this dock's own area and the same-dock exemption has already dropped it.
+        /// </para>
+        /// <para>
+        /// <b>Seam.</b> Eco-coupled: the world walk and the status ladder are both on this side
+        /// of the boundary. The decision it reaches is <c>AreaClaims</c>', unit-tested in the
+        /// navigation assembly.
+        /// </para>
+        /// </summary>
+        private string FarmClaimRefusal(SurveyAreaEntry area)
+        {
+            // Read through the same StatusOfArea every render reads, so the test and the display
+            // cannot drift apart. The kind is the area's own, which for a farm means the mining
+            // ladder is never consulted.
+            var status = StatusOfArea(this.ObjectID, area, null, area.Kind);
+
+            var conflicts = AreaClaims.ConflictOnTheAreaItself(
+                    new AreaProjection(
+                        area.Id, this.ObjectID, area.Plots(),
+                        AreaClaims.HoldsClaim(area.HasClaim, status), area.Kind),
+                    claimantIsHolder: area.IsClaimedBy(this.ObjectID))
+                .Concat(AreaClaims.Conflicts(
+                    AreaKind.Farming,
+                    MiningComponent.OverlapsOf(this, area, MiningComponent.AllAreaProjections()),
+                    this.HoldsClaimOn))
+                .ToList();
+
+            return conflicts.Count > 0
+                ? MiningReadout.FormatClaimRefusal(conflicts, PlotUtil.PropertyPlotLength)
+                : null;
         }
 
         /// <summary>
@@ -710,6 +905,19 @@ namespace Eco.Mods.TechTree
                     return FarmAreaState.RefusedByLaw(area.Name, cropName);
                 case FarmStallReason.PropertyRefusal:
                     return FarmAreaState.RefusedByProperty(area.Name, cropName);
+                // The floor stays, and U8 checked it rather than assuming. The reason it existed
+                // -- nothing ever wrote a real count -- is now fixed on the AREA:
+                // SurveyAreaEntry.RecordReconciliationBlock refuses an empty plot list and so
+                // cannot write a zero. But THIS render reads a FarmAreaEntry, the legacy row,
+                // and that object is not the one reconciliation writes. Its only writer of this
+                // reason is FarmingStrategy.RecordStall, whose heldPlotCount parameter defaults
+                // to 0 and which has no call site for this case at all. So the count reaching
+                // here is not guaranteed real; it is guaranteed absent, and a row reading
+                // "0 plots" would be worse than one reading "1 plot".
+                //
+                // The floor comes out when this render's input is the area rather than the
+                // legacy row -- the repoint U10 makes -- and not before, because that is the
+                // change that makes the single writer the only writer.
                 case FarmStallReason.HeldByOverlap:
                     return FarmAreaState.HeldByOverlap(area.Name, cropName, Math.Max(1, area.LastHeldPlotCount));
             }

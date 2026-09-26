@@ -135,18 +135,36 @@ namespace Eco.Mods.TechTree
             }
 
             // ---------------------------------------------------------------
-            // U5 SEAM -- reconciliation is called from here, and from nowhere else.
+            // U5 -- reconciliation is called from here, and from nowhere else.
             //
             // It belongs at this point and no earlier: every dock above has now folded, so the
             // claim test can finally see a farm, and an assignment holding ground it is not
             // entitled to is judgeable for the first time (R13). U5 owns both halves -- the
             // decision, in AdvancedElectronics.Navigation/AreaReconciliation.cs, and the effects
-            // (unassign, record the blocked reason, recall the drone) in DroneDock.Migration.cs.
+            // (unassign, record the blocked reason, let the drone come home) in
+            // DroneDock.Migration.cs.
             //
-            // When it lands, the call goes here, wrapped the way the fold above is: reconciliation
-            // as a whole is contained, so a throw inside it costs the reconciliation and not the
-            // world load.
+            // Contained as a WHOLE rather than per dock, unlike the fold above, because it is
+            // one decision over the whole world: the pass walks every published area once and
+            // judges collisions between docks, so there is no per-dock unit to fail on its own.
+            // A throw therefore costs this load's reconciliation -- the next load runs it again
+            // over the same save (R16 is once per load, not once ever) -- and never the world
+            // load, which is the failure the try/catch exists to prevent: nobody reaches any
+            // dock, the same throw repeats on every attempt, and the save is bricked by a mod
+            // update.
             // ---------------------------------------------------------------
+            try
+            {
+                DroneDockObject.ReconcileAreaClaims(docks);
+            }
+            catch (Exception e)
+            {
+                // ONE interpolated string, for the reason the fold's catch above gives:
+                // WriteErrorLineLoc takes a FormattableString, and `$"a" + $"b"` collapses to a
+                // plain string that does not convert to one.
+                Log.WriteErrorLineLoc(
+                    $"Advanced Electronics: reconciling area claims at world load failed ({e.Message}). Every assignment stands as the save left it, including any that holds ground another area is entitled to, until a later load reconciles successfully.\n{e}");
+            }
         }
     }
 }

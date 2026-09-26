@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using System.Linq;
 using AdvancedElectronics.Navigation;
 using Eco.Core.Utils;
+using Eco.Shared.Logging;
 using Eco.Shared.Serialization;
 
 namespace Eco.Mods.TechTree
@@ -341,5 +343,149 @@ namespace Eco.Mods.TechTree
             LevelTargetHeight = folded.LevelTargetHeight,
             LevelBankedSpoil = folded.LevelBankedSpoil,
         };
+
+        // ---------------------------------------------------------------
+        // U5: reconciling a save that already conflicts (R13, R14, R15, R16).
+        //
+        // The fold above is what makes this judgeable at all -- an unfolded farm is invisible to
+        // the claim system, so a pass run before it would find a world with no farms in it and
+        // leave every mining-versus-farming conflict standing. ModRegistration sequences the two
+        // and is the only caller.
+        //
+        // It sits in this file rather than beside the assignment paths because it is the same
+        // kind of thing as the folds: a once-per-load correction to saves written before a rule
+        // existed. Unlike them it does not go away -- the rule it enforces is permanent, and a
+        // world can be brought into conflict by a mod update at any time.
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// Undoes every assignment this world is not entitled to keep, records why on the area,
+        /// and lets the drone that was working it come home (R13, R14, R15).
+        ///
+        /// <para>
+        /// <b>It decides nothing.</b> Which assignments are illegal, which side of a collision
+        /// gives way, and which plots the record names are all
+        /// <see cref="AreaReconciliation.AssignmentsToUndo"/>'s, in the Eco-free navigation
+        /// assembly where they are tested. What is here is the three effects that answer cannot
+        /// perform: dropping the claim, writing the reason, and telling the player.
+        /// </para>
+        /// <para>
+        /// <b>Nothing is written when nothing conflicts (R16).</b> The pass costs one world walk
+        /// and one overlap scan per held area, and an ordinary load returns an empty list and
+        /// stops here. In particular a block recorded by an EARLIER load is not cleared: the
+        /// record is untrue only once the area is assigned again or its kind changes, and
+        /// <see cref="SurveyAreaEntry.ClearReconciliationBlock"/> belongs to those acts rather
+        /// than to this one.
+        /// </para>
+        /// <para>
+        /// <b>The drone is recalled by the assignment it no longer has (R14).</b> There is no
+        /// separate recall call and there must not be: <c>DroneLifecycle</c> re-reads its dock's
+        /// assignment token every tick and flies a drone home the moment that token goes empty,
+        /// which is the same path the Unassign button takes. Each of the three releases below
+        /// changes that token. A second, direct recall would be a second way to stop a drone,
+        /// and the two would drift.
+        /// </para>
+        /// <para>
+        /// <b>Seam.</b> No unit tests, and none are coming: this holds Eco types and the test
+        /// project references only <c>AdvancedElectronics.Navigation</c>. The decision half is
+        /// covered there case by case in <c>AreaReconciliationTests</c>; what is untested is
+        /// exactly this -- the lookup from a projection's identity back to the entry, the three
+        /// release paths, and the record. Those are proven in the batched live session
+        /// (docs/solutions/workflow-issues/eco-mod-batched-live-testing.md) against a save built
+        /// to hold a known conflict.
+        /// </para>
+        /// </summary>
+        /// <param name="docks">
+        /// Every live dock in the world, materialised by the caller -- the same list the fold
+        /// walked. It is what turns a projection's (dock, area) identity back into the entry to
+        /// write, and R41 is why the identity is all that crosses.
+        /// </param>
+        public static void ReconcileAreaClaims(IReadOnlyList<DroneDockObject> docks)
+        {
+            if (docks == null || docks.Count == 0) return;
+
+            // The RAW projection set (KTD8), unfiltered by owner and by radius: two areas collide
+            // however far apart their docks sit and whoever owns them.
+            var undone = AreaReconciliation.AssignmentsToUndo(MiningComponent.AllAreaProjections());
+            if (undone.Count == 0) return;
+
+            foreach (var assignment in undone)
+            {
+                var owner = docks.FirstOrDefault(d => d.ObjectID == assignment.Area.OwningDockId);
+                var area = owner?.SurveyAreas.FirstOrDefault(a => a.Id == assignment.Area.AreaId);
+
+                // The world moved between the walk and here, which nothing in this pass can
+                // prevent and nothing needs to: an area that is gone holds no ground.
+                if (area == null) continue;
+
+                // The same lock every other claim release takes (KTD6), and reentrant, so the
+                // paths below may take it again. Releasing the claim and recording why it went
+                // is one operation: an area that has been released but not yet recorded reads as
+                // an assignment the player dropped themselves.
+                lock (AreaClaimLock)
+                {
+                    ReleaseReconciledClaim(area, owner, docks.FirstOrDefault(d => area.IsClaimedBy(d.ObjectID)));
+                    area.RecordReconciliationBlock(assignment.Reason, assignment.ContestedPlots);
+                }
+
+                // Named in the log because the player is not here to be told: the tab says it on
+                // their next visit (R15), and until then the server log is the only account of a
+                // load having taken an assignment away. It names this side only -- the holder is
+                // another player's area, and R41 keeps it out of a channel it does not have to
+                // cross.
+                Log.WriteLineLoc(
+                    $"Advanced Electronics: unassigned '{owner.Name} -- {area.Name}' at world load. It held {assignment.ContestedPlots.Count} plot(s) another area is entitled to ({assignment.Reason}). The dock's drone returns home and the area reads blocked until it is assigned somewhere clear.");
+            }
+        }
+
+        /// <summary>
+        /// Drops the claim <paramref name="area"/> is not entitled to, through whichever
+        /// assignment took it.
+        ///
+        /// <para>
+        /// Three paths because a claim is taken three ways, and each has state beside the claim
+        /// that has to go with it. A mining assignment lives on the HOLDING dock as a cross-dock
+        /// reference and carries a job; a survey assignment lives on the owning dock as an id; a
+        /// farming assignment is the claim itself, with only the dock's epoch beside it. Dropping
+        /// the claim alone would leave the first two docks pointed at an area they no longer
+        /// hold, which is the one state R37 does not allow -- a drone works only plots its own
+        /// dock has claimed.
+        /// </para>
+        /// <para>
+        /// The last path is also the fallback for a claim whose dock-side assignment cannot be
+        /// found: the holder may have been destroyed, or reassigned since the walk. The claim is
+        /// the thing that holds ground, so the claim is what must go regardless.
+        /// </para>
+        /// </summary>
+        private static void ReleaseReconciledClaim(
+            SurveyAreaEntry area, DroneDockObject owner, DroneDockObject holder)
+        {
+            // Mining. Goes through the dock's own unassign so the job ends and the epoch moves
+            // exactly as they do when a player presses the button -- a job outlives its
+            // assignment otherwise and the panel keeps reporting work on ground the dock lost.
+            if (holder?.AssignedMiningArea is { } mining
+                && mining.OwningDockId == owner.ObjectID
+                && mining.AreaId == area.Id)
+            {
+                holder.UnassignMiningArea();
+                return;
+            }
+
+            // Survey. A survey dock only ever assigns its OWN areas, so the holder and the owner
+            // are the same dock here; id 0 is that path's unassign.
+            if (holder != null && holder.ObjectID == owner.ObjectID && holder.AssignedSurveyAreaId == area.Id)
+            {
+                holder.AssignSurveyArea(0, out _, out _);
+                return;
+            }
+
+            // Farming, and every claim whose dock-side assignment no longer resolves.
+            area.ReleaseClaim();
+
+            // The farm side's assignment token folds this epoch in, so moving it is what tells
+            // the lifecycle the assignment changed (R14). Reachable from here because this file
+            // is the same partial class the field is declared in.
+            if (holder != null) holder.farmAssignmentEpoch++;
+        }
     }
 }

@@ -581,7 +581,17 @@ namespace Eco.Mods.TechTree
                 // both tabs render one area through one line builder, so a player reading either
                 // is told when the figures in front of them describe ground that has since
                 // changed. The figures are neither recalculated nor hidden.
-                needsResurvey: area.AnyPlotNeedsReReading);
+                needsResurvey: area.AnyPlotNeedsReReading,
+                // R15. The area is the only thing that still knows a world load undid an
+                // assignment on it: reconciliation released the claim and cleared this dock's
+                // AssignedMiningArea, so the blocked row above the list has no route back to the
+                // record and cannot be the one that says so. The area's own line can, and it is
+                // the same line on both tabs -- which is what stops the Mining tab and the
+                // Survey tab telling one player two different stories about one area.
+                reconciliationBlock: MiningReadout.FormatReconciliationBlock(
+                    area.ReconciliationBlock,
+                    area.ReconciliationBlockPlots().ToList(),
+                    PlotUtil.PropertyPlotLength));
         }
 
         /// <summary>True when this dock's drone is currently reporting that it cannot reach its area.</summary>

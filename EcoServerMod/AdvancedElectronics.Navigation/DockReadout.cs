@@ -107,6 +107,27 @@ namespace AdvancedElectronics.Navigation
         /// </summary>
         public bool NeedsResurvey { get; }
 
+        /// <summary>
+        /// Why load-time reconciliation undid this area's assignment, already worded by
+        /// <see cref="MiningReadout.FormatReconciliationBlock"/>, or empty for an area it left
+        /// alone (R15).
+        ///
+        /// <para>
+        /// A formatted sentence rather than the reason and the plots, because the wording of a
+        /// claim block belongs to <see cref="MiningReadout"/> — it is the assignment-time
+        /// refusal's own sentence, and the whole point of R15's case is that a player reads the
+        /// same words here that a refused assignment would have shown them. Passing the parts
+        /// would be a second place that decides how a block is worded.
+        /// </para>
+        /// <para>
+        /// It rides the AREA rather than the dock because that is where the record lives: the
+        /// area outlives the assignment, the job and the drone, and a player arriving after a
+        /// restart has none of those left to ask. Optional and empty by default, so an
+        /// unreconciled area renders exactly as it did before.
+        /// </para>
+        /// </summary>
+        public string ReconciliationBlock { get; }
+
         public AreaSnapshot(
             int position,
             string name,
@@ -117,8 +138,10 @@ namespace AdvancedElectronics.Navigation
             bool isAssigned,
             bool isUnreachable = false,
             bool hasOverlap = false,
-            bool needsResurvey = false)
+            bool needsResurvey = false,
+            string reconciliationBlock = null)
         {
+            ReconciliationBlock = reconciliationBlock;
             NeedsResurvey = needsResurvey;
             Position = position;
             Name = name;
@@ -445,6 +468,14 @@ namespace AdvancedElectronics.Navigation
         /// by the READING dock's own material filter, because a filter is a display preference
         /// rather than a fact about the area. Everything else is the area speaking for itself.
         /// </para>
+        /// <para>
+        /// <b>A reconciled area gets a second row (R15).</b> An assignment a world load undid has
+        /// to say so where the area is read, and it is a sentence: folding it into the line above
+        /// would push the area's own figures off the end. This is the shape the Farming tab
+        /// already uses for a stall reason -- the headline, then an indented row in the
+        /// needs-you colour saying what is wrong and what lifts it -- and it is the same colour
+        /// deliberately, because it is the same kind of fact on a different tab.
+        /// </para>
         /// </summary>
         public static string FormatRosterLine(AreaSnapshot area, string owningDockName = null)
         {
@@ -456,7 +487,15 @@ namespace AdvancedElectronics.Navigation
                        + TagSeparator + StatusWord(area.Status)
                        + FormatAnnotations(AnnotationsFor(area));
 
-            return InStatusColor(line, area.Status);
+            var rendered = InStatusColor(line, area.Status);
+
+            // Outside the status wrap, not inside it: the lifecycle colour says what the ground
+            // is (green for surveyed, and so on), and an undone assignment is not a rung of that
+            // ramp. Rendering it in the line's own colour would report a block in the colour of
+            // ordinary progress.
+            return string.IsNullOrEmpty(area.ReconciliationBlock)
+                ? rendered
+                : $"{rendered}\n    <color={FarmReadout.NeedsYouColor}>{area.ReconciliationBlock}</color>";
         }
 
         /// <summary>The Survey tab's roster line: <see cref="FormatRosterLine"/> with no dock prefix.</summary>
