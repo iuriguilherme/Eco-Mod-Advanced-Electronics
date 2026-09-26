@@ -306,7 +306,7 @@ Four phases, each landing something verifiable. Phases A and B must complete in 
 - `EcoServerMod/AdvancedElectronics.Navigation.Tests/LegacyFarmAreasTests.cs`
 
 **Approach:**
-1. Take the legacy rows as flat value tuples carrying **every** `[Serialized]` member of `FarmAreaEntry`, not a chosen subset. There are seventeen, and the ones easily missed are the behavioural and in-progress ones: `LevelFirst`, `LevelPassStarted`, `LevelTargetHeight`, `LevelBankedSpoil`, `LastNextAction`, `LastNextDueHours`, `LastDueAtWorldSeconds`, `LastUnfitCondition`, `LastMissingMaterial`, `LastFlat`, plus `Name` and `Epoch`. `LevelFirst` alone decides whether the drone levels ground before planting (`FarmingComponent.cs:125`), so dropping it silently changes what the drone does.
+1. Take the legacy rows as flat value tuples carrying **every** `[Serialized]` member of `FarmAreaEntry`, not a chosen subset. There are eighteen (`FarmAreaEntry` spans `DroneDock.Farming.cs:26-178`), and the ones easily missed are the behavioural and in-progress ones: `LevelFirst`, `LevelPassStarted`, `LevelTargetHeight`, `LevelBankedSpoil`, `LastNextAction`, `LastNextDueHours`, `LastDueAtWorldSeconds`, `LastUnfitCondition`, `LastMissingMaterial`, `LastFlat`, plus `Name` and `Epoch`. `LevelFirst` alone decides whether the drone levels ground before planting (`FarmingComponent.cs:125`), so dropping it silently changes what the drone does.
 2. Return, per row: the id it should take, the kind it should carry, whether it was assigned, the legacy id it consumed, and every carried member — plus the dock's new `nextAreaId`.
 3. Renumber only the incoming farm rows; never return a changed id for an existing survey area (KTD3).
 4. State idempotence as the property the signature can actually deliver: a legacy row whose consumed id already appears as a fold marker on an existing area is returned as no change. The fold sees ids and `nextAreaId` only, so "given rows already folded" is not observable without that marker — and without it, a second run mints fresh ids and duplicates every farm.
@@ -341,7 +341,7 @@ Four phases, each landing something verifiable. Phases A and B must complete in 
 - `EcoServerMod/AdvancedElectronics/SurveyAreaEntry.cs`
 
 **Approach:**
-1. Add a member for every `[Serialized]` member of `FarmAreaEntry` that has no equivalent already — the full seventeen U1 enumerates, not a chosen subset.
+1. Add a member for every `[Serialized]` member of `FarmAreaEntry` that has no equivalent already — the full eighteen U1 enumerates, not a chosen subset.
 2. Add the fold marker: the legacy farm id this area was folded from, which is what makes U1's idempotence observable and U3's partial fold safe.
 3. **Resolve the assignment carrier, which does not exist yet.** A farm's assignment is a per-entry `bool` and a dock may have several assigned at once (`AssignedFarmAreas`). The survey side has no equivalent: `AssignedSurveyAreaId` is one `int` on the dock (`DroneDock.cs:342`), and the area-side claim triple is written only through `RecordClaim(..., bool forMining)` whose `ClaimWorkValue` admits `1` for survey and `2` for mining, with `0` reserved to mean "not recorded" on an upgraded save. Add a third work value for farming and a `RecordClaim` overload taking the work value rather than a bool. Neither existing value is usable: `0` drops the claim so an assigned farm stops holding its plots, and `2` makes `IsClaimedForMining` report a mining drone working a farm.
 4. Leave existing members and their names untouched — this unit only adds.

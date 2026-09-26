@@ -84,6 +84,28 @@ namespace Eco.Mods.TechTree
     /// per the U4 plan the plot set is stored in a form whose serializability is not in
     /// question. <see cref="ToSurveyArea"/> projects this into the Eco-free
     /// <see cref="SurveyArea"/> (U2) for membership tests and the plot cap.
+    ///
+    /// <para>
+    /// <b>A farm is one of these too.</b> Since the cross-kind work there is one area type
+    /// carrying a <see cref="Kind"/>, not a mining type and a farming type bridged by an
+    /// adapter — an adapter would have left two collections to keep in step forever, and the
+    /// blindness this class's claim machinery had to farms came from exactly that split. So the
+    /// farm record lives here, beside the survey record, and a kind change preserves everything
+    /// the area holds (R10) for the simple reason that nothing moves: the members it no longer
+    /// needs merely stop being asked about.
+    /// </para>
+    /// <para>
+    /// <b>Not unit-tested, by design, and it is not an oversight to be corrected.</b> This type
+    /// holds Eco types, and <c>AdvancedElectronics.Navigation.Tests.csproj</c> references only
+    /// the Eco-free navigation assembly — deliberately, so the decision logic is testable without
+    /// a server. Every decision this class could be asked to make is therefore pushed across that
+    /// boundary and proved there instead: the fold arithmetic in
+    /// <see cref="AdvancedElectronics.Navigation.LegacyFarmAreas"/>, the claim rules in
+    /// <c>AreaClaims</c>, the status ladder in <see cref="AreaLifecycle"/>. What is left here is
+    /// storage and the shape of it, and it is proved in the batched live session
+    /// (<c>docs/solutions/workflow-issues/eco-mod-batched-live-testing.md</c>). Adding a decision
+    /// to this file moves it out of reach of the suite; put it in the navigation assembly.
+    /// </para>
     /// </summary>
     [Serialized]
     public class SurveyAreaEntry
@@ -413,13 +435,34 @@ namespace Eco.Mods.TechTree
         /// assignment paths refuse a contested claim BEFORE reaching here, under the one lock
         /// KTD6 defines, so an unrefused call is by construction the new holder.
         /// </summary>
-        public void RecordClaim(Guid holdingDockId, int assignmentEpoch, bool forMining)
+        public void RecordClaim(Guid holdingDockId, int assignmentEpoch, bool forMining) =>
+            this.RecordClaim(holdingDockId, assignmentEpoch, forMining ? ClaimWorkMining : ClaimWorkSurvey);
+
+        /// <summary>
+        /// As <see cref="RecordClaim(Guid, int, bool)"/>, naming the kind of work outright rather
+        /// than as a two-way flag (U2, R17).
+        ///
+        /// <para>
+        /// The bool overload predates farming, when survey and mining were the only two answers
+        /// and a flag could carry the choice. A farm is now an area in this same collection and
+        /// it is a THIRD answer: <see cref="ClaimWorkFarming"/>. Neither existing value stands in
+        /// for it — <c>0</c> is "not recorded", which drops the claim so an assigned farm stops
+        /// holding its plots against a neighbouring dock, and <see cref="ClaimWorkMining"/> would
+        /// make <see cref="IsClaimedForMining"/> report a mining drone at work on a crop field.
+        /// </para>
+        /// <para>
+        /// The bool overload is kept and delegates here. Its call sites are correct as they
+        /// stand, and renaming a method that writes a persisted record buys nothing a reader of
+        /// this file needs.
+        /// </para>
+        /// </summary>
+        public void RecordClaim(Guid holdingDockId, int assignmentEpoch, int claimWorkValue)
         {
             lock (AreaDataLock)
             {
                 this.ClaimHolderDockId = holdingDockId.ToString();
                 this.ClaimEpoch = assignmentEpoch;
-                this.ClaimWorkValue = forMining ? ClaimWorkMining : ClaimWorkSurvey;
+                this.ClaimWorkValue = claimWorkValue;
             }
         }
 
@@ -430,8 +473,17 @@ namespace Eco.Mods.TechTree
         public const int ClaimWorkMining = 2;
 
         /// <summary>
+        /// Value of <see cref="ClaimWorkValue"/> meaning a farming drone holds this area (U2,
+        /// R17). Numbered after the existing two rather than folded into either: a farm's
+        /// assignment has to hold its plots exactly as a mine's does, while reading as a
+        /// different kind of work to everyone who asks what is happening on the ground.
+        /// </summary>
+        public const int ClaimWorkFarming = 3;
+
+        /// <summary>
         /// What kind of drone holds this area's claim: 0 for not recorded, 1 for a survey drone,
-        /// 2 for a mining drone. This is how a mining dock tells a survey dock that a mining drone
+        /// 2 for a mining drone, 3 for a farming drone. This is how a mining dock tells a survey
+        /// dock that a mining drone
         /// is working the area (R16), without a second channel between them — the fact rides on
         /// the claim the assignment already takes, and the survey dock reads the same area.
         ///
@@ -462,6 +514,19 @@ namespace Eco.Mods.TechTree
         /// property carrying that attribute is the silent load failure this class warns about.
         /// </summary>
         public bool IsClaimedForMining => this.HasClaim && this.ClaimWorkValue == ClaimWorkMining;
+
+        /// <summary>
+        /// Whether a farming drone is currently working this area (U2, R17) — the read half of
+        /// <see cref="ClaimWorkFarming"/>, so no caller has to compare the raw value. NOT
+        /// <c>[Serialized]</c>, for the same reason <see cref="IsClaimedForMining"/> is not.
+        ///
+        /// <para>
+        /// Note what this is not. R47 reserves farmland against a mining dock whether or not the
+        /// farm is assigned, so the question "is this ground a farm" is
+        /// <see cref="Kind"/>, not this. This answers the narrower one: is a drone on it now.
+        /// </para>
+        /// </summary>
+        public bool IsClaimedForFarming => this.HasClaim && this.ClaimWorkValue == ClaimWorkFarming;
 
         /// <summary>
         /// Drops the claim and returns the plots it covered — what R38's message names. An area
@@ -496,6 +561,112 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public IReadOnlyList<PlotCoord> ReleaseClaimBy(Guid dockId) =>
             this.IsClaimedBy(dockId) ? this.ReleaseClaim() : Array.Empty<PlotCoord>();
+
+        // ---------------------------------------------------------------
+        // U2: the farm record (R10, R17, R18). Everything the old FarmAreaEntry serialized that
+        // this class had no equivalent for, so an area carrying AreaKind.Farming is a whole farm
+        // rather than a mining area with a crop bolted to it.
+        //
+        // This is the shape half of the Key Decision that farms and mines are ONE area type
+        // carrying a kind, rather than two types bridged by an adapter. The adapter would have
+        // left two collections to keep in step forever; the cost of this side is that a mining
+        // area carries a dozen members it never reads. That cost is paid once, here, and it is
+        // what makes R10 true by construction: a kind change preserves what the area recorded
+        // because there is nothing to move. The members simply stop being asked about.
+        //
+        // Flat primitives and ThreadSafeLists of them, with setters, for the reasons this class's
+        // header and KindValue give at length.
+        //
+        // The defaults matter and are not decoration. LastStallReason, LastNextAction and
+        // LastNextDueHours rest at -1 meaning "none"; 0 is a real ordinal in the first two and a
+        // real duration in the third, so an absent field settling at 0 would have every upgraded
+        // area asserting a stall reason and a next action nobody produced.
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// The one crop this area grows (R24), as the engine's own species name. Null until a
+        /// citizen picks one, which is the state R26 reports as awaiting a crop and works not at
+        /// all. Meaningless on a mining area and not read there.
+        /// </summary>
+        [Serialized] public string Crop { get; set; }
+
+        /// <summary>
+        /// The level-first toggle (R17): whether the drone levels this ground before it plants.
+        ///
+        /// <para>
+        /// The one member here that is not a readout. It decides what the drone DOES, so a
+        /// migration that drops it changes behaviour with nothing on screen to say so — which is
+        /// why the fold that carries it is tested member by member rather than in the aggregate.
+        /// </para>
+        /// </summary>
+        [Serialized] public bool LevelFirst { get; set; }
+
+        /// <summary>Last reported stall as a <c>FarmStallReason</c> ordinal, or -1 for none.</summary>
+        [Serialized] public int LastStallReason { get; set; } = -1;
+
+        /// <summary>Last reported next action as a <c>FarmAction</c> ordinal, or -1 for none.</summary>
+        [Serialized] public int LastNextAction { get; set; } = -1;
+
+        /// <summary>Hours until this area's least-grown plant comes due (R31); negative for none. Display only.</summary>
+        [Serialized] public double LastNextDueHours { get; set; } = -1;
+
+        /// <summary>
+        /// When that plant comes due, as an absolute world time. The scheduling value: a stored
+        /// DURATION re-anchored to the clock on every settle walks the wake forward each time
+        /// anyone touches a chest, and the crop never gets picked.
+        /// </summary>
+        [Serialized] public double LastDueAtWorldSeconds { get; set; }
+
+        /// <summary>Plots held by an overlap with another dock's area (R37), as last reported.</summary>
+        [Serialized] public int LastHeldPlotCount { get; set; }
+
+        /// <summary>The engine's own word for why the ground refused the crop (R38).</summary>
+        [Serialized] public string LastUnfitCondition { get; set; }
+
+        /// <summary>What linked storage was short of (R28).</summary>
+        [Serialized] public string LastMissingMaterial { get; set; }
+
+        /// <summary>
+        /// Whether the surface is flat enough to farm by hand (R8), as last derived. Re-derived
+        /// from the ground rather than stored as an achievement (R9), so this is the last
+        /// derivation rather than a claim that survives the ground changing.
+        /// </summary>
+        [Serialized] public bool LastFlat { get; set; }
+
+        /// <summary>
+        /// Whether a level pass is under way. Distinct from <see cref="LevelFirst"/>: the toggle
+        /// is the request, this is the run.
+        /// </summary>
+        [Serialized] public bool LevelPassStarted { get; set; }
+
+        /// <summary>
+        /// The height the running pass is levelling to, pinned at pass entry. Pinned rather than
+        /// re-derived, because re-deriving the median from the half-levelled surface would move
+        /// the target under the pass and it would never converge (R19).
+        /// </summary>
+        [Serialized] public int LevelTargetHeight { get; set; }
+
+        /// <summary>Blocks the running pass has removed and still counts as its own material, wherever they now sit (R20).</summary>
+        [Serialized] public int LevelBankedSpoil { get; set; }
+
+        /// <summary>
+        /// The legacy farm id this area was folded from, or 0 for an area that was never a legacy
+        /// farm — the fold marker (U1, U3, R18).
+        ///
+        /// <para>
+        /// It is what makes the fold safe to run twice. The legacy farm collection and this one
+        /// numbered from independent counters, so the fold renumbers every farm it moves; without
+        /// a record of which legacy row produced which area, a second load cannot tell a farm
+        /// already folded from a farm still to fold, and mints a fresh id for every row again —
+        /// duplicating every farm a player owns.
+        /// </para>
+        /// <para>
+        /// 0 means "folded from nothing", which is what every existing area in every existing
+        /// save correctly reads as. That is the one place a legacy farm id could collide with the
+        /// absent-field default, and the dock minted farm ids from 1, so it does not.
+        /// </para>
+        /// </summary>
+        [Serialized] public int FoldedFromLegacyFarmId { get; set; }
 
         /// <summary>Sentinel in the surfaceY slot of a <see cref="SweepColumns"/> row: no surface was recorded for that column.</summary>
         public const int NoSurfaceRecorded = int.MinValue;
