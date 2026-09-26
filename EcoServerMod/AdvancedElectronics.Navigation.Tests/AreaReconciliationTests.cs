@@ -33,6 +33,7 @@ namespace AdvancedElectronics.Navigation.Tests
         private static readonly Guid DockA = Guid.Parse("11111111-1111-1111-1111-111111111111");
         private static readonly Guid DockB = Guid.Parse("22222222-2222-2222-2222-222222222222");
         private static readonly Guid DockC = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        private static readonly Guid DockD = Guid.Parse("44444444-4444-4444-4444-444444444444");
 
         private static List<PlotCoord> Block(int x, int z, int width, int depth)
         {
@@ -215,6 +216,75 @@ namespace AdvancedElectronics.Navigation.Tests
 
             Assert.True(undone.Area.IsSameAreaAs(second));
             Assert.Equal(AreaClaimBlock.HeldByAssignment, undone.Reason);
+        }
+
+        // --- KTD10 in a chain: undo the minimum that settles it ---
+
+        [Fact]
+        public void AChainOfThree_UndoesOnlyTheMiddle_LeavingTheFarEndAlone()
+        {
+            // A--B share ground and B--C share different ground, but A and C never touch. Undoing
+            // B settles both collisions at once: A keeps the ground it held, and C was only ever
+            // in conflict with B.
+            //
+            // The trap is that the offender rule is pairwise. Asked in isolation, C IS the
+            // offender against B -- its dock sorts higher. So a pass that decides each area
+            // against the world as it arrived undoes C as well, for a rival that no longer
+            // exists by the time the pass ends. The player whose dock C was assigned to ground
+            // nobody else wanted finds it unassigned and its drone home.
+            var a = Mine(1, DockA, Block(0, 0, 2, 2), holdsClaim: true);
+            var b = Mine(1, DockB, Block(1, 0, 3, 2), holdsClaim: true);
+            var c = Mine(1, DockC, Block(3, 0, 2, 2), holdsClaim: true);
+
+            foreach (var undone in new[] { Undo(a, b, c), UndoReversed(a, b, c) })
+            {
+                var only = Assert.Single(undone);
+                Assert.True(only.Area.IsSameAreaAs(b), "only the middle of the chain gives way");
+            }
+        }
+
+        [Fact]
+        public void AChainOfFour_UndoesTwo_AndNotTheThirdThatNeedsNothingUndone()
+        {
+            // A--B, B--C, C--D, and no other pair touches. Undoing B frees A and C; D is then
+            // still standing on C's ground, so D gives way too. Two undone, not three: C keeps
+            // its claim because the only area it ever collided with is already gone.
+            //
+            // This is the case that rules out the obvious repair of dropping any area whose
+            // conflicts were all themselves undone -- that drops C AND D, and leaves C and D
+            // overlapping and both holding, which is the state the pass exists to remove.
+            var a = Mine(1, DockA, Block(0, 0, 2, 2), holdsClaim: true);
+            var b = Mine(1, DockB, Block(1, 0, 2, 2), holdsClaim: true);
+            var c = Mine(1, DockC, Block(2, 0, 2, 2), holdsClaim: true);
+            var d = Mine(1, DockD, Block(3, 0, 2, 2), holdsClaim: true);
+
+            foreach (var undone in new[] { Undo(a, b, c, d), UndoReversed(a, b, c, d) })
+            {
+                Assert.Equal(2, undone.Count);
+                Assert.Contains(undone, u => u.Area.IsSameAreaAs(b));
+                Assert.Contains(undone, u => u.Area.IsSameAreaAs(d));
+                Assert.DoesNotContain(undone, u => u.Area.IsSameAreaAs(c));
+            }
+        }
+
+        [Fact]
+        public void AChainIsSettledInOnePass_WithNothingLeftOverlappingAndHolding()
+        {
+            // The property the two cases above are really about: after the pass is applied, no
+            // two areas that share ground are both still holding. Minimal is only useful if it
+            // is also complete.
+            var a = Mine(1, DockA, Block(0, 0, 2, 2), holdsClaim: true);
+            var b = Mine(1, DockB, Block(1, 0, 2, 2), holdsClaim: true);
+            var c = Mine(1, DockC, Block(2, 0, 2, 2), holdsClaim: true);
+            var d = Mine(1, DockD, Block(3, 0, 2, 2), holdsClaim: true);
+
+            var after = AfterApplying(Undo(a, b, c, d), a, b, c, d);
+
+            Assert.Empty(AreaReconciliation.AssignmentsToUndo(after));
+
+            foreach (var left in after.Where(x => x.HoldsClaim))
+            foreach (var right in after.Where(x => x.HoldsClaim && !x.IsSameAreaAs(left)))
+                Assert.Empty(AreaOverlap.SharedPlots(left.Plots, right.Plots));
         }
 
         // --- R7a: a dock does not hold ground against itself ---

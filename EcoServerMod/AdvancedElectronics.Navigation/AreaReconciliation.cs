@@ -143,6 +143,15 @@ namespace AdvancedElectronics.Navigation
     /// other side would not: a farm undone in favour of a mine would leave that mine standing on
     /// farmland, an R3 violation the next load would have to undo as well.
     /// </para>
+    /// <para>
+    /// <b>It is also minimal, and that is a separate promise.</b> No area is undone whose ground
+    /// nothing still contests once the pass finishes. Complete and minimal are not the same
+    /// property: undoing every pairwise loser also reaches a clean world, and for a chain of
+    /// collisions it undoes areas that never needed to give way at all -- taking a player's
+    /// assignment for a rival the same pass removed, and recording a reason that names an area now
+    /// unassigned. Minimality is what the greedy walk buys, and the chain cases in
+    /// <c>AreaReconciliationTests</c> are what hold it down.
+    /// </para>
     /// </summary>
     public static class AreaReconciliation
     {
@@ -180,23 +189,49 @@ namespace AdvancedElectronics.Navigation
 
             var undo = new List<AreaToUnassign>();
 
+            // Every area this pass has already decided to undo. It is what makes the walk below
+            // greedy rather than pairwise, and it is the whole of the difference.
+            //
+            // The offender rule is a pairwise question, and asking it of a frozen snapshot answers
+            // more collisions than the world actually has. Take three areas on three docks where A
+            // and B share ground and B and C share different ground, while A and C never touch.
+            // Undoing B settles both. But asked in isolation C IS the offender against B, so a
+            // pass reading the snapshot undoes C as well -- for a rival that no longer exists once
+            // the pass ends, with the record on C naming an area that is itself unassigned. The
+            // player whose dock C sat on ground nobody contested finds it idle and its drone home.
+            //
+            // So each area is asked against what is still STANDING, not against what arrived. An
+            // area already undone holds nothing, and ground it was holding is free.
+            var undone = new HashSet<(Guid Dock, int Area)>();
+
             // Ordered by the same pair the offender rule compares, so the RESULT is stable too --
             // the Eco side writes a log line per undone assignment, and a list that shuffles
-            // between loads reads as a different set of decisions.
+            // between loads reads as a different set of decisions. Ascending also means the side
+            // the rule favours is always visited first, which is what lets one walk settle a chain
+            // of any length: by the time a higher area is asked, every lower one it might have
+            // yielded to has already been kept or dropped.
             foreach (var area in world.Where(a => a.HoldsClaim).OrderBy(a => a.OwningDockId).ThenBy(a => a.AreaId))
             {
+                // Rebuilt only once something has actually been undone, so R16's clean load --
+                // the overwhelmingly common one -- still walks the original list and allocates
+                // nothing per area.
+                var standing = undone.Count == 0
+                    ? world
+                    : world.Where(p => !undone.Contains((p.OwningDockId, p.AreaId))).ToList();
+
                 // The area's own kind is the claimant kind, exactly as the survey assignment path
                 // passes it (R30): a pass serves whatever the area is for. A mining area asks as
                 // mining and meets R47's farmland branch; a farming area asks as farming and does
                 // not, which is the whole of the asymmetry.
                 var conflicts = AreaClaims
-                    .Conflicts(area.Kind, AreaOverlap.Matches(area, world))
+                    .Conflicts(area.Kind, AreaOverlap.Matches(area, standing))
                     .Where(c => IsOffender(area, c.Holder))
                     .ToArray();
 
                 if (conflicts.Length == 0) continue;
 
                 undo.Add(new AreaToUnassign(area, conflicts));
+                undone.Add((area.OwningDockId, area.AreaId));
             }
 
             return undo;
