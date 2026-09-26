@@ -22,6 +22,29 @@ namespace Eco.Mods.TechTree
     /// the new shape. A farm redraw wipes nothing (R12): the crop, the toggle and the
     /// markers are settings rather than observations, and the drone reads the ground fresh
     /// on every visit anyway.
+    ///
+    /// <para>
+    /// <b>One collection, two views (U10, KTD7).</b> Since U3 a farm is an ordinary
+    /// <see cref="SurveyAreaEntry"/> in <c>DroneDockObject.SurveyAreas</c> carrying
+    /// <see cref="AreaKind.Farming"/>, and this picker is the FARMING view of that one
+    /// collection: it lists, creates, renames, redraws and deletes farming-kind areas only, and
+    /// an area of any other kind is invisible here exactly as a farm is invisible to the survey
+    /// picker. That filter is not cosmetic — this picker's reconcile treats "absent from the
+    /// returned entries" as a deletion, so an unfiltered list would let confirming the farm map
+    /// delete every mining area the dock owns.
+    /// </para>
+    /// <para>
+    /// <b>The cap is the dock's, not the tab's (R19).</b> Both pickers count the WHOLE
+    /// collection against <see cref="AreaCapacity.MaxAreasPerDock"/>, so ten is ten whichever
+    /// tab a player is standing on. A dock the fold left above the limit keeps every area and
+    /// may add none until deletions bring it back under.
+    /// </para>
+    /// <para>
+    /// <b>Seam.</b> Eco-coupled UI with no unit test: this drives the client's map editor and
+    /// mutates the dock's serialized state, and the test project references the navigation
+    /// assembly alone. The one decidable part — the cap arithmetic — is
+    /// <see cref="AreaCapacity"/>, unit-tested there. The rest is proven in U12's live session.
+    /// </para>
     /// </summary>
     public static class FarmAreaPicker
     {
@@ -57,7 +80,7 @@ namespace Eco.Mods.TechTree
             var entryStatus = new Dictionary<int, EditableEntryStatus>();
 
             var index = 0;
-            foreach (var area in dock.FarmAreas)
+            foreach (var area in dock.FarmingAreas)
             {
                 foreach (var plot in area.Plots())
                     map[new Vector2i(plot.X, plot.Z)] = area.Id;
@@ -138,7 +161,11 @@ namespace Eco.Mods.TechTree
         {
             var plotsById = PlotsByEntryId(edited);
 
-            foreach (var area in dock.FarmAreas.ToList())
+            // Kind-filtered, and that is load-bearing rather than tidy: an id absent from the
+            // returned entries is treated as a deletion, and this list is now a view onto the
+            // dock's ONE area collection (U10). Walking it unfiltered would delete every mining
+            // and survey area the dock owns the first time a player confirmed the farm map.
+            foreach (var area in dock.FarmingAreas.ToList())
                 if (!edited.MapEntries.ContainsKey(area.Id))
                     dock.DeleteFarmArea(area.Id);
 
@@ -147,7 +174,7 @@ namespace Eco.Mods.TechTree
                 var entryId = pair.Key;
                 var name = pair.Value.EntryDescription;
                 var plots = plotsById.TryGetValue(entryId, out var p) ? p : new List<PlotCoord>();
-                var area = dock.FarmArea(entryId);
+                var area = dock.FarmingArea(entryId);
 
                 // The client's MaxArea is a hint, not a guarantee -- re-check server-side so
                 // an over-cap area never reaches the drone.
@@ -164,10 +191,12 @@ namespace Eco.Mods.TechTree
                     // confirmed-but-untouched placeholder creates nothing.
                     if (plots.Count == 0) continue;
 
-                    if (dock.FarmAreas.Count >= FarmingComponent.MaxFarmAreas)
+                    // Counted over the WHOLE collection, not over the farms alone (R19, KTD7):
+                    // one dock, one limit, whichever tab the player is drawing from.
+                    if (!AreaCapacity.MayAdd(dock.SurveyAreas.Count))
                     {
                         player.User?.MsgLocStr(
-                            $"'{name}' was not created: a dock holds at most {FarmingComponent.MaxFarmAreas} farm areas. Delete one first.");
+                            $"'{name}' was not created: a dock holds at most {AreaCapacity.MaxAreasPerDock} areas. Delete one first.");
                         continue;
                     }
 
@@ -199,7 +228,13 @@ namespace Eco.Mods.TechTree
         {
             if (!IsPlaceholderName(returnedName)) return returnedName;
 
-            var taken = dock.FarmAreas.Select(a => a.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            // Still scoped to the FARMS, not widened to the whole collection (U10). The two
+            // tabs share one collection now, but this check only picks the next free
+            // "Farm Area N" for an entry the player did not name, and the survey side's
+            // placeholders are "Survey Area N" -- so the sets it would newly see cannot
+            // collide with anything it mints. Widening it would change which number a new farm
+            // gets for no defect it fixes.
+            var taken = dock.FarmingAreas.Select(a => a.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
             for (var n = 1; ; n++)
             {
                 var candidate = $"Farm Area {n}";

@@ -46,7 +46,7 @@ Full catalogue, including CRLF and path-length traps:
 Top level:
 - `EcoServerMod/` — the server mod. `AdvancedElectronics/` is the shipped mod; `AdvancedElectronics.Navigation/` is a pure-C# core (pathfinding, survey grid, drone lifecycle) with **zero Eco dependency** so it is unit-testable; `AdvancedElectronics.Navigation.Tests/` is its xUnit suite; `AdvancedElectronics.Spike/` is a kept feasibility spike, not shipped. `UserCode/` holds whole-file `.override` copies of vanilla files (the escape hatch for attributes a mod assembly cannot extend).
 - `Assets/`, `Packages/`, `ProjectSettings/` — the Unity client project.
-- `scripts/` — eight, all runnable from Git Bash without opening Unity:
+- `scripts/` — nine, all runnable from Git Bash without opening Unity:
   - `gather-eco-refs.sh` — build reference assemblies from an Eco source checkout.
   - `package-release.sh` — build, verify and zip a release into `dist/`.
   - `deploy-usercode-overrides.sh` — install the `UserCode` overrides into a server, and refresh them after a game update.
@@ -55,6 +55,7 @@ Top level:
   - `validate-icon-binding.sh` — every item in the scene draws its own icon file, not another entry's.
   - `validate-learnings.py` — frontmatter contract for `docs/solutions/`.
   - `validate-provenance.sh` — every tracked file under `Assets/` has a declared licence, and nothing declared as ours is derived from contributed art.
+  - `validate-farm-fold.py` — every `[Serialized]` member of the legacy farm entry still makes the crossing into the area the v0.4.0 fold moves it to. Nothing else catches a member added on the Eco side and never mirrored: it compiles and every test passes.
 - `docs/` — `solutions/` (documented learnings), plus `plans/`, `spikes/`, `ideation/`, `guides/`, `protocols/`.
 - `dist/`, `AssetBundles/` — build output, git-ignored. **Never clear `dist/`**: a deleted release zip is gone.
 
@@ -76,6 +77,7 @@ dotnet build EcoServerMod/AdvancedElectronics       # expect zero errors
 dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests
 scripts/validate-name-match.sh                      # client/server name gate
 scripts/validate-provenance.sh                      # licence declared for every tracked asset
+scripts/validate-farm-fold.py                       # the farm save-fold carries every member
 scripts/package-release.sh                          # writes dist/
 ```
 

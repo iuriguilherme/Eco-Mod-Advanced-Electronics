@@ -74,7 +74,7 @@ namespace Eco.Mods.TechTree
         public const int BlocksPerDispatch = 24;
 
         private readonly DroneDockObject dock;
-        private readonly FarmAreaEntry area;
+        private readonly SurveyAreaEntry area;
         private readonly IWorldSampler sampler;
         private readonly MiningRemovalService removal;
         private readonly BlockPlacementService placement;
@@ -90,7 +90,7 @@ namespace Eco.Mods.TechTree
 
         public LevelPassDriver(
             DroneDockObject dock,
-            FarmAreaEntry area,
+            SurveyAreaEntry area,
             IWorldSampler sampler,
             MiningRemovalService removal,
             BlockPlacementService placement,
@@ -290,7 +290,7 @@ namespace Eco.Mods.TechTree
             var columns = new List<SurfaceColumn>();
             var size = PlotUtil.PropertyPlotLength;
 
-            foreach (var plot in this.area.ToArea().EnumeratePlots())
+            foreach (var plot in this.area.ToSurveyArea().EnumeratePlots())
             {
                 var baseX = plot.X * size;
                 var baseZ = plot.Z * size;
