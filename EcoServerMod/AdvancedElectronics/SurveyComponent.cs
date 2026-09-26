@@ -627,28 +627,41 @@ namespace Eco.Mods.TechTree
             // is no claim of its own to lift, and refusing is the conservative answer where the
             // two differ.
             // ---------------------------------------------------------------
-            var conflicts = AreaClaims.Conflicts(
-                kind,
-                MiningComponent.OverlapsOf(dock, area, MiningComponent.AllAreaProjections()));
-
-            if (conflicts.Count > 0)
+            // The scan and the write go under the one lock together, exactly as the three
+            // assignment paths do. This method has never locked, and while it only WROTE the
+            // kind that was survivable -- a torn read of one enum is not a claim decision. It
+            // stopped being survivable when the scan above it was added: a scan that decides
+            // whether ground is free, followed by an unlocked write, is the same read-then-act
+            // window AreaClaimLock exists to close, and a concurrent assignment on another dock
+            // can slip between the two and claim the very ground this scan just found clear.
+            //
+            // So the lock is not tidying up an old omission -- the omission only became a race
+            // when this method started asking about claims.
+            lock (DroneDockObject.AreaClaimLock)
             {
-                // The same formatter the two assignment paths refuse with, for the same reason
-                // reconciliation reuses it: one rule, one wording. It names plot coordinates and
-                // the act that lifts them, never the other area or its owner, so this refusal
-                // discloses no more about foreign ground than an assignment refusal already does
-                // (R20).
-                refusalReason = MiningReadout.FormatClaimRefusal(conflicts, PlotUtil.PropertyPlotLength);
-                return false;
+                var conflicts = AreaClaims.Conflicts(
+                    kind,
+                    MiningComponent.OverlapsOf(dock, area, MiningComponent.AllAreaProjections()));
+
+                if (conflicts.Count > 0)
+                {
+                    // The same formatter the two assignment paths refuse with, for the same reason
+                    // reconciliation reuses it: one rule, one wording. It names plot coordinates and
+                    // the act that lifts them, never the other area or its owner, so this refusal
+                    // discloses no more about foreign ground than an assignment refusal already does
+                    // (R20).
+                    refusalReason = MiningReadout.FormatClaimRefusal(conflicts, PlotUtil.PropertyPlotLength);
+                    return false;
+                }
+
+                area.Kind = kind;
+
+                // R6 and R16. The ground has a new purpose, so whatever reconciliation recorded
+                // about the assignment it undid has stopped describing this area -- and a farm that
+                // is no longer a farm must not keep reporting a farm stall. The seam clears both,
+                // and clears the farm stall only while it is still the one that record wrote.
+                area.ClearReconciliationBlock();
             }
-
-            area.Kind = kind;
-
-            // R6 and R16. The ground has a new purpose, so whatever reconciliation recorded
-            // about the assignment it undid has stopped describing this area -- and a farm that
-            // is no longer a farm must not keep reporting a farm stall. The seam clears both,
-            // and clears the farm stall only while it is still the one that record wrote.
-            area.ClearReconciliationBlock();
             return true;
         }
 
