@@ -44,6 +44,7 @@ The cost is not a degraded experience. It is that the protection the mod claims 
 - **Enforcement sits at assignment and at load, never inside a working pass.** A drone works only what its own dock claimed, so it never has to ask mid-pass what another dock is doing. A kind change counts as an assignment-time act, because it can create a conflict the same way an assignment can. Governs R1, R11, R13.
 - **A save already holding a conflict is reconciled once at load rather than marked and left.** Leaving an illegal claim standing means the drone keeps working ground it is not entitled to. *(session-settled: user-directed — chosen over marking the overlap for the player to resolve, and over stalling the drone on arrival: marking leaves the damage running, and stalling would require the mid-pass check this design excludes.)* Governs R13, R14, R15, R16.
 - **A dock never collides with itself; the rule targets two docks.** A dock hosts one drone, and the farming and mining interfaces belong to whichever drone is attached, so one dock cannot assign both kinds. Exempting the same dock outright also covers the drone-swap case, where a dock's older unassigned farm would otherwise reserve ground against that same dock's new mining assignment. *(session-settled: user-directed — chosen over enforcing collisions between two areas on one dock: two docks over the same ground is the undesirable case, and another player's dock the most undesirable; one dock cannot reach the state at all.)* Governs R7, R7a.
+- **A kind change is refused on an assigned area, not merely on one under a working drone.** Changing the kind under a live claim leaves the area holding ground as an assignment nobody made: the claim carries the old kind's work value, so the area falls out of the new kind's assigned list while still reading as claimed. Releasing the claim silently is worse — it stops a drone as a side effect of an act the player made for another reason. *(session-settled: user-directed — chosen over releasing the claim on the change, and over allowing it: the owner described repurposing as "unassign a farming area and turn that area into a mining area", two steps.)* Governs R11a.
 - **Landfill is the next kind, not a third area type.** Building the kind transition generically is what makes the mine-to-landfill-to-farm chain one mechanism.
 
 ### Actors
@@ -71,6 +72,7 @@ The cost is not a degraded experience. It is that the protection the mod claims 
 - R9. An area's kind can change over its life, and changing it is an explicit act by whoever operates the dock.
 - R10. A kind change preserves what the area recorded — its findings, its worked history, its exclusions, and its farm record.
 - R11. A kind change is refused while a drone is working that area or one overlapping it, and the refusal says which dock is working what.
+- R11a. A kind change is refused while the area is assigned. Unassigning first is the player's path to repurposing ground, and it is the one the owner described.
 - R12. Unassigning an area never changes what it is for.
 
 **Reconciling a save that already conflicts**
@@ -650,6 +652,7 @@ No shape-version stamp is added. The only default-collision hazard here is `Area
 - `scripts/validate-provenance.sh` — every tracked asset still declares a licence.
 - `scripts/validate-learnings.py` — the learnings store's frontmatter contract holds after U11.
 - `scripts/package-release.sh` — only when cutting a release; it runs the provenance gate itself.
+- **Two existing tests were edited, and that is a finding this contract requires be recorded rather than waved through.** `FarmlandIsReservedEvenAgainstTheDockThatHoldsIt` and `AClaimantSkipsGroundItAlreadyHolds` both placed their pair on one dock and asserted a conflict. R7a exempts a dock from itself, so both scenarios became vacuous — `Assert.Single` would have seen zero, not one. Each was re-pointed to the cross-dock geometry where it still proves what it meant, and the first renamed, because its old name asserted the reversed rule. Neither assertion was weakened. R7a is user-directed, so the reversal is intended; the edits are its consequence, not an accommodation of a defect.
 - The U12 live session is the acceptance gate for everything Eco-coupled. No unit that names a live-session verification is done on a green build alone.
 
 **Uncovered by automation, by design.** The Eco-coupled half has no unit coverage and will not gain any: the test project references the navigation assembly only. Every unit above that says so names the seam in its own XML doc, so the gap is discoverable from the code rather than from this plan.
@@ -665,6 +668,7 @@ No shape-version stamp is added. The only default-collision hazard here is `Area
 - The U12 live session has been run once and every scenario in it observed.
 - A pre-fold save and a fresh world both start clean, and a second restart changes nothing further.
 - `CONCEPTS.md` and the code agree about the farmland hold's direction, timing and carrier.
+- `MiningReadout.FormatBlockedReason`'s `reconciliationBlock` parameter was added, tested, and removed again within this work: nothing could fill it, because by the time that row renders the dock's assignment is gone and the job carries no area identity. R15 is served by the per-area roster annotation instead. It is named here because a parameter no producer fills is precisely the defect this feature exists to remove.
 - Abandoned approaches leave no code behind — no half-wired second collection, no unused projection path, no stall reason added and not produced. This work exists because two such remnants were mistaken for working features; adding a third would be the same defect.
 - The legacy stand-in member and `FarmAreaEntry` remain declared and documented as legacy receivers, with a comment saying what would have to be true before they can go.
 

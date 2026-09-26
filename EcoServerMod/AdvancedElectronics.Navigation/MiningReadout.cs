@@ -95,27 +95,28 @@ namespace AdvancedElectronics.Navigation
         /// vanished-area path (R24) and would otherwise report "the area is gone" about an area
         /// that is plainly still on the map -- which is the guess R23 exists to remove.
         /// </param>
-        /// <param name="reconciliationBlock">
-        /// R15: what <see cref="FormatReconciliationBlock"/> made of the area's recorded
-        /// load-time block, or null/empty when reconciliation undid nothing here.
+        /// <remarks>
+        /// <b>This row deliberately does NOT carry R15's reconciliation reason.</b> An earlier
+        /// revision gave it a <c>reconciliationBlock</c> parameter ranked above the job's end
+        /// reason. It was removed because nothing could fill it: by the time this row renders,
+        /// the dock's assignment is gone and <see cref="MiningJob"/> carries no area identity, so
+        /// the panel has no route back to the area holding the record. R15 is served instead by
+        /// the per-area roster annotation, which reads the record off the area that owns it.
         ///
         /// <para>
-        /// Ranked above the job's end reason for the same reason the out-of-range notice is: an
-        /// assignment reconciliation undid ends its job reading "the area was unassigned", which
-        /// is true and answers nothing -- least of all the question the player arrives with,
-        /// which is why an assignment they made is not there any more. The server-wide halt
-        /// still outranks it, because the halt refuses dispatch before a job exists at all.
+        /// It is recorded here because a parameter no producer fills is the exact defect this
+        /// feature exists to remove -- the farmland rule and the held-by-overlap stall were both
+        /// written, tested and never wired. A third would have been the same mistake, passing
+        /// review because a test constructed its own input.
         /// </para>
-        /// </param>
+        /// </remarks>
         public static string FormatBlockedReason(
             bool haltedServerWide,
             MiningEndReason? jobEndReason,
-            bool assignmentOutOfRange = false,
-            string reconciliationBlock = null)
+            bool assignmentOutOfRange = false)
         {
             if (haltedServerWide) return "an administrator has halted mining server-wide";
             if (assignmentOutOfRange) return OutOfRangeAssignmentReason;
-            if (!string.IsNullOrEmpty(reconciliationBlock)) return reconciliationBlock;
             return FormatStopReason(jobEndReason);
         }
 

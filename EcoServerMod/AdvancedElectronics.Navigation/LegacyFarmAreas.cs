@@ -16,6 +16,17 @@ namespace AdvancedElectronics.Navigation
     /// compile error into a folded farm missing a value, discovered after someone's world was
     /// already upgraded.
     /// </para>
+    ///
+    /// <para>
+    /// <b>The guard runs one way only, and not the way that is likely.</b> It catches a member
+    /// mirrored here without its call site updated. It does NOT catch the opposite and far more
+    /// probable mistake: a <c>[Serialized]</c> member added to <c>FarmAreaEntry</c> and never
+    /// mirrored here at all. That compiles, every test stays green, and the member is dropped
+    /// from every migrated farm for good. The member-count assertions in the tests cross-check
+    /// this type against <see cref="FoldedFarmArea"/> — two Eco-free types agreeing with each
+    /// other — and cannot see <c>FarmAreaEntry</c>, so they cannot catch it either. Adding a
+    /// member to the legacy entry means checking this type by hand.
+    /// </para>
     /// </summary>
     public sealed class LegacyFarmRow
     {

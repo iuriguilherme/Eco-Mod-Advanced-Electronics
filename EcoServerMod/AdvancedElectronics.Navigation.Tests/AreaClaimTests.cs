@@ -552,25 +552,6 @@ namespace AdvancedElectronics.Navigation.Tests
         }
 
         [Fact]
-        public void TheReconciliationReasonOutranksTheJobsOwnEndReason_AndTheHaltOutranksIt()
-        {
-            // The job that was running ended reading "the area was unassigned", which is true and
-            // says nothing about why -- the same trap R23's out-of-range notice was added to
-            // escape. The server-wide halt still speaks first: it refuses dispatch before a job
-            // exists at all.
-            var reconciled = MiningReadout.FormatReconciliationBlock(
-                AreaClaimBlock.FarmlandReserved, Block(0, 0, 1, 1), PlotSize);
-
-            Assert.Equal(
-                reconciled,
-                MiningReadout.FormatBlockedReason(false, MiningEndReason.Unassigned, false, reconciled));
-
-            Assert.DoesNotContain(
-                "unassigned at load",
-                MiningReadout.FormatBlockedReason(true, MiningEndReason.Unassigned, false, reconciled));
-        }
-
-        [Fact]
         public void AFarmHeldByAnOverlapRendersARealPlotCount()
         {
             // R15 on the farm side. The stall reason and its renderer have both existed since the

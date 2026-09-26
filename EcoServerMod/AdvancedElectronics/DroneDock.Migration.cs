@@ -289,6 +289,13 @@ namespace Eco.Mods.TechTree
         /// assembly boundary, and it is the whole reason the constructor is shaped that way.
         /// </para>
         /// <para>
+        /// <b>It guards one direction only.</b> Mirror a member onto <see cref="LegacyFarmRow"/>
+        /// and forget this call, and the build stops you. Add one to <see cref="FarmAreaEntry"/>
+        /// and never mirror it, and nothing does: this call still compiles, the suite still
+        /// passes, and that member never reaches a folded farm. Adding a serialized member to
+        /// the legacy entry means updating <see cref="LegacyFarmRow"/> and this method by hand.
+        /// </para>
+        /// <para>
         /// A null row maps to a null row rather than throwing. The fold skips nulls, and this
         /// runs at world load where a throw costs the load and leaves the player no way to reach
         /// the dock and repair it — the same reason the fold itself passes over malformed input.
