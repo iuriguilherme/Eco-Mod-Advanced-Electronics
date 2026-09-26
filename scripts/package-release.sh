@@ -97,6 +97,14 @@ dotnet test EcoServerMod/AdvancedElectronics.Navigation.Tests --nologo -v q \
 echo "==> Checking provenance"
 scripts/validate-provenance.sh || fail "provenance check failed -- not packaging"
 
+# The farm save-fold is the other obligation that only shows up after shipping. A member
+# added on the Eco side and never mirrored compiles clean and passes every test, and the
+# symptom is a setting quietly missing from a player's farm after they update -- which is
+# exactly the shape the provenance gate above exists to stop for licences.
+echo "==> Checking the farm save-fold"
+PYREAL="$(python -c 'import sys;print(sys.executable)')" \n  || fail "no working Python interpreter for the farm-fold check"
+"$PYREAL" scripts/validate-farm-fold.py || fail "farm-fold check failed -- not packaging"
+
 # --- 4. Asset bundle, and the staleness guard -----------------------------------
 [ -f "$BUNDLE" ] || fail "$BUNDLE not found. Build it in Unity: Eco Tools > Mod Kit > Build Current Bundle"
 
