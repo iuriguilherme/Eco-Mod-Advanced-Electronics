@@ -141,7 +141,7 @@ namespace Eco.Mods.TechTree
         /// comes due again on the crop's own clock. The lifecycle therefore keeps this
         /// strategy across idle trips instead of rebuilding it.
         /// </summary>
-        public bool IsExhausted => !this.homeDock.AssignedFarmAreas.Any();
+        public bool IsExhausted => !this.homeDock.AssignedFarmingAreas.Any();
 
         /// <summary>
         /// Nothing to offer right now: the hold is full, or every area is waiting or
@@ -223,7 +223,7 @@ namespace Eco.Mods.TechTree
 
         private ParkedWorkOutcome TickParkedWorkOnPlot()
         {
-            var area = this.homeDock.FarmArea(this.currentAreaId);
+            var area = this.homeDock.FarmingArea(this.currentAreaId);
             if (area == null || this.currentPlot == null) return ParkedWorkOutcome.PlotFailed;
 
             // And again at the moment of work: a dispatch that cleared the check can still
@@ -268,7 +268,7 @@ namespace Eco.Mods.TechTree
         /// would let a single plot hold the drone through a dispatch a citizen could not
         /// interrupt.
         /// </summary>
-        private ParkedWorkOutcome WorkOneColumn(FarmAreaEntry area, PlotCoord plot)
+        private ParkedWorkOutcome WorkOneColumn(SurveyAreaEntry area, PlotCoord plot)
         {
             var citizen = this.homeDock.StampedCitizen;
             var ledger = this.homeDock.ReadCropCeilings();
@@ -447,7 +447,7 @@ namespace Eco.Mods.TechTree
         /// dock running this strategy are the same object.
         /// </remarks>
         private PerformRefusal? Perform(
-            FarmAction action, FarmAreaEntry area, BlockPos ground, BlockPos above, User citizen)
+            FarmAction action, SurveyAreaEntry area, BlockPos ground, BlockPos above, User citizen)
         {
             using var attribution = ModGroundWrite.Attribute(GroundWriteAttribution.ByDrone(
                 this.homeDock.ObjectID.ToString(), area.Id, AreaKind.Farming));
@@ -552,7 +552,7 @@ namespace Eco.Mods.TechTree
         /// The action for one column: R14's rules over what the block currently is, with
         /// R32's fitness gate over the sow clause.
         /// </summary>
-        private FarmPlotOutcome Evaluate(FarmAreaEntry area, (int X, int Z) column, CropCeilingLedger ledger, int stored) =>
+        private FarmPlotOutcome Evaluate(SurveyAreaEntry area, (int X, int Z) column, CropCeilingLedger ledger, int stored) =>
             EvaluateColumn(this.sampler, this.fitness, area, column, ledger, stored);
 
         /// <summary>
@@ -561,7 +561,7 @@ namespace Eco.Mods.TechTree
         /// </summary>
         internal static FarmPlotOutcome EvaluateColumn(
             IWorldSampler sampler, IGroundFitness fitness,
-            FarmAreaEntry area, (int X, int Z) column, CropCeilingLedger ledger, int stored)
+            SurveyAreaEntry area, (int X, int Z) column, CropCeilingLedger ledger, int stored)
         {
             var surfaceY = (int)sampler.GroundHeightAt(column.X, column.Z);
 
@@ -599,7 +599,7 @@ namespace Eco.Mods.TechTree
         /// different name.
         /// </summary>
         private bool PlotNeedsWork(
-            FarmAreaEntry area, PlotCoord plot, CropCeilingLedger ledger, int stored,
+            SurveyAreaEntry area, PlotCoord plot, CropCeilingLedger ledger, int stored,
             (bool Seed, bool Dirt) materials, ref FarmMaterial shortOf)
         {
             foreach (var column in ColumnsIn(plot))
@@ -616,7 +616,7 @@ namespace Eco.Mods.TechTree
         }
 
         /// <summary>Whether the hold and linked storage hold the area's seed, and dirt.</summary>
-        private (bool Seed, bool Dirt) MaterialsFor(FarmAreaEntry area)
+        private (bool Seed, bool Dirt) MaterialsFor(SurveyAreaEntry area)
         {
             var citizen = this.homeDock.StampedCitizen;
             var seedType = CropCatalog.ByKey(area.Crop)?.SeedType;
@@ -629,7 +629,7 @@ namespace Eco.Mods.TechTree
         /// Whether a material the drone lacks aboard is still in "Take From" storage -- only
         /// meaningful away from the dock, where the hold is all the drone can use.
         /// </summary>
-        private bool StorageStillHas(FarmAreaEntry area, FarmMaterial material)
+        private bool StorageStillHas(SurveyAreaEntry area, FarmMaterial material)
         {
             if (this.isDocked()) return false;
             var type = MaterialType(area, material);
@@ -637,12 +637,12 @@ namespace Eco.Mods.TechTree
                 && DroneStorage.Count(DroneStorage.TakeFrom(this.link, this.homeDock.StampedCitizen), type) > 0;
         }
 
-        private static Type MaterialType(FarmAreaEntry area, FarmMaterial material) =>
+        private static Type MaterialType(SurveyAreaEntry area, FarmMaterial material) =>
             material == FarmMaterial.Dirt ? typeof(DirtItem)
             : material == FarmMaterial.Seed ? CropCatalog.ByKey(area.Crop)?.SeedType
             : null;
 
-        private static string MaterialName(FarmAreaEntry area, FarmMaterial material) =>
+        private static string MaterialName(SurveyAreaEntry area, FarmMaterial material) =>
             material == FarmMaterial.Dirt ? "dirt" : $"{CropCatalog.DisplayNameFor(area.Crop)} seed";
 
         /// <summary>
@@ -714,7 +714,7 @@ namespace Eco.Mods.TechTree
             this.lastScanToken = this.tokenAtScanStart;
 
             double? earliest = null;
-            foreach (var area in this.homeDock.AssignedFarmAreas)
+            foreach (var area in this.homeDock.AssignedFarmingAreas)
             {
                 if (area.LastStallReason != (int)FarmStallReason.WaitingOnGrowth) continue;
                 if (area.LastDueAtWorldSeconds <= 0) continue;
@@ -733,7 +733,7 @@ namespace Eco.Mods.TechTree
             {
                 var ledgerCache = this.homeDock.ReadCropCeilings();
 
-                foreach (var area in this.homeDock.AssignedFarmAreas.ToList())
+                foreach (var area in this.homeDock.AssignedFarmingAreas.ToList())
                 {
                     if (string.IsNullOrEmpty(area.Crop) && !area.LevelFirst)
                     {
@@ -774,7 +774,7 @@ namespace Eco.Mods.TechTree
                     var materials = this.MaterialsFor(area);
                     var shortOf = FarmMaterial.None;
 
-                    foreach (var plot in area.ToArea().EnumeratePlots())
+                    foreach (var plot in area.ToSurveyArea().EnumeratePlots())
                     {
                         if (this.visitedThisSweep.Contains((area.Id, plot))) continue;
                         if (this.failedSinceWake.Contains((area.Id, plot))) continue;
@@ -817,8 +817,8 @@ namespace Eco.Mods.TechTree
         /// the harvest, not the farm: the ground still wants plowing and sowing, and
         /// stopping the whole area would leave it fallow until someone ate the surplus.
         /// </summary>
-        private bool AnythingButHarvestToDo(FarmAreaEntry area, CropCeilingLedger ledger, int stored) =>
-            area.ToArea().EnumeratePlots()
+        private bool AnythingButHarvestToDo(SurveyAreaEntry area, CropCeilingLedger ledger, int stored) =>
+            area.ToSurveyArea().EnumeratePlots()
                 .SelectMany(ColumnsIn)
                 .Select(c => this.Evaluate(area, c, ledger, stored).Action)
                 .Any(a => a != FarmAction.LeaveAlone && a != FarmAction.Harvest);
@@ -828,7 +828,7 @@ namespace Eco.Mods.TechTree
         /// remaining time (R31). That time is what the drone schedules its return from,
         /// rather than sweeping its assignments.
         /// </summary>
-        private void RecordGrowthWait(FarmAreaEntry area, PlotCoord plot)
+        private void RecordGrowthWait(SurveyAreaEntry area, PlotCoord plot)
         {
             double? earliest = null;
 
@@ -908,7 +908,7 @@ namespace Eco.Mods.TechTree
         /// How many plots are held, for <see cref="FarmStallReason.HeldByOverlap"/> alone.
         /// Zero on every other reason, which is what that field already means there.
         /// </param>
-        private void RecordStall(FarmAreaEntry area, FarmStallReason stall, string detail, int heldPlotCount = 0)
+        private void RecordStall(SurveyAreaEntry area, FarmStallReason stall, string detail, int heldPlotCount = 0)
         {
             area.LastStallReason = (int)stall;
             area.LastNextAction = -1;
@@ -965,7 +965,7 @@ namespace Eco.Mods.TechTree
                 this.holdFull = true;
         }
 
-        private LevelPassDriver LevelDriver(FarmAreaEntry area) => new LevelPassDriver(
+        private LevelPassDriver LevelDriver(SurveyAreaEntry area) => new LevelPassDriver(
             this.homeDock, area, this.sampler, this.removal, this.placement,
             this.miningArm, this.harvestArm, this.hold, this.SourceInventory);
 
@@ -1003,7 +1003,7 @@ namespace Eco.Mods.TechTree
             var dirt = 0;
             var ledger = this.homeDock.ReadCropCeilings();
 
-            foreach (var area in this.homeDock.AssignedFarmAreas.ToList())
+            foreach (var area in this.homeDock.AssignedFarmingAreas.ToList())
             {
                 if (area.LevelFirst)
                 {
@@ -1015,7 +1015,7 @@ namespace Eco.Mods.TechTree
                 if (seedType == null) continue;
 
                 var stored = this.homeDock.CountInLinkedStorage(area.Crop);
-                foreach (var plot in area.ToArea().EnumeratePlots())
+                foreach (var plot in area.ToSurveyArea().EnumeratePlots())
                 foreach (var column in ColumnsIn(plot))
                 {
                     var action = this.Evaluate(area, column, ledger, stored).Action;

@@ -35,17 +35,14 @@ namespace Eco.Mods.TechTree
     [Serialized, CreateComponentTabLoc("Farming", true), HasIcon]
     public class FarmingComponent : WorldObjectComponent, IOperatingWorldObjectComponent
     {
-        /// <summary>
-        /// How many areas one dock may farm. A cap on the map editor rather than on the
-        /// readout: a dock that owns more areas than it can show is a dock a player cannot
-        /// drive.
-        /// </summary>
-        public const int MaxFarmAreas = 8;
+        // MaxFarmAreas used to be declared here, at 8. There is ONE per-dock area limit now
+        // (R19, KTD7) and it lives in AreaCapacity, in the Eco-free assembly, because both tabs
+        // and both pickers have to meet the same number and it is the one part of this unit that
+        // can be unit-tested. Ten rather than eight: lowering the ceiling would have put existing
+        // docks over a limit for a reason the player never chose.
 
         /// <summary>Plot cap per farm area, matching the survey side's own cap.</summary>
         public const int MaxAreaPlots = 25;
-
-        private const int MaxBrowsePositions = MaxFarmAreas;
 
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
@@ -73,8 +70,19 @@ namespace Eco.Mods.TechTree
         [SyncToView, Autogen, UITypeName("StringDisplay")]
         public string AreasDisplay { get; private set; } = string.Empty;
 
-        /// <summary>Selection cursor, by position in the list above. View-only -- it assigns nothing.</summary>
-        [Serialized, Eco, Range(0, MaxBrowsePositions), UITypeName("Int32")]
+        /// <summary>
+        /// Selection cursor, by position in the list above. View-only -- it assigns nothing.
+        ///
+        /// <para>
+        /// The range reaches every area a pre-fold dock can carry, not just the ten a dock may
+        /// ADD (U10, KTD7). A dock folded above the limit keeps all its areas, and a cursor
+        /// bounded by the cap would leave the ones past the tenth listed and unreachable — the
+        /// player could read a farm's row and never select, crop, level, assign or delete it.
+        /// The live bound is the clamp below, against the count of FARMS rather than of the
+        /// dock's whole collection, because this tab shows one kind.
+        /// </para>
+        /// </summary>
+        [Serialized, Eco, Range(0, AreaCapacity.MaxAddressablePositions), UITypeName("Int32")]
         public int SelectArea
         {
             get => this.browseIndex + 1;
@@ -83,8 +91,8 @@ namespace Eco.Mods.TechTree
                 if (!this.ready) return;
                 if (this.browseIndex == value - 1) return;
 
-                var count = this.Parent is DroneDockObject dock ? dock.FarmAreas.Count : 0;
-                this.browseIndex = DockReadout.ClampCursor(value - 1, count);
+                var count = this.Parent is DroneDockObject dock ? dock.FarmingAreas.Count() : 0;
+                this.browseIndex = AreaCapacity.ClampToKindCount(value - 1, count);
                 this.RefreshAll();
             }
         }
@@ -281,7 +289,11 @@ namespace Eco.Mods.TechTree
             if (this.Parent is not DroneDockObject dock) return;
 
             var area = this.SelectedArea();
-            if (area == null || !area.Assigned)
+
+            // The CLAIM is the assignment (U10, R17). This read the legacy row's Assigned flag,
+            // and that row is emptied by the fold -- so on a migrated dock Unassign refused
+            // every area as "not assigned" while its drone was out working one.
+            if (!dock.IsFarmAssignmentOfMine(area))
             {
                 player?.MsgLocStr("That area is not assigned.", NotificationStyle.Warning);
                 return;
@@ -308,13 +320,14 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
 
-            this.browseIndex = DockReadout.ClampCursor(this.browseIndex, dock.FarmAreas.Count);
+            var farmCount = dock.FarmingAreas.Count();
+            this.browseIndex = AreaCapacity.ClampToKindCount(this.browseIndex, farmCount);
 
             var states = dock.ReadFarmJobStates();
             var job = dock.ReadFarmJob();
 
             this.AreasDisplay = DockReadout.AtReadableSize(
-                dock.FarmAreas.Count == 0
+                farmCount == 0
                     ? "No farm areas drawn. Use Manage Areas on Map to draw one."
                     : string.Join("\n", states.Select((s, i) => FormatArea(i + 1, s))));
 
@@ -353,11 +366,29 @@ namespace Eco.Mods.TechTree
             return string.IsNullOrEmpty(detail) ? line : $"{line}\n    {detail}";
         }
 
-        private FarmAreaEntry SelectedArea()
+        /// <summary>
+        /// The area the cursor names, or null when this dock farms nothing (U10, R17).
+        ///
+        /// <para>
+        /// Indexed into the FARMING-kind areas, in the collection's own order, which is the
+        /// order <see cref="DroneDockObject.ReadFarmJobStates"/> renders and therefore the order
+        /// the player is counting rows in. It used to index the legacy farm collection, which
+        /// the fold empties — so on a migrated dock every button on this tab reported "no area
+        /// is selected" whatever the list showed.
+        /// </para>
+        /// <para>
+        /// <b>Seam.</b> Eco-coupled: the parent is a world object and the entry is its
+        /// serialized state. The cursor arithmetic is <see cref="AreaCapacity.ClampToKindCount"/>,
+        /// unit-tested in the navigation assembly.
+        /// </para>
+        /// </summary>
+        private SurveyAreaEntry SelectedArea()
         {
             if (this.Parent is not DroneDockObject dock) return null;
-            return this.browseIndex >= 0 && this.browseIndex < dock.FarmAreas.Count
-                ? dock.FarmAreas[this.browseIndex]
+
+            var farms = dock.FarmingAreas.ToList();
+            return this.browseIndex >= 0 && this.browseIndex < farms.Count
+                ? farms[this.browseIndex]
                 : null;
         }
 

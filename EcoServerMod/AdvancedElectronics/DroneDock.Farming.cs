@@ -208,14 +208,24 @@ namespace Eco.Mods.TechTree
         }
     }
 
-    /// <summary>One area as the Farming tab renders it: the entry itself, the pure state the readout formats, and whether the ground is flat.</summary>
+    /// <summary>
+    /// One area as the Farming tab renders it: the entry itself, the pure state the readout
+    /// formats, and whether the ground is flat.
+    ///
+    /// <para>
+    /// The entry is a <see cref="SurveyAreaEntry"/> since U10, not the legacy farm row. A farm has
+    /// been an ordinary area carrying <see cref="AreaKind.Farming"/> since U3, and this was the
+    /// last surface still reading the row the fold empties — so on any migrated dock it rendered
+    /// an empty list and the Farming tab showed no farms at all.
+    /// </para>
+    /// </summary>
     public readonly struct FarmAreaReadout
     {
-        public FarmAreaEntry Entry { get; }
+        public SurveyAreaEntry Entry { get; }
         public FarmAreaState State { get; }
         public bool IsFlat { get; }
 
-        public FarmAreaReadout(FarmAreaEntry entry, FarmAreaState state, bool isFlat)
+        public FarmAreaReadout(SurveyAreaEntry entry, FarmAreaState state, bool isFlat)
         {
             this.Entry = entry;
             this.State = state;
@@ -249,8 +259,13 @@ namespace Eco.Mods.TechTree
         // re-dispatches regardless.
         private int farmAssignmentEpoch;
 
-        /// <summary>The areas the drone currently farms.</summary>
-        public IEnumerable<FarmAreaEntry> AssignedFarmAreas => this.FarmAreas.Where(a => a.Assigned);
+        // AssignedFarmAreas used to be declared here, as FarmAreas.Where(a => a.Assigned). U10
+        // removed it rather than repointing it: the legacy collection it read is emptied by the
+        // fold, so on every migrated dock it answered "no areas assigned" while the drone was
+        // working, and a second property meaning the same thing as AssignedFarmingAreas is how
+        // the two would drift apart again. Every caller — the lifecycle's recall token, the
+        // strategy's scan, the job builder — now reads AssignedFarmingAreas below, which derives
+        // the answer from the CLAIM.
 
         // ---------------------------------------------------------------
         // U8: the farm as an ORDINARY AREA. Since U3 a farm is a SurveyAreaEntry carrying
@@ -285,7 +300,26 @@ namespace Eco.Mods.TechTree
         /// </para>
         /// </summary>
         public IEnumerable<SurveyAreaEntry> AssignedFarmingAreas =>
-            this.FarmingAreas.Where(a => a.IsClaimedForFarming && a.IsClaimedBy(this.ObjectID));
+            this.FarmingAreas.Where(this.IsFarmAssignmentOfMine);
+
+        /// <summary>
+        /// Whether <paramref name="area"/> is a farm THIS dock has assigned (U10, R17): a
+        /// farming claim, held by this dock.
+        ///
+        /// <para>
+        /// The one place the test is written. Every surface that used to read the legacy row's
+        /// <c>Assigned</c> flag asks this instead — the tab's unassign button, the epoch bumps
+        /// that re-dispatch a drone after a crop or toggle change, the diagnostic dump — because
+        /// a per-caller copy of "claimed for farming, by me" is how the two halves of that
+        /// question drift apart, and the flag it replaces is on an object the fold empties.
+        /// </para>
+        /// <para>
+        /// Scoped by holder for the same reason <see cref="AssignedFarmingAreas"/> is: an area
+        /// this dock drew may be claimed by another, and that is not this dock's assignment.
+        /// </para>
+        /// </summary>
+        public bool IsFarmAssignmentOfMine(SurveyAreaEntry area) =>
+            area != null && area.IsClaimedForFarming && area.IsClaimedBy(this.ObjectID);
 
         /// <summary>
         /// One farming-kind area by id, or null (U8, R17). The kind is part of the lookup rather
@@ -305,7 +339,7 @@ namespace Eco.Mods.TechTree
         {
             get
             {
-                var assigned = this.AssignedFarmAreas.OrderBy(a => a.Id).ToList();
+                var assigned = this.AssignedFarmingAreas.OrderBy(a => a.Id).ToList();
                 if (assigned.Count == 0) return null;
 
                 var parts = assigned.Select(a => $"{a.Id}.{a.Epoch}");
@@ -313,6 +347,17 @@ namespace Eco.Mods.TechTree
             }
         }
 
+        /// <summary>
+        /// One LEGACY farm row by id, or null.
+        ///
+        /// <para>
+        /// A landing pad's lookup, not the live one. <see cref="FarmingArea"/> is how the tab, the
+        /// picker, the strategy and the drone find a farm since U10; this reads the collection the
+        /// fold empties, so it returns null on every dock whose migration has run. Its one caller
+        /// is <see cref="AssignFarmArea"/>, which keeps a dock whose fold has not yet run
+        /// behaving exactly as it did before.
+        /// </para>
+        /// </summary>
         public FarmAreaEntry FarmArea(int id) => this.FarmAreas.FirstOrDefault(a => a.Id == id);
 
         /// <summary>
@@ -353,18 +398,40 @@ namespace Eco.Mods.TechTree
         /// <summary>Renames an area. A rename is not a redraw, so it keeps everything else (R12).</summary>
         public void RenameFarmArea(int id, string name)
         {
-            var entry = this.FarmArea(id);
+            var entry = this.FarmingArea(id);
             if (entry != null && !string.IsNullOrWhiteSpace(name))
                 entry.Name = name;
         }
 
-        /// <summary>Deletes an area and its configuration with it.</summary>
+        /// <summary>
+        /// Deletes a farming area and its configuration with it.
+        ///
+        /// <para>
+        /// <b>Deleting is what releases the ground (R6).</b> A farm's hold rides on its KIND and
+        /// outlives its assignment, so unassigning gives up nothing; removing the area from the
+        /// collection is what takes its plots out of the world walk, and the claim record goes
+        /// with the object. The assignment epoch is bumped either way, so a drone working the
+        /// area it just lost re-dispatches instead of flying to a shape that no longer exists.
+        /// </para>
+        /// <para>
+        /// <b>It removes through <see cref="DeleteSurveyArea"/> rather than off the collection
+        /// directly.</b> One collection since U3 means one removal, and that one already drops
+        /// the area's findings and clears a survey assignment naming it. A farm has no findings
+        /// of its own, but an area that was a mine before someone changed its kind (R9, R10) is
+        /// still carrying every one it ever recorded — so lifting it out by hand here would leave
+        /// that record behind with no area to belong to.
+        /// </para>
+        /// <para>
+        /// <b>Seam.</b> Eco-coupled: the collection is the dock's own serialized state. What the
+        /// release MEANS for another dock's assignment is <c>AreaClaims</c>', unit-tested in the
+        /// navigation assembly.
+        /// </para>
+        /// </summary>
         public void DeleteFarmArea(int id)
         {
-            var entry = this.FarmArea(id);
-            if (entry == null) return;
+            if (this.FarmingArea(id) == null) return;
 
-            this.FarmAreas.Remove(entry);
+            this.DeleteSurveyArea(id);
             this.farmAssignmentEpoch++;
         }
 
@@ -376,7 +443,7 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public void OnFarmAreaEdited(int id)
         {
-            if (this.FarmArea(id)?.Assigned == true)
+            if (this.IsFarmAssignmentOfMine(this.FarmingArea(id)))
                 this.farmAssignmentEpoch++;
         }
 
@@ -387,7 +454,7 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public bool SetFarmAreaCrop(int id, string cropKey, User actingCitizen = null)
         {
-            var entry = this.FarmArea(id);
+            var entry = this.FarmingArea(id);
             if (entry == null) return false;
 
             // Same gate as assignment: choosing the crop decides what the drone plants on
@@ -395,7 +462,7 @@ namespace Eco.Mods.TechTree
             if (!this.HasFullAccess(actingCitizen)) return false;
 
             entry.Crop = string.IsNullOrWhiteSpace(cropKey) ? null : cropKey;
-            if (entry.Assigned) this.farmAssignmentEpoch++;
+            if (this.IsFarmAssignmentOfMine(entry)) this.farmAssignmentEpoch++;
             return true;
         }
 
@@ -410,13 +477,13 @@ namespace Eco.Mods.TechTree
         /// </summary>
         public bool SetFarmAreaLevelFirst(int id, bool levelFirst, User actingCitizen = null)
         {
-            var entry = this.FarmArea(id);
+            var entry = this.FarmingArea(id);
             if (entry == null) return false;
 
             if (levelFirst && !this.HasFullAccess(actingCitizen)) return false;
 
             entry.LevelFirst = levelFirst;
-            if (entry.Assigned) this.farmAssignmentEpoch++;
+            if (this.IsFarmAssignmentOfMine(entry)) this.farmAssignmentEpoch++;
             return true;
         }
 
@@ -847,7 +914,10 @@ namespace Eco.Mods.TechTree
             var ledger = this.ReadCropCeilings();
             var readouts = new List<FarmAreaReadout>();
 
-            foreach (var area in this.FarmAreas)
+            // The AREAS, kind-filtered (U10, R17) — not the legacy collection the fold empties.
+            // Reading that one here is what made the Farming tab report "no farm areas drawn" on
+            // every migrated dock, whatever the player had drawn or the drone was working.
+            foreach (var area in this.FarmingAreas)
             {
                 readouts.Add(new FarmAreaReadout(area, this.StateFor(area, ledger), area.LastFlat));
             }
@@ -866,10 +936,10 @@ namespace Eco.Mods.TechTree
         public FarmJob ReadFarmJob()
         {
             var ledger = this.ReadCropCeilings();
-            return new FarmJob(this.AssignedFarmAreas.Select(area => this.StateFor(area, ledger)));
+            return new FarmJob(this.AssignedFarmingAreas.Select(area => this.StateFor(area, ledger)));
         }
 
-        private FarmAreaState StateFor(FarmAreaEntry area, CropCeilingLedger ledger)
+        private FarmAreaState StateFor(SurveyAreaEntry area, CropCeilingLedger ledger)
         {
             if (string.IsNullOrEmpty(area.Crop))
                 return FarmAreaState.AwaitingCrop(area.Name);
@@ -905,21 +975,20 @@ namespace Eco.Mods.TechTree
                     return FarmAreaState.RefusedByLaw(area.Name, cropName);
                 case FarmStallReason.PropertyRefusal:
                     return FarmAreaState.RefusedByProperty(area.Name, cropName);
-                // The floor stays, and U8 checked it rather than assuming. The reason it existed
-                // -- nothing ever wrote a real count -- is now fixed on the AREA:
-                // SurveyAreaEntry.RecordReconciliationBlock refuses an empty plot list and so
-                // cannot write a zero. But THIS render reads a FarmAreaEntry, the legacy row,
-                // and that object is not the one reconciliation writes. Its only writer of this
-                // reason is FarmingStrategy.RecordStall, whose heldPlotCount parameter defaults
-                // to 0 and which has no call site for this case at all. So the count reaching
-                // here is not guaranteed real; it is guaranteed absent, and a row reading
-                // "0 plots" would be worse than one reading "1 plot".
+                // The defensive floor is GONE (U10), and its removal was checked rather than
+                // assumed. It read Math.Max(1, ...) because this render's input was the legacy
+                // farm row, whose only writer of this reason was FarmingStrategy.RecordStall --
+                // a method whose heldPlotCount parameter defaults to 0 and which has no call
+                // site for this case at all, so the count arriving here was guaranteed ABSENT
+                // and a row reading "0 plots" would have been worse than one reading "1 plot".
                 //
-                // The floor comes out when this render's input is the area rather than the
-                // legacy row -- the repoint U10 makes -- and not before, because that is the
-                // change that makes the single writer the only writer.
+                // The input is now the AREA, and on the area the count has exactly one writer:
+                // SurveyAreaEntry.RecordReconciliationBlock, which returns without recording
+                // anything when the contested plot list is empty and therefore cannot write a
+                // zero alongside this reason. A zero reaching here would now mean the record is
+                // inconsistent, and showing it is how that would be noticed.
                 case FarmStallReason.HeldByOverlap:
-                    return FarmAreaState.HeldByOverlap(area.Name, cropName, Math.Max(1, area.LastHeldPlotCount));
+                    return FarmAreaState.HeldByOverlap(area.Name, cropName, area.LastHeldPlotCount);
             }
 
             var action = area.LastNextAction < 0 ? FarmAction.LeaveAlone : (FarmAction)area.LastNextAction;

@@ -793,6 +793,28 @@ namespace Eco.Mods.TechTree
         [Serialized] public int LevelBankedSpoil { get; set; }
 
         /// <summary>
+        /// Ends a level pass and forgets its state, whether it completed or was abandoned (R21).
+        ///
+        /// <para>
+        /// The three members move together and always have. Carried over from the legacy farm row
+        /// as a method rather than as three writes at the call site, because a pass that cleared
+        /// its started flag and kept its pinned target height would resume levelling to a height
+        /// nobody asked for the next time the toggle went on.
+        /// </para>
+        /// <para>
+        /// <b>Seam.</b> Eco-coupled by residence rather than by content — this type is in the
+        /// server project, which the test project cannot reference. The pass logic it ends is
+        /// <c>LevelPlan</c>'s, unit-tested in the navigation assembly.
+        /// </para>
+        /// </summary>
+        public void ClearLevelPass()
+        {
+            this.LevelPassStarted = false;
+            this.LevelTargetHeight = 0;
+            this.LevelBankedSpoil = 0;
+        }
+
+        /// <summary>
         /// The legacy farm id this area was folded from, or 0 for an area that was never a legacy
         /// farm — the fold marker (U1, U3, R18).
         ///

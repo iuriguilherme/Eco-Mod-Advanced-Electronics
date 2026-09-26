@@ -58,19 +58,20 @@ namespace Eco.Mods.TechTree
     {
         private const int MaxAreaPlots = 40; // v1 tier cap (R1b); drone-tier-owned later.
 
-        /// <summary>
-        /// How many survey areas one dock may hold. A product number, not a layout budget: with one
-        /// selector serving both viewing and assignment, nothing costs a row per area except the list text.
-        ///
-        /// Ten fits: the panel measures roughly 552px against a ~605px viewport at ten areas. The
-        /// worst case — ten areas AND one fully surveyed area reporting every material the drone
-        /// detects — lands within a few pixels of the fold, so eight would buy headroom if scrolling
-        /// ever becomes a complaint.
-        ///
-        /// It must be a compile-time constant because the steppers' Range is a plain C# attribute and
-        /// the view system has no RangeParam(nameof(...)) sibling to track a live count.
-        /// </summary>
-        public const int MaxSurveyAreas = 10;
+        // MaxSurveyAreas used to be declared here, at 10. There is ONE per-dock area limit now
+        // (R19, KTD7), covering farms and survey areas together because they are one collection
+        // since U3, and it lives in AreaCapacity in the Eco-free assembly -- both tabs and both
+        // pickers read it, and it is the one part of U10 that can carry a unit test.
+        //
+        // The number is unchanged at ten, so the layout reasoning that chose it still holds: the
+        // panel measures roughly 552px against a ~605px viewport at ten areas, and the worst case
+        // -- ten areas AND one fully surveyed area reporting every material the drone detects --
+        // lands within a few pixels of the fold. What moved is the SCOPE: ten now counts a dock's
+        // farms too, and a dock the fold left above ten keeps every area and may add none.
+        //
+        // It must stay a compile-time constant because the steppers' Range is a plain C#
+        // attribute and the view system has no RangeParam(nameof(...)) sibling to track a live
+        // count.
 
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
@@ -145,8 +146,16 @@ namespace Eco.Mods.TechTree
         /// to look at a neighbouring area's findings reassigned the working drone to it. Moving
         /// the selection now changes only what you are LOOKING at; the Assign and Unassign
         /// buttons are the only things that change what the drone does.
+        ///
+        /// <para>
+        /// The range reaches every area a pre-fold dock can carry rather than the ten a dock may
+        /// ADD (U10, KTD7): a dock the fold left above the limit keeps all of them, and a cursor
+        /// bounded by the cap would list the ones past the tenth and let nobody select, assign or
+        /// delete them. The live bound is the clamp below, against the count of the areas THIS
+        /// tab shows -- farms are the Farming tab's and are not counted here.
+        /// </para>
         /// </summary>
-        [Serialized, Eco, Range(1, MaxSurveyAreas), UITypeName("Int32")]
+        [Serialized, Eco, Range(1, AreaCapacity.MaxAddressablePositions), UITypeName("Int32")]
         public int ViewPosition
         {
             get => this.viewIndex + 1;
@@ -156,7 +165,7 @@ namespace Eco.Mods.TechTree
                 if (this.Parent is not DroneDockObject dock) return;
                 if (this.viewIndex == value - 1) return;    // batch write-back of an unchanged value
 
-                this.viewIndex = DockReadout.ClampCursor(value - 1, dock.SurveyAreas.Count);
+                this.viewIndex = AreaCapacity.ClampToKindCount(value - 1, SurveyKindAreas(dock).Count);
                 this.RefreshAll();
             }
         }
@@ -221,13 +230,14 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
 
-            if (this.viewIndex < 0 || this.viewIndex >= dock.SurveyAreas.Count)
+            var listed = SurveyKindAreas(dock);
+            if (this.viewIndex < 0 || this.viewIndex >= listed.Count)
             {
                 player?.MsgLocStr("No area is selected to assign.", NotificationStyle.Error);
                 return;
             }
 
-            var area = dock.SurveyAreas[this.viewIndex];
+            var area = listed[this.viewIndex];
 
             // R39's refusal rides the string the assign path already returns -- no control is
             // added to the tab (KTD10).
@@ -296,7 +306,7 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
 
-            this.viewIndex = DockReadout.ClampCursor(this.viewIndex, dock.SurveyAreas.Count);
+            this.viewIndex = AreaCapacity.ClampToKindCount(this.viewIndex, SurveyKindAreas(dock).Count);
 
             this.DroneStatus     = BuildDroneStatus(dock);
             this.AreasDisplay    = this.BuildAreasText(dock);
@@ -374,7 +384,8 @@ namespace Eco.Mods.TechTree
 
         private string BuildAreasText(DroneDockObject dock)
         {
-            if (dock.SurveyAreas.Count == 0)
+            var listed = SurveyKindAreas(dock);
+            if (listed.Count == 0)
                 return "No survey areas yet. Use Manage Areas on Map to draw your first one.";
 
             // Hoisted once for the whole roster: this runs off the dock's tick, and collecting it
@@ -387,7 +398,7 @@ namespace Eco.Mods.TechTree
 
             var sb = new StringBuilder();
             var position = 1;
-            foreach (var area in dock.SurveyAreas)
+            foreach (var area in listed)
                 sb.Append(DockReadout.FormatAreaLine(Snapshot(area, position++, dock, exclusionHolders, published))).Append('\n');
 
             return DockReadout.AtReadableSize(sb.ToString());
@@ -396,9 +407,13 @@ namespace Eco.Mods.TechTree
         private static string BuildAssignedText(DroneDockObject dock)
         {
             var area = dock.AssignedSurveyArea;
-            return area == null
-                ? "none -- select an area below, then Assign Selected Area"
-                : $"{dock.SurveyAreas.IndexOf(area) + 1} -- {area.Name}";
+            if (area == null) return "none -- select an area below, then Assign Selected Area";
+
+            // The position as THIS TAB counts rows, not as the dock stores them: the collection
+            // holds the farms too since U3, so the stored index would name a different row than
+            // the one the player is reading.
+            var position = SurveyKindAreas(dock).IndexOf(area) + 1;
+            return $"{position} -- {area.Name}";
         }
 
         private string BuildViewingText(DroneDockObject dock)
@@ -407,7 +422,7 @@ namespace Eco.Mods.TechTree
             if (area == null) return "no areas yet -- draw one on the map";
 
             return DockReadout.FormatViewingLine(
-                Snapshot(area, this.viewIndex + 1, dock), dock.SurveyAreas.Count);
+                Snapshot(area, this.viewIndex + 1, dock), SurveyKindAreas(dock).Count);
         }
 
         private string BuildResultsText(DroneDockObject dock)
@@ -470,8 +485,34 @@ namespace Eco.Mods.TechTree
             return $"Surveyed {entry.CoveragePercent:F0}% so far -- nothing found yet.";
         }
 
-        private SurveyAreaEntry ViewedArea(DroneDockObject dock) =>
-            dock.SurveyAreas.Count == 0 ? null : dock.SurveyAreas[this.viewIndex];
+        private SurveyAreaEntry ViewedArea(DroneDockObject dock)
+        {
+            var listed = SurveyKindAreas(dock);
+            return this.viewIndex >= 0 && this.viewIndex < listed.Count ? listed[this.viewIndex] : null;
+        }
+
+        /// <summary>
+        /// The areas THIS TAB shows: everything the dock holds that is not a farm (U10, KTD7).
+        ///
+        /// <para>
+        /// The dock has one area collection since U3 and the two tabs are two views onto it,
+        /// each filtered by the kind it shows. Without the filter this tab would list every farm
+        /// on the dock as a survey area -- deriving the mining ladder's status for ground that
+        /// never reads a rung of it -- and its cursor, its assign button and its "area N of M"
+        /// line would all be counting rows the player is not looking at.
+        /// </para>
+        /// <para>
+        /// Materialised rather than returned lazily: every caller indexes it or counts it and
+        /// some do both, and the dock's collection can be written from another thread between
+        /// two walks of a deferred query.
+        /// </para>
+        /// <para>
+        /// <b>Seam.</b> Eco-coupled, like the rest of this tab. The clamp it feeds is
+        /// <see cref="AreaCapacity.ClampToKindCount"/>, unit-tested in the navigation assembly.
+        /// </para>
+        /// </summary>
+        private static List<SurveyAreaEntry> SurveyKindAreas(DroneDockObject dock) =>
+            dock.SurveyAreas.Where(a => a.Kind != AreaKind.Farming).ToList();
 
         // ---------------------------------------------------------------
         // U11: changing what an area is FOR (R30, R31, R32).
