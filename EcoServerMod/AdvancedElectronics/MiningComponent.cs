@@ -226,9 +226,59 @@ namespace Eco.Mods.TechTree
                 .Where(Publishes)
                 .SelectMany(d => d.SurveyAreas.Select(a => (Dock: d, Area: a)));
 
-        /// <summary>Whether a dock is one whose survey areas the raw walk yields.</summary>
+        /// <summary>
+        /// <b>Whether a dock is one whose areas the raw walk yields (R8, KTD5).</b> It qualifies
+        /// by HOLDING areas, not by carrying a survey component.
+        ///
+        /// <para>
+        /// The component test was the reason a farm could never reach the claim system. Areas
+        /// live on <c>DroneDockObject.SurveyAreas</c>, which every dock has whatever components
+        /// it carries, but a dock that only farms has no <see cref="SurveyComponent"/> — so its
+        /// ground was invisible to a test R2 and R7 require to be blind to what the ground is
+        /// for. R8 makes every dock holding areas a participant, and the geometry is the whole
+        /// of the qualification.
+        /// </para>
+        /// <para>
+        /// The route NOT taken was giving farming-only docks a survey component. Eco re-enforces
+        /// component declarations destructively at every server load, ahead of any mod migration
+        /// — see <c>docs/solutions/conventions/requirecomponent-is-re-enforced-on-every-server-load.md</c>
+        /// — so that fix would be undone on the load after the one that applied it.
+        /// </para>
+        /// <para>
+        /// <b>Both call sites, and what is downstream of each (KTD5).</b> This is reached from
+        /// <see cref="AllAreaProjections"/> directly and from <see cref="AllPublishedAreas"/> as
+        /// a METHOD GROUP (<c>.Where(Publishes)</c>), which a search for <c>Publishes(</c> does
+        /// not find. Widening it therefore widens the Mining tab's walk as well as the claim
+        /// input, and every consumer was swept:
+        /// </para>
+        /// <list type="bullet">
+        /// <item><description>
+        /// <see cref="AllAreaProjections"/> — correct for a farming-kind projection and the
+        /// point of the change. The projection's contents are unchanged (id, dock, plots, holds,
+        /// kind), so nothing downstream gains sight of an area's findings, and the kind travels
+        /// with it for R47's branch to read.
+        /// </description></item>
+        /// <item><description>
+        /// The offered list in <see cref="RefreshAll"/> — kind-filtered already, through
+        /// <see cref="OfferableToMiningDock"/> and <c>AreaClaims.MayBeOfferedToMiningDock</c>,
+        /// which admits <c>AreaKind.Mining</c> alone (R47). A farm cannot appear on it.
+        /// </description></item>
+        /// <item><description>
+        /// The out-of-range dock count in <see cref="RefreshAll"/> — was NOT kind-filtered, and
+        /// is the one consumer this change would have broken: a farming-only dock of the same
+        /// owner, out of range, would have been counted and reported as a survey dock the player
+        /// should move closer to work areas that a mining drone can never be offered. It is
+        /// narrowed by kind at the count itself.
+        /// </description></item>
+        /// <item><description>
+        /// <see cref="OwnedAreas"/>, which feeds both of those and nothing else, and
+        /// <see cref="OverlapsAnything"/> / <see cref="OverlapsOf"/>, which are the overlap
+        /// surfaces and are required to see every area whatever its kind (R34, R7).
+        /// </description></item>
+        /// </list>
+        /// </summary>
         private static bool Publishes(DroneDockObject dock) =>
-            dock != null && !dock.IsDestroyed && dock.HasComponent<SurveyComponent>();
+            dock != null && !dock.IsDestroyed && dock.SurveyAreas.Count > 0;
 
         /// <summary>
         /// <b>The same raw walk (KTD8), reduced to what the overlap path is allowed to know
@@ -278,6 +328,13 @@ namespace Eco.Mods.TechTree
                     // area with nothing left to take holds nothing, and that is what lets ground
                     // pass from one purpose to the next with no release negotiated. A [cleared]
                     // area keeps its claim -- its exclusion may lift.
+                    //
+                    // A farming area reads its claim the same way, and correctly: R3's
+                    // reservation is NOT expressed here. An unassigned farm holds no claim and
+                    // says so, and the ground it covers is still reserved against a mining dock
+                    // -- by AreaClaims.Conflicts' farmland branch, which reads the KIND this
+                    // projection carries rather than the flag. Folding R3 into the flag would
+                    // make an idle farm read as an assigned area to every other consumer.
                     var holds = AreaClaims.HoldsClaim(
                         area.HasClaim,
                         DroneDockObject.StatusOfArea(dock.ObjectID, area, exclusionHolders, area.Kind));
@@ -373,7 +430,15 @@ namespace Eco.Mods.TechTree
 
             // R23: counted as DOCKS, so one distant dock holding nine areas reads as one thing to
             // move. Distinct because the walk yields one entry per area.
+            //
+            // Narrowed by KIND, which the offered list above gets for free from R47's offer test
+            // and this count did not. Publishes() now admits every dock holding areas (R8), so
+            // without this a farming-only dock of the same owner would be counted here and the
+            // notice would tell the player to move a dock closer to work areas a mining drone
+            // can never be offered -- a distance problem reported about ground that is not a
+            // distance problem at all.
             var outOfRangeDocks = owned
+                .Where(o => o.Area.Kind == AreaKind.Mining)
                 .Where(o => !dock.IsInDockNetwork(o.Dock))
                 .Select(o => o.Dock)
                 .Distinct()

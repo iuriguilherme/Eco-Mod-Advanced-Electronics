@@ -882,7 +882,33 @@ namespace Eco.Mods.TechTree
                 (1 - plant.GrowthPercent) * plant.Species.MaturityAgeDays / PlantGrower.GrowthRateModifier);
         }
 
-        private void RecordStall(FarmAreaEntry area, FarmStallReason stall, string detail)
+        /// <summary>
+        /// Writes one stall onto the area, with whatever that stall's own reason needs to carry.
+        ///
+        /// <para>
+        /// <b>Every stall reason a citizen can be shown passes through here, including
+        /// <see cref="FarmStallReason.HeldByOverlap"/> (R15, U6).</b> That member was declared,
+        /// rendered by <c>FarmReadout</c> and unit-tested by the farming plan with no call site
+        /// anywhere writing it — live code that could never fire — and its held-plot count had
+        /// no value to carry, so the Farming tab defended itself with a floor of 1 and the row
+        /// could only ever read "1 plot". Both halves are fixed by the case below plus a real
+        /// count reaching it.
+        /// </para>
+        /// <para>
+        /// <b>The producer of that reason is not here.</b> Ground conflict is decided at
+        /// assignment and at load, never inside a working pass — a drone works only what its own
+        /// dock claimed — so the strategy never discovers a held overlap mid-pass and must not
+        /// invent one. The single writer is
+        /// <c>SurveyAreaEntry.RecordReconciliationBlock</c>, called by load-time
+        /// reconciliation (U5). This case is what makes the reason WRITABLE on the same terms as
+        /// every other stall, so the tab reads one vocabulary whichever side recorded it.
+        /// </para>
+        /// </summary>
+        /// <param name="heldPlotCount">
+        /// How many plots are held, for <see cref="FarmStallReason.HeldByOverlap"/> alone.
+        /// Zero on every other reason, which is what that field already means there.
+        /// </param>
+        private void RecordStall(FarmAreaEntry area, FarmStallReason stall, string detail, int heldPlotCount = 0)
         {
             area.LastStallReason = (int)stall;
             area.LastNextAction = -1;
@@ -896,6 +922,9 @@ namespace Eco.Mods.TechTree
                 case FarmStallReason.LevelPassBlocked:
                 case FarmStallReason.BlocksRefused:
                     area.LastUnfitCondition = detail;
+                    break;
+                case FarmStallReason.HeldByOverlap:
+                    area.LastHeldPlotCount = heldPlotCount;
                     break;
             }
         }

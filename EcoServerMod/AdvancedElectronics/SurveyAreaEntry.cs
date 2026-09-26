@@ -563,6 +563,149 @@ namespace Eco.Mods.TechTree
             this.IsClaimedBy(dockId) ? this.ReleaseClaim() : Array.Empty<PlotCoord>();
 
         // ---------------------------------------------------------------
+        // U6: the blocked reason reconciliation leaves behind (R15, KTD6).
+        //
+        // R13 unassigns an area that holds ground it is not entitled to, and R15 says the area
+        // then READS blocked, with the reason where every other assignment failure reason is
+        // already written. The farm side already had somewhere to put that — LastStallReason
+        // carries FarmStallReason.HeldByOverlap and the Farming tab renders it — but the mining
+        // side computed its blocked reason live from the job that had just ended and persisted
+        // nothing per area. A job's end reason cannot answer this: the job ends reading "the
+        // area was unassigned", which is true, was not the player's doing, and says nothing
+        // about why.
+        //
+        // So the record lives here, on the area, for three reasons. The area is what R15 makes
+        // the subject. The area outlives the job, the assignment and the drone, and the player
+        // arrives after a restart with all three gone. And the area is the one thing both kinds
+        // have, so one record serves the mining panel and the farm tab alike.
+        //
+        // WHO WRITES IT: reconciliation, and only reconciliation (U5), through
+        // RecordReconciliationBlock below. This unit declares, persists and renders the reason
+        // and deliberately does not produce it — the reason had no producer at all before this
+        // work, and two units each believing the other writes it is how it would end up with
+        // none again.
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// Why load-time reconciliation undid this area's assignment, as an
+        /// <see cref="AreaClaimBlock"/> ordinal, or -1 for an area it left alone.
+        ///
+        /// <para>
+        /// -1 rather than 0 for "none", because 0 is <see cref="AreaClaimBlock.HeldByAssignment"/>
+        /// — a real member — and an absent field settling at the type default would have every
+        /// area in every existing save asserting a block nobody recorded. The same trap the farm
+        /// record's own -1 defaults are written against.
+        /// </para>
+        /// <para>
+        /// Stored as an ordinal, matching <see cref="LastStallReason"/>: the enum is the
+        /// navigation assembly's and is not <c>[Serialized]</c>.
+        /// </para>
+        /// </summary>
+        [Serialized] public int ReconciliationBlockValue { get; set; } = -1;
+
+        /// <summary>
+        /// The plots the collision actually covered, flattened as consecutive (x, z) pairs — the
+        /// same shape <see cref="PlotCoords"/> uses, and for the same reason: Eco's
+        /// <c>Vector2i</c> is not <c>[Serialized]</c>.
+        ///
+        /// <para>
+        /// The contested plots and not the whole area: R15 requires the reason to name the
+        /// ground in dispute, which is what sends the player to the right place to look. They
+        /// are stored rather than recomputed because the other area may have been redrawn,
+        /// deleted or reassigned by the time anyone reads this — and a reason that silently
+        /// re-derives from a world that has moved on is worse than one that says what happened.
+        /// </para>
+        /// </summary>
+        [Serialized] public ThreadSafeList<int> ReconciliationBlockPlotCoords { get; set; } = new();
+
+        /// <summary>
+        /// The recorded block as its enum, or null for none. NOT <c>[Serialized]</c>:
+        /// <see cref="ReconciliationBlockValue"/> is the member the serializer writes, and a
+        /// second serialized view of one fact is a second thing to keep in step.
+        /// </summary>
+        public AreaClaimBlock? ReconciliationBlock =>
+            this.ReconciliationBlockValue < 0 ? null : (AreaClaimBlock)this.ReconciliationBlockValue;
+
+        /// <summary>The contested plots as <see cref="PlotCoord"/>s (unflattening the pairs).</summary>
+        public IEnumerable<PlotCoord> ReconciliationBlockPlots()
+        {
+            var coords = this.ReconciliationBlockPlotCoords;
+            for (var i = 0; i + 1 < coords.Count; i += 2)
+                yield return new PlotCoord(coords[i], coords[i + 1]);
+        }
+
+        /// <summary>
+        /// <b>The seam U5 writes through, and the only writer of the blocked reason (R15).</b>
+        /// Records that reconciliation undid this area's assignment, over these plots, for this
+        /// reason.
+        ///
+        /// <para>
+        /// One seam for both kinds, because the area is one type carrying a kind and the two
+        /// tabs read two different members. A farming area also gets the farm side's own stall
+        /// written — <c>FarmStallReason.HeldByOverlap</c> with a REAL held-plot count — which is
+        /// the reason the farming plan declared, rendered and unit-tested with nothing anywhere
+        /// writing it. Writing both here rather than at the call site is what keeps the two
+        /// surfaces from disagreeing about the same event.
+        /// </para>
+        /// <para>
+        /// Called by reconciliation at load (U5) and by nothing else. It does not unassign
+        /// anything: undoing the assignment and recording why are separate acts, and this is the
+        /// record.
+        /// </para>
+        /// </summary>
+        /// <param name="reason">Which rule refused the ground — the two are lifted by different acts.</param>
+        /// <param name="contestedPlots">
+        /// The plots the two areas shared. An empty list records nothing: a reason that cannot
+        /// name the ground does not satisfy R15, and a half-written record reads as a real one.
+        /// </param>
+        public void RecordReconciliationBlock(AreaClaimBlock reason, IEnumerable<PlotCoord> contestedPlots)
+        {
+            var plots = (contestedPlots ?? Enumerable.Empty<PlotCoord>()).ToList();
+            if (plots.Count == 0) return;
+
+            this.ReconciliationBlockValue = (int)reason;
+
+            var flattened = new ThreadSafeList<int>();
+            foreach (var plot in plots)
+            {
+                flattened.Add(plot.X);
+                flattened.Add(plot.Z);
+            }
+            this.ReconciliationBlockPlotCoords = flattened;
+
+            // The farm side's own reason, given the count it has never had a producer for. The
+            // Farming tab reads LastStallReason, not this record, so a farming area whose block
+            // was written only here would read as though nothing had happened to it.
+            if (this.Kind == AreaKind.Farming)
+            {
+                this.LastStallReason = (int)FarmStallReason.HeldByOverlap;
+                this.LastNextAction = -1;
+                this.LastHeldPlotCount = plots.Count;
+            }
+        }
+
+        /// <summary>
+        /// Drops the record, for the act that makes it untrue: the area being assigned again, its
+        /// kind changing, or a later load finding nothing in conflict (R16).
+        ///
+        /// <para>
+        /// The farm stall is cleared alongside it, but only when it is still the stall this
+        /// record wrote — a farm that has since stalled on a missing seed is reporting something
+        /// newer and truer, and clearing that would hide it.
+        /// </para>
+        /// </summary>
+        public void ClearReconciliationBlock()
+        {
+            this.ReconciliationBlockValue = -1;
+            this.ReconciliationBlockPlotCoords = new ThreadSafeList<int>();
+
+            if (this.LastStallReason != (int)FarmStallReason.HeldByOverlap) return;
+
+            this.LastStallReason = -1;
+            this.LastHeldPlotCount = 0;
+        }
+
+        // ---------------------------------------------------------------
         // U2: the farm record (R10, R17, R18). Everything the old FarmAreaEntry serialized that
         // this class had no equivalent for, so an area carrying AreaKind.Farming is a whole farm
         // rather than a mining area with a crop bolted to it.

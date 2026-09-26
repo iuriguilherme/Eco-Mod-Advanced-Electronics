@@ -18,9 +18,21 @@ namespace Eco.Mods.TechTree
     /// grows and whether to level it first.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Farming records nothing per plot (R7). The drone decides from the ground each time,
     /// so unlike a survey area there are no findings, no coverage and no stamps here: a
     /// stored belief about a plot would have no reader and could only go stale.
+    /// </para>
+    /// <para>
+    /// <b>Legacy receiver since U3.</b> A farm is now an ordinary
+    /// <see cref="SurveyAreaEntry"/> carrying <see cref="AreaKind.Farming"/>, and nothing
+    /// creates one of these any more. The type stays declared because the rows inside a
+    /// pre-fold save's <c>FarmAreas</c> field are keyed to it and cannot deserialize without
+    /// it — dropping the type would strand the farms this release exists to rescue. It goes
+    /// when <c>DroneDockObject.FarmAreas</c> goes, and the condition for both is the same one:
+    /// no save written before the fold is plausibly still being carried forward. That is a
+    /// later release's call, made on purpose rather than discovered from a bug report.
+    /// </para>
     /// </remarks>
     [Serialized]
     public class FarmAreaEntry
@@ -216,13 +228,12 @@ namespace Eco.Mods.TechTree
     // farming surface reads on its own.
     public partial class DroneDockObject
     {
-        /// <summary>Every farm area this dock owns. Serialized; survives a restart with the dock.</summary>
-        [Serialized] public ThreadSafeList<FarmAreaEntry> FarmAreas { get; private set; } = new();
-
-        // Monotonic and separate from the survey side's counter: farm and survey areas are
-        // different collections, and a shared counter would make a farm area's id depend on
-        // how many survey areas the dock happens to have drawn.
-        [Serialized] private int nextFarmAreaId = 1;
+        // FarmAreas and nextFarmAreaId used to be declared here. Since U3 a farm is an ordinary
+        // area in SurveyAreas carrying AreaKind.Farming (R17), and both of those members exist
+        // only so a pre-fold save's fields have somewhere to land. They live in
+        // DroneDock.Migration.cs alongside the fold that empties them and the other legacy
+        // landing pad, so the whole "written by nothing, kept for old saves" surface reads in
+        // one file rather than being mistaken here for live state.
 
         /// <summary>
         /// The crops a citizen has capped (R25). Only capped crops occupy a row: every other
@@ -259,12 +270,38 @@ namespace Eco.Mods.TechTree
 
         public FarmAreaEntry FarmArea(int id) => this.FarmAreas.FirstOrDefault(a => a.Id == id);
 
-        /// <summary>Creates a farm area from already-validated plots (the picker enforces the cap before calling).</summary>
-        public FarmAreaEntry CreateFarmArea(string name, IEnumerable<PlotCoord> plots)
+        /// <summary>
+        /// Creates a farm area from already-validated plots (the picker enforces the cap before
+        /// calling).
+        ///
+        /// <para>
+        /// Since U3 this writes an ORDINARY AREA carrying <see cref="AreaKind.Farming"/> into
+        /// <see cref="SurveyAreas"/>, minted from the dock's one area counter. It no longer
+        /// touches the legacy farm collection at all — that member is a landing pad for old
+        /// saves and nothing may add to it, or the fold would have fresh rows arriving behind it
+        /// forever and the claim system would keep being blind to the farms a player drew after
+        /// the update.
+        /// </para>
+        /// <para>
+        /// <b>The kind is written explicitly, never defaulted.</b>
+        /// <see cref="AreaKind.Mining"/> is <c>0</c>, so an area created without this line is a
+        /// mine that a neighbouring mining dock may claim, with a crop standing on it.
+        /// </para>
+        /// <para>
+        /// <b>Seam.</b> Eco-coupled and untested, like everything on this type; the live session
+        /// is where a freshly drawn farm is checked to arrive in the area collection with its
+        /// kind set.
+        /// </para>
+        /// </summary>
+        public SurveyAreaEntry CreateFarmArea(string name, IEnumerable<PlotCoord> plots)
         {
-            var entry = new FarmAreaEntry(
-                this.nextFarmAreaId++, string.IsNullOrWhiteSpace(name) ? "Farm Area" : name, plots);
-            this.FarmAreas.Add(entry);
+            var entry = new SurveyAreaEntry(
+                this.nextAreaId++, string.IsNullOrWhiteSpace(name) ? "Farm Area" : name, plots)
+            {
+                Kind = AreaKind.Farming,
+            };
+
+            this.SurveyAreas.Add(entry);
             return entry;
         }
 
