@@ -95,12 +95,72 @@ namespace AdvancedElectronics.Navigation
         /// vanished-area path (R24) and would otherwise report "the area is gone" about an area
         /// that is plainly still on the map -- which is the guess R23 exists to remove.
         /// </param>
+        /// <remarks>
+        /// <b>This row deliberately does NOT carry R15's reconciliation reason.</b> An earlier
+        /// revision gave it a <c>reconciliationBlock</c> parameter ranked above the job's end
+        /// reason. It was removed because nothing could fill it: by the time this row renders,
+        /// the dock's assignment is gone and <see cref="MiningJob"/> carries no area identity, so
+        /// the panel has no route back to the area holding the record. R15 is served instead by
+        /// the per-area roster annotation, which reads the record off the area that owns it.
+        ///
+        /// <para>
+        /// It is recorded here because a parameter no producer fills is the exact defect this
+        /// feature exists to remove -- the farmland rule and the held-by-overlap stall were both
+        /// written, tested and never wired. A third would have been the same mistake, passing
+        /// review because a test constructed its own input.
+        /// </para>
+        /// </remarks>
         public static string FormatBlockedReason(
-            bool haltedServerWide, MiningEndReason? jobEndReason, bool assignmentOutOfRange = false)
+            bool haltedServerWide,
+            MiningEndReason? jobEndReason,
+            bool assignmentOutOfRange = false)
         {
             if (haltedServerWide) return "an administrator has halted mining server-wide";
             if (assignmentOutOfRange) return OutOfRangeAssignmentReason;
             return FormatStopReason(jobEndReason);
+        }
+
+        /// <summary>
+        /// <b>Why an assignment was undone at world load (R13, R15).</b> The stop-reason
+        /// vocabulary extended with the one case no player action produced.
+        ///
+        /// <para>
+        /// It is <see cref="FormatClaimRefusal"/>'s sentence with a prefix, deliberately rather
+        /// than a second wording for the same rule: reconciliation applies exactly the
+        /// assignment-time test (R1 through R8) to a save written before that test existed, so
+        /// the words that named the ground and the holder at assignment are the words that name
+        /// them here. A paraphrase would be a second thing to learn about one rule.
+        /// </para>
+        /// <para>
+        /// The prefix is the whole of what this case adds, and it is not decoration. Every other
+        /// reason on this row answers "why is nothing happening"; this one has also to answer
+        /// "where did my assignment go", because the player did not unassign it and the area they
+        /// left running is idle. Saying only that the ground is held would read as an assignment
+        /// they never made.
+        /// </para>
+        /// <para>
+        /// Empty when there is nothing recorded -- no reason, or no plots to name -- so R16's
+        /// no-op load costs the panel no row.
+        /// </para>
+        /// </summary>
+        /// <param name="reason">
+        /// The recorded block, as the area persisted it, or null for an area reconciliation left
+        /// alone. It is <see cref="AreaClaimBlock"/> and not a string, because the act that lifts
+        /// it differs between the two members and only the enum can still say which at load time.
+        /// </param>
+        /// <param name="contestedPlots">The plots the conflict actually covered, in raster order.</param>
+        public static string FormatReconciliationBlock(
+            AreaClaimBlock? reason, IReadOnlyList<PlotCoord> contestedPlots, int plotSize)
+        {
+            if (reason == null || contestedPlots == null || contestedPlots.Count == 0) return string.Empty;
+
+            // The holder is deliberately absent from the persisted record and therefore from the
+            // conflict rebuilt here: R41 keeps another player's area out of this channel, and
+            // FormatClaimRefusal reads only the reason and the plots.
+            var refusal = FormatClaimRefusal(
+                new[] { new AreaClaimConflict(null, contestedPlots, reason.Value) }, plotSize);
+
+            return $"unassigned at load -- {refusal}";
         }
 
         private const string OutOfRangeAssignmentReason =

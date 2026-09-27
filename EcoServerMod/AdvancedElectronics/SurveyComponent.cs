@@ -58,19 +58,20 @@ namespace Eco.Mods.TechTree
     {
         private const int MaxAreaPlots = 40; // v1 tier cap (R1b); drone-tier-owned later.
 
-        /// <summary>
-        /// How many survey areas one dock may hold. A product number, not a layout budget: with one
-        /// selector serving both viewing and assignment, nothing costs a row per area except the list text.
-        ///
-        /// Ten fits: the panel measures roughly 552px against a ~605px viewport at ten areas. The
-        /// worst case — ten areas AND one fully surveyed area reporting every material the drone
-        /// detects — lands within a few pixels of the fold, so eight would buy headroom if scrolling
-        /// ever becomes a complaint.
-        ///
-        /// It must be a compile-time constant because the steppers' Range is a plain C# attribute and
-        /// the view system has no RangeParam(nameof(...)) sibling to track a live count.
-        /// </summary>
-        public const int MaxSurveyAreas = 10;
+        // MaxSurveyAreas used to be declared here, at 10. There is ONE per-dock area limit now
+        // (R19, KTD7), covering farms and survey areas together because they are one collection
+        // since U3, and it lives in AreaCapacity in the Eco-free assembly -- both tabs and both
+        // pickers read it, and it is the one part of U10 that can carry a unit test.
+        //
+        // The number is unchanged at ten, so the layout reasoning that chose it still holds: the
+        // panel measures roughly 552px against a ~605px viewport at ten areas, and the worst case
+        // -- ten areas AND one fully surveyed area reporting every material the drone detects --
+        // lands within a few pixels of the fold. What moved is the SCOPE: ten now counts a dock's
+        // farms too, and a dock the fold left above ten keeps every area and may add none.
+        //
+        // It must stay a compile-time constant because the steppers' Range is a plain C#
+        // attribute and the view system has no RangeParam(nameof(...)) sibling to track a live
+        // count.
 
         public override WorldObjectComponentClientAvailability Availability =>
             WorldObjectComponentClientAvailability.UI;
@@ -145,8 +146,16 @@ namespace Eco.Mods.TechTree
         /// to look at a neighbouring area's findings reassigned the working drone to it. Moving
         /// the selection now changes only what you are LOOKING at; the Assign and Unassign
         /// buttons are the only things that change what the drone does.
+        ///
+        /// <para>
+        /// The range reaches every area a pre-fold dock can carry rather than the ten a dock may
+        /// ADD (U10, KTD7): a dock the fold left above the limit keeps all of them, and a cursor
+        /// bounded by the cap would list the ones past the tenth and let nobody select, assign or
+        /// delete them. The live bound is the clamp below, against the count of the areas THIS
+        /// tab shows -- farms are the Farming tab's and are not counted here.
+        /// </para>
         /// </summary>
-        [Serialized, Eco, Range(1, MaxSurveyAreas), UITypeName("Int32")]
+        [Serialized, Eco, Range(1, AreaCapacity.MaxAddressablePositions), UITypeName("Int32")]
         public int ViewPosition
         {
             get => this.viewIndex + 1;
@@ -156,7 +165,7 @@ namespace Eco.Mods.TechTree
                 if (this.Parent is not DroneDockObject dock) return;
                 if (this.viewIndex == value - 1) return;    // batch write-back of an unchanged value
 
-                this.viewIndex = DockReadout.ClampCursor(value - 1, dock.SurveyAreas.Count);
+                this.viewIndex = DockReadout.ClampCursor(value - 1, dock.SurveyKindAreas.Count);
                 this.RefreshAll();
             }
         }
@@ -221,13 +230,14 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
 
-            if (this.viewIndex < 0 || this.viewIndex >= dock.SurveyAreas.Count)
+            var listed = dock.SurveyKindAreas;
+            if (this.viewIndex < 0 || this.viewIndex >= listed.Count)
             {
                 player?.MsgLocStr("No area is selected to assign.", NotificationStyle.Error);
                 return;
             }
 
-            var area = dock.SurveyAreas[this.viewIndex];
+            var area = listed[this.viewIndex];
 
             // R39's refusal rides the string the assign path already returns -- no control is
             // added to the tab (KTD10).
@@ -296,13 +306,19 @@ namespace Eco.Mods.TechTree
         {
             if (this.Parent is not DroneDockObject dock) return;
 
-            this.viewIndex = DockReadout.ClampCursor(this.viewIndex, dock.SurveyAreas.Count);
+            // Hoisted once for the whole refresh, for the same reason the roster's
+            // exclusionHolders and published lists are hoisted inside BuildAreasText: this runs
+            // off the dock's one-second tick, and the five builders below used to rebuild this
+            // filtered list from the dock's whole collection one after another.
+            var listed = dock.SurveyKindAreas;
+
+            this.viewIndex = DockReadout.ClampCursor(this.viewIndex, listed.Count);
 
             this.DroneStatus     = BuildDroneStatus(dock);
-            this.AreasDisplay    = this.BuildAreasText(dock);
-            this.AssignedArea = BuildAssignedText(dock);
-            this.ViewingDisplay  = this.BuildViewingText(dock);
-            this.ResultsDisplay  = this.BuildResultsText(dock);
+            this.AreasDisplay    = this.BuildAreasText(dock, listed);
+            this.AssignedArea = BuildAssignedText(dock, listed);
+            this.ViewingDisplay  = this.BuildViewingText(dock, listed);
+            this.ResultsDisplay  = this.BuildResultsText(dock, listed);
 
             this.Changed(nameof(this.DroneStatus));
             this.Changed(nameof(this.AreasDisplay));
@@ -372,9 +388,9 @@ namespace Eco.Mods.TechTree
                        || lifecycle.CannotReachAssignedArea);
         }
 
-        private string BuildAreasText(DroneDockObject dock)
+        private string BuildAreasText(DroneDockObject dock, List<SurveyAreaEntry> listed)
         {
-            if (dock.SurveyAreas.Count == 0)
+            if (listed.Count == 0)
                 return "No survey areas yet. Use Manage Areas on Map to draw your first one.";
 
             // Hoisted once for the whole roster: this runs off the dock's tick, and collecting it
@@ -387,34 +403,38 @@ namespace Eco.Mods.TechTree
 
             var sb = new StringBuilder();
             var position = 1;
-            foreach (var area in dock.SurveyAreas)
+            foreach (var area in listed)
                 sb.Append(DockReadout.FormatAreaLine(Snapshot(area, position++, dock, exclusionHolders, published))).Append('\n');
 
             return DockReadout.AtReadableSize(sb.ToString());
         }
 
-        private static string BuildAssignedText(DroneDockObject dock)
+        private static string BuildAssignedText(DroneDockObject dock, List<SurveyAreaEntry> listed)
         {
             var area = dock.AssignedSurveyArea;
-            return area == null
-                ? "none -- select an area below, then Assign Selected Area"
-                : $"{dock.SurveyAreas.IndexOf(area) + 1} -- {area.Name}";
+            if (area == null) return "none -- select an area below, then Assign Selected Area";
+
+            // The position as THIS TAB counts rows, not as the dock stores them: the collection
+            // holds the farms too since U3, so the stored index would name a different row than
+            // the one the player is reading.
+            var position = listed.IndexOf(area) + 1;
+            return $"{position} -- {area.Name}";
         }
 
-        private string BuildViewingText(DroneDockObject dock)
+        private string BuildViewingText(DroneDockObject dock, List<SurveyAreaEntry> listed)
         {
-            var area = this.ViewedArea(dock);
+            var area = this.ViewedArea(listed);
             if (area == null) return "no areas yet -- draw one on the map";
 
             return DockReadout.FormatViewingLine(
-                Snapshot(area, this.viewIndex + 1, dock), dock.SurveyAreas.Count);
+                Snapshot(area, this.viewIndex + 1, dock), listed.Count);
         }
 
-        private string BuildResultsText(DroneDockObject dock)
+        private string BuildResultsText(DroneDockObject dock, List<SurveyAreaEntry> listed)
         {
             this.ApplyPickerSelection(dock);
 
-            var entry = this.ViewedArea(dock);
+            var entry = this.ViewedArea(listed);
             if (entry == null)
                 return "Draw an area on the map, then select it above and click Assign Selected Area.";
 
@@ -470,8 +490,14 @@ namespace Eco.Mods.TechTree
             return $"Surveyed {entry.CoveragePercent:F0}% so far -- nothing found yet.";
         }
 
-        private SurveyAreaEntry ViewedArea(DroneDockObject dock) =>
-            dock.SurveyAreas.Count == 0 ? null : dock.SurveyAreas[this.viewIndex];
+        private SurveyAreaEntry ViewedArea(List<SurveyAreaEntry> listed) =>
+            this.viewIndex >= 0 && this.viewIndex < listed.Count ? listed[this.viewIndex] : null;
+
+        // The areas THIS TAB shows -- everything the dock holds that is not a farm (U10, KTD7)
+        // -- used to be a private copy of the filter declared here, verbatim beside the picker's
+        // own copy of it. It is DroneDockObject.SurveyKindAreas now, the mirror of FarmingAreas,
+        // so the tab and its picker cannot drift into listing different rows. The clamp it feeds
+        // is DockReadout.ClampCursor, unit-tested in the navigation assembly.
 
         // ---------------------------------------------------------------
         // U11: changing what an area is FOR (R30, R31, R32).
@@ -489,11 +515,26 @@ namespace Eco.Mods.TechTree
         /// Changes what <paramref name="area"/> is for (R30, R31, R32), or refuses and says why.
         ///
         /// <para>
-        /// <b>The drone-activity refusal is the only gate.</b> R32's "explicit" means the change
-        /// never happens as a side effect of other work -- not that it carries a permission level
-        /// of its own -- so nothing here re-tests authorization. Reaching this at all already
-        /// required full access on the dock, and adding a second, differently-worded auth check
-        /// beside the one the caller passed would be a rule nobody wrote down.
+        /// <b>Two gates, and neither is an authorization check.</b> R32's "explicit" means the
+        /// change never happens as a side effect of other work -- not that it carries a
+        /// permission level of its own -- so nothing here re-tests authorization. Reaching this
+        /// at all already required full access on the dock, and adding a second,
+        /// differently-worded auth check beside the one the caller passed would be a rule nobody
+        /// wrote down.
+        /// </para>
+        /// <para>
+        /// The first gate is R11's: no drone may be working this area or one overlapping it. The
+        /// second is the claim test (U9), because a kind change is an assignment-time act -- it
+        /// can take ground from another dock exactly the way an assignment can, and R11 cannot
+        /// see that case because a dock between passes is assigned without working. The comment
+        /// at the test says why each direction refuses what it does.
+        /// </para>
+        /// <para>
+        /// <b>Seam.</b> Eco-coupled and carrying no unit test: the world walk, the working-drone
+        /// enumeration and the auth-gated refusal wording are all on this side of the boundary,
+        /// and the test project references the navigation assembly alone. The refusal text and
+        /// the overlap decision are covered there by <c>AreaClaimTests</c>; the wiring is proven
+        /// in the batched live session of U12.
         /// </para>
         /// <para>
         /// <b>Nothing is discarded.</b> The whole change is one field write. The area's findings,
@@ -527,6 +568,24 @@ namespace Eco.Mods.TechTree
                 return false;
             }
 
+            // R9/R12. An assigned area cannot change what it is for. Changing the kind under a
+            // live claim would leave the area holding ground as an assignment nobody made: the
+            // claim records the work value of the OLD kind, so the area drops out of the new
+            // kind's assigned list while still reading HasClaim. Releasing the claim silently
+            // is the other way out and is worse -- it stops a drone by a side effect of an act
+            // the player made for a different reason.
+            //
+            // Refusing keeps the two steps the owner described: unassign the farm, then turn the
+            // area into a mining area. Nothing the area recorded is lost by waiting (R10), and
+            // the drone-activity refusal below still covers the narrower mid-pass case for an
+            // OVERLAPPING area, which no unassign of this one would clear.
+            if (area.HasClaim)
+            {
+                refusalReason =
+                    $"'{area.Name}' is assigned -- unassign it first, then change what it is for";
+                return false;
+            }
+
             foreach (var busy in AreasUnderAWorkingDroneNow())
             {
                 var isThisArea = ReferenceEquals(busy.Area, area)
@@ -542,14 +601,89 @@ namespace Eco.Mods.TechTree
                 return false;
             }
 
-            area.Kind = kind;
+            // ---------------------------------------------------------------
+            // U9: the kind change takes the claim test too, because a kind change IS an
+            // assignment-time act (Key Decision) -- it can create a conflict exactly the way an
+            // assignment can.
+            //
+            // The loop above is R11 and it is not enough on its own. R11 refuses only while a
+            // drone is WORKING, and DroneIsWorking is false for an assigned dock whose drone is
+            // sitting docked between passes -- which is most of the time. Without this test,
+            // turning a mine's neighbour into farmland leaves that assigned mine holding
+            // farmland until the next restart, and undoing exactly that state is what
+            // reconciliation exists for. A rule the mod repairs at load and does not enforce at
+            // the act is a rule the player only meets as a surprise.
+            //
+            // The claimant kind is the NEW kind, not the old one: the question is what this
+            // ground would be for after the change, and both directions are answered by it. To
+            // mining, an overlapping farm on another dock is reserved ground (R2, R47). To
+            // farming, an overlapping mining area that still HOLDS its claim is held ground
+            // (R2) -- and one that does not is free, which is R4's asymmetry running the one
+            // way it is meant to.
+            //
+            // Same-dock pairs are exempt inside AreaClaims.Conflicts (R7a) and are deliberately
+            // not re-tested here. Nothing is passed for the already-holds predicate either: a
+            // kind change is not this dock re-dispatching onto its own standing claim, so there
+            // is no claim of its own to lift, and refusing is the conservative answer where the
+            // two differ.
+            // ---------------------------------------------------------------
+            // The scan and the write go under the one lock together, exactly as the three
+            // assignment paths do. This method has never locked, and while it only WROTE the
+            // kind that was survivable -- a torn read of one enum is not a claim decision. It
+            // stopped being survivable when the scan above it was added: a scan that decides
+            // whether ground is free, followed by an unlocked write, is the same read-then-act
+            // window AreaClaimLock exists to close, and a concurrent assignment on another dock
+            // can slip between the two and claim the very ground this scan just found clear.
+            //
+            // So the lock is not tidying up an old omission -- the omission only became a race
+            // when this method started asking about claims.
+            lock (DroneDockObject.AreaClaimLock)
+            {
+                var conflicts = AreaClaims.Conflicts(
+                    kind,
+                    MiningComponent.OverlapsOf(dock, area, MiningComponent.AllAreaProjections()));
+
+                if (conflicts.Count > 0)
+                {
+                    // The same formatter the two assignment paths refuse with, for the same reason
+                    // reconciliation reuses it: one rule, one wording. It names plot coordinates and
+                    // the act that lifts them, never the other area or its owner, so this refusal
+                    // discloses no more about foreign ground than an assignment refusal already does
+                    // (R20).
+                    refusalReason = MiningReadout.FormatClaimRefusal(conflicts, PlotUtil.PropertyPlotLength);
+                    return false;
+                }
+
+                area.Kind = kind;
+
+                // R6 and R16. The ground has a new purpose, so whatever reconciliation recorded
+                // about the assignment it undid has stopped describing this area -- and a farm that
+                // is no longer a farm must not keep reporting a farm stall. The seam clears both,
+                // and clears the farm stall only while it is still the one that record wrote.
+                area.ClearReconciliationBlock();
+            }
             return true;
         }
 
         /// <summary>
-        /// Every (dock, owning dock, area) an actively working drone is on right now -- both the
-        /// survey area a dock is sweeping and the mining area a dock is consuming, since either
-        /// pass is one R32 refuses to change the ground out from under.
+        /// Every (dock, owning dock, area) an actively working drone is on right now -- the
+        /// survey area a dock is sweeping, the mining area a dock is consuming, and every
+        /// farming area a dock is assigned to, since any of those passes is one R11 refuses to
+        /// change the ground out from under.
+        ///
+        /// <para>
+        /// <b>Farming was missing, and that was the whole of R11's blindness (U9).</b> This
+        /// yielded the two single-area assignments only, so a drone ploughing a field was a
+        /// drone this enumeration could not see, and the ground under it could be repurposed
+        /// mid-pass. A farm is now an ordinary area carrying a kind (R17), so it belongs in the
+        /// same enumeration as the other two rather than in a test of its own beside it.
+        /// </para>
+        /// <para>
+        /// It is a LOOP where the other two are single reads, and that asymmetry is real: a dock
+        /// holds one survey assignment and one mining assignment, but any number of assigned
+        /// farm areas. A fix written against "the area a farming drone is working" would have
+        /// covered whichever one the drone happened to be on and left the rest exposed.
+        /// </para>
         ///
         /// <para>
         /// "Mid-pass" is <c>DroneIsWorking</c>, the one definition of working the fuel, wear and
@@ -581,6 +715,12 @@ namespace Eco.Mods.TechTree
                 var mining = dock.AssignedMiningArea;
                 if (mining != null && mining.Resolve(out var sourceDock, out var minedArea) == AreaLookupSignal.Found)
                     yield return (dock, sourceDock, minedArea);
+
+                // The owning dock is the working dock for every one of these: a farm area is
+                // always drawn on the dock that farms it, so there is no published-elsewhere
+                // case here of the kind the mining reference resolves.
+                foreach (var farmed in dock.AssignedFarmingAreas)
+                    yield return (dock, dock, farmed);
             }
         }
 
@@ -657,7 +797,22 @@ namespace Eco.Mods.TechTree
                 // figures themselves are not touched: they remain an accurate record of what the
                 // survey pass found, so saying they are old is the honest correction rather than
                 // altering them.
-                needsResurvey: area.AnyPlotNeedsReReading);
+                needsResurvey: area.AnyPlotNeedsReReading,
+
+                // R15. The Survey tab's roster is the surface that always shows an area, so it is
+                // where the reason a load-time reconciliation undid an assignment has to read.
+                // The Mining tab cannot carry it: after reconciliation the dock's assigned area is
+                // null and the area no longer names its former holder, so that tab has no route
+                // back to this record. Empty record, unchanged line.
+                //
+                // Guarded on the reason rather than handed straight to the formatter, which
+                // early-exits on a null one and returns string.Empty -- the same value this
+                // branch produces. Virtually every area has no record, and unflattening its
+                // (empty) contested-plot list allocated per area per tick to reach that exit.
+                reconciliationBlock: area.ReconciliationBlock == null
+                    ? string.Empty
+                    : MiningReadout.FormatReconciliationBlock(
+                        area.ReconciliationBlock, area.ReconciliationBlockPlots().ToList(), PlotUtil.PropertyPlotLength));
         }
 
         // --- Material filter ---

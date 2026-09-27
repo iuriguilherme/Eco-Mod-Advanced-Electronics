@@ -115,7 +115,21 @@ namespace Eco.Mods.TechTree
 
             user.MsgLocStr($"Survey areas on {dock.Name} (assigned id: {dock.AssignedSurveyAreaId}):");
             foreach (var a in dock.SurveyAreas)
-                user.MsgLocStr($"  {a.Id}. {a.Name} -- {a.PlotCount} plots, for {KindWord(a.Kind)}{(a.Id == dock.AssignedSurveyAreaId ? " [assigned]" : string.Empty)}");
+            {
+                // A farm's assignment is its own farming CLAIM, not AssignedSurveyAreaId (U8,
+                // R17) -- the survey id only ever names the one area a survey drone sweeps. A
+                // folded farm read against that id alone printed as unassigned while its drone
+                // was working it, which is the one thing this listing exists to answer.
+                //
+                // Through the dock's own test rather than a copy of it: IsFarmAssignmentOfMine
+                // IS "claimed for farming, by me", and a per-caller copy of that question is how
+                // the two halves of it drift apart. The kind test the copy carried was
+                // redundant -- IsClaimedForFarming reads the CLAIM's work value, which only the
+                // farm assignment path ever writes.
+                var isAssigned = a.Id == dock.AssignedSurveyAreaId || dock.IsFarmAssignmentOfMine(a);
+
+                user.MsgLocStr($"  {a.Id}. {a.Name} -- {a.PlotCount} plots, for {KindWord(a.Kind)}{(isAssigned ? " [assigned]" : string.Empty)}");
+            }
         }
 
         /// <summary>
@@ -162,6 +176,15 @@ namespace Eco.Mods.TechTree
         /// The refusal logic is <see cref="SurveyComponent.ChangeAreaKind"/>'s, not this method's:
         /// the gate belongs beside the areas, so a second caller cannot forget it. Everything the
         /// area recorded — findings, mined stamps, exclusions — survives a change (R32).
+        /// </para>
+        /// <para>
+        /// <b>This reaches folded farms unchanged (U9, R17).</b> The lookup is over
+        /// <c>SurveyAreas</c> by id, and since U3 a farm IS an entry in that collection carrying
+        /// <see cref="AreaKind.Farming"/> — so a farm rescued from a pre-fold save, and one drawn
+        /// through the Farming tab, are both addressable here with no branch of their own. That
+        /// is the point of one area type carrying a kind rather than two types bridged: the
+        /// command that turns exhausted ground into farmland is the same command that turns it
+        /// back, in both directions, with nothing here knowing which case it is in.
         /// </para>
         /// </summary>
         [ChatSubCommand("Drone", "Read or set what a survey area is for. Usage: /drone areakind <id> [mining|farming]", "areakind", ChatAuthorizationLevel.User)]
@@ -379,6 +402,14 @@ namespace Eco.Mods.TechTree
         /// scanned and judged every block unworkable. This names which, in one command: the
         /// drone's job and last dispatch note, the stamp the scan is gated on, and the very
         /// per-column decision the strategy makes, run over each assigned area.
+        ///
+        /// <para>
+        /// <b>It reads the AREA shape since U10.</b> This walked <c>dock.FarmAreas</c>, the
+        /// legacy collection the fold empties, so on every migrated dock it reported zero farm
+        /// areas and printed nothing further -- while the Farming tab, the drone and the claim
+        /// system were all working farms it could not see. It is the instrument the live session
+        /// reads the farming half with, so a dump that cannot see a farm is worse than no dump.
+        /// </para>
         /// </summary>
         [ChatSubCommand("Drone", "Dump farming state for your nearest accessible dock (diagnostic).", "farm", ChatAuthorizationLevel.User)]
         public static void Farm(User user)
@@ -405,8 +436,12 @@ namespace Eco.Mods.TechTree
             var putInto = DroneStorage.PutInto(farmLink, stamped).Count;
             user.MsgLocStr($"  Hold: {holdText}; linked storages -- take from: {takeFrom}, put into: {putInto}");
 
-            var areas = dock.FarmAreas.ToList();
-            user.MsgLocStr($"  Farm areas: {areas.Count}, assigned: {areas.Count(a => a.Assigned)}");
+            // Assignment is the CLAIM (U10, R17): a farming-kind area carrying this dock's own
+            // farming claim. There is no per-row Assigned flag on an area, and reading one off
+            // the legacy row is what made this line print zeroes.
+            var areas = dock.FarmingAreas.ToList();
+            var assignedFarms = dock.AssignedFarmingAreas.ToList();
+            user.MsgLocStr($"  Farm areas: {areas.Count}, assigned: {assignedFarms.Count}");
 
             var sampler = new EcoWorldSampler();
             var fitness = new EcoGroundFitness();
@@ -416,9 +451,9 @@ namespace Eco.Mods.TechTree
             {
                 var crop = CropCatalog.ByKey(area.Crop);
                 var stored = string.IsNullOrEmpty(area.Crop) ? 0 : dock.CountInLinkedStorage(area.Crop);
-                user.MsgLocStr($"  Area {area.Id} '{area.Name}': assigned {area.Assigned}, crop key '{area.Crop ?? "(none)"}', catalog {(crop == null ? "NOT FOUND" : crop.UniqueName)}, seed {crop?.SeedType?.Name ?? "(none)"}, produce stored {stored}, may harvest {(string.IsNullOrEmpty(area.Crop) || ledger.MayHarvest(area.Crop, stored))}, stall {area.LastStallReason}, next {area.LastNextAction}");
+                user.MsgLocStr($"  Area {area.Id} '{area.Name}': assigned {assignedFarms.Contains(area)}, crop key '{area.Crop ?? "(none)"}', catalog {(crop == null ? "NOT FOUND" : crop.UniqueName)}, seed {crop?.SeedType?.Name ?? "(none)"}, produce stored {stored}, may harvest {(string.IsNullOrEmpty(area.Crop) || ledger.MayHarvest(area.Crop, stored))}, stall {area.LastStallReason}, next {area.LastNextAction}");
 
-                var plots = area.ToArea().EnumeratePlots().ToList();
+                var plots = area.ToSurveyArea().EnumeratePlots().ToList();
 
                 // Where the drone aims for each plot: the pathfinder refuses a solid or
                 // occupied goal column, which is how a farm plot reads "unreachable".
@@ -450,6 +485,131 @@ namespace Eco.Mods.TechTree
 
                 user.MsgLocStr($"    {plots.Count} plots; decisions over the first {Math.Min(plots.Count, 16)}: {string.Join(", ", tally.Select(kv => $"{kv.Key} x{kv.Value}"))}");
             }
+        }
+
+        /// <summary>
+        /// <b>The area/claim dump U12 exists for.</b> Every dock in the world, every area on it,
+        /// and for each area the facts the cross-kind conflict work turns on: its id, what it is
+        /// for, whether it is assigned, who holds its claim and for what work, whether it holds
+        /// its ground or is held against, the blocked reason reconciliation left with its
+        /// contested plots, and the legacy farm id it was folded from.
+        ///
+        /// <para>
+        /// <b>Why one command rather than a restart per question.</b> The Eco-coupled half of
+        /// this work -- the fold, reconciliation at load, the two assignment paths, the kind
+        /// change, the one cap -- carries no unit tests by design, and every one of its outcomes
+        /// is a fact about persisted state that only a running server holds. Read one at a time
+        /// each costs a restart. This prints all of them in one pass, per
+        /// <c>docs/solutions/workflow-issues/eco-mod-batched-live-testing.md</c>.
+        /// </para>
+        /// <para>
+        /// <b>It walks the WORLD, not the nearest dock (R7, R8).</b> Conflict is decided by
+        /// geometry between areas on different docks with no owner test and no distance test, so
+        /// a dump scoped to one dock could never show the thing being verified: the other side
+        /// of the collision. That is also why it is Admin rather than User, unlike the other
+        /// diagnostics here -- it names areas belonging to players the caller has no access to,
+        /// which R20 says no ordinary surface may do. <c>/drone orphans</c> is scoped the same
+        /// way for the same reason.
+        /// </para>
+        /// <para>
+        /// <b>Legacy rows are printed too, and that is the point of printing them.</b> KTD4 keeps
+        /// a farm row the fold could not resolve rather than dropping it, and such a row covers
+        /// real ground while holding nothing -- it is invisible to the Farming tab, to the claim
+        /// system and to the drone. This is the only surface that says it is there.
+        /// </para>
+        /// <para>
+        /// <b>Read-only.</b> It writes nothing, takes no lock and decides nothing; every value is
+        /// printed as the area stores it.
+        /// </para>
+        /// </summary>
+        [ChatSubCommand("Drone", "Dump every dock's areas, kinds, claims and blocked reasons (diagnostic).", "claims", ChatAuthorizationLevel.Admin)]
+        public static void Claims(User user)
+        {
+            var docks = ServiceHolder<IWorldObjectManager>.Obj.All
+                .OfType<DroneDockObject>()
+                .Where(d => !d.IsDestroyed)
+                .ToList();
+
+            if (docks.Count == 0)
+            {
+                user.MsgLocStr("No drone docks in the world.");
+                return;
+            }
+
+            // The same unfiltered walk the claim system itself reads (KTD8), so "is held" below
+            // is answered from the projections that actually decide an assignment rather than
+            // from a second opinion computed here.
+            var published = MiningComponent.AllAreaProjections();
+
+            user.MsgLocStr($"Area and claim dump -- {docks.Count} docks, {published.Count} published areas, cap {AreaCapacity.MaxAreasPerDock} per dock:");
+
+            foreach (var dock in docks)
+            {
+                var over = AreaCapacity.OverLimitBy(dock.SurveyAreas.Count);
+                var capNote = over > 0
+                    ? $", OVER THE CAP BY {over} (keeps them all, may add none)"
+                    : AreaCapacity.MayAdd(dock.SurveyAreas.Count) ? string.Empty : ", at the cap";
+
+                user.MsgLocStr(
+                    $"Dock '{dock.Name}' ({dock.ObjectID}) at {dock.Position3i}: {dock.SurveyAreas.Count} areas{capNote}; legacy farm rows {dock.FarmAreas.Count}; survey assignment id {dock.AssignedSurveyAreaId}");
+
+                foreach (var area in dock.SurveyAreas)
+                    user.MsgLocStr("  " + DescribeArea(dock, area, published));
+
+                // KTD4's kept rows. A row here covers ground that nothing protects, so it is
+                // reported as a fault rather than as a footnote.
+                foreach (var legacy in dock.FarmAreas)
+                    user.MsgLocStr(
+                        $"  LEGACY ROW {legacy.Id} '{legacy.Name}': {legacy.PlotCoords.Count / 2} plots, crop '{legacy.Crop ?? "(none)"}', assigned {legacy.Assigned} -- NOT FOLDED, holds no ground and no drone works it");
+            }
+        }
+
+        /// <summary>
+        /// One area as the claim dump prints it. Kept beside the command rather than on the
+        /// entry, because it is a diagnostic sentence and not something any other surface should
+        /// grow a dependency on.
+        /// </summary>
+        private static string DescribeArea(
+            DroneDockObject dock, SurveyAreaEntry area, IReadOnlyList<AreaProjection> published)
+        {
+            // The claim, as the area records it: who holds it and for what work.
+            // Printed raw -- the work value is what tells a farming claim from a mining one, and
+            // a zero there is an upgraded save that never recorded which (SurveyAreaEntry's own
+            // "not recorded" case), which is exactly the kind of thing this dump exists to show.
+            var claim = !area.HasClaim
+                ? "unclaimed"
+                : $"claimed by {area.ClaimHolderDockId} work {area.ClaimWorkValue}"
+                  + (area.IsClaimedBy(dock.ObjectID) ? " (this dock)" : " (ANOTHER DOCK)");
+
+            // Whether it holds its ground right now, through the same derivation the assignment
+            // path uses: the status ladder read against the area's own kind, then R37's [empty]
+            // exception applied. A farming area's reservation is NOT this -- that rides on the
+            // kind and outlives the claim (R3) -- so both are printed.
+            var status = DroneDockObject.StatusOfArea(dock.ObjectID, area, null, area.Kind);
+            var holds = AreaClaims.HoldsClaim(area.HasClaim, status);
+
+            // Who is standing on this area's ground from another dock, and over how many plots.
+            // Read off the same projections the enforcement path reads, so a disagreement between
+            // this line and a refusal would be a real defect rather than two derivations.
+            var overlaps = MiningComponent.OverlapsOf(dock, area, published)
+                .Where(m => !m.SameDock)
+                .ToList();
+            var heldBy = overlaps.Count == 0
+                ? "free"
+                : "shares " + string.Join("; ", overlaps.Select(m =>
+                    $"{m.SharedPlots.Count} plots with area {m.Other.AreaId} on dock {m.Other.OwningDockId} ({KindWord(m.Other.Kind)}, {(m.Other.HoldsClaim ? "holding" : "not holding")})"));
+
+            // R15's record: what reconciliation undid at load and over which plots. Absent on an
+            // area nothing was undone for, which is the ordinary case.
+            var blocked = area.ReconciliationBlock == null
+                ? "none"
+                : $"{area.ReconciliationBlock} over {area.ReconciliationBlockPlots().Count()} plots";
+
+            var fold = area.FoldedFromLegacyFarmId == 0
+                ? "not folded"
+                : $"folded from legacy farm {area.FoldedFromLegacyFarmId}";
+
+            return $"Area {area.Id} '{area.Name}': {KindWord(area.Kind)}, {area.PlotCount} plots, status {status}, {claim}, holds {holds}, {heldBy}, blocked {blocked}, {fold}, farm stall {area.LastStallReason} held-plots {area.LastHeldPlotCount}";
         }
 
         /// <summary>

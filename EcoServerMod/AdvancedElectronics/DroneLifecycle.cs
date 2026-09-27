@@ -992,7 +992,7 @@ namespace Eco.Mods.TechTree
                 // methods in scope across the mod's most fragile type for one call site.
                 var plots = new List<PlotCoord>();
                 var seenPlots = new HashSet<PlotCoord>();
-                foreach (var farmArea in this.HomeDock.AssignedFarmAreas)
+                foreach (var farmArea in this.HomeDock.AssignedFarmingAreas)
                     foreach (var farmPlot in farmArea.Plots())
                         if (seenPlots.Add(farmPlot))
                             plots.Add(farmPlot);

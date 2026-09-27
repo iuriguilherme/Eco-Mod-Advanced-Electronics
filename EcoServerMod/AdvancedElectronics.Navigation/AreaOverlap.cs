@@ -101,10 +101,30 @@ namespace AdvancedElectronics.Navigation
         /// <summary>The plots both areas cover, ordered so a rendered detail is stable.</summary>
         public IReadOnlyList<PlotCoord> SharedPlots { get; }
 
-        public AreaOverlapMatch(AreaProjection other, IReadOnlyList<PlotCoord> sharedPlots)
+        /// <summary>
+        /// Whether <see cref="Other"/> sits on the SAME dock as the area this match was found
+        /// for (R7a) — a sibling, not a rival.
+        ///
+        /// <para>
+        /// Recorded here rather than asked for at each call site because the asking side is what
+        /// <see cref="AreaOverlap.Matches"/> has and <see cref="AreaClaims.Conflicts"/> does not:
+        /// the claim decision is handed matches, never the claimant. Carrying the one bit the
+        /// rule needs keeps R7a inside the shared decision, where the assignment paths and
+        /// reconciliation read it alike, instead of becoming a filter each caller must remember.
+        /// </para>
+        /// <para>
+        /// It discloses nothing R41 withholds: the pair is already identified by
+        /// <see cref="AreaProjection.OwningDockId"/>, and this only states a comparison the
+        /// caller could make itself.
+        /// </para>
+        /// </summary>
+        public bool SameDock { get; }
+
+        public AreaOverlapMatch(AreaProjection other, IReadOnlyList<PlotCoord> sharedPlots, bool sameDock = false)
         {
             Other = other;
             SharedPlots = sharedPlots ?? Array.Empty<PlotCoord>();
+            SameDock = sameDock;
         }
 
         public int SharedPlotCount => this.SharedPlots.Count;
@@ -187,7 +207,12 @@ namespace AdvancedElectronics.Navigation
                 var shared = SharedPlots(mine, other.Plots);
                 if (shared.Count == 0) continue;
 
-                matches.Add(new AreaOverlapMatch(other, shared));
+                // R7a's one bit, recorded where both sides of the comparison are in hand. The
+                // overlap itself is still reported for a sibling: R35 marks overlapping geometry
+                // wherever it is drawn, and a dock's own two areas overlapping is worth seeing on
+                // the roster. What the sibling does not do is BLOCK -- that is AreaClaims'.
+                matches.Add(new AreaOverlapMatch(
+                    other, shared, sameDock: other.OwningDockId == self.OwningDockId));
             }
 
             return matches;
@@ -432,7 +457,18 @@ namespace AdvancedElectronics.Navigation
         /// empty list when it may take all of it.
         ///
         /// <para>
-        /// Two rules, tested in this order for a reason. <b>R47 first:</b> if the claimant is
+        /// <b>R7a comes before either of them:</b> two areas on ONE dock never collide. A dock
+        /// hosts a single drone and that drone's tool decides its job, so a dock cannot work two
+        /// kinds of ground at once and cannot be its own rival. The case that actually arises is
+        /// the drone swap — a dock still holding the farm it worked last season while a mining
+        /// area is assigned to it today — and the exemption has to sit ahead of the farmland
+        /// branch to cover it, because R47 reserves that farm's ground whether or not it is
+        /// assigned, so the dock would be refused ground nothing the player did could release.
+        /// The exemption is scoped to the DOCK and never to the geometry: the same two shapes on
+        /// two docks collide exactly as they did (R7).
+        /// </para>
+        /// <para>
+        /// Two rules after it, tested in this order for a reason. <b>R47 first:</b> if the claimant is
         /// mining and the other area is farmland, the ground is reserved whether or not that farm
         /// is assigned — an unassigned farm is between passes, not finished, because farmland
         /// never reaches an exhausted state the way a mine does. Reporting that case as an
@@ -476,6 +512,9 @@ namespace AdvancedElectronics.Navigation
             {
                 var other = match.Other;
                 if (other == null || match.SharedPlots.Count == 0) continue;
+
+                // R7a, ahead of everything: a sibling on the claimant's own dock is not a rival.
+                if (match.SameDock) continue;
 
                 if (claimantKind == AreaKind.Mining && other.Kind == AreaKind.Farming)
                 {

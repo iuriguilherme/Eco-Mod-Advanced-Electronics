@@ -167,7 +167,8 @@ Farmland qualifies that kind-blindness in one direction only. Ground a farming a
 against a mining dock whether or not that farm is currently assigned: the `[farm]` mark reserves the
 ground, not the assignment, because an unassigned farm is between passes rather than finished — farmland
 never reaches an exhausted state the way a mine does. Releasing it is an explicit act by the farm's
-owner, who deletes the farming area; the plots then read as ordinary ground. The asymmetry runs one way
+owner — deleting the farming area, or changing its [[Kind]] away from farming; the plots then read as
+ordinary ground. Unassigning is neither of those acts and releases nothing. The asymmetry runs one way
 and is deliberate: a farm may take ground a mine has finished with, and a mine may not take ground a
 farm has not been released from.
 
@@ -236,9 +237,13 @@ same ground by hand at the same time.
 Both are non-exclusive annotations — they never occupy an area's lifecycle status slot and never take
 a colour from its ramp — and neither is ever read to decide what the drone does next.
 
-Neither is what keeps other drones off farmland. Two areas that share ground stop both their drones on
-the plots they share, symmetrically, so protection is a property of overlapping geometry rather than
-of any marker.
+Neither is what keeps other drones off farmland. What does that is the [[Claim]], and it is decided
+when a player assigns, not while a drone is working: an assignment that would take plots another
+area holds is refused, and nothing stops a drone mid-pass. The hold is not symmetric either — it
+runs one way, so a farm may take ground a mine has finished with and a mine may not take ground a
+farm has not been released from. Geometry says which plots two areas share; [[Kind]] and the claim
+say who may have them. Two areas on the same dock never hold against each other: a dock runs one
+drone, and that drone's job decides which ground it works.
 
 ### Crop Ceiling
 The quantity of one crop, held across a dock's linked storage, at which the drone stops harvesting it

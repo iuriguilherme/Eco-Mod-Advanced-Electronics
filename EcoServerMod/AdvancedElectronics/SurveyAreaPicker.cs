@@ -20,6 +20,27 @@ namespace Eco.Mods.TechTree
     ///
     /// The dock is mutated only after a confirm, so a cancel or disconnect (null return) leaves
     /// everything untouched.
+    ///
+    /// <para>
+    /// <b>One collection, two views (U10, KTD7).</b> A farm is an ordinary
+    /// <see cref="SurveyAreaEntry"/> in the same collection since U3, carrying
+    /// <see cref="AreaKind.Farming"/>, so this picker shows everything in it that is NOT a farm
+    /// and <see cref="FarmAreaPicker"/> shows the farms. The filter is load-bearing rather than
+    /// cosmetic: the reconcile below treats "absent from the returned entries" as a deletion, so
+    /// an unfiltered list would delete every farm on the dock the first time a player confirmed
+    /// the survey map.
+    /// </para>
+    /// <para>
+    /// <b>The cap is the dock's, not the tab's (R19).</b> The limit is counted over the whole
+    /// collection through <see cref="AreaCapacity"/>, the same number the farming picker
+    /// enforces, so ten is ten whichever tab a player is standing on.
+    /// </para>
+    /// <para>
+    /// <b>Seam.</b> Eco-coupled UI with no unit test — the client's map editor on one side and
+    /// the dock's serialized state on the other. The cap arithmetic is
+    /// <see cref="AreaCapacity"/>'s and is unit-tested in the navigation assembly; the rest is
+    /// proven in U12's live session.
+    /// </para>
     /// </summary>
     public static class SurveyAreaPicker
     {
@@ -61,7 +82,7 @@ namespace Eco.Mods.TechTree
             var entryStatus = new Dictionary<int, EditableEntryStatus>();
 
             var index = 0;
-            foreach (var area in dock.SurveyAreas)
+            foreach (var area in dock.SurveyKindAreas)
             {
                 foreach (var plot in area.Plots())
                     map[new Vector2i(plot.X, plot.Z)] = area.Id;
@@ -145,16 +166,27 @@ namespace Eco.Mods.TechTree
 
             // Deletions first: an area whose entry the player removed is gone, along with its findings.
             // DeleteSurveyArea also unassigns the drone when it was working that area.
-            foreach (var area in dock.SurveyAreas.ToList())
+            foreach (var area in dock.SurveyKindAreas)
                 if (!edited.MapEntries.ContainsKey(area.Id))
                     dock.DeleteSurveyArea(area.Id);
+
+            // Built ONCE, after the deletions and before the pair loop, rather than per pair:
+            // the deletion pass is complete, so nothing below removes an area, and rebuilding it
+            // inside the loop walked the dock's whole collection once per map entry. The one
+            // thing the loop does add is a created area, and that is appended below so the
+            // lookup sees exactly what a rebuild would have shown it.
+            var listed = dock.SurveyKindAreas;
 
             foreach (var pair in edited.MapEntries)
             {
                 var entryId = pair.Key;
                 var name    = pair.Value.EntryDescription;
                 var plots   = plotsById.TryGetValue(entryId, out var p) ? p : new List<PlotCoord>();
-                var area    = dock.SurveyAreas.FirstOrDefault(a => a.Id == entryId);
+                // Kind-scoped, so a returned entry id that happens to collide with a FARM's id
+                // resolves to nothing here and is created as a new area with an id the dock
+                // mints itself, rather than silently renaming and redrawing somebody's farm
+                // from the survey tab.
+                var area    = listed.FirstOrDefault(a => a.Id == entryId);
 
                 // The client's MaxArea is a hint, not a guarantee -- re-check server-side, exactly as
                 // the single-area picker did, so an over-cap area never reaches the drone's sweep.
@@ -174,14 +206,19 @@ namespace Eco.Mods.TechTree
                     // Hard cap at the control pool. The map editor will happily accept any number of
                     // entries, and an area with no control is one a player cannot assign from the
                     // panel -- so refusing here is kinder than creating something half-usable.
-                    if (dock.SurveyAreas.Count >= SurveyComponent.MaxSurveyAreas)
+                    // Counted over the WHOLE collection, farms included (R19, KTD7): one dock,
+                    // one limit, whichever tab the player is drawing from.
+                    if (!AreaCapacity.MayAdd(dock.SurveyAreas.Count))
                     {
                         player.User?.MsgLocStr(
-                            $"'{name}' was not created: a dock holds at most {SurveyComponent.MaxSurveyAreas} survey areas. Delete one first.");
+                            $"'{name}' was not created: a dock holds at most {AreaCapacity.MaxAreasPerDock} areas. Delete one first.");
                         continue;
                     }
 
-                    dock.CreateSurveyArea(ResolveNewAreaName(dock, name), plots);
+                    // Appended to the hoisted list as well as to the dock: a later entry whose id
+                    // happens to match the id the dock just minted has always resolved to this
+                    // new area, and it still does.
+                    listed.Add(dock.CreateSurveyArea(ResolveNewAreaName(dock, name), plots));
                     continue;
                 }
 
@@ -234,6 +271,12 @@ namespace Eco.Mods.TechTree
                 if (!taken.Contains(candidate)) return candidate;
             }
         }
+
+        // The areas this picker manages -- everything the dock holds that is not a farm (U10,
+        // KTD7) -- used to be a private copy of the filter declared here. It is the dock's own
+        // DroneDockObject.SurveyKindAreas now, the mirror of FarmingAreas: the Survey tab had a
+        // second, verbatim copy of the same three lines, and one filter behind both views is
+        // what stops the two drifting into showing different rows.
 
         /// <summary>True when the name is blank or one of the client's own defaults for a new entry.</summary>
         private static bool IsPlaceholderName(string name)

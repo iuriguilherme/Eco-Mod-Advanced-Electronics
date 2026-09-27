@@ -259,22 +259,32 @@ namespace AdvancedElectronics.Navigation.Tests
             // not a conflict with anybody: the dock is the holder. The predicate is the caller's
             // because the holder's identity is deliberately absent from the projection (R41) --
             // the Eco side knows which areas it holds, this path only knows they are held.
-            var ownHeld = Area(1, DockA, Block(0, 0, 2, 2), holdsClaim: true);
+            //
+            // The held area sits on ANOTHER dock: a mining dock holds its claim on a survey
+            // dock's area, which is the real shape of this case. Both areas on one dock would
+            // now be exempt under R7a before the predicate is ever consulted, so the predicate
+            // would prove nothing there.
+            var ownHeld = Area(1, DockB, Block(0, 0, 2, 2), holdsClaim: true);
             var next = Area(2, DockA, Block(1, 1, 2, 2));
 
             var matches = AreaOverlap.Matches(next, new[] { ownHeld, next });
 
             Assert.Single(AreaClaims.Conflicts(AreaKind.Mining, matches));
             Assert.Empty(AreaClaims.Conflicts(
-                AreaKind.Mining, matches, claimantAlreadyHolds: p => p.AreaId == 1 && p.OwningDockId == DockA));
+                AreaKind.Mining, matches, claimantAlreadyHolds: p => p.AreaId == 1 && p.OwningDockId == DockB));
         }
 
         [Fact]
-        public void FarmlandIsReservedEvenAgainstTheDockThatHoldsIt()
+        public void FarmlandIsReservedEvenWhenTheClaimantAlreadyHoldsGround()
         {
-            // The "already holds it" escape above lifts a self-conflict, never the reservation:
-            // R47 is a fact about the ground, so it survives the holder being the claimant.
-            var ownFarm = Area(1, DockA, Block(0, 0, 2, 2), holdsClaim: true, kind: AreaKind.Farming);
+            // The "already holds it" escape above lifts an ordinary hold, never the reservation:
+            // R47 is a fact about the ground, so it survives the claimant holding a claim already.
+            //
+            // The two areas sit on DIFFERENT docks. R7a exempts a dock from colliding with itself,
+            // so the same geometry on one dock is no conflict at all -- see
+            // TwoOverlappingAreasOnOneDock_DoNotCollide_InEitherKindOrder. This test is what is
+            // left of the reservation once that exemption is in force: it binds across docks.
+            var ownFarm = Area(1, DockB, Block(0, 0, 2, 2), holdsClaim: true, kind: AreaKind.Farming);
             var mine = Area(2, DockA, Block(0, 0, 2, 2));
 
             var conflict = Assert.Single(AreaClaims.Conflicts(
@@ -422,6 +432,136 @@ namespace AdvancedElectronics.Navigation.Tests
                 Assert.Equal(4, AreaOverlap.SharedPlots(first.Plots, second.Plots).Count);
                 Assert.Equal(contested.OrderBy(p => p.X).ThenBy(p => p.Z), AreaOverlap.SharedPlots(first.Plots, second.Plots));
             }
+        }
+
+        // --- R7a: a dock does not hold ground against itself ---
+
+        [Fact]
+        public void TwoOverlappingAreasOnOneDock_DoNotCollide_InEitherKindOrder()
+        {
+            // AE5a, R7a. A dock hosts one drone and that drone's tool decides its job, so a dock
+            // cannot work two kinds of ground at once. The pair that reaches this state is the
+            // drone swap: a dock still holding the farm it worked last season, and a mining area
+            // assigned to it today. Without the exemption the dock's own farm would reserve the
+            // ground against the dock itself -- R3 reserves it while unassigned -- which is the
+            // one refusal no act of the player's could lift.
+            var farm = Area(1, DockA, Block(0, 0, 2, 2), holdsClaim: true, kind: AreaKind.Farming);
+            var mine = Area(2, DockA, Block(0, 0, 2, 3), holdsClaim: true);
+
+            Assert.Empty(ConflictsFor(mine, AreaKind.Mining, farm));
+            Assert.Empty(ConflictsFor(farm, AreaKind.Farming, mine));
+        }
+
+        [Fact]
+        public void TheFarmlandBranchDoesNotFireBetweenTwoAreasOnOneDock()
+        {
+            // The exemption sits AHEAD of the farmland branch, not behind it. R47's reservation
+            // is the one rule that ignores whether the farm is assigned, so a same-dock pair
+            // reaching that branch would be refused whatever the player did to the farm. The
+            // reason is asserted as well as the count, because an empty list alone would also be
+            // produced by an exemption placed after the branch on ground holding no claim.
+            var idleFarm = Area(1, DockA, Block(0, 0, 2, 2), holdsClaim: false, kind: AreaKind.Farming);
+            var mine = Area(2, DockA, Block(0, 0, 2, 2));
+
+            var conflicts = ConflictsFor(mine, AreaKind.Mining, idleFarm);
+
+            Assert.DoesNotContain(conflicts, c => c.Reason == AreaClaimBlock.FarmlandReserved);
+            Assert.Empty(conflicts);
+        }
+
+        [Fact]
+        public void TheSameTwoGeometriesOnTwoDocks_DoCollide()
+        {
+            // R7. The exemption is scoped to the DOCK and not to the geometry: move one of the
+            // two areas above onto a second dock and the same plots collide again. Two docks over
+            // one piece of ground is the case the rule exists for, and the same-dock exemption
+            // must not quietly widen into "overlapping areas do not collide".
+            var idleFarm = Area(1, DockA, Block(0, 0, 2, 2), holdsClaim: false, kind: AreaKind.Farming);
+            var mine = Area(2, DockB, Block(0, 0, 2, 2));
+
+            var conflict = Assert.Single(ConflictsFor(mine, AreaKind.Mining, idleFarm));
+
+            Assert.Equal(AreaClaimBlock.FarmlandReserved, conflict.Reason);
+            Assert.Equal(4, conflict.Plots.Count);
+        }
+
+        [Fact]
+        public void AnUnassignedFarmingArea_StillHoldsItsPlotsAgainstAnotherDock()
+        {
+            // R3, restated against the world walk this unit opens to farms. A farm between
+            // harvests is idle, not finished: it holds nothing HoldsClaim can express -- that
+            // flag reads assignment -- and it reserves its ground all the same, because R47's
+            // branch reads KIND rather than the flag. The two facts are asserted together
+            // because the first is what makes the second load-bearing.
+            var idleFarm = Area(1, DockA, Block(0, 0, 2, 2), holdsClaim: false, kind: AreaKind.Farming);
+
+            Assert.False(AreaClaims.HoldsClaim(assigned: false, AreaLifecycleStatus.Farm));
+
+            var conflict = Assert.Single(
+                ConflictsFor(Area(1, DockB, Block(0, 0, 2, 2)), AreaKind.Mining, idleFarm));
+
+            Assert.Equal(AreaClaimBlock.FarmlandReserved, conflict.Reason);
+        }
+
+        // --- R15: the reason an assignment was undone at load ---
+
+        [Fact]
+        public void TheReconciliationReasonNamesThePlotsAndWhatHoldsThem()
+        {
+            // R15. An assignment reconciliation undid has to say the same two things every other
+            // refusal says -- which ground, and what holds it -- plus the one thing only this
+            // case has to say: that the load did this, not the player. Without that the area
+            // reads as an assignment they forgot to make.
+            var line = MiningReadout.FormatReconciliationBlock(
+                AreaClaimBlock.FarmlandReserved, Block(0, 0, 2, 2), PlotSize);
+
+            Assert.Contains("unassigned at load", line);
+            Assert.Contains("4 plots", line);
+            Assert.Contains("(2, 2)", line);
+            Assert.Contains("(7, 7)", line);
+            Assert.Contains("farmland", line, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void TheReconciliationReasonSpeaksTheRefusalsOwnVocabulary()
+        {
+            // One vocabulary, not a second one worded for the load path. A player who has read
+            // the assignment-time refusal already knows what "held by another area's assignment"
+            // means and what lifts it; a paraphrase here would be a second thing to learn about
+            // the same rule.
+            var plots = Block(0, 0, 2, 2);
+
+            Assert.Contains(
+                MiningReadout.FormatClaimRefusal(
+                    new[] { new AreaClaimConflict(null, plots, AreaClaimBlock.HeldByAssignment) }, PlotSize),
+                MiningReadout.FormatReconciliationBlock(AreaClaimBlock.HeldByAssignment, plots, PlotSize));
+        }
+
+        [Fact]
+        public void AnAreaWithNoReconciliationBlockReadsExactlyAsItDoesToday()
+        {
+            // R16's no-op case costs the panel nothing: no reason, no row, and every existing
+            // reason string unchanged.
+            Assert.Equal(string.Empty, MiningReadout.FormatReconciliationBlock(null, Block(0, 0, 1, 1), PlotSize));
+            Assert.Equal(string.Empty, MiningReadout.FormatReconciliationBlock(
+                AreaClaimBlock.HeldByAssignment, Array.Empty<PlotCoord>(), PlotSize));
+            Assert.Equal(string.Empty, MiningReadout.FormatReconciliationBlock(
+                AreaClaimBlock.HeldByAssignment, null, PlotSize));
+
+            Assert.Equal("the area was unassigned", MiningReadout.FormatBlockedReason(false, MiningEndReason.Unassigned));
+        }
+
+        [Fact]
+        public void AFarmHeldByAnOverlapRendersARealPlotCount()
+        {
+            // R15 on the farm side. The stall reason and its renderer have both existed since the
+            // farming plan with nothing writing them; what this pins is that the count reaching
+            // the renderer is the one the conflict actually named, so the Eco-side defensive
+            // minimum of 1 stops being the only number this row can ever show.
+            var text = FarmReadout.FormatStall(FarmAreaState.HeldByOverlap("North", "Corn", heldPlotCount: 4));
+
+            Assert.Contains("4", text);
+            Assert.DoesNotContain("1 plot ", text);
         }
 
         // --- Degenerate inputs ---
